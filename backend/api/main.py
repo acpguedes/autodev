@@ -37,9 +37,14 @@ class AgentExecutionModel(BaseModel):
     metadata: Dict[str, object]
 
 
+class HistoryItemModel(BaseModel):
+    role: str
+    content: str
+
+
 class ChatResponse(BaseModel):
     session_id: str
-    history: List[str]
+    history: List[HistoryItemModel]
     results: List[AgentExecutionModel]
 
 
@@ -76,7 +81,8 @@ def chat(
         AgentExecutionModel(agent=result.agent, content=result.content, metadata=dict(result.metadata))
         for result in run.results
     ]
-    return ChatResponse(session_id=run.session_id, history=list(run.history), results=results)
+    history_items = [HistoryItemModel(role=item.role, content=item.content) for item in run.history]
+    return ChatResponse(session_id=run.session_id, history=history_items, results=results)
 
 
 __all__ = ["app"]

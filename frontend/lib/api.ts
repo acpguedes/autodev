@@ -4,9 +4,14 @@ export type PlanResponse = {
   plan: string[];
 };
 
+export type ChatHistoryItem = {
+  role: string;
+  content: string;
+};
+
 export type ChatResponse = {
   session_id: string;
-  history: string[];
+  history: ChatHistoryItem[];
   results: { agent: string; content: string; metadata?: Record<string, unknown> }[];
 };
 

@@ -12,7 +12,7 @@ class AgentContext:
 
     session_id: str
     goal: str | None = None
-    history: List[str] = field(default_factory=list)
+    history: List[Dict[str, str]] = field(default_factory=list)
     artifacts: Dict[str, Any] = field(default_factory=dict)
 
     def with_artifact(self, key: str, value: Any) -> "AgentContext":

@@ -53,11 +53,14 @@ function ChatExperience() {
 
     try {
       const response = await sendChatMessage(sessionId, pendingMessage);
-      const agentMessages: Message[] = response.results.map((result) => ({
-        author: result.agent,
-        content: result.content,
+      const conversationMessages: Message[] = response.history.map((entry) => ({
+        author: entry.role === "user" ? "You" : entry.role,
+        content: entry.content,
       }));
-      setMessages((current) => [...current, ...agentMessages]);
+      setMessages((current) => {
+        const planMessages = current.filter((message) => message.author === "Planner");
+        return [...planMessages, ...conversationMessages];
+      });
     } catch (err) {
       setError("Unable to contact orchestrator API");
     } finally {
