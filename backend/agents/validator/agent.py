@@ -2,15 +2,35 @@
 
 from __future__ import annotations
 
-from backend.agents.base import AgentContext, AgentResult
+from langchain_core.prompts import ChatPromptTemplate
+
+from backend.agents.base import AgentContext, AgentResult, LangChainAgent
 
 
-class ValidatorAgent:
+class ValidatorAgent(LangChainAgent):
     """Summarise validation activities that guarantee quality."""
 
     name = "validator"
 
-    def run(self, context: AgentContext) -> AgentResult:
+    def build_prompt(self) -> ChatPromptTemplate:
+        return ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "You are the Validator agent. Outline the testing and verification work "
+                    "required to ensure the deliverables are production ready.",
+                ),
+                (
+                    "human",
+                    "Goal: {goal}\n"
+                    "Recent discussion:\n{history}\n"
+                    "Artifacts:\n{artifacts}\n"
+                    "List concrete validation steps.",
+                ),
+            ]
+        )
+
+    def fallback_result(self, context: AgentContext) -> AgentResult:
         validation_steps = [
             "Run pytest for backend modules",
             "Execute frontend lint and type checks",
