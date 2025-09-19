@@ -117,7 +117,14 @@ class OrchestratorService:
         plan_result = planner.run(context)
         plan_steps = list(plan_result.metadata.get("steps", []))
         if not plan_steps:
-            plan_steps = [step.strip("- ") for step in plan_result.content.splitlines() if step]
+            plan_steps = []
+            for line in plan_result.content.splitlines():
+                stripped_line = line.strip()
+                if not stripped_line or not stripped_line.startswith("-"):
+                    continue
+                cleaned_step = stripped_line.lstrip("- ").strip()
+                if cleaned_step:
+                    plan_steps.append(cleaned_step)
 
         state = SessionState(session_id=session_id, goal=goal, plan=plan_steps)
         state.artifacts[planner.name] = plan_result.metadata
