@@ -1,16 +1,16 @@
 # AutoDev Architect
 
-Guia rápido para executar o projeto em modo de desenvolvimento.
+Quickstart guide for running the project in development mode.
 
-## Pré-requisitos
+## Prerequisites
 
 - Python 3.11+
 - Node.js 18+
-- npm (ou outro gerenciador compatível, como `pnpm` ou `yarn`)
+- npm (or another compatible package manager such as `pnpm` or `yarn`)
 
-## Configurando e executando o backend (FastAPI)
+## Setting up and running the backend (FastAPI)
 
-1. Crie e ative um ambiente virtual (opcional, mas recomendado):
+1. Create and activate a virtual environment (optional but recommended):
 
    ```bash
    python -m venv .venv
@@ -18,31 +18,31 @@ Guia rápido para executar o projeto em modo de desenvolvimento.
    .venv\\Scripts\\activate   # Windows
    ```
 
-2. Instale as dependências (incluindo LangChain, LangGraph e o cliente selecionado para o LLM):
+2. Install the dependencies (including LangChain, LangGraph, and the client for your chosen LLM):
 
    ```bash
    pip install -r backend/requirements.txt
    ```
 
-3. Inicie a API:
+3. Start the API server:
 
    ```bash
    uvicorn backend.api.main:app --reload
    ```
 
-   A API ficará disponível em `http://localhost:8000`. O endpoint `/docs` oferece a documentação interativa.
+   The API will be available at `http://localhost:8000`. The `/docs` endpoint exposes the interactive documentation.
 
-### Configurando o LLM
+### Configuring the LLM
 
-O backend utiliza LangChain e LangGraph para coordenar os agentes. Por padrão, ele executa uma implementação "stub" totalmente determinística — útil para desenvolvimento local sem custos adicionais. Para utilizar um LLM real configure as seguintes variáveis de ambiente antes de iniciar o servidor:
+The backend uses LangChain and LangGraph to coordinate the agents. By default it runs a fully deterministic stub implementation—useful for local development without extra costs. To use a real LLM, configure the following environment variables before starting the server:
 
-- `LLM_PROVIDER`: defina como `openai` para usar o `ChatOpenAI` via `langchain-openai` (valor padrão: `stub`).
-- `OPENAI_API_KEY`: chave de API obrigatória para o provedor OpenAI.
-- `OPENAI_MODEL`: modelo desejado (por exemplo, `gpt-4o-mini`).
-- `OPENAI_TEMPERATURE`: temperatura de amostragem (opcional, padrão `0.2`).
-- `OPENAI_BASE_URL`: URL base alternativa, caso utilize um endpoint compatível.
+- `LLM_PROVIDER`: set to `openai` to use `ChatOpenAI` via `langchain-openai` (default: `stub`).
+- `OPENAI_API_KEY`: required API key for the OpenAI provider.
+- `OPENAI_MODEL`: the desired model (for example, `gpt-4o-mini`).
+- `OPENAI_TEMPERATURE`: sampling temperature (optional, default `0.2`).
+- `OPENAI_BASE_URL`: alternate base URL if you are targeting a compatible endpoint.
 
-Exemplo de execução com o provedor oficial da OpenAI:
+Example configuration for the official OpenAI provider:
 
 ```bash
 export LLM_PROVIDER=openai
@@ -52,30 +52,30 @@ export OPENAI_MODEL="gpt-4o-mini"
 uvicorn backend.api.main:app --reload
 ```
 
-Com as variáveis configuradas, os agentes passarão a invocar o modelo via LangChain; caso alguma credencial esteja ausente, o backend retorna automaticamente às respostas estáticas pré-configuradas.
+With these variables defined, the agents will call the model through LangChain; if any credential is missing the backend automatically falls back to the built-in static responses.
 
-## Configurando e executando o frontend (Next.js)
+## Setting up and running the frontend (Next.js)
 
-1. Em outro terminal, instale as dependências:
+1. In another terminal, install the dependencies:
 
    ```bash
    cd frontend
    npm install
    ```
 
-2. Inicie o servidor de desenvolvimento:
+2. Start the development server:
 
    ```bash
    npm run dev
    ```
 
-3. A interface ficará acessível em `http://localhost:3000`.
+3. The UI will be reachable at `http://localhost:3000`.
 
-> **Dica:** Caso deseje apontar a interface para uma API remota, defina a variável de ambiente `NEXT_PUBLIC_API_URL` antes de iniciar o frontend.
+> **Tip:** By default the frontend targets the browser's current origin when calling the backend (for example, `https://your-domain`). This works automatically when the frontend and API share the same domain or reverse proxy. If the backend lives on a different host—or you need an absolute URL during server-side rendering—set `NEXT_PUBLIC_API_URL` to the full origin (without a trailing slash) before starting the frontend.
 
-## Testes rápidos
+## Quick tests
 
-Para validar o fluxo principal do orquestrador execute:
+To validate the orchestrator's main flow, run:
 
 ```bash
 pytest tests/backend/test_orchestrator.py
