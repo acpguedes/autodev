@@ -6,6 +6,7 @@ from functools import lru_cache
 from typing import Dict, List
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from backend.orchestrator.service import (
@@ -54,6 +55,17 @@ def get_orchestrator() -> OrchestratorService:
 
 
 app = FastAPI(title="AutoDev Orchestrator", version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health", tags=["meta"])
