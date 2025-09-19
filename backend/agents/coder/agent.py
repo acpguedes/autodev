@@ -2,15 +2,41 @@
 
 from __future__ import annotations
 
-from backend.agents.base import AgentContext, AgentResult
+from langchain_core.prompts import ChatPromptTemplate
+
+from backend.agents.base import AgentContext, AgentResult, LangChainAgent
 
 
-class CoderAgent:
+class CoderAgent(LangChainAgent):
     """Outline concrete coding tasks derived from the architecture."""
 
     name = "coder"
 
-    def run(self, context: AgentContext) -> AgentResult:
+    def build_prompt(self) -> ChatPromptTemplate:
+        return ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "You are the Coder agent. Translate architectural guidance into "
+                    "actionable implementation tasks for the engineering team.",
+                ),
+                (
+                    "human",
+                    "Goal: {goal}\n"
+                    "Recent plan:\n{plan}\n"
+                    "Available artifacts:\n{artifacts}\n"
+                    "List concrete coding tasks grouped by component.",
+                ),
+            ]
+        )
+
+    def prepare_inputs(self, context: AgentContext) -> dict[str, str]:
+        inputs = super().prepare_inputs(context)
+        plan_steps = context.artifacts.get("planner", {}).get("steps", [])
+        inputs["plan"] = "\n".join(f"- {step}" for step in plan_steps) or "(no plan yet)"
+        return inputs
+
+    def fallback_result(self, context: AgentContext) -> AgentResult:
         plan_steps = context.artifacts.get("planner", {}).get("steps", [])
         coding_tasks = [
             "Implement FastAPI orchestrator endpoints",

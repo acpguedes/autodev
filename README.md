@@ -18,7 +18,7 @@ Guia rápido para executar o projeto em modo de desenvolvimento.
    .venv\\Scripts\\activate   # Windows
    ```
 
-2. Instale as dependências:
+2. Instale as dependências (incluindo LangChain, LangGraph e o cliente selecionado para o LLM):
 
    ```bash
    pip install -r backend/requirements.txt
@@ -31,6 +31,28 @@ Guia rápido para executar o projeto em modo de desenvolvimento.
    ```
 
    A API ficará disponível em `http://localhost:8000`. O endpoint `/docs` oferece a documentação interativa.
+
+### Configurando o LLM
+
+O backend utiliza LangChain e LangGraph para coordenar os agentes. Por padrão, ele executa uma implementação "stub" totalmente determinística — útil para desenvolvimento local sem custos adicionais. Para utilizar um LLM real configure as seguintes variáveis de ambiente antes de iniciar o servidor:
+
+- `LLM_PROVIDER`: defina como `openai` para usar o `ChatOpenAI` via `langchain-openai` (valor padrão: `stub`).
+- `OPENAI_API_KEY`: chave de API obrigatória para o provedor OpenAI.
+- `OPENAI_MODEL`: modelo desejado (por exemplo, `gpt-4o-mini`).
+- `OPENAI_TEMPERATURE`: temperatura de amostragem (opcional, padrão `0.2`).
+- `OPENAI_BASE_URL`: URL base alternativa, caso utilize um endpoint compatível.
+
+Exemplo de execução com o provedor oficial da OpenAI:
+
+```bash
+export LLM_PROVIDER=openai
+export OPENAI_API_KEY="sk-..."
+export OPENAI_MODEL="gpt-4o-mini"
+
+uvicorn backend.api.main:app --reload
+```
+
+Com as variáveis configuradas, os agentes passarão a invocar o modelo via LangChain; caso alguma credencial esteja ausente, o backend retorna automaticamente às respostas estáticas pré-configuradas.
 
 ## Configurando e executando o frontend (Next.js)
 

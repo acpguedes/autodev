@@ -7,12 +7,13 @@ from .devops import DevOpsAgent
 from .navigator import NavigatorAgent
 from .planner import PlannerAgent
 from .validator import ValidatorAgent
-from .base import Agent, AgentContext, AgentResult
+from .base import Agent, AgentContext, AgentResult, LangChainAgent
 
 __all__ = [
     "Agent",
     "AgentContext",
     "AgentResult",
+    "LangChainAgent",
     "AnalyzerAgent",
     "ArchitectAgent",
     "CoderAgent",

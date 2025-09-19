@@ -2,15 +2,37 @@
 
 from __future__ import annotations
 
-from backend.agents.base import AgentContext, AgentResult
+from langchain_core.prompts import ChatPromptTemplate
+
+from backend.agents.base import AgentContext, AgentResult, LangChainAgent
 
 
-class AnalyzerAgent:
-    """Summarise the delta required to fulfill the goal."""
+class AnalyzerAgent(LangChainAgent):
+    """Summarise the delta required to fulfil the user's goal."""
 
     name = "analyzer"
 
-    def run(self, context: AgentContext) -> AgentResult:
+    def build_prompt(self) -> ChatPromptTemplate:
+        return ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "You are the Analyzer agent in the AutoDev collective. "
+                    "Review the goal, conversation history and intermediate artifacts to "
+                    "highlight the most impactful technical areas to investigate next.",
+                ),
+                (
+                    "human",
+                    "Goal: {goal}\n"
+                    "History so far:\n{history}\n"
+                    "Shared artifacts:\n{artifacts}\n"
+                    "Provide a concise summary of the situation and name the product areas "
+                    "that deserve immediate attention.",
+                ),
+            ]
+        )
+
+    def fallback_result(self, context: AgentContext) -> AgentResult:
         summary = (
             "Analyzer Agent evaluated the request and suggests focusing on backend,"
             " frontend, and infrastructure scaffolding to unblock subsequent work."

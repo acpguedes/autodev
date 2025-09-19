@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Mapping
+from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, TypedDict
 from uuid import uuid4
+
+from langgraph.graph import END, StateGraph
 
 from backend.agents import (
     Agent,
@@ -96,15 +98,11 @@ class OrchestratorConfig:
     )
 
 
-DEFAULT_AGENT_FACTORY: Dict[str, Agent] = {
-    "planner": PlannerAgent(),
-    "navigator": NavigatorAgent(),
-    "analyzer": AnalyzerAgent(),
-    "architect": ArchitectAgent(),
-    "coder": CoderAgent(),
-    "devops": DevOpsAgent(),
-    "validator": ValidatorAgent(),
-}
+class AgentGraphState(TypedDict):
+    """State propagated through the LangGraph workflow."""
+
+    context: AgentContext
+    results: List["AgentExecution"]
 
 
 class OrchestratorService:
@@ -116,10 +114,11 @@ class OrchestratorService:
         agents: Mapping[str, Agent] | None = None,
     ) -> None:
         self._config = config or OrchestratorConfig()
-        self._agents = dict(DEFAULT_AGENT_FACTORY)
+        self._agents = self._build_default_agents()
         if agents:
             self._agents.update(agents)
         self._sessions: Dict[str, SessionState] = {}
+        self._graph = self._compile_graph()
 
     def create_plan(self, goal: str) -> PlanSession:
         planner: PlannerAgent = self._require_agent("planner")  # type: ignore[assignment]
@@ -148,29 +147,20 @@ class OrchestratorService:
             raise KeyError(f"Unknown session_id: {session_id}")
 
         user_entry = HistoryItem(role="user", content=message)
-        state.history.append(user_entry)
         context = AgentContext(
             session_id=session_id,
             goal=state.goal,
-            history=[entry.to_dict() for entry in state.history],
+            history=[entry.to_dict() for entry in state.history] + [user_entry.to_dict()],
             artifacts={name: dict(meta) for name, meta in state.artifacts.items()},
         )
 
-        results: List[AgentExecution] = []
-        for agent_name in self._config.agent_order:
-            agent = self._require_agent(agent_name)
-            agent_result: AgentResult = agent.run(context)
-            execution = AgentExecution(
-                agent=agent.name,
-                content=agent_result.content,
-                metadata=agent_result.metadata,
-            )
-            results.append(execution)
-            state.artifacts[agent.name] = agent_result.metadata
-            response_entry = HistoryItem(role=agent.name, content=agent_result.content)
-            state.history.append(response_entry)
-            context.history.append(response_entry.to_dict())
-            context = context.with_artifact(agent.name, agent_result.metadata)
+        initial_state: AgentGraphState = {"context": context, "results": []}
+        final_state = self._graph.invoke(initial_state)
+        final_context = final_state["context"]
+        results = list(final_state["results"])
+
+        state.history = [HistoryItem(**item) for item in final_context.history]
+        state.artifacts = self._clone_artifacts(final_context.artifacts)
 
         return OrchestratorRun(session_id=session_id, history=list(state.history), results=results)
 
@@ -184,6 +174,59 @@ class OrchestratorService:
         if name not in self._agents:
             raise KeyError(f"Agent '{name}' has not been registered")
         return self._agents[name]
+
+    def _build_default_agents(self) -> Dict[str, Agent]:
+        return {
+            "planner": PlannerAgent(),
+            "navigator": NavigatorAgent(),
+            "analyzer": AnalyzerAgent(),
+            "architect": ArchitectAgent(),
+            "coder": CoderAgent(),
+            "devops": DevOpsAgent(),
+            "validator": ValidatorAgent(),
+        }
+
+    def _compile_graph(self) -> Any:
+        workflow = StateGraph(AgentGraphState)
+        order = list(self._config.agent_order)
+        for agent_name in order:
+            workflow.add_node(agent_name, self._make_agent_node(agent_name))
+
+        if not order:
+            return workflow.compile()
+
+        workflow.set_entry_point(order[0])
+        for current, nxt in zip(order, order[1:]):
+            workflow.add_edge(current, nxt)
+        workflow.add_edge(order[-1], END)
+        return workflow.compile()
+
+    def _make_agent_node(self, agent_name: str):
+        def node(state: AgentGraphState) -> AgentGraphState:
+            agent = self._require_agent(agent_name)
+            context = state["context"]
+            agent_result: AgentResult = agent.run(context)
+            execution = AgentExecution(
+                agent=agent.name,
+                content=agent_result.content,
+                metadata=agent_result.metadata,
+            )
+            next_context = context.with_artifact(agent.name, agent_result.metadata)
+            next_context = next_context.with_message(agent.name, agent_result.content)
+            next_results = list(state["results"])
+            next_results.append(execution)
+            return {"context": next_context, "results": next_results}
+
+        return node
+
+    def _clone_artifacts(self, artifacts: Mapping[str, Any]) -> Dict[str, Mapping[str, Any]]:
+        cloned: Dict[str, Mapping[str, Any]] = {}
+        for name, value in artifacts.items():
+            if isinstance(value, MutableMapping):
+                cloned[name] = dict(value)
+            else:
+                cloned[name] = value
+        return cloned
 
 
 __all__ = [
