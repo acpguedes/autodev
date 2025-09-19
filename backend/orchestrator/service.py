@@ -21,13 +21,24 @@ from backend.agents import (
 
 
 @dataclass(slots=True)
+class HistoryItem:
+    """Represents a single conversational turn."""
+
+    role: str
+    content: str
+
+    def to_dict(self) -> Dict[str, str]:
+        return {"role": self.role, "content": self.content}
+
+
+@dataclass(slots=True)
 class SessionState:
     """In-memory representation of an orchestration session."""
 
     session_id: str
     goal: str
     plan: List[str]
-    history: List[str] = field(default_factory=list)
+    history: List[HistoryItem] = field(default_factory=list)
     artifacts: Dict[str, Mapping[str, Any]] = field(default_factory=dict)
 
 
@@ -45,13 +56,13 @@ class OrchestratorRun:
     """Aggregate response returned to the API layer."""
 
     session_id: str
-    history: List[str]
+    history: List[HistoryItem]
     results: List[AgentExecution]
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "session_id": self.session_id,
-            "history": list(self.history),
+            "history": [item.to_dict() for item in self.history],
             "results": [
                 {"agent": result.agent, "content": result.content, "metadata": dict(result.metadata)}
                 for result in self.results
@@ -136,11 +147,12 @@ class OrchestratorService:
         if state is None:
             raise KeyError(f"Unknown session_id: {session_id}")
 
-        state.history.append(message)
+        user_entry = HistoryItem(role="user", content=message)
+        state.history.append(user_entry)
         context = AgentContext(
             session_id=session_id,
             goal=state.goal,
-            history=list(state.history),
+            history=[entry.to_dict() for entry in state.history],
             artifacts={name: dict(meta) for name, meta in state.artifacts.items()},
         )
 
@@ -155,6 +167,9 @@ class OrchestratorService:
             )
             results.append(execution)
             state.artifacts[agent.name] = agent_result.metadata
+            response_entry = HistoryItem(role=agent.name, content=agent_result.content)
+            state.history.append(response_entry)
+            context.history.append(response_entry.to_dict())
             context = context.with_artifact(agent.name, agent_result.metadata)
 
         return OrchestratorRun(session_id=session_id, history=list(state.history), results=results)
@@ -173,6 +188,7 @@ class OrchestratorService:
 
 __all__ = [
     "AgentExecution",
+    "HistoryItem",
     "OrchestratorConfig",
     "OrchestratorRun",
     "OrchestratorService",

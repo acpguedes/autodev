@@ -23,6 +23,27 @@ def test_handle_message_returns_agent_responses() -> None:
     agent_names = [execution.agent for execution in result.results]
     assert "navigator" in agent_names
     assert any("DevOps" in execution.content for execution in result.results)
+    assert result.history[0].role == "user"
+    assert result.history[0].content == "Start execution"
+    assert all(entry.content for entry in result.history)
+
+
+def test_history_persists_across_messages() -> None:
+    service = OrchestratorService()
+    session = service.create_plan("Track conversation")
+
+    first_run = service.handle_message(session.session_id, "Initial question")
+    assert any(entry.role != "user" for entry in first_run.history)
+
+    second_run = service.handle_message(session.session_id, "Follow up")
+
+    assert len(second_run.history) > len(first_run.history)
+    assert [entry.role for entry in first_run.history] == [
+        entry.role for entry in second_run.history[: len(first_run.history)]
+    ]
+    assert [entry.content for entry in first_run.history] == [
+        entry.content for entry in second_run.history[: len(first_run.history)]
+    ]
 
 
 class PlannerWithoutMetadata:
