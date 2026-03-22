@@ -100,6 +100,12 @@ Success criteria:
 
 ## Release 0.6 - OSS competitive platform
 
+Current implementation status:
+- a first OSS-competitive slice now includes a structured local CLI for config, planning, execution, and repository-context inspection;
+- runtime configuration and the web UI now expose `ollama` as a first-class local-model path through an OpenAI-compatible endpoint;
+- self-hosting guidance now documents local-only and hybrid startup paths built around the existing Docker Compose stack;
+- observability dashboards, multi-repository policies, and broader CI coverage remain the next major gaps to close.
+
 Goals:
 - local model support as first-class path
 - CLI
@@ -111,3 +117,64 @@ Goals:
 Success criteria:
 - self-hosted install succeeds with only open source dependencies
 - project becomes viable as an OSS alternative in the GenAI coding workflow space
+
+---
+
+## Release 0.7 - Governance and policy control plane
+
+Goals:
+- persisted repository policy documents
+- approval rules by run type and action category
+- command allowlists for validation/sandbox execution
+- audit events for configuration, approvals, and patch application
+- workspace/repository switching with explicit active policy selection
+
+Success criteria:
+- operators can define policy without editing prompts
+- sensitive actions are blocked or gated consistently across UI, API, and CLI
+- every approval and policy decision is auditable
+
+---
+
+## Release 0.8 - Patch execution and sandbox validation
+
+Goals:
+- unified diff artifact model
+- patch application service with rollback metadata
+- Docker sandbox validation runner
+- stored validation artifacts and logs
+- automated rework loop from validator failures back into coding tasks
+
+Success criteria:
+- the platform can produce, apply, validate, and store a reviewable patch end-to-end
+- failed validation emits structured evidence that can drive another iteration
+
+---
+
+## Release 0.9 - Observability and operations
+
+Goals:
+- OpenTelemetry instrumentation
+- Prometheus metrics for runs, agents, and validation outcomes
+- Grafana/Loki starter dashboards
+- operator-facing run diagnostics in the UI
+- CI coverage for backend, frontend, docs, and infrastructure checks
+
+Success criteria:
+- a self-hosted operator can inspect latency, failures, and throughput without prompt forensics
+- dashboards and logs make workflow regressions obvious
+
+---
+
+## Release 1.0 - Team-ready OSS platform
+
+Goals:
+- PostgreSQL + Redis production path replacing bootstrap-only storage assumptions
+- multi-repository tenancy and policy inheritance
+- role-aware approvals and artifact governance
+- documented production deployment on Docker Compose and Kubernetes
+- contributor and operator documentation for serious OSS adoption
+
+Success criteria:
+- the platform is deployable as a credible OSS alternative for real engineering teams
+- core planning, repository intelligence, patching, validation, governance, and observability flows work together in a reviewable control plane

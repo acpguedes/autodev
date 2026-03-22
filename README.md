@@ -58,6 +58,8 @@ The current codebase provides a functional early platform slice with:
 - explicit run typing plus persisted workflow-step history for each execution;
 - agent abstraction layer;
 - stub/fallback LLM integration;
+- first-class local-model configuration via `ollama` using an OpenAI-compatible local endpoint;
+- structured local CLI support for config inspection, planning, run execution, and repository-context inspection;
 - simple Next.js control-center interface with runtime configuration for LLM and repository selection;
 - dedicated frontend configuration workspace plus dashboard navigation between execution and config flows;
 - post-analysis execution-plan generation that expands agent artifacts into ordered tasks and supports sequential execution runs;
@@ -153,6 +155,7 @@ For rationale, read [`docs/architecture/stack_decisions.md`](docs/architecture/s
 
 ### Implementation
 - [`docs/implementation/implementation_strategy.md`](docs/implementation/implementation_strategy.md): detailed implementation strategy.
+- [`docs/implementation/self_hosting_oss.md`](docs/implementation/self_hosting_oss.md): OSS/self-hosted setup paths for stub, Ollama, and hybrid modes.
 - [`docs/implementation/agent_spec.md`](docs/implementation/agent_spec.md): role definitions, contracts, and expected outputs for agents.
 - [`docs/implementation/data_model.md`](docs/implementation/data_model.md): persistent data model and storage guidance.
 
@@ -245,8 +248,32 @@ This repository is still in the transition from prototype to platform. The new d
 4. Configure the agent API / LLM provider:
    - keep `LLM_PROVIDER=stub` for fully local deterministic fallback behavior; or
    - set `LLM_PROVIDER=openai` and fill `OPENAI_API_KEY`, plus optional `OPENAI_MODEL`, `OPENAI_BASE_URL`, and `OPENAI_TEMPERATURE`.
+   - set `LLM_PROVIDER=ollama` for a local-model path and optionally override `OLLAMA_BASE_URL` (defaults to `http://localhost:11434/v1`).
 5. Start the backend with `source .venv/bin/activate && uvicorn backend.api.main:app --reload`.
 6. Start the frontend with `cd frontend && npm run dev`.
+7. Optionally use the structured CLI:
+   - `python -m backend.cli config show`
+   - `python -m backend.cli plan "Improve local OSS workflow"`
+   - `python -m backend.cli repository context --query "config cli ollama"`
+
+### OSS self-hosting quick paths
+
+#### Fully local deterministic mode
+- Backend: `LLM_PROVIDER=stub uvicorn backend.api.main:app --reload`
+- Frontend: `cd frontend && npm run dev`
+- CLI: `python -m backend.cli config show --format env`
+
+#### Local-model mode with Ollama
+1. Run Ollama locally and expose its OpenAI-compatible endpoint.
+2. Set `LLM_PROVIDER=ollama`.
+3. Set `OPENAI_MODEL` or save the model name in `autodev.config.json` through the UI/CLI.
+4. Optionally set `OLLAMA_BASE_URL` if your local gateway is not `http://localhost:11434/v1`.
+
+#### Docker Compose bootstrap
+- Start the current stack with `docker compose -f infrastructure/docker-compose.yml up --build`.
+- The compose file keeps the backend on the open-source `stub` path by default so the platform can boot without paid infrastructure.
+
+For a fuller operator checklist, read [`docs/implementation/self_hosting_oss.md`](docs/implementation/self_hosting_oss.md).
 
 ### Runtime configuration center
 

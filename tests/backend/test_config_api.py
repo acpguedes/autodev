@@ -113,3 +113,31 @@ def test_update_runtime_config_persists_file_and_updates_repository_context(
     repository_payload = repository_response.json()
     assert repository_payload["root"] == str(repository_root.resolve())
     assert repository_payload["candidate_files"][0]["path"] == "docs/README.md"
+
+
+def test_update_runtime_config_supports_ollama_provider(client: TestClient) -> None:
+    response = client.put(
+        "/config",
+        json={
+            "config": {
+                "version": 1,
+                "llm": {
+                    "provider": "ollama",
+                    "model": "llama3.1",
+                    "base_url": "",
+                    "temperature": 0.1,
+                    "api_key": "",
+                },
+                "repository": {
+                    "project_root": ".",
+                    "repository_label": "Local Models",
+                    "default_goal": "Run local workflows",
+                },
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["config"]["llm"]["provider"] == "ollama"
+    assert "OLLAMA_BASE_URL=http://localhost:11434/v1" in payload["instructions"]["env_file_example"]
