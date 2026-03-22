@@ -280,6 +280,8 @@ You can configure the same settings without the UI:
 
 If you prefer environment variables, keep using `.env` / shell exports for `LLM_PROVIDER`, `OPENAI_*`, and `AUTODEV_PROJECT_ROOT`. The configuration page shows both JSON and `.env` examples so operators can choose the workflow that fits their deployment model.
 
+When the Next.js UI runs locally on `http://localhost:3000`, it now defaults API requests to `http://localhost:8000`. Set `NEXT_PUBLIC_API_URL` explicitly if your backend is hosted elsewhere or fronted through a different origin.
+
 ### Repository context API
 
 The first repository-intelligence slice now exposes `GET /repository/context`, which returns a structured inventory summary plus ranked candidate files for a query. Example:
