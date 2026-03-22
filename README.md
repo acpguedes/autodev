@@ -51,13 +51,14 @@ This makes the project suitable for:
 
 ## Current repository status
 
-The current codebase provides a functional prototype with:
+The current codebase provides a functional early platform slice with:
 
 - FastAPI backend orchestrator;
+- durable session, run, and message persistence backed by a SQLite store for the first functional stage;
 - agent abstraction layer;
 - stub/fallback LLM integration;
 - simple Next.js chat interface;
-- initial Docker, CI, and Terraform placeholders.
+- local install script, Docker Compose stack, and initial CI/Terraform placeholders.
 
 The documentation in this repository defines the path from prototype to a complete platform.
 
@@ -228,6 +229,24 @@ A production-ready AutoDev Architect release should include:
 ## Development status
 
 This repository is still in the transition from prototype to platform. The new documentation establishes the canonical direction for that transition.
+
+## Running the first durable stage
+
+### Local installation
+
+1. Copy `.env.example` if you want to customize runtime variables.
+2. Run `./scripts/install_dependencies.sh`.
+3. Optionally adjust `DATABASE_URL` (the first functional stage uses SQLite by default).
+4. Start the backend with `source .venv/bin/activate && uvicorn backend.api.main:app --reload`.
+5. Start the frontend with `cd frontend && npm run dev`.
+
+### Docker option
+
+Run `docker compose -f infrastructure/docker-compose.yml up --build`.
+
+This boots:
+- FastAPI backend with a persisted SQLite database volume on `http://localhost:8000`;
+- Next.js frontend on `http://localhost:3000`.
 
 If you are contributing, start with:
 

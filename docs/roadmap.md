@@ -28,6 +28,11 @@ Goals:
 - structured agent outputs
 - improved API contracts
 
+Current implementation status:
+- durable sessions, runs, and message history are now persisted via a SQLite-backed bootstrap store;
+- API endpoints expose session and run history for inspection;
+- PostgreSQL and Redis-backed async execution remain pending in the next slices.
+
 Success criteria:
 - sessions survive restart
 - runs can be resumed and inspected

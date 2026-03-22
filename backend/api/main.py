@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Dict, List
 
@@ -10,10 +11,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from backend.orchestrator.service import (
+    AgentExecution,
     OrchestratorConfig,
     OrchestratorRun,
     OrchestratorService,
     PlanSession,
+    RunSummary,
+    SessionSummary,
 )
 
 
@@ -25,6 +29,7 @@ class PlanResponse(BaseModel):
     session_id: str
     goal: str
     plan: List[str]
+    status: str
 
 
 class ChatRequest(BaseModel):
@@ -44,8 +49,27 @@ class HistoryItemModel(BaseModel):
 
 
 class ChatResponse(BaseModel):
+    run_id: str
     session_id: str
+    status: str
     history: List[HistoryItemModel]
+    results: List[AgentExecutionModel]
+
+
+class SessionResponse(BaseModel):
+    session_id: str
+    goal: str
+    plan: List[str]
+    status: str
+    history: List[HistoryItemModel]
+
+
+class RunResponse(BaseModel):
+    run_id: str
+    session_id: str
+    status: str
+    trigger_message: str
+    created_at: str
     results: List[AgentExecutionModel]
 
 
@@ -54,7 +78,13 @@ def get_orchestrator() -> OrchestratorService:
     return OrchestratorService(config=OrchestratorConfig())
 
 
-app = FastAPI(title="AutoDev Orchestrator", version="0.1.0")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    get_orchestrator()
+    yield
+
+
+app = FastAPI(title="AutoDev Orchestrator", version="0.2.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -79,6 +109,53 @@ def create_plan(request: PlanRequest, orchestrator: OrchestratorService = Depend
     return PlanResponse(**plan_session.to_dict())
 
 
+@app.get("/sessions", response_model=List[SessionResponse], tags=["sessions"])
+def list_sessions(orchestrator: OrchestratorService = Depends(get_orchestrator)) -> List[SessionResponse]:
+    sessions = orchestrator.list_sessions()
+    return [
+        SessionResponse(
+            session_id=session.session_id,
+            goal=session.goal,
+            plan=session.plan,
+            status=session.status,
+            history=[HistoryItemModel(role=item.role, content=item.content) for item in session.history],
+        )
+        for session in sessions
+    ]
+
+
+@app.get("/sessions/{session_id}", response_model=SessionResponse, tags=["sessions"])
+def get_session(
+    session_id: str,
+    orchestrator: OrchestratorService = Depends(get_orchestrator),
+) -> SessionResponse:
+    try:
+        session: SessionSummary = orchestrator.get_session(session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return SessionResponse(
+        session_id=session.session_id,
+        goal=session.goal,
+        plan=session.plan,
+        status=session.status,
+        history=[HistoryItemModel(role=item.role, content=item.content) for item in session.history],
+    )
+
+
+@app.get("/sessions/{session_id}/runs", response_model=List[RunResponse], tags=["runs"])
+def list_runs(
+    session_id: str,
+    orchestrator: OrchestratorService = Depends(get_orchestrator),
+) -> List[RunResponse]:
+    try:
+        runs = orchestrator.list_runs(session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return [_to_run_response(run) for run in runs]
+
+
 @app.post("/chat", response_model=ChatResponse, tags=["chat"])
 def chat(
     request: ChatRequest,
@@ -89,12 +166,28 @@ def chat(
     except KeyError as exc:  # pragma: no cover - exercised via tests
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    results = [
-        AgentExecutionModel(agent=result.agent, content=result.content, metadata=dict(result.metadata))
-        for result in run.results
-    ]
-    history_items = [HistoryItemModel(role=item.role, content=item.content) for item in run.history]
-    return ChatResponse(session_id=run.session_id, history=history_items, results=results)
+    return ChatResponse(
+        run_id=run.run_id,
+        session_id=run.session_id,
+        status=run.status,
+        history=[HistoryItemModel(role=item.role, content=item.content) for item in run.history],
+        results=[_to_agent_execution_model(result) for result in run.results],
+    )
+
+
+def _to_run_response(run: RunSummary) -> RunResponse:
+    return RunResponse(
+        run_id=run.run_id,
+        session_id=run.session_id,
+        status=run.status,
+        trigger_message=run.trigger_message,
+        created_at=run.created_at,
+        results=[_to_agent_execution_model(result) for result in run.results],
+    )
+
+
+def _to_agent_execution_model(result: AgentExecution) -> AgentExecutionModel:
+    return AgentExecutionModel(agent=result.agent, content=result.content, metadata=dict(result.metadata))
 
 
 __all__ = ["app"]

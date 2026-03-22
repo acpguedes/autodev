@@ -37,6 +37,12 @@ Do not attempt to build every promised feature simultaneously. Instead, convert 
 ### Notes
 This phase creates the foundation needed for all later features.
 
+Current functional slice in this repository:
+- durable session, run, and message persistence through a SQLite bootstrap store;
+- resumable history across service restarts;
+- API endpoints for run creation, session lookup, and run history;
+- a clean path remains open for PostgreSQL/Redis in the next infrastructure slice.
+
 ---
 
 ## Phase 2: Explicit workflow engine

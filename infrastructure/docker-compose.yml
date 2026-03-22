@@ -6,9 +6,14 @@ services:
       context: ..
       dockerfile: infrastructure/docker/backend.Dockerfile
     environment:
-      - UVICORN_RELOAD=false
+      DATABASE_URL: sqlite:////data/autodev.db
+      LLM_PROVIDER: stub
+      UVICORN_RELOAD: "false"
     ports:
       - "8000:8000"
+    volumes:
+      - autodev_data:/data
+
   frontend:
     image: node:20
     working_dir: /app
@@ -16,8 +21,11 @@ services:
     volumes:
       - ../frontend:/app
     environment:
-      - NEXT_PUBLIC_API_URL=http://backend:8000
+      NEXT_PUBLIC_API_URL: http://localhost:8000
     ports:
       - "3000:3000"
     depends_on:
       - backend
+
+volumes:
+  autodev_data:
