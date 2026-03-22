@@ -60,6 +60,36 @@ button:hover:not(:disabled) {
   min-height: 100vh;
 }
 
+.sidebar-shell {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.sidebar-brand h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.sidebar-nav {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.sidebar-nav__link {
+  color: var(--text);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: 0.85rem;
+  padding: 0.8rem 0.95rem;
+  background: rgba(15, 23, 42, 0.7);
+  font-weight: 600;
+}
+
+.sidebar-nav__link--active {
+  border-color: rgba(56, 189, 248, 0.55);
+  background: rgba(56, 189, 248, 0.18);
+}
+
 .chat-layout__main {
   padding: 2rem;
   display: flex;
@@ -184,11 +214,46 @@ button:hover:not(:disabled) {
   margin-bottom: 1rem;
 }
 
+.panel-card__header--stack-mobile {
+  flex-wrap: wrap;
+}
+
 .config-form,
 .instruction-stack,
-.repository-context {
+.repository-context,
+.execution-plan {
   display: grid;
   gap: 1rem;
+}
+
+.execution-plan__summary {
+  padding: 1rem;
+  border-radius: 0.9rem;
+  border: 1px solid var(--border);
+  background: rgba(15, 23, 42, 0.68);
+}
+
+.execution-task-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.execution-task-card {
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.56);
+}
+
+.execution-task-card__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: flex-start;
+  margin-bottom: 0.65rem;
 }
 
 .config-form__grid {
@@ -265,6 +330,13 @@ button {
   background: rgba(15, 23, 42, 0.95);
   color: var(--text);
   border: 1px solid var(--border);
+}
+
+.secondary-button--link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 button:disabled {
@@ -417,6 +489,10 @@ button:disabled {
   .search-form,
   .config-form__actions,
   .run-card__summary {
+    flex-direction: column;
+  }
+
+  .execution-task-card__header {
     flex-direction: column;
   }
 }
