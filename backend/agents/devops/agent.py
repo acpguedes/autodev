@@ -32,7 +32,7 @@ class DevOpsAgent(LangChainAgent):
 
     def fallback_result(self, context: AgentContext) -> AgentResult:
         deliverables = {
-            "docker": "Create Python 3.11 image exposing the FastAPI app",
+            "docker": "Create Python 3.10+ image exposing the FastAPI app",
             "ci": "Configure GitHub Actions workflow running tests and lint",
             "infrastructure": "Prepare Terraform placeholder for future cloud resources",
         }

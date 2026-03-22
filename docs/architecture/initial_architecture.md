@@ -14,7 +14,7 @@ This document consolidates the early agreements for the AutoDev Architect platfo
 
 | Area | Purpose | Initial Decision |
 | --- | --- | --- |
-| Backend Orchestrator | Coordinate Planner → Navigator/Analyzer → Architect → Coder → DevOps → Validator | Python 3.11 + FastAPI service with in-memory session store. |
+| Backend Orchestrator | Coordinate Planner → Navigator/Analyzer → Architect → Coder → DevOps → Validator | Python 3.10+ FastAPI service with in-memory session store. |
 | Agent Implementations | Encapsulate behaviour per specialty | Shared `AgentContext`/`AgentResult` contracts. Stubs provide deterministic output for early integration tests. |
 | Frontend Chat UI | Surface plans, agent responses and diffs | Next.js 14 application with React Server Components, styled layout, and REST calls to backend. |
 | Infrastructure | Make it easy to run locally and in CI | Docker image for backend, docker-compose for local orchestration, GitHub Actions for testing, Terraform placeholders for cloud rollout. |
