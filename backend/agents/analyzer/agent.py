@@ -25,6 +25,7 @@ class AnalyzerAgent(LangChainAgent):
                 (
                     "human",
                     "Goal: {goal}\n"
+                    "Current user request: {user_request}\n"
                     "History so far:\n{history}\n"
                     "Shared artifacts:\n{artifacts}\n"
                     "Provide a concise summary of the situation and name the product areas "

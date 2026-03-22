@@ -9,6 +9,7 @@ This document defines the target behavior, responsibilities, and structured outp
 All agents should:
 
 - receive structured context;
+- keep behavioral instructions in the system prompt and the latest task/request in user-scoped prompt fields;
 - produce both narrative and machine-readable output;
 - avoid making side effects directly unless explicitly designed to do so;
 - preserve traceability between input, reasoning summary, and output;
@@ -144,6 +145,19 @@ Define and execute validation.
 - logs and artifact references
 - failure classification
 - rework recommendations
+
+---
+
+## Responder Agent
+
+### Responsibility
+Compile the specialist-agent outputs into the final response for the user while staying grounded in the latest request.
+
+### Outputs
+- final response text
+- response mode (`answer` vs `apply_changes`)
+- source agents used in the synthesis
+- recommended next actions
 
 ---
 

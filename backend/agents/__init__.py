@@ -8,6 +8,7 @@ from .contracts import AGENT_METADATA_MODELS
 from .devops import DevOpsAgent
 from .navigator import NavigatorAgent
 from .planner import PlannerAgent
+from .responder import ResponderAgent
 from .validator import ValidatorAgent
 
 __all__ = [
@@ -22,5 +23,6 @@ __all__ = [
     "DevOpsAgent",
     "NavigatorAgent",
     "PlannerAgent",
+    "ResponderAgent",
     "ValidatorAgent",
 ]

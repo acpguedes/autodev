@@ -25,6 +25,7 @@ class ArchitectAgent(LangChainAgent):
                 (
                     "human",
                     "Goal: {goal}\n"
+                    "Current user request: {user_request}\n"
                     "Plan steps:\n{plan}\n"
                     "Known artifacts:\n{artifacts}\n"
                     "Describe the architecture with concise bullets for each domain.",
