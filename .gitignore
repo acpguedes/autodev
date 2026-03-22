@@ -4,3 +4,4 @@ __pycache__/
 *.db
 frontend/node_modules/
 autodev.config.json
+.env
