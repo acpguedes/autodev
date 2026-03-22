@@ -4,14 +4,22 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from functools import lru_cache
-from typing import Dict, List
-
 from pathlib import Path
+from typing import Dict, List
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from backend.config import (
+    LLMSettings,
+    RepositorySettings,
+    RuntimeConfig,
+    RuntimeConfigService,
+    RuntimeInstructions,
+    get_runtime_config_service,
+)
+from backend.llm.factory import get_chat_model
 from backend.orchestrator.service import (
     AgentExecution,
     OrchestratorConfig,
@@ -22,7 +30,6 @@ from backend.orchestrator.service import (
     RunSummary,
     SessionSummary,
 )
-
 from backend.repository import RepositoryContext, RepositoryIntelligenceService
 
 
@@ -109,23 +116,41 @@ class RunResponse(BaseModel):
     steps: List[RunStepModel]
 
 
+class RuntimeConfigResponse(BaseModel):
+    config: RuntimeConfig
+    instructions: RuntimeInstructions
+
+
+class RuntimeConfigUpdateRequest(BaseModel):
+    config: RuntimeConfig
+
+
 @lru_cache(maxsize=1)
 def get_orchestrator() -> OrchestratorService:
-    return OrchestratorService(config=OrchestratorConfig())
+    config_service = get_runtime_config_service()
+    runtime_config = config_service.apply_to_environment()
+    get_chat_model.cache_clear()
+    return OrchestratorService(
+        config=OrchestratorConfig(),
+        project_root=Path(runtime_config.repository.project_root),
+    )
 
 
 @lru_cache(maxsize=1)
 def get_repository_intelligence() -> RepositoryIntelligenceService:
-    return RepositoryIntelligenceService(project_root=Path.cwd())
+    config_service = get_runtime_config_service()
+    runtime_config = config_service.apply_to_environment()
+    return RepositoryIntelligenceService(project_root=Path(runtime_config.repository.project_root))
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    get_runtime_config_service().apply_to_environment()
     get_orchestrator()
     yield
 
 
-app = FastAPI(title="AutoDev Orchestrator", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="AutoDev Orchestrator", version="0.3.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -142,6 +167,28 @@ app.add_middleware(
 @app.get("/health", tags=["meta"])
 def healthcheck() -> Dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/config", response_model=RuntimeConfigResponse, tags=["config"])
+def get_runtime_config(
+    config_service: RuntimeConfigService = Depends(get_runtime_config_service),
+) -> RuntimeConfigResponse:
+    document = config_service.load_document()
+    return RuntimeConfigResponse(config=document.config, instructions=document.instructions)
+
+
+@app.put("/config", response_model=RuntimeConfigResponse, tags=["config"])
+def update_runtime_config(
+    request: RuntimeConfigUpdateRequest,
+    config_service: RuntimeConfigService = Depends(get_runtime_config_service),
+) -> RuntimeConfigResponse:
+    saved_config = config_service.update(request.config)
+    config_service.apply_to_environment(saved_config)
+    get_chat_model.cache_clear()
+    get_orchestrator.cache_clear()
+    get_repository_intelligence.cache_clear()
+    document = config_service.load_document()
+    return RuntimeConfigResponse(config=document.config, instructions=document.instructions)
 
 
 @app.post("/plan", response_model=PlanResponse, tags=["planning"])
@@ -269,4 +316,4 @@ def _to_run_step_model(step: RunStep) -> RunStepModel:
     )
 
 
-__all__ = ["app"]
+__all__ = ["app", "get_orchestrator", "get_repository_intelligence"]

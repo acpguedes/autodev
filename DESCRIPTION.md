@@ -19,7 +19,7 @@ Build an open source control plane for software engineering agents that can help
 
 Instead of acting like a black-box chatbot that emits code snippets, AutoDev Architect aims to become an **auditable engineering workflow system** that combines planning, code intelligence, patching, validation, and human approval.
 
-The current implementation already includes a bootstrap durable control plane, persisted workflow-step history, configurable stub/OpenAI agent execution, and a first repository-context retrieval API for ranked file discovery.
+The current implementation already includes a bootstrap durable control plane, persisted workflow-step history, configurable stub/OpenAI agent execution, a persisted runtime configuration layer for LLM and repository/workspace selection, and a first repository-context retrieval API for ranked file discovery.
 
 ---
 

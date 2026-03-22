@@ -78,6 +78,12 @@ Success criteria:
 
 ## Release 0.5 - Approval workflow and full UI
 
+Current implementation status:
+- the chat demo UI has been expanded into an initial execution control center;
+- operators can now configure the active LLM provider and repository/workspace from the web UI;
+- runtime settings are also persisted in a local JSON config file and exposed via `GET/PUT /config`;
+- approval workflows, diff explorer, and artifact browsing remain the major missing slices.
+
 Goals:
 - plan approval
 - patch approval

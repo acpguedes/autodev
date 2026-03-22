@@ -58,7 +58,7 @@ The current codebase provides a functional early platform slice with:
 - explicit run typing plus persisted workflow-step history for each execution;
 - agent abstraction layer;
 - stub/fallback LLM integration;
-- simple Next.js chat interface;
+- simple Next.js control-center interface with runtime configuration for LLM and repository selection;
 - local install script, Docker Compose stack, and initial CI/Terraform placeholders.
 
 The documentation in this repository defines the path from prototype to a complete platform.
@@ -244,6 +244,17 @@ This repository is still in the transition from prototype to platform. The new d
 5. Start the backend with `source .venv/bin/activate && uvicorn backend.api.main:app --reload`.
 6. Start the frontend with `cd frontend && npm run dev`.
 
+### Runtime configuration center
+
+The web UI now includes a configuration panel for:
+
+- choosing the LLM provider and model settings;
+- storing an API key and optional compatible base URL;
+- selecting the active repository/workspace root directory;
+- defining the default planning goal used when creating a new session.
+
+The backend persists this runtime state in `autodev.config.json` by default. Use `AUTODEV_CONFIG_PATH` if you want to store the file elsewhere. A tracked starter template is available at [`autodev.config.example.json`](autodev.config.example.json).
+
 ### Configuring the agent API
 
 The backend defaults to a `stub` provider so the platform remains self-hostable even without a paid model API. When you want live LLM-backed agent behavior, export these variables before starting the backend:
@@ -258,6 +269,16 @@ export OPENAI_TEMPERATURE=0.2
 ```
 
 If `LLM_PROVIDER=openai` is set without `OPENAI_API_KEY`, the backend falls back to the deterministic stub model instead of crashing.
+
+### Configuring via file or environment
+
+You can configure the same settings without the UI:
+
+1. Copy `autodev.config.example.json` to `autodev.config.json`.
+2. Adjust `llm` and `repository.project_root` for your environment.
+3. Restart the backend, or update the settings through `PUT /config`.
+
+If you prefer environment variables, keep using `.env` / shell exports for `LLM_PROVIDER`, `OPENAI_*`, and `AUTODEV_PROJECT_ROOT`. The configuration page shows both JSON and `.env` examples so operators can choose the workflow that fits their deployment model.
 
 ### Repository context API
 

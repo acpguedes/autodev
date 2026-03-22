@@ -225,3 +225,8 @@ Use layered retrieval:
 - using large-context prompting as a substitute for repository intelligence;
 - rewriting full files when targeted patches are possible;
 - adding too many infrastructure systems before the workflow needs them.
+
+
+## Runtime configuration slice
+
+The frontend should evolve from a chat demo into an execution control center. The current slice introduces a typed runtime configuration document persisted in `autodev.config.json`, exposed via `GET /config` and `PUT /config`, and used to configure both the active LLM provider settings and the repository/workspace root consumed by repository intelligence. This keeps operational state outside prompt text while preserving a file-based path that works for self-hosted deployments.

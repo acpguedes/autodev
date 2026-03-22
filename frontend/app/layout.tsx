@@ -3,7 +3,7 @@ import "../styles/globals.css";
 
 export const metadata: Metadata = {
   title: "AutoDev Architect",
-  description: "Chat interface for orchestrating LLM driven development",
+  description: "Execution control center for configuring and orchestrating AutoDev Architect",
 };
 
 export default function RootLayout({
