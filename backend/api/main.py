@@ -6,6 +6,8 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Dict, List
 
+from pathlib import Path
+
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -20,6 +22,8 @@ from backend.orchestrator.service import (
     RunSummary,
     SessionSummary,
 )
+
+from backend.repository import RepositoryContext, RepositoryIntelligenceService
 
 
 class PlanRequest(BaseModel):
@@ -58,6 +62,22 @@ class HistoryItemModel(BaseModel):
     content: str
 
 
+class RepositoryFileMatchModel(BaseModel):
+    path: str
+    score: int
+    reasons: List[str]
+
+
+class RepositoryContextResponse(BaseModel):
+    query: str
+    root: str
+    total_files: int
+    top_directories: List[str]
+    candidate_files: List[RepositoryFileMatchModel]
+    inventory_sample: List[str]
+    matched_terms: List[str]
+
+
 class ChatResponse(BaseModel):
     run_id: str
     session_id: str
@@ -92,6 +112,11 @@ class RunResponse(BaseModel):
 @lru_cache(maxsize=1)
 def get_orchestrator() -> OrchestratorService:
     return OrchestratorService(config=OrchestratorConfig())
+
+
+@lru_cache(maxsize=1)
+def get_repository_intelligence() -> RepositoryIntelligenceService:
+    return RepositoryIntelligenceService(project_root=Path.cwd())
 
 
 @asynccontextmanager
@@ -170,6 +195,27 @@ def list_runs(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     return [_to_run_response(run) for run in runs]
+
+
+@app.get("/repository/context", response_model=RepositoryContextResponse, tags=["repository"])
+def get_repository_context(
+    query: str = "",
+    limit: int = 8,
+    repository_intelligence: RepositoryIntelligenceService = Depends(get_repository_intelligence),
+) -> RepositoryContextResponse:
+    repository_context: RepositoryContext = repository_intelligence.build_context(query=query, limit=max(1, min(limit, 25)))
+    return RepositoryContextResponse(
+        query=repository_context.query,
+        root=repository_context.root,
+        total_files=repository_context.total_files,
+        top_directories=repository_context.top_directories,
+        candidate_files=[
+            RepositoryFileMatchModel(path=item.path, score=item.score, reasons=item.reasons)
+            for item in repository_context.candidate_files
+        ],
+        inventory_sample=repository_context.inventory_sample,
+        matched_terms=repository_context.matched_terms,
+    )
 
 
 @app.post("/chat", response_model=ChatResponse, tags=["chat"])

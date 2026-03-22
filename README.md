@@ -235,11 +235,39 @@ This repository is still in the transition from prototype to platform. The new d
 
 ### Local installation
 
-1. Copy `.env.example` if you want to customize runtime variables.
+1. Copy `.env.example` if you want to customize runtime variables: `cp .env.example .env`.
 2. Run `./scripts/install_dependencies.sh`.
-3. Optionally adjust `DATABASE_URL` (the first functional stage uses SQLite by default).
-4. Start the backend with `source .venv/bin/activate && uvicorn backend.api.main:app --reload`.
-5. Start the frontend with `cd frontend && npm run dev`.
+3. Adjust `DATABASE_URL` if you want to move the bootstrap durable store away from the default SQLite file.
+4. Configure the agent API / LLM provider:
+   - keep `LLM_PROVIDER=stub` for fully local deterministic fallback behavior; or
+   - set `LLM_PROVIDER=openai` and fill `OPENAI_API_KEY`, plus optional `OPENAI_MODEL`, `OPENAI_BASE_URL`, and `OPENAI_TEMPERATURE`.
+5. Start the backend with `source .venv/bin/activate && uvicorn backend.api.main:app --reload`.
+6. Start the frontend with `cd frontend && npm run dev`.
+
+### Configuring the agent API
+
+The backend defaults to a `stub` provider so the platform remains self-hostable even without a paid model API. When you want live LLM-backed agent behavior, export these variables before starting the backend:
+
+```bash
+export LLM_PROVIDER=openai
+export OPENAI_API_KEY=your_key_here
+export OPENAI_MODEL=gpt-4o-mini
+# Optional when using a compatible gateway or proxy
+export OPENAI_BASE_URL=
+export OPENAI_TEMPERATURE=0.2
+```
+
+If `LLM_PROVIDER=openai` is set without `OPENAI_API_KEY`, the backend falls back to the deterministic stub model instead of crashing.
+
+### Repository context API
+
+The first repository-intelligence slice now exposes `GET /repository/context`, which returns a structured inventory summary plus ranked candidate files for a query. Example:
+
+```bash
+curl "http://localhost:8000/repository/context?query=agent%20api&limit=5"
+```
+
+This endpoint is intended to seed later tree-sitter, FTS, and vector-based retrieval work with an explicit machine-readable contract.
 
 ### Docker option
 

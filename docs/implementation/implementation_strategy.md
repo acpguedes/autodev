@@ -87,6 +87,11 @@ Current functional slice in this repository:
 - pgvector embeddings and retrieval API;
 - repository context selection service.
 
+Current functional slice in this repository:
+- a lightweight repository intelligence service now builds a structured file inventory with ignored-directory rules for common generated folders;
+- the navigator agent now emits machine-readable candidate files, top directories, inventory samples, and matched query terms;
+- `GET /repository/context` exposes the first repository-context retrieval contract for future tree-sitter, FTS, and pgvector upgrades.
+
 ### Retrieval strategy
 Use layered retrieval:
 1. lexical narrowing;
