@@ -5,6 +5,7 @@ from __future__ import annotations
 from langchain_core.prompts import ChatPromptTemplate
 
 from backend.agents.base import AgentContext, AgentResult, LangChainAgent
+from backend.agents.contracts import ArchitectOutput
 
 
 class ArchitectAgent(LangChainAgent):
@@ -37,23 +38,34 @@ class ArchitectAgent(LangChainAgent):
         inputs["plan"] = "\n".join(f"- {step}" for step in plan_steps) or "(no plan yet)"
         return inputs
 
+    def metadata_model(self):
+        return ArchitectOutput
+
     def fallback_result(self, context: AgentContext) -> AgentResult:
         architecture = {
             "backend": {
-                "framework": "FastAPI",
-                "modules": ["orchestrator", "agents", "api"],
+                "summary": "Keep workflow coordination and API contracts in the FastAPI control plane.",
+                "decisions": [
+                    "Persist orchestrator state outside prompt text",
+                    "Validate agent metadata before sharing it downstream",
+                ],
             },
             "frontend": {
-                "framework": "Next.js",
-                "features": ["chat", "plan viewer", "diff inspector"],
+                "summary": "Render agent results from typed contracts instead of ad-hoc metadata.",
+                "decisions": [
+                    "Use published JSON schemas to drive future UI components",
+                ],
             },
             "infrastructure": {
-                "docker": True,
-                "ci": "GitHub Actions",
+                "summary": "Preserve the self-hostable bootstrap path while contracts mature.",
+                "decisions": [
+                    "Keep the current file-backed configuration and SQLite bootstrap store",
+                    "Prepare the API surface for later PostgreSQL and Redis upgrades",
+                ],
             },
         }
         description = "; ".join(
-            f"{section}: {details}" for section, details in architecture.items()
+            f"{section}: {details['summary']}" for section, details in architecture.items()
         )
         return AgentResult(content=f"Architecture proposal -> {description}", metadata=architecture)
 

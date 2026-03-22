@@ -5,6 +5,7 @@ from __future__ import annotations
 from langchain_core.prompts import ChatPromptTemplate
 
 from backend.agents.base import AgentContext, AgentResult, LangChainAgent
+from backend.agents.contracts import PlannerOutput
 
 
 class PlannerAgent(LangChainAgent):
@@ -28,6 +29,9 @@ class PlannerAgent(LangChainAgent):
                 ),
             ]
         )
+
+    def metadata_model(self):
+        return PlannerOutput
 
     def fallback_result(self, context: AgentContext) -> AgentResult:
         goal = context.goal or "Refine project requirements"

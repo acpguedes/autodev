@@ -28,6 +28,16 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     reset_store_cache()
 
 
+def test_agent_contract_endpoint(client: TestClient) -> None:
+    response = client.get("/agents/contracts")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert "planner" in payload["contracts"]
+    assert payload["contracts"]["planner"]["properties"]["steps"]["type"] == "array"
+    assert "validator" in payload["contracts"]
+
+
 def test_session_and_run_endpoints(client: TestClient) -> None:
     plan_response = client.post("/plan", json={"goal": "Ship durable control plane"})
     assert plan_response.status_code == 200

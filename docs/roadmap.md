@@ -47,6 +47,7 @@ Current implementation status:
 - run records now distinguish workflow types such as documentation, validation, devops, and existing-repository change;
 - each run now persists ordered workflow steps, creating a bridge from the bootstrap durable control plane to a fuller state machine;
 - a first repository-intelligence slice now exposes structured file inventory and ranked candidate-file retrieval via the navigator and `GET /repository/context`;
+- typed metadata contracts are now published for every built-in agent via `GET /agents/contracts`, with fallback validation keeping machine-readable artifacts well-formed;
 - tree-sitter indexing, deeper retrieval, and repository metadata storage remain the next major capability gap.
 
 Goals:

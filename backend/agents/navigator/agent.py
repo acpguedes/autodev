@@ -7,6 +7,7 @@ from pathlib import Path
 from langchain_core.prompts import ChatPromptTemplate
 
 from backend.agents.base import AgentContext, AgentResult, LangChainAgent
+from backend.agents.contracts import NavigatorOutput
 from backend.repository import RepositoryIntelligenceService
 
 
@@ -48,6 +49,9 @@ class NavigatorAgent(LangChainAgent):
         inputs["candidate_files"] = self._render_candidate_files(repository_context)
         inputs["inventory_sample"] = "\n".join(repository_context.inventory_sample) or "(empty)"
         return inputs
+
+    def metadata_model(self):
+        return NavigatorOutput
 
     def fallback_result(self, context: AgentContext) -> AgentResult:
         repository_context = self._build_repository_context(context)
