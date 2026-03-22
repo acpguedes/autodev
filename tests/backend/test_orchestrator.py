@@ -37,10 +37,15 @@ def test_handle_message_returns_agent_responses(orchestrator_service: Orchestrat
 
     assert result.run_id
     assert result.status == "completed"
+    assert result.run_type == "existing_repo_change"
+    assert result.current_state == "completed"
     assert result.session_id == session.session_id
     agent_names = [execution.agent for execution in result.results]
     assert "navigator" in agent_names
     assert any("DevOps" in execution.content for execution in result.results)
+    assert len(result.steps) == len(result.results)
+    assert result.steps[0].step_key == "navigator"
+    assert all(step.status == "completed" for step in result.steps)
     assert result.history[0].role == "user"
     assert result.history[0].content == "Start execution"
     assert all(entry.content for entry in result.history)
@@ -78,7 +83,18 @@ def test_run_history_is_queryable(orchestrator_service: OrchestratorService) -> 
     assert len(runs) == 2
     assert runs[0].trigger_message == "Run twice"
     assert runs[1].trigger_message == "Run once"
+    assert runs[0].run_type == "existing_repo_change"
+    assert runs[0].current_state == "completed"
     assert runs[0].results
+    assert runs[0].steps
+
+
+def test_run_type_inference_uses_workflow_categories(orchestrator_service: OrchestratorService) -> None:
+    session = orchestrator_service.create_plan("Refresh README guidance")
+
+    result = orchestrator_service.handle_message(session.session_id, "Update documentation for operators")
+
+    assert result.run_type == "documentation_update"
 
 
 class PlannerWithoutMetadata:

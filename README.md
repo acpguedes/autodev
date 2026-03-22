@@ -55,6 +55,7 @@ The current codebase provides a functional early platform slice with:
 
 - FastAPI backend orchestrator;
 - durable session, run, and message persistence backed by a SQLite store for the first functional stage;
+- explicit run typing plus persisted workflow-step history for each execution;
 - agent abstraction layer;
 - stub/fallback LLM integration;
 - simple Next.js chat interface;
@@ -217,7 +218,7 @@ A production-ready AutoDev Architect release should include:
 
 1. Replace in-memory state with PostgreSQL persistence.
 2. Add Redis-backed async execution.
-3. Introduce an explicit run state machine and approval model.
+3. Expand the new workflow-state slice into a full explicit run state machine and approval model.
 4. Implement repository indexing using tree-sitter and pgvector.
 5. Generate and validate patches in isolated workspaces.
 6. Expand the UI from chat demo to execution control center.
@@ -255,4 +256,3 @@ If you are contributing, start with:
 3. `docs/architecture/target_architecture.md`
 4. `docs/implementation/implementation_strategy.md`
 5. `AGENTS.md`
-

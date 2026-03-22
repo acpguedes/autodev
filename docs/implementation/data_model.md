@@ -21,6 +21,9 @@ Represents one executable workflow instance.
 ### RunStep
 Represents an individual step/state transition inside a run.
 
+Current bootstrap slice:
+- SQLite now persists `runs.current_state`, `runs.run_type`, and ordered `run_steps` records so workflow progress survives restarts before the PostgreSQL migration.
+
 ### Message
 Stores conversational and system messages.
 
@@ -103,4 +106,3 @@ Each important transition should create an audit/event record, including:
 - patch approved/rejected
 - validation started/completed
 - run completed/failed/cancelled
-

@@ -43,11 +43,25 @@ class DurableStore:
                     id TEXT PRIMARY KEY,
                     session_id TEXT NOT NULL,
                     status TEXT NOT NULL,
+                    run_type TEXT NOT NULL DEFAULT 'existing_repo_change',
+                    current_state TEXT NOT NULL DEFAULT 'starting',
                     trigger_message TEXT NOT NULL,
                     results_json TEXT NOT NULL,
                     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                     FOREIGN KEY(session_id) REFERENCES sessions(id)
+                );
+
+                CREATE TABLE IF NOT EXISTS run_steps (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT NOT NULL,
+                    step_key TEXT NOT NULL,
+                    agent TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT NOT NULL,
+                    attempt INTEGER NOT NULL DEFAULT 1,
+                    FOREIGN KEY(run_id) REFERENCES runs(id)
                 );
 
                 CREATE TABLE IF NOT EXISTS messages (
@@ -63,9 +77,12 @@ class DurableStore:
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs(session_id);
+                CREATE INDEX IF NOT EXISTS idx_run_steps_run_id ON run_steps(run_id, id);
                 CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id, sequence);
                 """
             )
+            self._ensure_column(connection, "runs", "run_type", "TEXT NOT NULL DEFAULT 'existing_repo_change'")
+            self._ensure_column(connection, "runs", "current_state", "TEXT NOT NULL DEFAULT 'starting'")
             connection.commit()
 
     def connect(self) -> sqlite3.Connection:
@@ -124,17 +141,42 @@ class DurableStore:
         run_id: str,
         session_id: str,
         status: str,
+        run_type: str,
+        current_state: str,
         trigger_message: str,
         results: list[dict[str, Any]],
+        steps: list[dict[str, Any]],
     ) -> None:
         with self.connect() as connection:
             connection.execute(
                 """
-                INSERT INTO runs (id, session_id, status, trigger_message, results_json)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO runs (id, session_id, status, run_type, current_state, trigger_message, results_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (run_id, session_id, status, trigger_message, json.dumps(results)),
+                (run_id, session_id, status, run_type, current_state, trigger_message, json.dumps(results)),
             )
+            self._replace_run_steps(connection, run_id, steps)
+            connection.commit()
+
+    def update_run(
+        self,
+        *,
+        run_id: str,
+        status: str,
+        current_state: str,
+        results: list[dict[str, Any]],
+        steps: list[dict[str, Any]],
+    ) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                UPDATE runs
+                SET status = ?, current_state = ?, results_json = ?, completed_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (status, current_state, json.dumps(results), run_id),
+            )
+            self._replace_run_steps(connection, run_id, steps)
             connection.commit()
 
     def list_runs(self, session_id: str) -> list[dict[str, Any]]:
@@ -190,11 +232,27 @@ class DurableStore:
             "id": row["id"],
             "session_id": row["session_id"],
             "status": row["status"],
+            "run_type": row["run_type"],
+            "current_state": row["current_state"],
             "trigger_message": row["trigger_message"],
             "results": json.loads(row["results_json"]),
+            "steps": self.list_run_steps(row["id"]),
             "created_at": row["created_at"],
             "completed_at": row["completed_at"],
         }
+
+    def list_run_steps(self, run_id: str) -> list[dict[str, Any]]:
+        with self.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT step_key, agent, status, started_at, completed_at, attempt
+                FROM run_steps
+                WHERE run_id = ?
+                ORDER BY id ASC
+                """,
+                (run_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def _resolve_database_path(self, database_url: str) -> Path:
         normalized = database_url.strip() or DEFAULT_DATABASE_URL
@@ -207,6 +265,49 @@ class DurableStore:
         raise ValueError(
             "The initial durable slice currently supports only sqlite DATABASE_URL values. "
             "Use a URL like sqlite:///./autodev.db."
+        )
+
+    def _ensure_column(
+        self,
+        connection: sqlite3.Connection,
+        table_name: str,
+        column_name: str,
+        column_definition: str,
+    ) -> None:
+        existing_columns = {
+            row["name"]
+            for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
+        if column_name in existing_columns:
+            return
+        connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition}")
+
+    def _replace_run_steps(
+        self,
+        connection: sqlite3.Connection,
+        run_id: str,
+        steps: list[dict[str, Any]],
+    ) -> None:
+        connection.execute("DELETE FROM run_steps WHERE run_id = ?", (run_id,))
+        if not steps:
+            return
+        connection.executemany(
+            """
+            INSERT INTO run_steps (run_id, step_key, agent, status, started_at, completed_at, attempt)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    run_id,
+                    step["step_key"],
+                    step["agent"],
+                    step["status"],
+                    step["started_at"],
+                    step["completed_at"],
+                    step.get("attempt", 1),
+                )
+                for step in steps
+            ],
         )
 
 

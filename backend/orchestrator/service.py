@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any, Dict, Iterable, List, Mapping, TypedDict
 from uuid import uuid4
 
@@ -43,6 +45,52 @@ class AgentExecution:
     metadata: Mapping[str, Any]
 
 
+class RunType(StrEnum):
+    """Supported workflow types for orchestrator runs."""
+
+    GREENFIELD_BOOTSTRAP = "greenfield_bootstrap"
+    EXISTING_REPO_CHANGE = "existing_repo_change"
+    DOCUMENTATION_UPDATE = "documentation_update"
+    DEVOPS_CHANGE = "devops_change"
+    VALIDATION_ONLY = "validation_only"
+
+
+class RunStatus(StrEnum):
+    """Top-level states used by the explicit workflow engine slice."""
+
+    AWAITING_INPUT = "awaiting_input"
+    RUNNING = "running"
+    COMPLETED = "completed"
+
+
+class StepStatus(StrEnum):
+    """Execution status for an individual workflow step."""
+
+    COMPLETED = "completed"
+
+
+@dataclass(slots=True)
+class RunStep:
+    """Represents a completed step within a run."""
+
+    step_key: str
+    agent: str
+    status: str
+    started_at: str
+    completed_at: str
+    attempt: int = 1
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "step_key": self.step_key,
+            "agent": self.agent,
+            "status": self.status,
+            "started_at": self.started_at,
+            "completed_at": self.completed_at,
+            "attempt": self.attempt,
+        }
+
+
 @dataclass(slots=True)
 class OrchestratorRun:
     """Aggregate response returned to the API layer."""
@@ -50,19 +98,25 @@ class OrchestratorRun:
     run_id: str
     session_id: str
     status: str
+    run_type: str
+    current_state: str
     history: List[HistoryItem]
     results: List[AgentExecution]
+    steps: List[RunStep]
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "run_id": self.run_id,
             "session_id": self.session_id,
             "status": self.status,
+            "run_type": self.run_type,
+            "current_state": self.current_state,
             "history": [item.to_dict() for item in self.history],
             "results": [
                 {"agent": result.agent, "content": result.content, "metadata": dict(result.metadata)}
                 for result in self.results
             ],
+            "steps": [step.to_dict() for step in self.steps],
         }
 
 
@@ -73,7 +127,7 @@ class PlanSession:
     session_id: str
     goal: str
     plan: List[str]
-    status: str = "drafting_plan"
+    status: str = RunStatus.AWAITING_INPUT
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -102,9 +156,12 @@ class RunSummary:
     run_id: str
     session_id: str
     status: str
+    run_type: str
+    current_state: str
     trigger_message: str
     created_at: str
     results: List[AgentExecution]
+    steps: List[RunStep]
 
 
 @dataclass(slots=True)
@@ -126,6 +183,8 @@ class AgentGraphState(TypedDict):
 
     context: AgentContext
     results: List[AgentExecution]
+    steps: List[RunStep]
+    current_state: str
 
 
 class OrchestratorService:
@@ -150,7 +209,7 @@ class OrchestratorService:
         context = AgentContext(session_id=session_id, goal=goal)
         plan_result = planner.run(context)
         plan_steps = self._extract_plan_steps(plan_result)
-        status = "awaiting_input"
+        status = RunStatus.AWAITING_INPUT
 
         self._store.create_session(
             session_id=session_id,
@@ -166,6 +225,20 @@ class OrchestratorService:
         if session_record is None:
             raise KeyError(f"Unknown session_id: {session_id}")
 
+        run_type = self._infer_run_type(goal=session_record["goal"], message=message)
+        run_id = str(uuid4())
+
+        self._store.create_run(
+            run_id=run_id,
+            session_id=session_id,
+            status=RunStatus.RUNNING,
+            run_type=run_type,
+            current_state="starting",
+            trigger_message=message,
+            results=[],
+            steps=[],
+        )
+
         history = [
             HistoryItem(role=record["role"], content=record["content"])
             for record in self._store.list_messages(session_id)
@@ -178,17 +251,22 @@ class OrchestratorService:
             artifacts=dict(session_record["artifacts"] or {}),
         )
 
-        initial_state: AgentGraphState = {"context": context, "results": []}
+        initial_state: AgentGraphState = {
+            "context": context,
+            "results": [],
+            "steps": [],
+            "current_state": "starting",
+        }
         final_state = self._graph.invoke(initial_state)
         final_context = final_state["context"]
         results = list(final_state["results"])
-        run_id = str(uuid4())
+        steps = list(final_state["steps"])
+        current_state = final_state["current_state"]
 
-        self._store.create_run(
+        self._store.update_run(
             run_id=run_id,
-            session_id=session_id,
-            status="completed",
-            trigger_message=message,
+            status=RunStatus.COMPLETED,
+            current_state=current_state,
             results=[
                 {
                     "agent": result.agent,
@@ -197,6 +275,7 @@ class OrchestratorService:
                 }
                 for result in results
             ],
+            steps=[step.to_dict() for step in steps],
         )
 
         next_history = [HistoryItem(**item) for item in final_context.history]
@@ -210,9 +289,12 @@ class OrchestratorService:
         return OrchestratorRun(
             run_id=run_id,
             session_id=session_id,
-            status="completed",
+            status=RunStatus.COMPLETED,
+            run_type=run_type,
+            current_state=current_state,
             history=next_history,
             results=results,
+            steps=steps,
         )
 
     def get_plan(self, session_id: str) -> PlanSession:
@@ -223,7 +305,7 @@ class OrchestratorService:
             session_id=state["id"],
             goal=state["goal"],
             plan=list(state["plan"] or []),
-            status="awaiting_input",
+            status=RunStatus.AWAITING_INPUT,
         )
 
     def list_sessions(self) -> List[SessionSummary]:
@@ -250,7 +332,7 @@ class OrchestratorService:
             session_id=record["id"],
             goal=record["goal"],
             plan=list(record["plan"] or []),
-            status="awaiting_input",
+            status=RunStatus.AWAITING_INPUT,
             history=history,
         )
 
@@ -267,9 +349,22 @@ class OrchestratorService:
             run_id=record["id"],
             session_id=record["session_id"],
             status=record["status"],
+            run_type=record["run_type"],
+            current_state=record["current_state"],
             trigger_message=record["trigger_message"],
             created_at=record["created_at"],
             results=results,
+            steps=[
+                RunStep(
+                    step_key=item["step_key"],
+                    agent=item["agent"],
+                    status=item["status"],
+                    started_at=item["started_at"],
+                    completed_at=item["completed_at"],
+                    attempt=item.get("attempt", 1),
+                )
+                for item in (record["steps"] or [])
+            ],
         )
 
     def _extract_plan_steps(self, plan_result: AgentResult) -> List[str]:
@@ -322,19 +417,51 @@ class OrchestratorService:
         def node(state: AgentGraphState) -> AgentGraphState:
             agent = self._require_agent(agent_name)
             context = state["context"]
+            started_at = self._timestamp()
             agent_result: AgentResult = agent.run(context)
             execution = AgentExecution(
                 agent=agent.name,
                 content=agent_result.content,
                 metadata=agent_result.metadata,
             )
+            completed_at = self._timestamp()
             next_context = context.with_artifact(agent.name, agent_result.metadata)
             next_context = next_context.with_message(agent.name, agent_result.content)
             next_results = list(state["results"])
             next_results.append(execution)
-            return {"context": next_context, "results": next_results}
+            next_steps = list(state["steps"])
+            next_steps.append(
+                RunStep(
+                    step_key=agent_name,
+                    agent=agent.name,
+                    status=StepStatus.COMPLETED,
+                    started_at=started_at,
+                    completed_at=completed_at,
+                )
+            )
+            return {
+                "context": next_context,
+                "results": next_results,
+                "steps": next_steps,
+                "current_state": "completed",
+            }
 
         return node
 
     def _clone_artifacts(self, artifacts: Mapping[str, Mapping[str, Any]]) -> Dict[str, Dict[str, Any]]:
         return {name: dict(meta) for name, meta in artifacts.items()}
+
+    def _infer_run_type(self, *, goal: str, message: str) -> RunType:
+        combined = f"{goal} {message}".lower()
+        if any(keyword in combined for keyword in ("doc", "readme", "documentation")):
+            return RunType.DOCUMENTATION_UPDATE
+        if any(keyword in combined for keyword in ("infra", "deploy", "docker", "kubernetes", "terraform")):
+            return RunType.DEVOPS_CHANGE
+        if any(keyword in combined for keyword in ("validate", "validation", "test", "lint", "typecheck")):
+            return RunType.VALIDATION_ONLY
+        if any(keyword in combined for keyword in ("bootstrap", "greenfield", "new project", "from scratch")):
+            return RunType.GREENFIELD_BOOTSTRAP
+        return RunType.EXISTING_REPO_CHANGE
+
+    def _timestamp(self) -> str:
+        return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")

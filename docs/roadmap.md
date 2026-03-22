@@ -31,6 +31,7 @@ Goals:
 Current implementation status:
 - durable sessions, runs, and message history are now persisted via a SQLite-backed bootstrap store;
 - API endpoints expose session and run history for inspection;
+- explicit run typing and persisted run-step history now provide the first workflow-state slice;
 - PostgreSQL and Redis-backed async execution remain pending in the next slices.
 
 Success criteria:
@@ -41,6 +42,11 @@ Success criteria:
 ---
 
 ## Release 0.3 - Repository intelligence
+
+Current implementation status:
+- run records now distinguish workflow types such as documentation, validation, devops, and existing-repository change;
+- each run now persists ordered workflow steps, creating a bridge from the bootstrap durable control plane to a fuller state machine;
+- tree-sitter indexing, retrieval, and repository metadata storage remain the next major capability gap.
 
 Goals:
 - tree-sitter indexing
@@ -97,4 +103,3 @@ Goals:
 Success criteria:
 - self-hosted install succeeds with only open source dependencies
 - project becomes viable as an OSS alternative in the GenAI coding workflow space
-
