@@ -1,5 +1,7 @@
 # AutoDev Architect – Initial Architecture Decisions
 
+> Historical note: this document captures the initial MVP direction. The current target architecture and production direction now live in `docs/architecture/target_architecture.md` and `docs/implementation/implementation_strategy.md`.
+
 This document consolidates the early agreements for the AutoDev Architect platform. The goal is to give every contributor a shared mental model before iterating on features.
 
 ## High-level Goals
