@@ -236,7 +236,7 @@ This repository is still in the transition from prototype to platform. The new d
 ### Local installation
 
 1. Copy `.env.example` if you want to customize runtime variables: `cp .env.example .env`.
-2. Run `./scripts/install_dependencies.sh`.
+2. Run `./scripts/install_dependencies.sh` with Python 3.10+ available as `python3` (or override `PYTHON_BIN`).
 3. Adjust `DATABASE_URL` if you want to move the bootstrap durable store away from the default SQLite file.
 4. Configure the agent API / LLM provider:
    - keep `LLM_PROVIDER=stub` for fully local deterministic fallback behavior; or

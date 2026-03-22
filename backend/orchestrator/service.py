@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from enum import StrEnum
+try:
+    from enum import StrEnum
+except ImportError:  # pragma: no cover - Python < 3.11 compatibility
+    from enum import Enum
+
+    class StrEnum(str, Enum):
+        """Fallback StrEnum compatible with Python 3.10."""
+
+        pass
+
 from typing import Any, Dict, Iterable, List, Mapping, TypedDict
 from pathlib import Path
 from uuid import uuid4
