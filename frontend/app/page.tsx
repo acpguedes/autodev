@@ -1,30 +1,23 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 
 import ChatLayout from "../components/ChatLayout";
-import ExecutionPlanPanel from "../components/ExecutionPlanPanel";
+import ExecutionConsolePanel from "../components/ExecutionConsolePanel";
 import MessageList, { type Message } from "../components/MessageList";
-import PlanSidebar from "../components/PlanSidebar";
-import RunHistoryPanel from "../components/RunHistoryPanel";
 import {
   type ExecutionPlanResponse,
-  type RepositoryContextResponse,
   type RunResponse,
   type RuntimeConfig,
   type SessionResponse,
   executePlan,
   getExecutionPlan,
-  getRepositoryContext,
   getRuntimeConfig,
   listRuns,
   listSessions,
   requestPlan,
   sendChatMessage,
 } from "../lib/api";
-
-const DEFAULT_REPOSITORY_QUERY = "configuração llm repositório projeto";
 
 export default function Page() {
   return <ExecutionControlCenter />;
@@ -41,9 +34,8 @@ function ExecutionControlCenter() {
   const [config, setConfig] = useState<RuntimeConfig | null>(null);
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
   const [runs, setRuns] = useState<RunResponse[]>([]);
-  const [repositoryContext, setRepositoryContext] =
-    useState<RepositoryContextResponse | null>(null);
   const [executionPlan, setExecutionPlan] = useState<ExecutionPlanResponse | null>(null);
+  const [isConsoleOpen, setIsConsoleOpen] = useState(false);
 
   useEffect(() => {
     async function bootstrap() {
@@ -68,16 +60,14 @@ function ExecutionControlCenter() {
           setMessages([
             {
               author: "Planner",
-              content: `Initial plan created for goal: ${planResponse.goal}`,
+              content: `Plano inicial criado para o objetivo: ${planResponse.goal}`,
             },
           ]);
           setSessions(await listSessions());
           setExecutionPlan(await getExecutionPlan(planResponse.session_id));
         }
-
-        setRepositoryContext(await getRepositoryContext(DEFAULT_REPOSITORY_QUERY));
       } catch {
-        setError("Failed to bootstrap the execution control center.");
+        setError("Não foi possível carregar o workspace de chat.");
       }
     }
 
@@ -86,6 +76,17 @@ function ExecutionControlCenter() {
 
   const currentWorkspaceLabel = config?.repository.repository_label;
   const currentProjectRoot = config?.repository.project_root;
+  const executionStatus = runs[0]?.status ?? executionPlan?.status ?? "awaiting_input";
+  const isBusy = isLoading || isExecutingPlan;
+  const hasConsoleEntries = runs.some((run) => run.results.length > 0);
+  const showConsole = isConsoleOpen || isBusy || hasConsoleEntries;
+  const nextTasks = executionPlan?.tasks.slice(0, 3) ?? [];
+
+  useEffect(() => {
+    if (isBusy || hasConsoleEntries) {
+      setIsConsoleOpen(true);
+    }
+  }, [hasConsoleEntries, isBusy]);
 
   async function refreshSessionState(activeSessionId: string) {
     const refreshedSessions = await listSessions();
@@ -111,7 +112,7 @@ function ExecutionControlCenter() {
       setMessages(mapHistoryToMessages(response.history));
       await refreshSessionState(sessionId);
     } catch {
-      setError("Unable to contact orchestrator API.");
+      setError("Não foi possível enviar a mensagem para o orquestrador.");
     } finally {
       setPendingMessage("");
       setIsLoading(false);
@@ -133,13 +134,14 @@ function ExecutionControlCenter() {
       setMessages([
         {
           author: "Planner",
-          content: `Initial plan created for goal: ${response.goal}`,
+          content: `Plano inicial criado para o objetivo: ${response.goal}`,
         },
       ]);
       setSessions(await listSessions());
       setExecutionPlan(await getExecutionPlan(response.session_id));
+      setIsConsoleOpen(false);
     } catch {
-      setError("Unable to create a new planning session.");
+      setError("Não foi possível criar uma nova sessão.");
     }
   }
 
@@ -156,113 +158,108 @@ function ExecutionControlCenter() {
       setMessages(mapHistoryToMessages(response.history));
       await refreshSessionState(sessionId);
     } catch {
-      setError("Unable to execute the generated plan.");
+      setError("Não foi possível executar o plano gerado.");
     } finally {
       setIsExecutingPlan(false);
     }
   }
 
   return (
-    <ChatLayout
-      currentView="dashboard"
-      sidebar={
-        <PlanSidebar
-          plan={plan}
-          sessionId={sessionId}
-          status={runs[0]?.status ?? executionPlan?.status ?? "awaiting_input"}
-          repositoryLabel={currentWorkspaceLabel}
-          projectRoot={currentProjectRoot}
-        />
-      }
-    >
-      <section className="hero-card">
-        <div>
-          <p className="eyebrow">Release 0.6 workflow slice</p>
-          <h1>AutoDev Architect control center</h1>
-          <p className="subtitle">
-            Review the current plan, derive a post-analysis execution backlog, and run each task in
-            sequence from the main dashboard.
-          </p>
-        </div>
-        <div className="hero-card__actions">
-          <Link className="secondary-button secondary-button--link" href="/config">
-            Open config workspace
-          </Link>
-          <button className="secondary-button" type="button" onClick={handleCreateSession}>
-            New planning session
-          </button>
-        </div>
-      </section>
-
-      <ExecutionPlanPanel
-        executionPlan={executionPlan}
-        isExecuting={isExecutingPlan}
-        onExecute={handleExecutePlan}
-      />
-
-      <div className="panel-grid panel-grid--two-up">
-        <section className="panel-card">
-          <div className="panel-card__header">
+    <ChatLayout currentView="dashboard" layoutMode="focus">
+      <div className={`workspace-shell ${showConsole ? "workspace-shell--with-console" : ""}`}>
+        <section className="chat-surface">
+          <header className="chat-surface__header">
             <div>
-              <p className="eyebrow">Repository intelligence</p>
-              <h2>Context preview for the active project</h2>
+              <p className="eyebrow">Sessão ativa</p>
+              <h2>Chat focado na execução</h2>
+              <p className="subtitle">
+                Uma interface mais limpa para conversar com os agentes sem o visual de dashboard.
+              </p>
             </div>
+
+            <div className="chat-surface__actions">
+              <button className="secondary-button" type="button" onClick={handleCreateSession}>
+                Nova sessão
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setIsConsoleOpen((current) => !current)}
+              >
+                {showConsole ? "Ocultar painel" : "Abrir painel"}
+              </button>
+              <button
+                type="button"
+                onClick={handleExecutePlan}
+                disabled={!executionPlan || executionPlan.tasks.length === 0 || isExecutingPlan}
+              >
+                {isExecutingPlan ? "Executando..." : "Executar plano"}
+              </button>
+            </div>
+          </header>
+
+          <div className="chat-overview">
+            <div className="chat-overview__meta">
+              <span className="status-pill">{executionStatus}</span>
+              <span className="tag">{currentWorkspaceLabel || "Workspace não configurado"}</span>
+              <span className="tag">Sessões: {sessions.length}</span>
+            </div>
+            <p className="run-card__meta">
+              Sessão: {sessionId || "não iniciada"} · Root: {currentProjectRoot || "não configurado"}
+            </p>
+            {executionPlan ? (
+              <div className="plan-preview">
+                <div className="plan-preview__header">
+                  <strong>Próximas etapas</strong>
+                  <span className="run-card__meta">{executionPlan.tasks.length} tarefas</span>
+                </div>
+                {nextTasks.length === 0 ? (
+                  <p className="empty-state">
+                    Envie uma instrução no chat para gerar um backlog executável.
+                  </p>
+                ) : (
+                  <ol className="plan-preview__list">
+                    {nextTasks.map((task) => (
+                      <li key={task.task_id}>
+                        <strong>{task.title}</strong>
+                        <span>{task.description}</span>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </div>
+            ) : null}
           </div>
 
-          {repositoryContext ? (
-            <div className="repository-context">
-              <p className="run-card__meta">
-                Root: {repositoryContext.root} · Files: {repositoryContext.total_files}
-              </p>
-              <div className="tag-list">
-                {repositoryContext.top_directories.map((directory) => (
-                  <span className="tag" key={directory}>
-                    {directory}
-                  </span>
-                ))}
-              </div>
-              <div className="candidate-list">
-                {repositoryContext.candidate_files.map((file) => (
-                  <article className="candidate-card" key={file.path}>
-                    <strong>{file.path}</strong>
-                    <p>score {file.score}</p>
-                    <p>{file.reasons.join(" · ")}</p>
-                  </article>
-                ))}
-              </div>
+          {error ? <p className="error-banner">{error}</p> : null}
+
+          <MessageList messages={messages} />
+
+          <form className="chat-composer chat-composer--clean" onSubmit={handleSubmit}>
+            <textarea
+              value={pendingMessage}
+              onChange={(event) => setPendingMessage(event.target.value)}
+              placeholder="Descreva a mudança que você quer fazer..."
+            />
+            <button type="submit" disabled={isLoading || !pendingMessage.trim()}>
+              {isLoading ? "Enviando..." : "Enviar"}
+            </button>
+          </form>
+
+          <div className="chat-plan-notes">
+            <strong>Plano atual</strong>
+            <div className="tag-list">
+              {plan.map((step, index) => (
+                <span className="tag" key={`${index}-${step}`}>
+                  {step}
+                </span>
+              ))}
             </div>
-          ) : (
-            <p className="empty-state">Loading repository context...</p>
-          )}
+          </div>
         </section>
 
-        <RunHistoryPanel runs={runs} />
+        {showConsole ? <ExecutionConsolePanel runs={runs} isBusy={isBusy} /> : null}
       </div>
-
-      <section className="panel-card">
-        <div className="panel-card__header">
-          <div>
-            <p className="eyebrow">Agent console</p>
-            <h2>Conversation and execution log</h2>
-          </div>
-          <p className="run-card__meta">Known sessions: {sessions.length}</p>
-        </div>
-
-        <MessageList messages={messages} />
-
-        <form className="chat-composer" onSubmit={handleSubmit}>
-          <textarea
-            value={pendingMessage}
-            placeholder="Describe the next action for the agents"
-            onChange={(event) => setPendingMessage(event.target.value)}
-          />
-          <button type="submit" disabled={!sessionId || isLoading}>
-            {isLoading ? "Thinking..." : "Send"}
-          </button>
-        </form>
-      </section>
-
-      {error ? <p role="alert" className="error-banner">{error}</p> : null}
     </ChatLayout>
   );
 }
