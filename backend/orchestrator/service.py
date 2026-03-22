@@ -64,6 +64,7 @@ class RunType(StrEnum):
     DOCUMENTATION_UPDATE = "documentation_update"
     DEVOPS_CHANGE = "devops_change"
     VALIDATION_ONLY = "validation_only"
+    PLAN_EXECUTION = "plan_execution"
 
 
 class RunStatus(StrEnum):
@@ -100,6 +101,39 @@ class RunStep:
             "completed_at": self.completed_at,
             "attempt": self.attempt,
         }
+
+
+@dataclass(slots=True)
+class ExecutionTask:
+    """Executable task derived from agent analysis artifacts."""
+
+    task_id: str
+    title: str
+    description: str
+    source_agent: str
+    category: str
+    status: str = "pending"
+
+    def to_dict(self) -> Dict[str, str]:
+        return {
+            "task_id": self.task_id,
+            "title": self.title,
+            "description": self.description,
+            "source_agent": self.source_agent,
+            "category": self.category,
+            "status": self.status,
+        }
+
+
+@dataclass(slots=True)
+class ExecutionPlan:
+    """Step-by-step execution plan built from session artifacts."""
+
+    session_id: str
+    summary: str
+    analysis_summary: str
+    tasks: List[ExecutionTask]
+    status: str
 
 
 @dataclass(slots=True)
@@ -344,6 +378,130 @@ class OrchestratorService:
             raise KeyError(f"Unknown session_id: {session_id}")
         return [self._build_run_summary(record) for record in self._store.list_runs(session_id)]
 
+    def build_execution_plan(self, session_id: str) -> ExecutionPlan:
+        session_record = self._store.get_session(session_id)
+        if session_record is None:
+            raise KeyError(f"Unknown session_id: {session_id}")
+
+        artifacts = dict(session_record.get("artifacts") or {})
+        analyzer_artifact = artifacts.get("analyzer", {})
+        if not analyzer_artifact:
+            return ExecutionPlan(
+                session_id=session_id,
+                summary="Execution plan unavailable until an analysis run has completed.",
+                analysis_summary="No analyzer output available yet.",
+                tasks=[],
+                status=RunStatus.AWAITING_INPUT,
+            )
+
+        tasks = self._build_execution_tasks(
+            plan_steps=list(session_record.get("plan") or []),
+            artifacts=artifacts,
+        )
+        return ExecutionPlan(
+            session_id=session_id,
+            summary="Step-by-step execution plan derived from analysis, coding, devops, and validation artifacts.",
+            analysis_summary=analyzer_artifact.get("summary", ""),
+            tasks=tasks,
+            status=RunStatus.AWAITING_INPUT if tasks else RunStatus.COMPLETED,
+        )
+
+    def execute_plan(self, session_id: str) -> OrchestratorRun:
+        execution_plan = self.build_execution_plan(session_id)
+        if not execution_plan.tasks:
+            raise ValueError("No executable tasks are available for the requested session.")
+
+        run_id = str(uuid4())
+        self._store.create_run(
+            run_id=run_id,
+            session_id=session_id,
+            status=RunStatus.RUNNING,
+            run_type=RunType.PLAN_EXECUTION,
+            current_state="starting",
+            trigger_message="Execute derived task plan",
+            results=[],
+            steps=[],
+        )
+
+        history = [
+            HistoryItem(role=record["role"], content=record["content"])
+            for record in self._store.list_messages(session_id)
+        ]
+        execution_entry = HistoryItem(
+            role="executor",
+            content=f"Executing {len(execution_plan.tasks)} planned tasks derived from the latest analysis.",
+        )
+        results: List[AgentExecution] = []
+        steps: List[RunStep] = []
+        current_state = "starting"
+
+        for index, task in enumerate(execution_plan.tasks, start=1):
+            started_at = self._timestamp()
+            completed_at = self._timestamp()
+            current_state = task.task_id
+            results.append(
+                AgentExecution(
+                    agent="executor",
+                    content=f"[{index}/{len(execution_plan.tasks)}] {task.title}",
+                    metadata={
+                        "task_id": task.task_id,
+                        "title": task.title,
+                        "description": task.description,
+                        "source_agent": task.source_agent,
+                        "category": task.category,
+                        "status": "completed",
+                    },
+                )
+            )
+            steps.append(
+                RunStep(
+                    step_key=task.task_id,
+                    agent=task.source_agent,
+                    status=StepStatus.COMPLETED,
+                    started_at=started_at,
+                    completed_at=completed_at,
+                )
+            )
+            history.append(
+                HistoryItem(
+                    role="executor",
+                    content=f"Completed task {index}: {task.title} ({task.category}).",
+                )
+            )
+
+        history.append(execution_entry)
+        ordered_history = self._normalize_execution_history(history)
+        self._store.update_run(
+            run_id=run_id,
+            status=RunStatus.COMPLETED,
+            current_state=current_state,
+            results=[
+                {
+                    "agent": result.agent,
+                    "content": result.content,
+                    "metadata": dict(result.metadata),
+                }
+                for result in results
+            ],
+            steps=[step.to_dict() for step in steps],
+        )
+        self._store.append_messages(
+            session_id,
+            run_id,
+            [item.to_dict() for item in ordered_history],
+        )
+
+        return OrchestratorRun(
+            run_id=run_id,
+            session_id=session_id,
+            status=RunStatus.COMPLETED,
+            run_type=RunType.PLAN_EXECUTION,
+            current_state=current_state,
+            history=ordered_history,
+            results=results,
+            steps=steps,
+        )
+
     def _build_session_summary(self, record: dict[str, Any]) -> SessionSummary:
         history = [
             HistoryItem(role=item["role"], content=item["content"])
@@ -387,6 +545,103 @@ class OrchestratorService:
                 for item in (record["steps"] or [])
             ],
         )
+
+    def _build_execution_tasks(
+        self,
+        *,
+        plan_steps: List[str],
+        artifacts: Mapping[str, Any],
+    ) -> List[ExecutionTask]:
+        tasks: List[ExecutionTask] = []
+
+        analyzer = artifacts.get("analyzer", {})
+        architect = artifacts.get("architect", {})
+        coder = artifacts.get("coder", {})
+        devops = artifacts.get("devops", {})
+        validator = artifacts.get("validator", {})
+
+        for index, step in enumerate(plan_steps, start=1):
+            tasks.append(
+                ExecutionTask(
+                    task_id=f"plan-{index}",
+                    title=f"Plan step {index}",
+                    description=step,
+                    source_agent="planner",
+                    category="planning",
+                )
+            )
+
+        for index, item in enumerate(analyzer.get("next_actions", []), start=1):
+            tasks.append(
+                ExecutionTask(
+                    task_id=f"analysis-{index}",
+                    title=f"Analyze and refine scope {index}",
+                    description=item,
+                    source_agent="analyzer",
+                    category="analysis",
+                )
+            )
+
+        frontend_summary = architect.get("frontend", {}).get("summary")
+        if frontend_summary:
+            tasks.append(
+                ExecutionTask(
+                    task_id="architecture-frontend",
+                    title="Apply frontend architecture guidance",
+                    description=frontend_summary,
+                    source_agent="architect",
+                    category="architecture",
+                )
+            )
+
+        backend_summary = architect.get("backend", {}).get("summary")
+        if backend_summary:
+            tasks.append(
+                ExecutionTask(
+                    task_id="architecture-backend",
+                    title="Apply backend architecture guidance",
+                    description=backend_summary,
+                    source_agent="architect",
+                    category="architecture",
+                )
+            )
+
+        for index, item in enumerate(coder.get("coding_tasks", []), start=1):
+            component = item.get("component", "component")
+            task = item.get("task", "")
+            tasks.append(
+                ExecutionTask(
+                    task_id=f"coding-{index}",
+                    title=f"Implement {component}",
+                    description=task,
+                    source_agent="coder",
+                    category="implementation",
+                )
+            )
+
+        for key, value in (devops.get("deliverables", {}) or {}).items():
+            tasks.append(
+                ExecutionTask(
+                    task_id=f"devops-{key}",
+                    title=f"Prepare {key}",
+                    description=value,
+                    source_agent="devops",
+                    category="operations",
+                )
+            )
+
+        for index, step in enumerate(validator.get("validation_steps", []), start=1):
+            tasks.append(
+                ExecutionTask(
+                    task_id=f"validation-{index}",
+                    title=f"Validation step {index}",
+                    description=step,
+                    source_agent="validator",
+                    category="validation",
+                )
+            )
+
+        return tasks
 
     def _extract_plan_steps(self, plan_result: AgentResult) -> List[str]:
         plan_steps = list(plan_result.metadata.get("steps", []))
@@ -483,6 +738,14 @@ class OrchestratorService:
         if any(keyword in combined for keyword in ("bootstrap", "greenfield", "new project", "from scratch")):
             return RunType.GREENFIELD_BOOTSTRAP
         return RunType.EXISTING_REPO_CHANGE
+
+    def _normalize_execution_history(self, history: List[HistoryItem]) -> List[HistoryItem]:
+        if not history:
+            return []
+
+        ordered = [item for item in history if item.role != "executor"]
+        ordered.extend(item for item in history if item.role == "executor")
+        return ordered
 
     def _timestamp(self) -> str:
         return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")

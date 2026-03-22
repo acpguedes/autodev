@@ -22,6 +22,8 @@ from backend.config import (
 from backend.llm.factory import get_chat_model
 from backend.orchestrator.service import (
     AgentExecution,
+    ExecutionPlan,
+    ExecutionTask,
     OrchestratorConfig,
     OrchestratorRun,
     OrchestratorService,
@@ -127,6 +129,23 @@ class RuntimeConfigUpdateRequest(BaseModel):
 
 class AgentContractsResponse(BaseModel):
     contracts: Dict[str, Dict[str, Any]]
+
+
+class ExecutionTaskModel(BaseModel):
+    task_id: str
+    title: str
+    description: str
+    source_agent: str
+    category: str
+    status: str
+
+
+class ExecutionPlanResponse(BaseModel):
+    session_id: str
+    summary: str
+    analysis_summary: str
+    tasks: List[ExecutionTaskModel]
+    status: str
 
 
 @lru_cache(maxsize=1)
@@ -255,6 +274,57 @@ def list_runs(
     return [_to_run_response(run) for run in runs]
 
 
+@app.get(
+    "/sessions/{session_id}/execution-plan",
+    response_model=ExecutionPlanResponse,
+    tags=["planning"],
+)
+def get_execution_plan(
+    session_id: str,
+    orchestrator: OrchestratorService = Depends(get_orchestrator),
+) -> ExecutionPlanResponse:
+    try:
+        execution_plan: ExecutionPlan = orchestrator.build_execution_plan(session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return ExecutionPlanResponse(
+        session_id=execution_plan.session_id,
+        summary=execution_plan.summary,
+        analysis_summary=execution_plan.analysis_summary,
+        tasks=[_to_execution_task_model(task) for task in execution_plan.tasks],
+        status=execution_plan.status,
+    )
+
+
+@app.post(
+    "/sessions/{session_id}/execution-plan/execute",
+    response_model=ChatResponse,
+    tags=["planning"],
+)
+def execute_execution_plan(
+    session_id: str,
+    orchestrator: OrchestratorService = Depends(get_orchestrator),
+) -> ChatResponse:
+    try:
+        run: OrchestratorRun = orchestrator.execute_plan(session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return ChatResponse(
+        run_id=run.run_id,
+        session_id=run.session_id,
+        status=run.status,
+        run_type=run.run_type,
+        current_state=run.current_state,
+        history=[HistoryItemModel(role=item.role, content=item.content) for item in run.history],
+        results=[_to_agent_execution_model(result) for result in run.results],
+        steps=[_to_run_step_model(step) for step in run.steps],
+    )
+
+
 @app.get("/repository/context", response_model=RepositoryContextResponse, tags=["repository"])
 def get_repository_context(
     query: str = "",
@@ -324,6 +394,17 @@ def _to_run_step_model(step: RunStep) -> RunStepModel:
         started_at=step.started_at,
         completed_at=step.completed_at,
         attempt=step.attempt,
+    )
+
+
+def _to_execution_task_model(task: ExecutionTask) -> ExecutionTaskModel:
+    return ExecutionTaskModel(
+        task_id=task.task_id,
+        title=task.title,
+        description=task.description,
+        source_agent=task.source_agent,
+        category=task.category,
+        status=task.status,
     )
 
 

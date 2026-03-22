@@ -56,6 +56,23 @@ export type RunResponse = {
   steps: RunStep[];
 };
 
+export type ExecutionTask = {
+  task_id: string;
+  title: string;
+  description: string;
+  source_agent: string;
+  category: string;
+  status: string;
+};
+
+export type ExecutionPlanResponse = {
+  session_id: string;
+  summary: string;
+  analysis_summary: string;
+  tasks: ExecutionTask[];
+  status: string;
+};
+
 export type RepositoryFileMatch = {
   path: string;
   score: number;
@@ -192,6 +209,18 @@ export async function listSessions(): Promise<SessionResponse[]> {
 
 export async function listRuns(sessionId: string): Promise<RunResponse[]> {
   return requestJson<RunResponse[]>(`sessions/${sessionId}/runs`);
+}
+
+export async function getExecutionPlan(
+  sessionId: string
+): Promise<ExecutionPlanResponse> {
+  return requestJson<ExecutionPlanResponse>(`sessions/${sessionId}/execution-plan`);
+}
+
+export async function executePlan(sessionId: string): Promise<ChatResponse> {
+  return requestJson<ChatResponse>(`sessions/${sessionId}/execution-plan/execute`, {
+    method: "POST",
+  });
 }
 
 export async function getRepositoryContext(
