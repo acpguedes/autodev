@@ -1,82 +1,239 @@
 # AutoDev Architect
 
-Quickstart guide for running the project in development mode.
+> Open source platform for **planning, analyzing, patching, validating, and evolving software projects with GenAI agents**.
 
-## Prerequisites
+AutoDev Architect is an open source alternative for teams that want a transparent, extensible, and self-hostable system for **AI-assisted software delivery**. It is designed to compete in the category of tools such as Codex-style agents and cloud code assistants, while prioritizing:
 
-- Python 3.11+
-- Node.js 18+
-- npm (or another compatible package manager such as `pnpm` or `yarn`)
+- **open architecture**;
+- **self-hosting**;
+- **patch-based code changes**;
+- **human approval workflows**;
+- **observability and reproducibility**;
+- **support for existing repositories and greenfield projects**.
 
-## Setting up and running the backend (FastAPI)
+The project currently contains an MVP skeleton. This repository now documents the **target architecture**, **recommended implementation strategy**, **chosen open source stack**, and **operational direction** required to evolve it into a solid production-grade platform.
 
-1. Create and activate a virtual environment (optional but recommended):
+---
 
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # Linux/macOS
-   .venv\\Scripts\\activate   # Windows
-   ```
+## Vision
 
-2. Install the dependencies (including LangChain, LangGraph, and the client for your chosen LLM):
+AutoDev Architect should become a platform that can:
 
-   ```bash
-   pip install -r backend/requirements.txt
-   ```
+1. Understand a product request or engineering task.
+2. Create an execution plan with explicit approval gates.
+3. Inspect an existing repository using syntax-aware and semantic analysis.
+4. Propose minimal, auditable patches.
+5. Execute validation in an isolated sandbox.
+6. Iterate on failures using agent feedback loops.
+7. Produce artifacts such as docs, tests, CI/CD, infra, and pull requests.
+8. Preserve traceability for every decision, prompt, patch, validation result, and approval.
 
-3. Start the API server:
+This makes the project suitable for:
 
-   ```bash
-   uvicorn backend.api.main:app --reload
-   ```
+- engineering teams building internal developer platforms;
+- OSS maintainers that want AI-assisted contribution workflows;
+- enterprises that need self-hosted GenAI coding systems;
+- research and experimentation around multi-agent software engineering.
 
-   The API will be available at `http://localhost:8000`. The `/docs` endpoint exposes the interactive documentation.
+---
 
-### Configuring the LLM
+## Product principles
 
-The backend uses LangChain and LangGraph to coordinate the agents. By default it runs a fully deterministic stub implementation—useful for local development without extra costs. To use a real LLM, configure the following environment variables before starting the server:
+- **Open source first**: all core platform capabilities should be buildable and operable with open source components.
+- **Human in the loop**: plans, patches, and deployments must support approval gates.
+- **Deterministic where possible**: use structured outputs, schemas, and verifiable execution instead of free-form text only.
+- **Patch, not rewrite**: prefer minimal diffs over large file rewrites.
+- **Observability by default**: every run must be inspectable.
+- **Self-hostable architecture**: local, Docker, and Kubernetes deployments should be supported.
+- **Provider flexibility**: the system should work with hosted and local models, but never depend on a paid provider to function.
 
-- `LLM_PROVIDER`: set to `openai` to use `ChatOpenAI` via `langchain-openai` (default: `stub`).
-- `OPENAI_API_KEY`: required API key for the OpenAI provider.
-- `OPENAI_MODEL`: the desired model (for example, `gpt-4o-mini`).
-- `OPENAI_TEMPERATURE`: sampling temperature (optional, default `0.2`).
-- `OPENAI_BASE_URL`: alternate base URL if you are targeting a compatible endpoint.
+---
 
-Example configuration for the official OpenAI provider:
+## Current repository status
 
-```bash
-export LLM_PROVIDER=openai
-export OPENAI_API_KEY="sk-..."
-export OPENAI_MODEL="gpt-4o-mini"
+The current codebase provides a functional prototype with:
 
-uvicorn backend.api.main:app --reload
+- FastAPI backend orchestrator;
+- agent abstraction layer;
+- stub/fallback LLM integration;
+- simple Next.js chat interface;
+- initial Docker, CI, and Terraform placeholders.
+
+The documentation in this repository defines the path from prototype to a complete platform.
+
+---
+
+## Target capabilities
+
+### Core platform
+- Multi-step planning with approval workflow.
+- Repository navigation using AST, symbols, embeddings, and lexical search.
+- Change analysis and impact assessment.
+- Patch generation and patch application.
+- Validation with tests, lint, typecheck, security, and build steps.
+- Execution history, reproducibility, and rollback support.
+
+### Collaboration and governance
+- Session persistence.
+- Audit trails.
+- Role-based approvals.
+- Multi-workspace support.
+- Artifact retention.
+- Explainability for decisions and generated changes.
+
+### Developer experience
+- CLI and Web UI.
+- Real-time streaming updates.
+- Pull request generation.
+- Local model support.
+- Configurable policies per repository.
+- Reusable agent skills and templates.
+
+---
+
+## Recommended target stack
+
+AutoDev Architect is intended to be fully operable with open source infrastructure.
+
+### Application layer
+- **Backend API**: FastAPI
+- **Workflow orchestration**: LangGraph
+- **Background jobs**: Celery or ARQ backed by Redis
+- **Frontend**: Next.js
+- **Typed contracts**: Pydantic + JSON Schema
+
+### State and memory
+- **System of record**: PostgreSQL
+- **Vector search / long-term semantic memory**: PostgreSQL + pgvector
+- **Hot cache / short-lived state / locks / queues**: Redis
+- **Artifact storage**: MinIO (S3-compatible, open source)
+
+### Code intelligence
+- **Syntax parsing**: tree-sitter
+- **Lexical search**: ripgrep + PostgreSQL full-text search
+- **Repository metadata graph**: PostgreSQL tables + symbol index
+
+### Execution and isolation
+- **Sandbox execution**: Docker containers
+- **Local orchestration**: Docker Compose
+- **Production orchestration**: Kubernetes
+
+### Observability
+- **Tracing**: OpenTelemetry
+- **Metrics**: Prometheus
+- **Dashboards**: Grafana
+- **Logs**: Loki
+
+### Optional local model path
+- **Inference gateway**: vLLM or Ollama
+- **Embeddings**: local embedding models served through Ollama/vLLM or sentence-transformers services
+
+For rationale, read [`docs/architecture/stack_decisions.md`](docs/architecture/stack_decisions.md).
+
+---
+
+## Documentation map
+
+### Product and direction
+- [`DESCRIPTION.md`](DESCRIPTION.md): strengthened product vision and positioning.
+- [`docs/product/project_charter.md`](docs/product/project_charter.md): mission, users, principles, and success criteria.
+- [`docs/roadmap.md`](docs/roadmap.md): phased roadmap from MVP to production platform.
+
+### Architecture
+- [`docs/architecture/initial_architecture.md`](docs/architecture/initial_architecture.md): original early decisions for historical context.
+- [`docs/architecture/target_architecture.md`](docs/architecture/target_architecture.md): target production architecture.
+- [`docs/architecture/stack_decisions.md`](docs/architecture/stack_decisions.md): chosen stack and technical tradeoffs.
+- [`docs/architecture/weaknesses_and_strategies.md`](docs/architecture/weaknesses_and_strategies.md): current weaknesses and remediation strategies.
+
+### Implementation
+- [`docs/implementation/implementation_strategy.md`](docs/implementation/implementation_strategy.md): detailed implementation strategy.
+- [`docs/implementation/agent_spec.md`](docs/implementation/agent_spec.md): role definitions, contracts, and expected outputs for agents.
+- [`docs/implementation/data_model.md`](docs/implementation/data_model.md): persistent data model and storage guidance.
+
+### Governance and contribution
+- [`AGENTS.md`](AGENTS.md): repository-wide instructions for autonomous coding agents.
+- [`AGENT.md`](AGENT.md): project-level agent operating guide.
+- [`CLAUDE.md`](CLAUDE.md): assistant-specific guidance compatible with Claude-style workflows.
+
+---
+
+## High-level target architecture
+
+```text
+User / API Client / CLI / Web UI
+                |
+                v
+        FastAPI Control Plane
+                |
+                v
+      Orchestrator / Policy Engine
+                |
+      +---------+---------+
+      |                   |
+      v                   v
+Plan / Approval      Execution Queue (Redis)
+State (Postgres)            |
+                             v
+                    Worker / Agent Runtime
+                             |
+           +-----------------+-----------------+
+           |        |         |        |        |
+           v        v         v        v        v
+       Planner  Navigator  Analyzer  Coder  Validator
+                             |                 |
+                             +--------+--------+
+                                      |
+                                      v
+                           Sandbox / Workspace Runner
+                                      |
+               +----------------------+----------------------+
+               |                      |                      |
+               v                      v                      v
+          Git patch store       Validation artifacts   Observability stack
+      (Postgres + MinIO)        (MinIO + Postgres)    (OTel/Prom/Grafana)
 ```
 
-With these variables defined, the agents will call the model through LangChain; if any credential is missing the backend automatically falls back to the built-in static responses.
+---
 
-## Setting up and running the frontend (Next.js)
+## What “production ready” means for this project
 
-1. In another terminal, install the dependencies:
+A production-ready AutoDev Architect release should include:
 
-   ```bash
-   cd frontend
-   npm install
-   ```
+- persistent sessions and execution history;
+- real repository indexing;
+- structured change plans and patch generation;
+- isolated validation execution;
+- approval workflows;
+- metrics, logs, and traces;
+- policy controls and security boundaries;
+- documentation and contributor guidance;
+- self-hosting instructions;
+- automated tests for backend, frontend, and infrastructure.
 
-2. Start the development server:
+---
 
-   ```bash
-   npm run dev
-   ```
+## Repository goals for the next major milestone
 
-3. The UI will be reachable at `http://localhost:3000`.
+1. Replace in-memory state with PostgreSQL persistence.
+2. Add Redis-backed async execution.
+3. Introduce an explicit run state machine and approval model.
+4. Implement repository indexing using tree-sitter and pgvector.
+5. Generate and validate patches in isolated workspaces.
+6. Expand the UI from chat demo to execution control center.
+7. Add complete CI for backend, frontend, docs, and infra.
+8. Support open source local-model deployment modes.
 
-> **Tip:** By default the frontend targets the browser's current origin when calling the backend (for example, `https://your-domain`). This works automatically when the frontend and API share the same domain or reverse proxy. If the backend lives on a different host—or you need an absolute URL during server-side rendering—set `NEXT_PUBLIC_API_URL` to the full origin (without a trailing slash) before starting the frontend.
+---
 
-## Quick tests
+## Development status
 
-To validate the orchestrator's main flow, run:
+This repository is still in the transition from prototype to platform. The new documentation establishes the canonical direction for that transition.
 
-```bash
-pytest tests/backend/test_orchestrator.py
-```
+If you are contributing, start with:
+
+1. `README.md`
+2. `DESCRIPTION.md`
+3. `docs/architecture/target_architecture.md`
+4. `docs/implementation/implementation_strategy.md`
+5. `AGENTS.md`
+
