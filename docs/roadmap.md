@@ -46,7 +46,8 @@ Success criteria:
 Current implementation status:
 - run records now distinguish workflow types such as documentation, validation, devops, and existing-repository change;
 - each run now persists ordered workflow steps, creating a bridge from the bootstrap durable control plane to a fuller state machine;
-- tree-sitter indexing, retrieval, and repository metadata storage remain the next major capability gap.
+- a first repository-intelligence slice now exposes structured file inventory and ranked candidate-file retrieval via the navigator and `GET /repository/context`;
+- tree-sitter indexing, deeper retrieval, and repository metadata storage remain the next major capability gap.
 
 Goals:
 - tree-sitter indexing
