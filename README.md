@@ -59,6 +59,7 @@ The current codebase provides a functional early platform slice with:
 - agent abstraction layer;
 - stub/fallback LLM integration;
 - simple Next.js control-center interface with runtime configuration for LLM and repository selection;
+- typed agent metadata contracts published via the API for machine-readable downstream/UI consumption;
 - local install script, Docker Compose stack, and initial CI/Terraform placeholders.
 
 The documentation in this repository defines the path from prototype to a complete platform.

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from backend.agents import AgentResult
+from backend.agents.planner.agent import PlannerAgent
 from backend.orchestrator.service import OrchestratorService
 from backend.persistence.database import DurableStore, reset_store_cache
 
@@ -97,6 +98,15 @@ def test_run_type_inference_uses_workflow_categories(orchestrator_service: Orche
     assert result.run_type == "documentation_update"
 
 
+def test_agent_contracts_are_exposed(orchestrator_service: OrchestratorService) -> None:
+    contracts = orchestrator_service.describe_agent_contracts()
+
+    assert "planner" in contracts
+    assert contracts["planner"]["properties"]["steps"]["type"] == "array"
+    assert "navigator" in contracts
+    assert contracts["navigator"]["properties"]["candidate_files"]["type"] == "array"
+
+
 class PlannerWithoutMetadata:
     """Planner stub that omits structured step metadata."""
 
@@ -112,6 +122,28 @@ class PlannerWithoutMetadata:
             ]
         )
         return AgentResult(content=content, metadata={})
+
+
+class InvalidPlannerFallbackAgent(PlannerAgent):
+    """Planner variant with malformed fallback metadata to exercise validation."""
+
+    def fallback_result(self, _) -> AgentResult:  # pragma: no cover - simple stub
+        return AgentResult(content="Broken planner output", metadata={"steps": "not-a-list"})
+
+
+def test_agent_metadata_validation_falls_back_to_contract_valid_payload(
+    orchestrator_service: OrchestratorService,
+) -> None:
+    service = OrchestratorService(
+        agents={"planner": InvalidPlannerFallbackAgent()},
+        store=orchestrator_service._store,
+    )
+
+    session = service.create_plan("Validate metadata")
+
+    assert session.plan == []
+    stored_session = service.get_session(session.session_id)
+    assert stored_session.plan == session.plan
 
 
 def test_create_plan_fallback_filters_non_list_lines(orchestrator_service: OrchestratorService) -> None:

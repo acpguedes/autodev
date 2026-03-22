@@ -5,7 +5,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -125,6 +125,10 @@ class RuntimeConfigUpdateRequest(BaseModel):
     config: RuntimeConfig
 
 
+class AgentContractsResponse(BaseModel):
+    contracts: Dict[str, Dict[str, Any]]
+
+
 @lru_cache(maxsize=1)
 def get_orchestrator() -> OrchestratorService:
     config_service = get_runtime_config_service()
@@ -189,6 +193,13 @@ def update_runtime_config(
     get_repository_intelligence.cache_clear()
     document = config_service.load_document()
     return RuntimeConfigResponse(config=document.config, instructions=document.instructions)
+
+
+@app.get("/agents/contracts", response_model=AgentContractsResponse, tags=["agents"])
+def get_agent_contracts(
+    orchestrator: OrchestratorService = Depends(get_orchestrator),
+) -> AgentContractsResponse:
+    return AgentContractsResponse(contracts=orchestrator.describe_agent_contracts())
 
 
 @app.post("/plan", response_model=PlanResponse, tags=["planning"])

@@ -112,6 +112,11 @@ Use layered retrieval:
 - error handling for malformed outputs;
 - UI rendering based on structured results.
 
+Current functional slice in this repository:
+- every built-in agent now validates its machine-readable metadata against a Pydantic contract;
+- `GET /agents/contracts` publishes JSON Schema documents for downstream UI or automation consumers;
+- malformed metadata falls back to the deterministic contract-valid payload so orchestrations remain machine-readable even without a live model.
+
 ### Example output domains
 - planner: steps, assumptions, risks, acceptance criteria;
 - navigator: candidate files, symbols, repository regions;

@@ -5,6 +5,7 @@ from __future__ import annotations
 from langchain_core.prompts import ChatPromptTemplate
 
 from backend.agents.base import AgentContext, AgentResult, LangChainAgent
+from backend.agents.contracts import ValidatorOutput
 
 
 class ValidatorAgent(LangChainAgent):
@@ -30,13 +31,22 @@ class ValidatorAgent(LangChainAgent):
             ]
         )
 
+    def metadata_model(self):
+        return ValidatorOutput
+
     def fallback_result(self, context: AgentContext) -> AgentResult:
         validation_steps = [
             "Run pytest for backend modules",
-            "Execute frontend lint and type checks",
-            "Perform security scanning before deployment",
+            "Exercise the /agents/contracts endpoint through API tests",
+            "Confirm fallback agents emit schema-valid metadata without a live model",
         ]
-        metadata = {"validation_steps": validation_steps}
+        metadata = {
+            "validation_steps": validation_steps,
+            "success_criteria": [
+                "Every agent result metadata payload validates against its published contract",
+                "The API can return JSON schemas for UI-driven rendering",
+            ],
+        }
         description = "\n".join(f"- {step}" for step in validation_steps)
         return AgentResult(content=f"Validation steps:\n{description}", metadata=metadata)
 

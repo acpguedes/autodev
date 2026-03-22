@@ -5,6 +5,7 @@ from __future__ import annotations
 from langchain_core.prompts import ChatPromptTemplate
 
 from backend.agents.base import AgentContext, AgentResult, LangChainAgent
+from backend.agents.contracts import CoderOutput
 
 
 class CoderAgent(LangChainAgent):
@@ -36,16 +37,30 @@ class CoderAgent(LangChainAgent):
         inputs["plan"] = "\n".join(f"- {step}" for step in plan_steps) or "(no plan yet)"
         return inputs
 
+    def metadata_model(self):
+        return CoderOutput
+
     def fallback_result(self, context: AgentContext) -> AgentResult:
-        plan_steps = context.artifacts.get("planner", {}).get("steps", [])
         coding_tasks = [
-            "Implement FastAPI orchestrator endpoints",
-            "Create shared agent abstractions and stubs",
-            "Develop chat UI components in Next.js",
-            "Author automated tests for orchestrator logic",
+            {"component": "backend/api", "task": "Expose agent contract schemas through a typed API endpoint"},
+            {"component": "backend/agents", "task": "Validate agent metadata against Pydantic contracts"},
+            {"component": "tests/backend", "task": "Cover schema publishing and metadata validation behavior"},
+            {"component": "docs", "task": "Document the structured-output slice and roadmap progress"},
         ]
-        metadata = {"plan_steps": plan_steps, "coding_tasks": coding_tasks}
-        description = "\n".join(f"- {task}" for task in coding_tasks)
+        metadata = {
+            "coding_tasks": coding_tasks,
+            "test_updates": [
+                "Add orchestrator coverage for contract exposure",
+                "Assert API returns the expected schema documents",
+            ],
+            "touched_components": [
+                "backend/api",
+                "backend/agents",
+                "tests/backend",
+                "docs",
+            ],
+        }
+        description = "\n".join(f"- {item['component']}: {item['task']}" for item in coding_tasks)
         return AgentResult(content=f"Coding tasks:\n{description}", metadata=metadata)
 
 

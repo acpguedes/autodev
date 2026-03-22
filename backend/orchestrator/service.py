@@ -21,6 +21,7 @@ from uuid import uuid4
 from langgraph.graph import END, StateGraph
 
 from backend.agents import (
+    AGENT_METADATA_MODELS,
     Agent,
     AgentContext,
     AgentResult,
@@ -214,6 +215,14 @@ class OrchestratorService:
             self._agents.update(agents)
         self._store = store or get_store()
         self._graph = self._compile_graph()
+
+    def describe_agent_contracts(self) -> Dict[str, Dict[str, Any]]:
+        """Return JSON-schema contracts for machine-readable agent metadata."""
+
+        return {
+            agent_name: model.model_json_schema()
+            for agent_name, model in AGENT_METADATA_MODELS.items()
+        }
 
     def create_plan(self, goal: str) -> PlanSession:
         planner: PlannerAgent = self._require_agent("planner")  # type: ignore[assignment]

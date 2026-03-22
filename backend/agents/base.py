@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Mapping, Protocol
+from typing import Any, Dict, Iterable, List, Mapping, Protocol, Type
+
+from pydantic import BaseModel, ValidationError
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage
@@ -106,8 +108,25 @@ class LangChainAgent(ABC):
 
         return fallback.metadata
 
+    def metadata_model(self) -> Type[BaseModel] | None:
+        """Return the Pydantic model used to validate metadata, when defined."""
+
+        return None
+
+    def validate_metadata(self, metadata: Mapping[str, Any]) -> Dict[str, Any]:
+        """Normalize metadata through a typed contract when available."""
+
+        model = self.metadata_model()
+        if model is None:
+            return dict(metadata)
+
+        validated = model.model_validate(metadata)
+        return validated.model_dump()
+
     def run(self, context: AgentContext) -> AgentResult:
         fallback = self.fallback_result(context)
+        fallback_metadata = self._safe_validate_metadata(fallback.metadata, fallback.metadata)
+        fallback = AgentResult(content=fallback.content, metadata=fallback_metadata)
 
         if not is_configured_model(self._model):
             return fallback
@@ -122,7 +141,24 @@ class LangChainAgent(ABC):
 
         content = self._extract_content(response)
         metadata = self.build_metadata(context, fallback, content)
-        return AgentResult(content=content, metadata=metadata)
+        validated_metadata = self._safe_validate_metadata(metadata, fallback.metadata)
+        return AgentResult(content=content, metadata=validated_metadata)
+
+    def _safe_validate_metadata(
+        self,
+        metadata: Mapping[str, Any],
+        fallback_metadata: Mapping[str, Any],
+    ) -> Dict[str, Any]:
+        try:
+            return self.validate_metadata(metadata)
+        except ValidationError:
+            try:
+                return self.validate_metadata(fallback_metadata)
+            except ValidationError:
+                model = self.metadata_model()
+                if model is None:
+                    return dict(fallback_metadata)
+                return model.model_validate({}).model_dump()
 
     def _render_history(self, history: Iterable[Dict[str, str]]) -> str:
         lines = [f"{entry.get('role', 'unknown')}: {entry.get('content', '')}" for entry in history]
