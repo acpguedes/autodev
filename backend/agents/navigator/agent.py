@@ -32,6 +32,7 @@ class NavigatorAgent(LangChainAgent):
                     "human",
                     "Root path: {root}\n"
                     "User goal: {goal}\n"
+                    "Current user request: {user_request}\n"
                     "Recent history:\n{history}\n"
                     "Top directories: {directories}\n"
                     "Candidate files: {candidate_files}\n"

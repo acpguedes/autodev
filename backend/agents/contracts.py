@@ -86,6 +86,16 @@ class ValidatorOutput(BaseModel):
     success_criteria: List[str] = Field(default_factory=list)
 
 
+class ResponderOutput(BaseModel):
+    """Final response metadata compiled for the user-facing answer."""
+
+    response_mode: str = "answer"
+    summary: str = ""
+    applies_user_request: bool = False
+    source_agents: List[str] = Field(default_factory=list)
+    recommended_actions: List[str] = Field(default_factory=list)
+
+
 AGENT_METADATA_MODELS = {
     "planner": PlannerOutput,
     "navigator": NavigatorOutput,
@@ -94,6 +104,7 @@ AGENT_METADATA_MODELS = {
     "coder": CoderOutput,
     "devops": DevOpsOutput,
     "validator": ValidatorOutput,
+    "responder": ResponderOutput,
 }
 
 
@@ -108,5 +119,6 @@ __all__ = [
     "NavigatorCandidateFile",
     "NavigatorOutput",
     "PlannerOutput",
+    "ResponderOutput",
     "ValidatorOutput",
 ]

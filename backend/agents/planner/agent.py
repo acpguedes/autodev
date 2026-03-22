@@ -24,6 +24,7 @@ class PlannerAgent(LangChainAgent):
                 (
                     "human",
                     "Goal: {goal}\n"
+                    "Current user request: {user_request}\n"
                     "Conversation so far:\n{history}\n"
                     "Draft a numbered plan with 3-5 steps that other agents can follow.",
                 ),

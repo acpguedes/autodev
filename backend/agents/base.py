@@ -21,6 +21,7 @@ class AgentContext:
 
     session_id: str
     goal: str | None = None
+    user_request: str | None = None
     history: List[Dict[str, str]] = field(default_factory=list)
     artifacts: Dict[str, Any] = field(default_factory=dict)
 
@@ -32,6 +33,7 @@ class AgentContext:
         return AgentContext(
             session_id=self.session_id,
             goal=self.goal,
+            user_request=self.user_request,
             history=list(self.history),
             artifacts=updated,
         )
@@ -44,6 +46,7 @@ class AgentContext:
         return AgentContext(
             session_id=self.session_id,
             goal=self.goal,
+            user_request=self.user_request,
             history=history,
             artifacts=dict(self.artifacts),
         )
@@ -90,6 +93,7 @@ class LangChainAgent(ABC):
 
         return {
             "goal": context.goal or "",
+            "user_request": context.user_request or context.goal or "",
             "history": self._render_history(context.history),
             "artifacts": self._render_artifacts(context.artifacts),
         }

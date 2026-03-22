@@ -24,6 +24,7 @@ class DevOpsAgent(LangChainAgent):
                 (
                     "human",
                     "Goal: {goal}\n"
+                    "Current user request: {user_request}\n"
                     "Context:\n{history}\n"
                     "Artifacts:\n{artifacts}\n"
                     "List the core DevOps deliverables with short explanations.",

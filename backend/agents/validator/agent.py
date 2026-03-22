@@ -24,6 +24,7 @@ class ValidatorAgent(LangChainAgent):
                 (
                     "human",
                     "Goal: {goal}\n"
+                    "Current user request: {user_request}\n"
                     "Recent discussion:\n{history}\n"
                     "Artifacts:\n{artifacts}\n"
                     "List concrete validation steps.",

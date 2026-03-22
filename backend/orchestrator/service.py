@@ -31,6 +31,7 @@ from backend.agents import (
     DevOpsAgent,
     NavigatorAgent,
     PlannerAgent,
+    ResponderAgent,
     ValidatorAgent,
 )
 from backend.persistence import DurableStore, get_store
@@ -220,6 +221,7 @@ class OrchestratorConfig:
         "coder",
         "devops",
         "validator",
+        "responder",
     )
 
 
@@ -261,7 +263,7 @@ class OrchestratorService:
     def create_plan(self, goal: str) -> PlanSession:
         planner: PlannerAgent = self._require_agent("planner")  # type: ignore[assignment]
         session_id = str(uuid4())
-        context = AgentContext(session_id=session_id, goal=goal)
+        context = AgentContext(session_id=session_id, goal=goal, user_request=goal)
         plan_result = planner.run(context)
         plan_steps = self._extract_plan_steps(plan_result)
         status = RunStatus.AWAITING_INPUT
@@ -302,6 +304,7 @@ class OrchestratorService:
         context = AgentContext(
             session_id=session_id,
             goal=session_record["goal"],
+            user_request=message,
             history=[item.to_dict() for item in history] + [user_entry.to_dict()],
             artifacts=dict(session_record["artifacts"] or {}),
         )
@@ -672,6 +675,7 @@ class OrchestratorService:
             "coder": CoderAgent(),
             "devops": DevOpsAgent(),
             "validator": ValidatorAgent(),
+            "responder": ResponderAgent(),
         }
 
     def _compile_graph(self) -> Any:

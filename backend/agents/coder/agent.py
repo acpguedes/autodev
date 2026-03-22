@@ -24,6 +24,7 @@ class CoderAgent(LangChainAgent):
                 (
                     "human",
                     "Goal: {goal}\n"
+                    "Current user request: {user_request}\n"
                     "Recent plan:\n{plan}\n"
                     "Available artifacts:\n{artifacts}\n"
                     "List concrete coding tasks grouped by component.",
