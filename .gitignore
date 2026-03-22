@@ -3,3 +3,4 @@ __pycache__/
 *.py[cod]
 *.db
 frontend/node_modules/
+autodev.config.json

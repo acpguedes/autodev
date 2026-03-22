@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Dict, Iterable, List, Mapping, TypedDict
+from pathlib import Path
 from uuid import uuid4
 
 from langgraph.graph import END, StateGraph
@@ -195,8 +196,10 @@ class OrchestratorService:
         config: OrchestratorConfig | None = None,
         agents: Mapping[str, Agent] | None = None,
         store: DurableStore | None = None,
+        project_root: Path | None = None,
     ) -> None:
         self._config = config or OrchestratorConfig()
+        self._project_root = project_root
         self._agents = self._build_default_agents()
         if agents:
             self._agents.update(agents)
@@ -390,7 +393,7 @@ class OrchestratorService:
     def _build_default_agents(self) -> Dict[str, Agent]:
         return {
             "planner": PlannerAgent(),
-            "navigator": NavigatorAgent(),
+            "navigator": NavigatorAgent(project_root=self._project_root),
             "analyzer": AnalyzerAgent(),
             "architect": ArchitectAgent(),
             "coder": CoderAgent(),

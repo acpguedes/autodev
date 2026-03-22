@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "llm": {
+    "provider": "stub",
+    "model": "gpt-4o-mini",
+    "base_url": "",
+    "temperature": 0.2,
+    "api_key": ""
+  },
+  "repository": {
+    "project_root": "/absolute/path/to/your/project",
+    "repository_label": "My repository",
+    "default_goal": "Plan the next implementation slice for this repository"
+  }
+}
