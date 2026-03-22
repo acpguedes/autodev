@@ -13,9 +13,13 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 __all__ = [
     "LLMConfigurationError",
     "StubChatModel",
+    "DEFAULT_OLLAMA_BASE_URL",
     "get_chat_model",
     "is_configured_model",
 ]
+
+
+DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
 
 
 class LLMConfigurationError(RuntimeError):
@@ -114,6 +118,28 @@ def get_chat_model(
             model=resolved_model,
             temperature=resolved_temperature,
             api_key=api_key,
+            base_url=base_url,
+        )
+
+    if resolved_provider == "ollama":
+        resolved_model = model or os.getenv("OPENAI_MODEL", "llama3.1")
+        resolved_temperature = (
+            temperature
+            if temperature is not None
+            else _read_temperature(os.getenv("OPENAI_TEMPERATURE"), default=0.2)
+        )
+        base_url = (
+            os.getenv("OLLAMA_BASE_URL")
+            or os.getenv("OPENAI_BASE_URL")
+            or DEFAULT_OLLAMA_BASE_URL
+        )
+
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(
+            model=resolved_model,
+            temperature=resolved_temperature,
+            api_key=os.getenv("OPENAI_API_KEY") or "ollama",
             base_url=base_url,
         )
 

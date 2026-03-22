@@ -235,3 +235,5 @@ Current functional slice in this repository:
 ## Runtime configuration slice
 
 The frontend should evolve from a chat demo into an execution control center. The current slice introduces a typed runtime configuration document persisted in `autodev.config.json`, exposed via `GET /config` and `PUT /config`, and used to configure both the active LLM provider settings and the repository/workspace root consumed by repository intelligence. This keeps operational state outside prompt text while preserving a file-based path that works for self-hosted deployments.
+
+The same runtime document is now also exposed through a structured local CLI (`python -m backend.cli` / `autodev`) so operators can inspect and update state without depending on the web UI. The 0.6 slice additionally treats `ollama` as a first-class local-model path by defaulting to an OpenAI-compatible local endpoint, preserving the project goal of remaining operable without paid inference infrastructure.

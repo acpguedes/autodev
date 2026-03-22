@@ -10,6 +10,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from backend.llm.factory import DEFAULT_OLLAMA_BASE_URL
+
 
 DEFAULT_CONFIG_FILE_NAME = "autodev.config.json"
 
@@ -96,6 +98,7 @@ class RuntimeConfigService:
             f"OPENAI_API_KEY={active_config.llm.api_key}",
             f"OPENAI_MODEL={active_config.llm.model}",
             f"OPENAI_BASE_URL={active_config.llm.base_url}",
+            f"OLLAMA_BASE_URL={self._resolve_ollama_base_url(active_config)}",
             f"OPENAI_TEMPERATURE={active_config.llm.temperature}",
             f"AUTODEV_PROJECT_ROOT={active_config.repository.project_root}",
         ]
@@ -108,6 +111,7 @@ class RuntimeConfigService:
                 "Se preferir, copie os exemplos para .env antes de iniciar os serviços.",
                 "O diretório configurado passa a ser usado pelo endpoint de contexto de repositório e pelo Navigator agent.",
                 "LLM_PROVIDER=stub preserva um caminho totalmente local e determinístico quando não houver chave de API.",
+                "LLM_PROVIDER=ollama habilita um caminho local first-class usando a API compatível com OpenAI do Ollama.",
             ],
         )
 
@@ -117,6 +121,7 @@ class RuntimeConfigService:
         os.environ["LLM_PROVIDER"] = active_config.llm.provider
         os.environ["OPENAI_MODEL"] = active_config.llm.model
         os.environ["OPENAI_BASE_URL"] = active_config.llm.base_url
+        os.environ["OLLAMA_BASE_URL"] = self._resolve_ollama_base_url(active_config)
         os.environ["OPENAI_TEMPERATURE"] = str(active_config.llm.temperature)
         os.environ["AUTODEV_PROJECT_ROOT"] = active_config.repository.project_root
 
@@ -154,6 +159,12 @@ class RuntimeConfigService:
             normalized.repository.default_goal.strip() or "Bootstrap AutoDev project"
         )
         return normalized
+
+    def _resolve_ollama_base_url(self, config: RuntimeConfig) -> str:
+        configured_base_url = config.llm.base_url.strip()
+        if config.llm.provider == "ollama":
+            return configured_base_url or DEFAULT_OLLAMA_BASE_URL
+        return configured_base_url
 
     def _resolve_project_root(self, value: str) -> str:
         candidate = Path(value).expanduser() if value.strip() else self._default_project_root

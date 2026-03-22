@@ -151,6 +151,7 @@ export default function ConfigPage() {
                   >
                     <option value="stub">stub</option>
                     <option value="openai">openai</option>
+                    <option value="ollama">ollama</option>
                   </select>
                 </label>
 
@@ -171,7 +172,7 @@ export default function ConfigPage() {
                   <span>Base URL</span>
                   <input
                     value={configDraft.llm.base_url}
-                    placeholder="Optional proxy / OpenAI-compatible gateway"
+                    placeholder="OpenAI-compatible gateway or Ollama /v1 endpoint"
                     onChange={(event) =>
                       setConfigDraft({
                         ...configDraft,
