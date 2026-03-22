@@ -114,11 +114,17 @@ const normalizeBaseUrl = (url: string | undefined): string | undefined => {
 };
 
 const getDefaultApiBaseUrl = (): string => {
-  if (typeof window !== "undefined" && window.location?.origin) {
-    return window.location.origin.replace(/\/+$/, "");
+  if (typeof window === "undefined" || !window.location) {
+    return "";
   }
 
-  return "";
+  const { hostname, origin, port, protocol } = window.location;
+
+  if ((hostname === "localhost" || hostname === "127.0.0.1") && port === "3000") {
+    return `${protocol}//${hostname}:8000`;
+  }
+
+  return origin.replace(/\/+$/, "");
 };
 
 const API_BASE_URL = normalizeBaseUrl(process.env.NEXT_PUBLIC_API_URL) ?? getDefaultApiBaseUrl();

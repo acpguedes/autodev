@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Any, Dict, Iterable, List, Mapping, TypedDict
 from pathlib import Path
@@ -467,4 +467,4 @@ class OrchestratorService:
         return RunType.EXISTING_REPO_CHANGE
 
     def _timestamp(self) -> str:
-        return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
