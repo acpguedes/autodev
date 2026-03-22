@@ -44,6 +44,9 @@ def test_session_and_run_endpoints(client: TestClient) -> None:
     chat_payload = chat_response.json()
     assert chat_payload["status"] == "completed"
     assert chat_payload["run_id"]
+    assert chat_payload["run_type"] == "existing_repo_change"
+    assert chat_payload["current_state"] == "completed"
+    assert chat_payload["steps"][0]["step_key"] == "navigator"
 
     session_response = client.get(f"/sessions/{session_id}")
     assert session_response.status_code == 200
@@ -58,3 +61,5 @@ def test_session_and_run_endpoints(client: TestClient) -> None:
     runs_payload = runs_response.json()
     assert len(runs_payload) == 1
     assert runs_payload[0]["trigger_message"] == "Execute the first iteration"
+    assert runs_payload[0]["run_type"] == "existing_repo_change"
+    assert runs_payload[0]["steps"]

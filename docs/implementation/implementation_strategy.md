@@ -59,6 +59,11 @@ Current functional slice in this repository:
 - retry policies;
 - partial rerun support.
 
+Current functional slice in this repository:
+- runs now persist an explicit `run_type` classification and `current_state`;
+- ordered `run_steps` records capture which workflow stages completed for each run;
+- the synchronous LangGraph chain now emits machine-readable step history, leaving conditional routing, retries, and partial reruns for the next slice.
+
 ### Suggested run types
 - `greenfield_bootstrap`
 - `existing_repo_change`
@@ -215,4 +220,3 @@ Use layered retrieval:
 - using large-context prompting as a substitute for repository intelligence;
 - rewriting full files when targeted patches are possible;
 - adding too many infrastructure systems before the workflow needs them.
-

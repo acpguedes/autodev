@@ -16,6 +16,7 @@ from backend.orchestrator.service import (
     OrchestratorRun,
     OrchestratorService,
     PlanSession,
+    RunStep,
     RunSummary,
     SessionSummary,
 )
@@ -43,6 +44,15 @@ class AgentExecutionModel(BaseModel):
     metadata: Dict[str, object]
 
 
+class RunStepModel(BaseModel):
+    step_key: str
+    agent: str
+    status: str
+    started_at: str
+    completed_at: str
+    attempt: int
+
+
 class HistoryItemModel(BaseModel):
     role: str
     content: str
@@ -52,8 +62,11 @@ class ChatResponse(BaseModel):
     run_id: str
     session_id: str
     status: str
+    run_type: str
+    current_state: str
     history: List[HistoryItemModel]
     results: List[AgentExecutionModel]
+    steps: List[RunStepModel]
 
 
 class SessionResponse(BaseModel):
@@ -68,9 +81,12 @@ class RunResponse(BaseModel):
     run_id: str
     session_id: str
     status: str
+    run_type: str
+    current_state: str
     trigger_message: str
     created_at: str
     results: List[AgentExecutionModel]
+    steps: List[RunStepModel]
 
 
 @lru_cache(maxsize=1)
@@ -170,8 +186,11 @@ def chat(
         run_id=run.run_id,
         session_id=run.session_id,
         status=run.status,
+        run_type=run.run_type,
+        current_state=run.current_state,
         history=[HistoryItemModel(role=item.role, content=item.content) for item in run.history],
         results=[_to_agent_execution_model(result) for result in run.results],
+        steps=[_to_run_step_model(step) for step in run.steps],
     )
 
 
@@ -180,14 +199,28 @@ def _to_run_response(run: RunSummary) -> RunResponse:
         run_id=run.run_id,
         session_id=run.session_id,
         status=run.status,
+        run_type=run.run_type,
+        current_state=run.current_state,
         trigger_message=run.trigger_message,
         created_at=run.created_at,
         results=[_to_agent_execution_model(result) for result in run.results],
+        steps=[_to_run_step_model(step) for step in run.steps],
     )
 
 
 def _to_agent_execution_model(result: AgentExecution) -> AgentExecutionModel:
     return AgentExecutionModel(agent=result.agent, content=result.content, metadata=dict(result.metadata))
+
+
+def _to_run_step_model(step: RunStep) -> RunStepModel:
+    return RunStepModel(
+        step_key=step.step_key,
+        agent=step.agent,
+        status=step.status,
+        started_at=step.started_at,
+        completed_at=step.completed_at,
+        attempt=step.attempt,
+    )
 
 
 __all__ = ["app"]
