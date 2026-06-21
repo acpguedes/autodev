@@ -75,6 +75,12 @@ def build_parser() -> argparse.ArgumentParser:
     repository_context_parser.add_argument("--limit", type=int, default=6)
     repository_context_parser.set_defaults(handler=_handle_repository_context)
 
+    try:
+        from backend.cli_plugins import register_subcommands
+        register_subcommands(subparsers)
+    except Exception:
+        pass
+
     return parser
 
 

@@ -32,6 +32,7 @@ from backend.orchestrator.service import (
     RunSummary,
     SessionSummary,
 )
+from backend.api.routers import include_all_routers
 from backend.repository import RepositoryContext, RepositoryIntelligenceService
 
 
@@ -185,6 +186,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+try:
+    include_all_routers(app)
+except Exception:
+    import logging as _logging
+    _logging.getLogger(__name__).exception("Router auto-loader failed — continuing without plugin routers")
 
 
 @app.get("/health", tags=["meta"])

@@ -667,7 +667,7 @@ class OrchestratorService:
         return self._agents[name]
 
     def _build_default_agents(self) -> Dict[str, Agent]:
-        return {
+        agents: Dict[str, Agent] = {
             "planner": PlannerAgent(),
             "navigator": NavigatorAgent(project_root=self._project_root),
             "analyzer": AnalyzerAgent(),
@@ -677,6 +677,13 @@ class OrchestratorService:
             "validator": ValidatorAgent(),
             "responder": ResponderAgent(),
         }
+        try:
+            from backend.agents.registry import discover_agents
+            for n, a in discover_agents(self._project_root).items():
+                agents.setdefault(n, a)
+        except Exception:
+            pass
+        return agents
 
     def _compile_graph(self) -> Any:
         workflow = StateGraph(AgentGraphState)
