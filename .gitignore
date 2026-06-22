@@ -1,9 +1,60 @@
+# ---------------------------------------------------------------------------
+# AutoDev Architect .gitignore
+#
+# Goal: running `make install`, `make test`, or `make build` must NEVER dirty
+# the working tree. Every artifact produced by tooling is listed here so a
+# `git status` stays clean after a full install/test/build cycle.
+# ---------------------------------------------------------------------------
+
+# --- Python: virtualenv & bytecode ---
 .venv/
+venv/
+env/
 __pycache__/
 *.py[cod]
+*$py.class
+
+# --- Python: packaging / build artifacts ---
+build/
+dist/
+*.egg-info/
+.eggs/
+backend/*.egg-info/
+
+# --- Python: test & lint caches / reports ---
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+tests/reports/*
+!tests/reports/.gitkeep
+
+# --- Databases & local durable state ---
 *.db
-frontend/node_modules/
-frontend/.next/
-frontend/package-lock.json
+*.sqlite
+*.sqlite3
+
+# --- Runtime configuration (keep the tracked *.example.json templates) ---
 autodev.config.json
 .env
+.env.*
+!.env.example
+
+# --- Frontend: dependencies & build output ---
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/package-lock.json
+frontend/tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# --- Editor / OS noise ---
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/

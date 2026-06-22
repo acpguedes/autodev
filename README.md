@@ -192,6 +192,10 @@ For rationale, read [`docs/architecture/stack_decisions.md`](docs/architecture/s
 - [`docs/implementation/agent_spec.md`](docs/implementation/agent_spec.md): role definitions, contracts, and expected outputs for agents.
 - [`docs/implementation/data_model.md`](docs/implementation/data_model.md): persistent data model and storage guidance.
 
+### Developer workflow
+- [`Makefile`](Makefile): install, test, lint, build, run, and clean targets.
+- [`docs/testing.md`](docs/testing.md): how to install, test, cover, lint, and reproduce CI locally.
+
 ### Governance and contribution
 - [`AGENTS.md`](AGENTS.md): repository-wide instructions for autonomous coding agents.
 - [`AGENT.md`](AGENT.md): project-level agent operating guide.
@@ -272,6 +276,27 @@ A production-ready AutoDev Architect release should include:
 This repository is still in the transition from prototype to platform. The new documentation establishes the canonical direction for that transition.
 
 ## Running the first durable stage
+
+### Quickstart with `make`
+
+The root [`Makefile`](Makefile) wraps install, test, build, run, and clean
+flows. Targets use the project virtualenv (`.venv`) directly, so you never need
+to activate it by hand:
+
+```bash
+make install        # create .venv, install backend + frontend dependencies
+make test           # run the full backend (pytest) + frontend (vitest) suites
+make run-backend    # FastAPI on http://localhost:8000 (separate terminal)
+make run-frontend   # Next.js on http://localhost:3000
+make build          # production build of the frontend
+make clean          # remove all generated artifacts (git tree stays clean)
+make help           # list every target
+```
+
+Every artifact these targets produce is git-ignored, so `make install`/`make
+test`/`make build` never dirty your working tree. Full instructions for
+testing, coverage, linting, CI parity, and cleanup live in
+[`docs/testing.md`](docs/testing.md).
 
 ### Local installation
 
@@ -367,7 +392,8 @@ This boots:
 If you are contributing, start with:
 
 1. `README.md`
-2. `DESCRIPTION.md`
-3. `docs/architecture/target_architecture.md`
-4. `docs/implementation/implementation_strategy.md`
-5. `AGENTS.md`
+2. `docs/testing.md` (install, test, build, and CI-parity workflow)
+3. `DESCRIPTION.md`
+4. `docs/architecture/target_architecture.md`
+5. `docs/implementation/implementation_strategy.md`
+6. `AGENTS.md`
