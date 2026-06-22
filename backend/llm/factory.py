@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import httpx
 import os
 from functools import lru_cache
 from typing import Any, Iterable, List, Optional
@@ -53,6 +54,11 @@ class StubChatModel(BaseChatModel):
 
         generation = ChatGeneration(message=AIMessage(content=self._response))
         return ChatResult(generations=[generation])
+
+
+def _read_ssl_verify() -> bool:
+    raw = os.getenv("OPENAI_VERIFY_SSL", "true").strip().lower()
+    return raw not in {"false", "0", "no"}
 
 
 def _read_temperature(value: str | None, default: float = 0.2) -> float:
@@ -114,11 +120,14 @@ def get_chat_model(
 
         from langchain_openai import ChatOpenAI
 
+        verify_ssl = _read_ssl_verify()
         return ChatOpenAI(
             model=resolved_model,
             temperature=resolved_temperature,
             api_key=api_key,
             base_url=base_url,
+            http_client=httpx.Client(verify=verify_ssl),
+            http_async_client=httpx.AsyncClient(verify=verify_ssl),
         )
 
     if resolved_provider == "ollama":
@@ -136,11 +145,14 @@ def get_chat_model(
 
         from langchain_openai import ChatOpenAI
 
+        verify_ssl = _read_ssl_verify()
         return ChatOpenAI(
             model=resolved_model,
             temperature=resolved_temperature,
             api_key=os.getenv("OPENAI_API_KEY") or "ollama",
             base_url=base_url,
+            http_client=httpx.Client(verify=verify_ssl),
+            http_async_client=httpx.AsyncClient(verify=verify_ssl),
         )
 
     raise LLMConfigurationError(
