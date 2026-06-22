@@ -141,7 +141,16 @@ class RuntimeConfigService:
     def _default_config(self) -> RuntimeConfig:
         return self._normalize(
             RuntimeConfig(
-                repository=RepositorySettings(project_root=str(self._default_project_root))
+                llm=LLMSettings(
+                    provider=os.getenv("LLM_PROVIDER", "stub"),
+                    model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                    base_url=os.getenv("OPENAI_BASE_URL", ""),
+                    temperature=float(os.getenv("OPENAI_TEMPERATURE", "0.2")),
+                    api_key=os.getenv("OPENAI_API_KEY", ""),
+                ),
+                repository=RepositorySettings(
+                    project_root=os.getenv("AUTODEV_PROJECT_ROOT", "") or str(self._default_project_root)
+                ),
             )
         )
 
