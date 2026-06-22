@@ -14,13 +14,11 @@ from __future__ import annotations
 
 import uuid
 
-import pytest
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 from backend.api.main import app as main_app
-from backend.observability.middleware import MetricsRegistry, attach, get_registry
+from backend.observability.middleware import MetricsRegistry, attach
 
 
 # ---------------------------------------------------------------------------

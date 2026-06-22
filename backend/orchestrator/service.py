@@ -9,7 +9,7 @@ try:
 except ImportError:  # pragma: no cover - Python < 3.11 compatibility
     from enum import Enum
 
-    class StrEnum(str, Enum):
+    class StrEnum(str, Enum):  # type: ignore[no-redef]
         """Fallback StrEnum compatible with Python 3.10."""
 
         pass
@@ -256,7 +256,7 @@ class OrchestratorService:
         """Return JSON-schema contracts for machine-readable agent metadata."""
 
         return {
-            agent_name: model.model_json_schema()
+            agent_name: model.model_json_schema()  # type: ignore[attr-defined]
             for agent_name, model in AGENT_METADATA_MODELS.items()
         }
 

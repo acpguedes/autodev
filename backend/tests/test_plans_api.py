@@ -5,6 +5,7 @@ Each test gets an isolated SQLite DB via monkeypatching DATABASE_URL.
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -18,7 +19,7 @@ SESSION_ID = "test-session-plans-001"
 
 
 @pytest.fixture()
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, None, None]:
     db_path = tmp_path / "plans-test.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db_path}")
     reset_store_cache()

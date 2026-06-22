@@ -94,7 +94,9 @@ def get_chat_model(
         if the real provider cannot be configured.
     """
 
-    resolved_provider = (provider or os.getenv("LLM_PROVIDER", "stub")).strip().lower()
+    resolved_provider = (
+        provider if provider is not None else (os.getenv("LLM_PROVIDER", "stub") or "stub")
+    ).strip().lower()
 
     if resolved_provider in {"", "stub", "fake", "none"}:
         if not allow_stub:
@@ -111,7 +113,7 @@ def get_chat_model(
             )
 
         base_url = os.getenv("OPENAI_BASE_URL")
-        resolved_model = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        resolved_model = model if model is not None else (os.getenv("OPENAI_MODEL", "gpt-4o-mini") or "gpt-4o-mini")
         resolved_temperature = (
             temperature
             if temperature is not None
@@ -124,14 +126,14 @@ def get_chat_model(
         return ChatOpenAI(
             model=resolved_model,
             temperature=resolved_temperature,
-            api_key=api_key,
+            api_key=api_key,  # type: ignore[arg-type]
             base_url=base_url,
             http_client=httpx.Client(verify=verify_ssl),
             http_async_client=httpx.AsyncClient(verify=verify_ssl),
         )
 
     if resolved_provider == "ollama":
-        resolved_model = model or os.getenv("OPENAI_MODEL", "llama3.1")
+        resolved_model = model if model is not None else (os.getenv("OPENAI_MODEL", "llama3.1") or "llama3.1")
         resolved_temperature = (
             temperature
             if temperature is not None
@@ -149,7 +151,7 @@ def get_chat_model(
         return ChatOpenAI(
             model=resolved_model,
             temperature=resolved_temperature,
-            api_key=os.getenv("OPENAI_API_KEY") or "ollama",
+            api_key=os.getenv("OPENAI_API_KEY") or "ollama",  # type: ignore[arg-type]
             base_url=base_url,
             http_client=httpx.Client(verify=verify_ssl),
             http_async_client=httpx.AsyncClient(verify=verify_ssl),

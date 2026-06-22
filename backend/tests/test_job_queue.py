@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import time
 
-import pytest
 from fastapi.testclient import TestClient
 
 from backend.api.main import app as main_app

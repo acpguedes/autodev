@@ -30,7 +30,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -249,7 +249,7 @@ def describe_agent(name: str) -> AgentDetail:
             from backend.agents.contracts import AGENT_METADATA_MODELS  # noqa: PLC0415
             model_cls = AGENT_METADATA_MODELS.get(name)
             if model_cls is not None:
-                schema = model_cls.model_json_schema()
+                schema = model_cls.model_json_schema()  # type: ignore[attr-defined]
         except Exception:
             pass
 

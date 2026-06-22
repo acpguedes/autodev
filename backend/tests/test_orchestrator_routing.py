@@ -50,8 +50,6 @@ def test_route_existing_repo_change_is_full_order() -> None:
 def test_route_unknown_type_falls_back_to_full_order() -> None:
     """Any RunType not explicitly mapped should yield the full default order."""
     full = ["navigator", "analyzer", "architect", "coder", "devops", "validator", "responder"]
-    router = RunTypeRouter()
-    # PLAN_EXECUTION is mapped to the full order as well; test an explicit override.
     custom_router = RunTypeRouter(route_map={RunType.DOCUMENTATION_UPDATE: ["navigator"]})
     # VALIDATION_ONLY is not in the custom map → falls back to _FULL_ORDER.
     assert custom_router.order_for(RunType.VALIDATION_ONLY) == full
@@ -71,7 +69,6 @@ def test_all_routes_returns_dict() -> None:
 
 def test_supervisor_policy_advances() -> None:
     """Cursor should advance through order and return None after exhaustion."""
-    from backend.orchestrator.service import AgentGraphState
 
     dummy_state: AgentGraphState = {
         "context": None,  # type: ignore[typeddict-item]

@@ -24,6 +24,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
 
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path}")
     monkeypatch.setenv("AUTODEV_CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("LLM_PROVIDER", "stub")
+    monkeypatch.setenv("AUTODEV_PROJECT_ROOT", str(repository_root))
 
     reset_store_cache()
     get_orchestrator.cache_clear()

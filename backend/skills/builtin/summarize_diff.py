@@ -23,7 +23,6 @@ class SummarizeDiffSkill(BaseSkill):
         added = 0
         removed = 0
         changed_files: set[str] = set()
-        current_file: str | None = None
 
         for line in diff.splitlines():
             if line.startswith("--- ") or line.startswith("+++ "):
@@ -37,7 +36,6 @@ class SummarizeDiffSkill(BaseSkill):
                             path = path[len(prefix):]
                             break
                     if path != "/dev/null":
-                        current_file = path
                         changed_files.add(path)
                 continue
 

@@ -1,5 +1,7 @@
 """FastAPI application exposing orchestrator endpoints."""
 
+# ruff: noqa: E402  — load_dotenv must run before third-party imports
+
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -16,8 +18,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from backend.config import (
-    LLMSettings,
-    RepositorySettings,
     RuntimeConfig,
     RuntimeConfigService,
     RuntimeInstructions,

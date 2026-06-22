@@ -21,6 +21,7 @@ def isolated_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path}")
     monkeypatch.setenv("AUTODEV_CONFIG_PATH", str(config_path))
+    monkeypatch.delenv("AUTODEV_PROJECT_ROOT", raising=False)
     monkeypatch.chdir(tmp_path)
     reset_store_cache()
 

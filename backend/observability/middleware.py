@@ -16,7 +16,7 @@ import logging
 import time
 import uuid
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
 if TYPE_CHECKING:
@@ -141,7 +141,6 @@ class RequestTracingMiddleware:
 
 def attach(app: "FastAPI") -> None:
     """Add :class:`RequestTracingMiddleware` to *app*."""
-    from starlette.middleware import Middleware  # noqa: PLC0415
     app.add_middleware(RequestTracingMiddleware)  # type: ignore[arg-type]
 
 

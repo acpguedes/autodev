@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Sequence
 
 from backend.config import RuntimeConfigService
 from backend.llm.factory import get_chat_model
@@ -150,7 +150,7 @@ def _handle_config_set(args: argparse.Namespace) -> int:
 
 
 def _handle_sessions_list(_: argparse.Namespace) -> int:
-    _, orchestrator, _ = _build_runtime_services()
+    _config, orchestrator, _repo = _build_runtime_services()
     sessions = orchestrator.list_sessions()
     print(
         json.dumps(

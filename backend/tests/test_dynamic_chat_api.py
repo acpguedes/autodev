@@ -9,6 +9,7 @@ Tests:
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -25,7 +26,7 @@ from backend.persistence.database import DurableStore, reset_store_cache
 
 
 @pytest.fixture()
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, None, None]:
     database_path = tmp_path / "dyn-test.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path}")
     reset_store_cache()
