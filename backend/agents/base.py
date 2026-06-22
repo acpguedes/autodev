@@ -139,7 +139,7 @@ class LangChainAgent(ABC):
             _logger.warning("agent=%s model_type=%s is_stub=True — returning fallback", self.name, type(self._model).__name__)
             return fallback
 
-        _logger.debug("agent=%s model_type=%s invoking LLM", self.name, type(self._model).__name__)
+        _logger.info("agent=%s model_type=%s invoking LLM", self.name, type(self._model).__name__)
         try:
             prompt_value = self.prompt.format_prompt(**self.prepare_inputs(context))
             response = self._model.invoke(prompt_value.to_messages())
