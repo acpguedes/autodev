@@ -1,5 +1,13 @@
 # Current Weaknesses and Remediation Strategies
 
+> **Current status (2026-06-22):** This document is an accurate debt log. Weaknesses 1–7 and
+> 10–11 remain open. Weakness 8 (frontend) is partially addressed (six pages exist, but
+> approval UI, diff viewer, run history, and streaming are still planned). Weakness 9 (CI) has
+> basic backend and frontend pipelines; coverage gates and smoke e2e are still planned.
+> Weakness 12 (docs) is being addressed by the addition of
+> [`docs/feature_matrix.md`](../feature_matrix.md). The remediation strategies listed below are
+> targets, not completed work, unless noted otherwise in the roadmap.
+
 This document maps the current weaknesses of the repository to concrete strategies for evolving AutoDev Architect into a strong production-grade OSS platform.
 
 ---

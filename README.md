@@ -54,18 +54,19 @@ This makes the project suitable for:
 The current codebase provides a functional early platform slice with:
 
 - FastAPI backend orchestrator;
-- durable session, run, and message persistence backed by a SQLite store for the first functional stage;
+- durable session, run, and message persistence backed by a SQLite store (Repository pattern + adapters landed; PostgreSQL adapter is a scaffold stub);
 - explicit run typing plus persisted workflow-step history for each execution;
-- agent abstraction layer;
-- stub/fallback LLM integration;
+- agent abstraction layer with typed metadata contracts published via the API;
+- stub/fallback LLM integration (OpenAI and Ollama supported; Anthropic not yet implemented);
 - first-class local-model configuration via `ollama` using an OpenAI-compatible local endpoint;
 - structured local CLI support for config inspection, planning, run execution, and repository-context inspection;
-- simple Next.js control-center interface with runtime configuration for LLM and repository selection;
-- dedicated frontend configuration workspace plus dashboard navigation between execution and config flows;
-- post-analysis execution-plan generation that expands agent artifacts into ordered tasks and supports sequential execution runs;
-- explicit separation between agent behavior instructions and the latest user request, with a responder agent that compiles the final user-facing answer from specialist outputs;
-- typed agent metadata contracts published via the API for machine-readable downstream/UI consumption;
-- local install script, Docker Compose stack, and initial CI/Terraform placeholders.
+- Next.js frontend with six pages (chat, config, agents, plans, skills, patches) — dark-theme only, no component library yet;
+- post-analysis execution-plan generation that expands agent artifacts into ordered tasks — **note: `execute_plan()` is currently a mock that stamps tasks as completed without running real actions**;
+- plans persist in a SQLite store with approve/reject API — **note: approval does not yet gate execution**;
+- plugin-seam auto-discovery for API routers, agents, and CLI subcommands;
+- local install script, Docker Compose stack (backend + frontend only), and initial CI.
+
+See [`docs/feature_matrix.md`](docs/feature_matrix.md) for a precise `default / optional / stub / planned` breakdown of every feature.
 
 The documentation in this repository defines the path from prototype to a complete platform.
 
@@ -191,6 +192,9 @@ For rationale, read [`docs/architecture/stack_decisions.md`](docs/architecture/s
 - [`docs/implementation/self_hosting_oss.md`](docs/implementation/self_hosting_oss.md): OSS/self-hosted setup paths for stub, Ollama, and hybrid modes.
 - [`docs/implementation/agent_spec.md`](docs/implementation/agent_spec.md): role definitions, contracts, and expected outputs for agents.
 - [`docs/implementation/data_model.md`](docs/implementation/data_model.md): persistent data model and storage guidance.
+
+### Implementation status
+- [`docs/feature_matrix.md`](docs/feature_matrix.md): per-feature status (`default / optional / stub / planned`) covering persistence, LLM providers, agents, patches, validation, and more.
 
 ### Developer workflow
 - [`Makefile`](Makefile): install, test, lint, build, run, and clean targets.

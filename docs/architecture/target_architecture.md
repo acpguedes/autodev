@@ -1,5 +1,11 @@
 # AutoDev Architect Target Architecture
 
+> **Current status (2026-06-22):** This document describes the *target* production architecture.
+> Most of what follows is **planned, not yet implemented**. The current codebase uses SQLite
+> (not PostgreSQL), an in-process job queue (not Redis), no MinIO, no pgvector, no LangGraph
+> orchestration, and a basic lexical repository provider (not tree-sitter by default). For an
+> accurate per-feature status breakdown see [`docs/feature_matrix.md`](../feature_matrix.md).
+
 This document defines the target architecture for evolving AutoDev Architect from a prototype into a robust open source AI software engineering platform.
 
 ---
