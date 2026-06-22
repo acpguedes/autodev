@@ -1,13 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 222 47% 8%;
+    --foreground: 210 40% 98%;
+    --border: 217 33% 25%;
+    --input: 217 33% 25%;
+    --ring: 199 89% 60%;
+    --primary: 199 89% 60%;
+    --primary-foreground: 222 47% 5%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 199 89% 60%;
+    --accent-foreground: 222 47% 5%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --radius: 0.85rem;
+  }
+
+  .dark {
+    --background: 222 47% 8%;
+    --foreground: 210 40% 98%;
+    --border: 217 33% 25%;
+    --input: 217 33% 25%;
+    --ring: 199 89% 60%;
+    --primary: 199 89% 60%;
+    --primary-foreground: 222 47% 5%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 199 89% 60%;
+    --accent-foreground: 222 47% 5%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --radius: 0.85rem;
+  }
+
+  .light {
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 199 89% 48%;
+    --primary: 199 89% 48%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 199 89% 48%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --radius: 0.85rem;
+  }
+}
+
 :root {
   color-scheme: dark;
   font-family: Inter, system-ui, sans-serif;
   --bg: #0b1020;
   --panel: #121936;
   --panel-alt: #0f1530;
-  --border: rgba(148, 163, 184, 0.18);
+  --ui-border: rgba(148, 163, 184, 0.18);
   --text: #f8fafc;
-  --muted: rgba(226, 232, 240, 0.72);
-  --accent: #38bdf8;
+  --ui-muted: rgba(226, 232, 240, 0.72);
+  --ui-accent: #38bdf8;
   --accent-strong: #818cf8;
   --success: #34d399;
   --danger: #f87171;
@@ -62,7 +125,7 @@ button:hover:not(:disabled) {
   justify-content: space-between;
   gap: 1rem;
   padding: 1.1rem 2rem;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--ui-border);
   background: rgba(10, 15, 31, 0.72);
   backdrop-filter: blur(18px);
   position: sticky;
@@ -83,7 +146,7 @@ button:hover:not(:disabled) {
 .chat-layout__sidebar {
   background-color: rgba(10, 15, 31, 0.95);
   padding: 1.5rem;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid var(--ui-border);
   position: sticky;
   top: 0;
   align-self: start;
@@ -108,7 +171,7 @@ button:hover:not(:disabled) {
 .sidebar-nav__link {
   color: var(--text);
   text-decoration: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border);
   border-radius: 0.85rem;
   padding: 0.8rem 0.95rem;
   background: rgba(15, 23, 42, 0.7);
@@ -146,7 +209,7 @@ button:hover:not(:disabled) {
 .panel-card,
 .hero-card {
   background: linear-gradient(180deg, rgba(18, 25, 54, 0.96), rgba(15, 21, 48, 0.96));
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border);
   border-radius: 1rem;
   box-shadow: 0 20px 40px rgba(2, 6, 23, 0.22);
 }
@@ -191,7 +254,7 @@ button:hover:not(:disabled) {
 }
 
 .sidebar-metadata dt {
-  color: var(--muted);
+  color: var(--ui-muted);
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
@@ -210,7 +273,7 @@ button:hover:not(:disabled) {
 .chat-surface,
 .execution-console {
   background: linear-gradient(180deg, rgba(18, 25, 54, 0.96), rgba(15, 21, 48, 0.96));
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border);
   border-radius: 1rem;
   box-shadow: 0 20px 40px rgba(2, 6, 23, 0.22);
 }
@@ -242,7 +305,7 @@ button:hover:not(:disabled) {
 
 .chat-overview {
   padding: 1rem 1.1rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border);
   border-radius: 0.95rem;
   background: rgba(15, 23, 42, 0.45);
   flex-direction: column;
@@ -280,7 +343,7 @@ button:hover:not(:disabled) {
 
 .eyebrow {
   margin: 0 0 0.5rem;
-  color: var(--accent);
+  color: var(--ui-accent);
   text-transform: uppercase;
   letter-spacing: 0.14em;
   font-size: 0.75rem;
@@ -293,7 +356,7 @@ button:hover:not(:disabled) {
 .empty-state,
 .note-list,
 .info-label {
-  color: var(--muted);
+  color: var(--ui-muted);
 }
 
 .panel-grid {
@@ -328,7 +391,7 @@ button:hover:not(:disabled) {
 .execution-plan__summary {
   padding: 1rem;
   border-radius: 0.9rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border);
   background: rgba(15, 23, 42, 0.68);
 }
 
@@ -341,7 +404,7 @@ button:hover:not(:disabled) {
 }
 
 .execution-task-card {
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border);
   border-radius: 0.9rem;
   padding: 1rem;
   background: rgba(15, 23, 42, 0.56);
@@ -384,7 +447,7 @@ button:hover:not(:disabled) {
 .chat-composer textarea {
   width: 100%;
   border-radius: 0.85rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border);
   padding: 0.8rem 0.95rem;
   background: rgba(15, 23, 42, 0.92);
   color: var(--text);
@@ -421,14 +484,14 @@ button,
 }
 
 button {
-  background: linear-gradient(120deg, var(--accent), var(--accent-strong));
+  background: linear-gradient(120deg, var(--ui-accent), var(--accent-strong));
   color: #020617;
 }
 
 .secondary-button {
   background: rgba(15, 23, 42, 0.95);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border);
 }
 
 .secondary-button--link {
@@ -454,7 +517,7 @@ button:disabled {
   padding: 0.65rem 0.8rem;
   border-radius: 0.75rem;
   background: rgba(15, 23, 42, 0.92);
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border);
   overflow-x: auto;
 }
 
@@ -462,7 +525,7 @@ button:disabled {
   margin: 0;
   white-space: pre-wrap;
   background: rgba(15, 23, 42, 0.92);
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border);
   border-radius: 0.85rem;
   padding: 1rem;
   overflow-x: auto;
@@ -542,7 +605,7 @@ button:disabled {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--accent);
+  color: var(--ui-accent);
 }
 
 .message__content {
@@ -554,7 +617,7 @@ button:disabled {
 .chat-composer--clean {
   align-items: flex-end;
   padding-top: 0.5rem;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--ui-border);
 }
 
 .chat-composer--clean textarea {
@@ -602,7 +665,7 @@ button:disabled {
   font-size: 0.78rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--ui-muted);
 }
 
 .console-entry__command,
@@ -617,14 +680,14 @@ button:disabled {
   padding: 0.8rem 0.9rem;
   border-radius: 0.8rem;
   background: rgba(15, 23, 42, 0.96);
-  border: 1px solid var(--border);
+  border: 1px solid var(--ui-border);
   color: #bfdbfe;
   white-space: pre-wrap;
 }
 
 .console-entry__output {
   white-space: pre-wrap;
-  color: var(--muted);
+  color: var(--ui-muted);
   line-height: 1.55;
 }
 
@@ -655,7 +718,7 @@ button:disabled {
     min-height: auto;
     position: static;
     border-right: none;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--ui-border);
   }
 
   .panel-grid--two-up,
