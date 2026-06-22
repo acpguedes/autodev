@@ -6,6 +6,34 @@ AutoDev Architect becomes an open source, self-hostable, patch-first GenAI engin
 
 ---
 
+## Delivered — additive multi-agent / skills / plans platform buildout
+
+A platform-wide buildout landed these subsystems **additively**, attached through plugin
+seams (auto-discovery of API routers, agents, and CLI plugins — see
+[`docs/architecture/plugin_seams.md`](architecture/plugin_seams.md)). All existing behavior
+and tests were preserved; heavier capabilities are gated behind environment flags and their
+optional dependencies are kept out of `backend/requirements.txt`. Mapping to the roadmap:
+
+| Roadmap area | Delivered (additive) |
+|---|---|
+| 0.3 Repository intelligence | pluggable repo providers + optional tree-sitter symbol extraction; `GET /repository/symbols` |
+| 0.4 / 0.8 Patch + validation | stdlib patch engine (dry-run by default; `AUTODEV_ENABLE_PATCH_APPLY`); flag-gated Docker/local validation sandbox (`AUTODEV_ENABLE_SANDBOX`); `/patches/*`, `/validation/*` + CLI |
+| 0.5 Approval workflow + UI | persisted plan store with approval gates (`/plans/*` GET/PUT/approve/reject + CLI); frontend pages for skills/agents/plans/patches |
+| 0.6 OSS competitive | CLI expanded (`skills`, `agents`, `plans`, `patches`, `validate`); backend + frontend CI workflows; first frontend unit tests (vitest) |
+| 0.9 Observability | request-id tracing middleware + Prometheus `GET /metrics` (OTel used only if importable) |
+| Multi-agent / skills | skills subsystem (registry + built-ins, `/skills` + CLI); specialized `security`/`refactor`/`docs` agents + registry (`/agents` + CLI); dynamic run-type routing/supervisor + opt-in `POST /chat/dynamic` (`AUTODEV_DYNAMIC_ORCH`) |
+| Async groundwork | in-process job queue (optional Redis backend); `POST /jobs`, `GET /jobs/{id}` |
+
+Subsystem docs: [`skills_subsystem.md`](implementation/skills_subsystem.md),
+[`dynamic_orchestration.md`](implementation/dynamic_orchestration.md),
+[`patches_and_validation.md`](implementation/patches_and_validation.md).
+
+**Still deferred** (require shared-state/infra, intentionally out of this additive wave):
+SQLite→PostgreSQL + pgvector migration, MinIO artifacts, Kubernetes, full Grafana/Loki
+dashboards, and promoting dynamic orchestration to the default `/chat` path.
+
+---
+
 ## Release 0.1 - Prototype foundation
 
 Focus:
