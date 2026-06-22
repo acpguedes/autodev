@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from backend.plans.models import ApprovalRecord, PlanDocument, PlanStatus
+from backend.persistence.migrations import MigrationRunner
+from backend.persistence.migrations.versions import PLAN_STORE_MIGRATIONS, STORE_MIGRATIONS
 
 
 _DEFAULT_DATABASE_URL = "sqlite:///./autodev.db"
@@ -35,7 +37,8 @@ class SQLiteStore:
         self.database_url = database_url
         self._database_path = _resolve_db_path(database_url)
         self._database_path.parent.mkdir(parents=True, exist_ok=True)
-        self._create_tables()
+        with self.connect() as conn:
+            MigrationRunner(conn, STORE_MIGRATIONS, namespace="store").run_pending()
 
     # ------------------------------------------------------------------
     # Connection
@@ -45,69 +48,6 @@ class SQLiteStore:
         conn = sqlite3.connect(self._database_path)
         conn.row_factory = sqlite3.Row
         return conn
-
-    # ------------------------------------------------------------------
-    # Schema
-    # ------------------------------------------------------------------
-
-    def _create_tables(self) -> None:
-        with self.connect() as conn:
-            conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS sessions (
-                    id TEXT PRIMARY KEY,
-                    goal TEXT NOT NULL,
-                    plan_json TEXT NOT NULL,
-                    artifacts_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                );
-
-                CREATE TABLE IF NOT EXISTS runs (
-                    id TEXT PRIMARY KEY,
-                    session_id TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    run_type TEXT NOT NULL DEFAULT 'existing_repo_change',
-                    current_state TEXT NOT NULL DEFAULT 'starting',
-                    trigger_message TEXT NOT NULL,
-                    results_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    completed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(session_id) REFERENCES sessions(id)
-                );
-
-                CREATE TABLE IF NOT EXISTS run_steps (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    run_id TEXT NOT NULL,
-                    step_key TEXT NOT NULL,
-                    agent TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    started_at TEXT NOT NULL,
-                    completed_at TEXT NOT NULL,
-                    attempt INTEGER NOT NULL DEFAULT 1,
-                    FOREIGN KEY(run_id) REFERENCES runs(id)
-                );
-
-                CREATE TABLE IF NOT EXISTS messages (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT NOT NULL,
-                    run_id TEXT,
-                    sequence INTEGER NOT NULL,
-                    role TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY(session_id) REFERENCES sessions(id),
-                    FOREIGN KEY(run_id) REFERENCES runs(id)
-                );
-
-                CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs(session_id);
-                CREATE INDEX IF NOT EXISTS idx_run_steps_run_id ON run_steps(run_id, id);
-                CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id, sequence);
-                """
-            )
-            self._ensure_column(conn, "runs", "run_type", "TEXT NOT NULL DEFAULT 'existing_repo_change'")
-            self._ensure_column(conn, "runs", "current_state", "TEXT NOT NULL DEFAULT 'starting'")
-            conn.commit()
 
     # ------------------------------------------------------------------
     # SessionRepository
@@ -267,17 +207,6 @@ class SQLiteStore:
             "completed_at": row["completed_at"],
         }
 
-    def _ensure_column(
-        self,
-        conn: sqlite3.Connection,
-        table: str,
-        column: str,
-        definition: str,
-    ) -> None:
-        existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-        if column not in existing:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
-
     def _replace_run_steps(
         self, conn: sqlite3.Connection, run_id: str, steps: list[dict[str, Any]]
     ) -> None:
@@ -312,35 +241,13 @@ class SQLitePlanStore:
             url = os.environ.get("DATABASE_URL", _DEFAULT_DATABASE_URL)
             self._db_path = _resolve_db_path(url)
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._create_tables()
+        with self._connect() as conn:
+            MigrationRunner(conn, PLAN_STORE_MIGRATIONS, namespace="plan_store").run_pending()
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self._db_path))
         conn.row_factory = sqlite3.Row
         return conn
-
-    def _create_tables(self) -> None:
-        with self._connect() as conn:
-            conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS plan_documents (
-                    session_id  TEXT PRIMARY KEY,
-                    steps_json  TEXT NOT NULL DEFAULT '[]',
-                    status      TEXT NOT NULL DEFAULT 'draft',
-                    updated_at  TEXT NOT NULL
-                );
-
-                CREATE TABLE IF NOT EXISTS plan_approvals (
-                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id  TEXT NOT NULL,
-                    decision    TEXT NOT NULL,
-                    actor       TEXT NOT NULL,
-                    note        TEXT NOT NULL DEFAULT '',
-                    created_at  TEXT NOT NULL
-                );
-                """
-            )
-            conn.commit()
 
     def upsert_plan(self, session_id: str, steps: list[str]) -> None:
         now = self._now()
