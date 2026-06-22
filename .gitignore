@@ -51,6 +51,10 @@ frontend/package-lock.json
 frontend/tsconfig.tsbuildinfo
 *.tsbuildinfo
 
+# --- AI tooling (Claude Code, Codex CLI, etc.) ---
+.claude/
+.codex/
+
 # --- Editor / OS noise ---
 .DS_Store
 Thumbs.db

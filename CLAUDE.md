@@ -32,6 +32,22 @@ When proposing changes, optimize for:
 - Favor changes that narrow the gap between product vision and implementation.
 - If introducing a new subsystem, document why it belongs and what problem it solves.
 
+## Execution environment
+- ALWAYS activate the project virtualenv before running anything that depends on it:
+  `source .venv/bin/activate`.
+- Apply this to all executions — running the backend, tests, scripts, linters, migrations,
+  and any `python`/`pip` invocation. Prefer `source .venv/bin/activate && <command>` so the
+  command runs inside the venv.
+- If `.venv` does not exist yet, create it first (`python -m venv .venv`), activate it, then
+  install dependencies inside it.
+
+## Planning vs. execution (Claude Code)
+- For non-trivial tasks: produce the plan with Opus, then execute the implementation directly
+  in Sonnet — do not hand off to Codex unless the user explicitly requests it.
+- Only involve Codex (the `codex` / `codex:codex-rescue` agent or the Codex CLI runtime) when
+  the user explicitly asks for a Codex handoff.
+- Keep `AGENTS.md` aligned with this file so any handoff is consistent.
+
 ## Documentation expectation
 For any meaningful architecture or behavior change, update documentation in the corresponding files under `docs/` and the project root.
 

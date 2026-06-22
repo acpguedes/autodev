@@ -42,6 +42,15 @@ Preferred stack choices for this repository:
 
 Avoid introducing new infrastructure dependencies unless there is a clear architectural justification.
 
+## Execution environment
+
+- ALWAYS activate the project virtualenv before running anything that depends on it:
+  `source .venv/bin/activate`.
+- This applies to every execution: backend, tests, scripts, linters, migrations, and any
+  `python`/`pip` command. Prefer `source .venv/bin/activate && <command>`.
+- If `.venv` is missing, create it (`python -m venv .venv`), activate it, then install
+  dependencies inside it.
+
 ## Engineering rules
 
 - Keep domain state outside prompt text where possible.
