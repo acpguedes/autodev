@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from backend.api.main import app, get_orchestrator, get_repository_intelligence
 from backend.config import RuntimeConfigService, get_runtime_config_service
+from backend.config.settings import reset_settings_cache
 from backend.orchestrator.service import OrchestratorService
 from backend.persistence.database import DurableStore, reset_store_cache
 from backend.repository import RepositoryIntelligenceService
@@ -28,6 +29,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("AUTODEV_PROJECT_ROOT", str(repository_root))
 
     reset_store_cache()
+    reset_settings_cache()
     get_orchestrator.cache_clear()
     get_repository_intelligence.cache_clear()
     get_runtime_config_service.cache_clear()
@@ -52,6 +54,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     get_repository_intelligence.cache_clear()
     get_runtime_config_service.cache_clear()
     reset_store_cache()
+    reset_settings_cache()
 
 
 def test_get_runtime_config_returns_default_document(client: TestClient, tmp_path: Path) -> None:

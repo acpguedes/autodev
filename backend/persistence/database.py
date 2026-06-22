@@ -7,9 +7,9 @@ working without change.
 
 from __future__ import annotations
 
-import os
 from functools import lru_cache
 
+from backend.config.settings import get_settings
 from backend.persistence.sqlite_adapter import SQLiteStore
 
 
@@ -26,7 +26,7 @@ def get_store() -> SQLiteStore:
     Raises ``NotImplementedError`` when the URL is a postgres:// URL (the
     PostgresStore scaffold is not yet fully implemented).
     """
-    url = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
+    url = get_settings().database_url
     if url.startswith("postgresql://") or url.startswith("postgres://"):
         from backend.persistence.postgres_adapter import PostgresStore  # noqa: PLC0415
         return PostgresStore(url)  # type: ignore[return-value]  # will raise NIE

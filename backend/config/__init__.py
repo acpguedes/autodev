@@ -9,6 +9,7 @@ from backend.config.runtime import (
     RuntimeInstructions,
     get_runtime_config_service,
 )
+from backend.config.settings import Settings, get_settings, reset_settings_cache
 
 __all__ = [
     "LLMSettings",
@@ -18,4 +19,7 @@ __all__ = [
     "RuntimeConfigService",
     "RuntimeInstructions",
     "get_runtime_config_service",
+    "Settings",
+    "get_settings",
+    "reset_settings_cache",
 ]

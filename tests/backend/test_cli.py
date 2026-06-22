@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from backend.cli import main
+from backend.config.settings import reset_settings_cache
 from backend.persistence.database import reset_store_cache
 
 
@@ -24,10 +25,12 @@ def isolated_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AUTODEV_PROJECT_ROOT", raising=False)
     monkeypatch.chdir(tmp_path)
     reset_store_cache()
+    reset_settings_cache()
 
     yield
 
     reset_store_cache()
+    reset_settings_cache()
 
 
 def test_cli_can_update_config_for_ollama(capsys: pytest.CaptureFixture[str]) -> None:
