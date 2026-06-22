@@ -71,6 +71,39 @@ The documentation in this repository defines the path from prototype to a comple
 
 ---
 
+## Platform subsystems (multi-agent, skills, plans)
+
+The platform now ships an extensible, **plugin-seam** architecture: new endpoints, agents, and
+CLI subcommands attach as self-contained modules via auto-discovery, without editing the core
+files. See [`docs/architecture/plugin_seams.md`](docs/architecture/plugin_seams.md) for the
+seams and the reserved-namespace table. Subsystems built on it:
+
+- **Skills** — a discover/invoke registry with deterministic built-ins; `GET /skills`,
+  `POST /skills/{name}/invoke`, and `autodev skills`. See
+  [`docs/implementation/skills_subsystem.md`](docs/implementation/skills_subsystem.md).
+- **Specialized agents + registry** — `security`/`refactor`/`docs` agents that self-register;
+  `GET /agents`, `autodev agents list`.
+- **Dynamic multi-agent orchestration** — run-type routing/supervisor graphs and an opt-in
+  `POST /chat/dynamic` (flag `AUTODEV_DYNAMIC_ORCH=1`). See
+  [`docs/implementation/dynamic_orchestration.md`](docs/implementation/dynamic_orchestration.md).
+- **Plans with approval gates** — a persisted plan store; `GET/PUT /plans/{session_id}`,
+  `POST /plans/{session_id}/approve|reject`, and `autodev plans`.
+- **Patch generation & application** — unified-diff engine, dry-run by default; `POST
+  /patches/generate|apply`, `autodev patches`.
+- **Validation sandbox** — flag-gated Docker/local runner; `POST /validation/run`,
+  `autodev validate`.
+- **Repository intelligence providers** — pluggable lexical/tree-sitter symbol extraction;
+  `GET /repository/symbols`.
+- **Observability** — request tracing + `GET /metrics` (Prometheus text).
+- **Async jobs** — in-process queue (optional Redis backend); `POST /jobs`, `GET /jobs/{id}`.
+
+Patches, validation, dynamic orchestration, the tree-sitter provider, and the Redis job
+backend are **disabled by default behind environment flags**, and their optional dependencies
+are kept out of `backend/requirements.txt`. See
+[`docs/implementation/patches_and_validation.md`](docs/implementation/patches_and_validation.md).
+
+---
+
 ## Target capabilities
 
 ### Core platform
