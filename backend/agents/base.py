@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Mapping, Protocol, Type
@@ -13,6 +14,8 @@ from langchain_core.messages import BaseMessage
 from langchain_core.prompts import ChatPromptTemplate
 
 from backend.llm import LLMConfigurationError, get_chat_model, is_configured_model
+
+_logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -133,14 +136,18 @@ class LangChainAgent(ABC):
         fallback = AgentResult(content=fallback.content, metadata=fallback_metadata)
 
         if not is_configured_model(self._model):
+            _logger.warning("agent=%s model_type=%s is_stub=True — returning fallback", self.name, type(self._model).__name__)
             return fallback
 
+        _logger.debug("agent=%s model_type=%s invoking LLM", self.name, type(self._model).__name__)
         try:
             prompt_value = self.prompt.format_prompt(**self.prepare_inputs(context))
             response = self._model.invoke(prompt_value.to_messages())
-        except LLMConfigurationError:
+        except LLMConfigurationError as exc:
+            _logger.warning("agent=%s LLMConfigurationError: %s", self.name, exc)
             return fallback
-        except Exception:  # pragma: no cover - network or provider errors
+        except Exception as exc:  # pragma: no cover - network or provider errors
+            _logger.warning("agent=%s LLM call failed: %s", self.name, exc, exc_info=True)
             return fallback
 
         content = self._extract_content(response)
