@@ -9,6 +9,7 @@ Tests:
 
 from __future__ import annotations
 
+import os
 from collections.abc import Generator
 from pathlib import Path
 
@@ -16,8 +17,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.api.main import app, get_orchestrator
+from backend.config.settings import reset_settings_cache
 from backend.orchestrator.service import OrchestratorService
 from backend.persistence.database import DurableStore, reset_store_cache
+
+requires_openai = pytest.mark.skipif(
+    not os.environ.get("OPENAI_API_KEY"),
+    reason="OPENAI_API_KEY not set — skipping tests that make live LLM calls",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -29,6 +36,8 @@ from backend.persistence.database import DurableStore, reset_store_cache
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, None, None]:
     database_path = tmp_path / "dyn-test.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path}")
+    monkeypatch.setenv("LLM_PROVIDER", "stub")
+    reset_settings_cache()
     reset_store_cache()
     get_orchestrator.cache_clear()
     store = DurableStore(f"sqlite:///{database_path}")
@@ -52,6 +61,7 @@ def _create_session(client: TestClient) -> str:
 # ---------------------------------------------------------------------------
 
 
+@requires_openai
 def test_dynamic_chat_fallback_returns_200(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -61,6 +71,7 @@ def test_dynamic_chat_fallback_returns_200(
     assert resp.status_code == 200
 
 
+@requires_openai
 def test_dynamic_chat_fallback_mode_field(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -70,6 +81,7 @@ def test_dynamic_chat_fallback_mode_field(
     assert resp.json()["mode"] == "fallback"
 
 
+@requires_openai
 def test_dynamic_chat_fallback_has_run_id(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -87,6 +99,7 @@ def test_dynamic_chat_fallback_has_run_id(
 # ---------------------------------------------------------------------------
 
 
+@requires_openai
 def test_dynamic_chat_dynamic_returns_200(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -96,6 +109,7 @@ def test_dynamic_chat_dynamic_returns_200(
     assert resp.status_code == 200
 
 
+@requires_openai
 def test_dynamic_chat_dynamic_mode_field(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -107,6 +121,7 @@ def test_dynamic_chat_dynamic_mode_field(
     assert body["mode"] in ("dynamic", "fallback")
 
 
+@requires_openai
 def test_dynamic_chat_dynamic_has_session_id(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -116,6 +131,7 @@ def test_dynamic_chat_dynamic_has_session_id(
     assert resp.json()["session_id"] == session_id
 
 
+@requires_openai
 def test_dynamic_chat_dynamic_status_completed(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

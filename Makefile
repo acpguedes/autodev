@@ -77,8 +77,9 @@ install-dev: venv ## Install optional dev tools (black, ruff, mypy, pytest-cov)
 
 test: test-backend test-frontend ## Run the full backend + frontend test suites
 
-test-backend: ## Run the backend pytest suite
-	$(PY) -m pytest $(PYTEST_PATHS) -q
+test-backend: ## Run the backend pytest suite with coverage gate (>=60%)
+	$(PY) -m pytest $(PYTEST_PATHS) -q \
+		--cov=backend --cov-report=term-missing --cov-fail-under=60
 
 test-frontend: ## Run the frontend vitest suite
 	cd $(FRONTEND_DIR) && $(NPM) test
@@ -139,7 +140,11 @@ run-frontend: ## Start the Next.js dev server
 .PHONY: docker-up docker-down
 
 docker-up: ## Boot the full stack via Docker Compose
-	docker compose -f infrastructure/docker-compose.yml up --build
+	@if [ ! -f infrastructure/docker-compose.yml ]; then \
+		echo "WARNING: infrastructure/docker-compose.yml not found — skipping docker-up"; \
+	else \
+		docker compose -f infrastructure/docker-compose.yml up --build; \
+	fi
 
 docker-down: ## Tear down the Docker Compose stack
 	docker compose -f infrastructure/docker-compose.yml down
