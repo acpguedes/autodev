@@ -9,7 +9,6 @@ Tests:
 
 from __future__ import annotations
 
-import os
 from collections.abc import Generator
 from pathlib import Path
 
@@ -17,18 +16,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.api.main import app, get_orchestrator
+from backend.config.runtime import reset_runtime_config_cache
 from backend.config.settings import reset_settings_cache
+from backend.llm.factory import get_chat_model
 from backend.orchestrator.service import OrchestratorService
 from backend.persistence.database import DurableStore, reset_store_cache
 
-requires_openai = pytest.mark.skipif(
-    not os.environ.get("OPENAI_API_KEY"),
-    reason="OPENAI_API_KEY not set — skipping tests that make live LLM calls",
-)
-
 
 # ---------------------------------------------------------------------------
-# Fixture — isolated orchestrator backed by a temp DB
+# Fixture — isolated orchestrator backed by a temp DB, forced onto the stub LLM
 # ---------------------------------------------------------------------------
 
 
@@ -36,9 +32,17 @@ requires_openai = pytest.mark.skipif(
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[TestClient, None, None]:
     database_path = tmp_path / "dyn-test.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path}")
+    # Force the deterministic stub provider so the suite runs offline and fast.
     monkeypatch.setenv("LLM_PROVIDER", "stub")
+    # Isolate from the repository's persisted autodev.config.json, which would
+    # otherwise be loaded at app startup and override the stub provider (and
+    # re-inject a real OPENAI_API_KEY) via RuntimeConfigService.apply_to_environment.
+    monkeypatch.setenv("AUTODEV_CONFIG_PATH", str(tmp_path / "isolated.config.json"))
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    reset_runtime_config_cache()
     reset_settings_cache()
     reset_store_cache()
+    get_chat_model.cache_clear()
     get_orchestrator.cache_clear()
     store = DurableStore(f"sqlite:///{database_path}")
     app.dependency_overrides[get_orchestrator] = lambda: OrchestratorService(store=store)
@@ -46,7 +50,9 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[TestCli
         yield tc
     app.dependency_overrides.clear()
     get_orchestrator.cache_clear()
+    get_chat_model.cache_clear()
     reset_store_cache()
+    reset_runtime_config_cache()
 
 
 def _create_session(client: TestClient) -> str:
@@ -61,7 +67,6 @@ def _create_session(client: TestClient) -> str:
 # ---------------------------------------------------------------------------
 
 
-@requires_openai
 def test_dynamic_chat_fallback_returns_200(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -71,7 +76,6 @@ def test_dynamic_chat_fallback_returns_200(
     assert resp.status_code == 200
 
 
-@requires_openai
 def test_dynamic_chat_fallback_mode_field(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -81,7 +85,6 @@ def test_dynamic_chat_fallback_mode_field(
     assert resp.json()["mode"] == "fallback"
 
 
-@requires_openai
 def test_dynamic_chat_fallback_has_run_id(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -99,7 +102,6 @@ def test_dynamic_chat_fallback_has_run_id(
 # ---------------------------------------------------------------------------
 
 
-@requires_openai
 def test_dynamic_chat_dynamic_returns_200(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -109,7 +111,6 @@ def test_dynamic_chat_dynamic_returns_200(
     assert resp.status_code == 200
 
 
-@requires_openai
 def test_dynamic_chat_dynamic_mode_field(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -121,7 +122,6 @@ def test_dynamic_chat_dynamic_mode_field(
     assert body["mode"] in ("dynamic", "fallback")
 
 
-@requires_openai
 def test_dynamic_chat_dynamic_has_session_id(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -131,7 +131,6 @@ def test_dynamic_chat_dynamic_has_session_id(
     assert resp.json()["session_id"] == session_id
 
 
-@requires_openai
 def test_dynamic_chat_dynamic_status_completed(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

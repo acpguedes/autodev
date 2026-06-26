@@ -185,6 +185,17 @@ def get_runtime_config_service() -> RuntimeConfigService:
     return RuntimeConfigService()
 
 
+def reset_runtime_config_cache() -> None:
+    """Clear the cached runtime config service — for use in tests.
+
+    The service resolves its config path from ``AUTODEV_CONFIG_PATH`` at
+    construction time, so tests that point that variable at an isolated path
+    must clear this cache to avoid leaking the repository's persisted
+    ``autodev.config.json`` into the test environment.
+    """
+    get_runtime_config_service.cache_clear()
+
+
 __all__ = [
     "LLMSettings",
     "RepositorySettings",
@@ -193,4 +204,5 @@ __all__ = [
     "RuntimeConfigService",
     "RuntimeInstructions",
     "get_runtime_config_service",
+    "reset_runtime_config_cache",
 ]
