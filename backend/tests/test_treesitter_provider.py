@@ -145,7 +145,17 @@ def test_api_symbols_response_includes_provider_name() -> None:
     assert len(body["provider"]) > 0
 
 
-def test_api_symbols_path_param_returns_200(tmp_path) -> None:
+def _point_project_root_at(tmp_path, monkeypatch) -> None:
+    """Point the runtime project root at *tmp_path* for path-confinement tests."""
+    from backend.config import get_runtime_config_service
+
+    monkeypatch.setenv("AUTODEV_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setenv("AUTODEV_CONFIG_PATH", str(tmp_path / "autodev.config.json"))
+    get_runtime_config_service.cache_clear()
+
+
+def test_api_symbols_path_param_returns_200(tmp_path, monkeypatch) -> None:
+    _point_project_root_at(tmp_path, monkeypatch)
     sample = tmp_path / "sample.py"
     sample.write_text("def greet(): pass\n", encoding="utf-8")
     resp = client.get(
@@ -162,9 +172,19 @@ def test_api_symbols_missing_params_returns_422() -> None:
     assert resp.status_code == 422
 
 
-def test_api_symbols_nonexistent_path_returns_404() -> None:
+def test_api_symbols_nonexistent_path_returns_404(tmp_path, monkeypatch) -> None:
+    _point_project_root_at(tmp_path, monkeypatch)
     resp = client.get(
         "/repository/symbols",
-        params={"path": "/nonexistent/path/file.py", "language": "python"},
+        params={"path": str(tmp_path / "missing.py"), "language": "python"},
     )
     assert resp.status_code == 404
+
+
+def test_api_symbols_path_outside_root_is_rejected(tmp_path, monkeypatch) -> None:
+    _point_project_root_at(tmp_path, monkeypatch)
+    resp = client.get(
+        "/repository/symbols",
+        params={"path": "/etc/passwd", "language": "python"},
+    )
+    assert resp.status_code == 403

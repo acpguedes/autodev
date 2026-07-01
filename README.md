@@ -199,6 +199,7 @@ For rationale, read [`docs/architecture/stack_decisions.md`](docs/architecture/s
 ### Developer workflow
 - [`Makefile`](Makefile): install, test, lint, build, run, and clean targets.
 - [`docs/testing.md`](docs/testing.md): how to install, test, cover, lint, and reproduce CI locally.
+- [`docs/security.md`](docs/security.md): threat model, hardening applied, and the environment flags that gate authentication, execution, and network exposure.
 
 ### Governance and contribution
 - [`AGENTS.md`](AGENTS.md): repository-wide instructions for autonomous coding agents.

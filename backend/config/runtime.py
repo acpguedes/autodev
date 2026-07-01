@@ -15,6 +15,11 @@ from backend.llm.factory import DEFAULT_OLLAMA_BASE_URL
 
 DEFAULT_CONFIG_FILE_NAME = "autodev.config.json"
 
+# Placeholder returned to clients instead of the stored LLM API key. When a
+# client PUTs this value back unchanged, the previously stored key is preserved
+# rather than being overwritten with the placeholder.
+API_KEY_REDACTION = "***"
+
 
 class LLMSettings(BaseModel):
     """Persisted LLM provider settings."""
@@ -80,22 +85,43 @@ class RuntimeConfigService:
         normalized = self._normalize(config)
         self._config_path.parent.mkdir(parents=True, exist_ok=True)
         self._config_path.write_text(normalized.model_dump_json(indent=2) + "\n")
+        # The persisted config holds the plaintext LLM API key — restrict it to
+        # the owner so other local users cannot read the secret.
+        try:
+            os.chmod(self._config_path, 0o600)
+        except OSError:  # pragma: no cover - platform-dependent (e.g. Windows)
+            pass
         return normalized
 
     def update(self, payload: RuntimeConfig | dict[str, Any]) -> RuntimeConfig:
         config = payload if isinstance(payload, RuntimeConfig) else RuntimeConfig.model_validate(payload)
+        # Preserve the stored secret when the client echoes back the redaction
+        # placeholder instead of a real key.
+        if config.llm.api_key.strip() == API_KEY_REDACTION:
+            config = config.model_copy(deep=True)
+            config.llm.api_key = self.load().llm.api_key
         return self.save(config)
 
-    def load_document(self) -> RuntimeConfigDocument:
+    def load_document(self, *, redact_secrets: bool = False) -> RuntimeConfigDocument:
         config = self.load()
-        return RuntimeConfigDocument(config=config, instructions=self.build_instructions(config))
+        instructions = self.build_instructions(config)
+        if redact_secrets:
+            config = self._redact(config)
+        return RuntimeConfigDocument(config=config, instructions=instructions)
+
+    def _redact(self, config: RuntimeConfig) -> RuntimeConfig:
+        redacted = config.model_copy(deep=True)
+        if redacted.llm.api_key:
+            redacted.llm.api_key = API_KEY_REDACTION
+        return redacted
 
     def build_instructions(self, config: RuntimeConfig | None = None) -> RuntimeInstructions:
         active_config = config or self.load()
-        config_json = active_config.model_dump_json(indent=2)
+        config_json = self._redact(active_config).model_dump_json(indent=2)
+        api_key_display = API_KEY_REDACTION if active_config.llm.api_key else ""
         env_lines = [
             f"LLM_PROVIDER={active_config.llm.provider}",
-            f"OPENAI_API_KEY={active_config.llm.api_key}",
+            f"OPENAI_API_KEY={api_key_display}",
             f"OPENAI_MODEL={active_config.llm.model}",
             f"OPENAI_BASE_URL={active_config.llm.base_url}",
             f"OLLAMA_BASE_URL={self._resolve_ollama_base_url(active_config)}",

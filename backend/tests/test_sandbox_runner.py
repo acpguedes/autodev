@@ -60,6 +60,7 @@ def test_disabled_does_not_execute(monkeypatch) -> None:
 
 def test_enabled_local_runs_command(monkeypatch) -> None:
     monkeypatch.setenv("AUTODEV_ENABLE_SANDBOX", "1")
+    monkeypatch.setenv("AUTODEV_SANDBOX_ALLOW_LOCAL", "1")
 
     # Ensure docker is NOT available so we fall through to local.
     with patch("shutil.which", return_value=None):
@@ -74,6 +75,7 @@ def test_enabled_local_runs_command(monkeypatch) -> None:
 
 def test_enabled_local_captures_stderr(monkeypatch) -> None:
     monkeypatch.setenv("AUTODEV_ENABLE_SANDBOX", "1")
+    monkeypatch.setenv("AUTODEV_SANDBOX_ALLOW_LOCAL", "1")
 
     with patch("shutil.which", return_value=None):
         runner = SandboxRunner(allowed_commands=["python", "python3"])
@@ -87,6 +89,7 @@ def test_enabled_local_captures_stderr(monkeypatch) -> None:
 
 def test_enabled_local_nonzero_returncode(monkeypatch) -> None:
     monkeypatch.setenv("AUTODEV_ENABLE_SANDBOX", "1")
+    monkeypatch.setenv("AUTODEV_SANDBOX_ALLOW_LOCAL", "1")
 
     with patch("shutil.which", return_value=None):
         runner = SandboxRunner(allowed_commands=["python", "python3"])
@@ -147,6 +150,7 @@ def test_command_not_in_allowlist_is_blocked(monkeypatch) -> None:
 
 def test_custom_allowlist_accepted(monkeypatch) -> None:
     monkeypatch.setenv("AUTODEV_ENABLE_SANDBOX", "1")
+    monkeypatch.setenv("AUTODEV_SANDBOX_ALLOW_LOCAL", "1")
 
     with patch("shutil.which", return_value=None):
         runner = SandboxRunner(allowed_commands=["python", "python3"])
@@ -154,3 +158,18 @@ def test_custom_allowlist_accepted(monkeypatch) -> None:
 
     assert result.backend == "local"
     assert result.skipped is False
+
+
+def test_fails_closed_without_docker_by_default(monkeypatch) -> None:
+    """With the sandbox enabled but no Docker and no explicit local opt-in,
+    the runner must refuse to execute on the host."""
+    monkeypatch.setenv("AUTODEV_ENABLE_SANDBOX", "1")
+    monkeypatch.delenv("AUTODEV_SANDBOX_ALLOW_LOCAL", raising=False)
+
+    with patch("shutil.which", return_value=None), patch("subprocess.run") as mock_run:
+        runner = SandboxRunner(allowed_commands=["python", "python3"])
+        result = runner.run(_job(["python", "-c", "print('nope')"]))
+
+    assert result.skipped is True
+    assert result.backend == "unavailable"
+    mock_run.assert_not_called()
