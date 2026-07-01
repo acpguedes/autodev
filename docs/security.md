@@ -1,0 +1,105 @@
+# Security
+
+This document records the security posture of AutoDev Architect, the hardening
+applied to the control plane and execution paths, and the environment variables
+that gate sensitive behavior. It reflects a review of the backend API,
+validation sandbox, patch engine, LLM client, infrastructure, CI, and frontend.
+
+## Threat model
+
+AutoDev is a self-hostable AI software-engineering platform. Its highest-value
+assets are:
+
+- the **LLM API key** (stored in `autodev.config.json` / environment);
+- the **host filesystem** the backend can read (repository intelligence,
+  symbol extraction) and write (patch engine);
+- **command execution** through the validation sandbox.
+
+The default deployment is local-first and zero-config. Anything that broadens
+exposure (opening the bind address, enabling execution, disabling TLS) is
+explicit opt-in via an environment variable.
+
+## Authentication
+
+API authentication is **opt-in** and off by default so local development stays
+frictionless.
+
+- Set `AUTODEV_API_TOKEN` to require `Authorization: Bearer <token>` on every
+  request. `/health` and the OpenAPI/docs endpoints stay public so health
+  checks keep working.
+- Token comparison uses `hmac.compare_digest` (constant-time).
+- Implemented as a global FastAPI dependency in `backend/api/security.py`, so it
+  covers auto-discovered plugin routers as well as the core endpoints.
+
+When exposing the API beyond loopback, **always** set a strong token.
+
+## Secret handling
+
+- `GET /config` and `PUT /config` **redact** the stored LLM API key, returning
+  the placeholder `***` instead of the plaintext key. The `env_file_example`
+  block is redacted the same way. (`/features` already redacted its copy.)
+- When a client `PUT`s the `***` placeholder back unchanged, the previously
+  stored key is preserved rather than being overwritten.
+- The persisted `autodev.config.json` is written with `0600` permissions so
+  other local users cannot read the key. The file is also git-ignored.
+- The key is never logged.
+
+## Filesystem confinement
+
+- `GET /repository/symbols?path=` resolves the requested path against the
+  configured project root and rejects (`403`) anything that escapes it,
+  preventing arbitrary host file reads (e.g. `/etc/passwd`, `~/.ssh/*`).
+- The patch engine (`backend/patches/engine.py`) already enforces the same
+  `relative_to(root)` guard and is dry-run by default
+  (`AUTODEV_ENABLE_PATCH_APPLY=1` to enable writes).
+
+## Validation sandbox
+
+Command execution is disabled unless `AUTODEV_ENABLE_SANDBOX` is set. When
+enabled:
+
+- Docker is preferred. The container now runs hardened: `--network=none`
+  (override with `AUTODEV_SANDBOX_DOCKER_NETWORK`), non-root `--user`,
+  `--cap-drop=ALL`, `--security-opt=no-new-privileges`, and CPU/memory/pids
+  limits.
+- If Docker is **not** available the runner **fails closed**. Unsandboxed host
+  execution requires the explicit `AUTODEV_SANDBOX_ALLOW_LOCAL=1` opt-in.
+- A command allowlist is enforced (basename of `command[0]`). Note that
+  interpreters on the allowlist (`python`, `npm`) can still run arbitrary code,
+  so the sandbox isolation above — not the allowlist — is the real boundary.
+
+## Network exposure
+
+- `sandbox/run_orchestrator.py` binds `127.0.0.1` by default with autoreload
+  off. Override with `AUTODEV_HOST` / `AUTODEV_PORT` / `UVICORN_RELOAD` — only
+  bind `0.0.0.0` behind a trusted proxy or with `AUTODEV_API_TOKEN` set.
+- CORS origins default to the local Next.js dev server and can be overridden
+  with `AUTODEV_CORS_ORIGINS` (comma-separated). Allowed methods/headers are
+  restricted rather than wildcarded.
+
+## Transport security
+
+- `OPENAI_VERIFY_SSL=false` disables TLS verification for LLM traffic (intended
+  for corporate proxies with self-signed certs). It now logs a loud warning and
+  is documented as **development-only** — disabling it exposes the API key to
+  man-in-the-middle attacks.
+
+## Container / infrastructure
+
+- The backend image runs as a non-root user.
+- `docker-compose.yml` sets `no-new-privileges`, a memory limit, and a pids
+  limit on the backend service and threads `AUTODEV_API_TOKEN` through.
+
+## Known residual risks / follow-ups
+
+- **User-controlled LLM `base_url`**: a client that can write config can
+  redirect LLM traffic (carrying the API key) to an arbitrary host. Mitigated by
+  enabling `AUTODEV_API_TOKEN`; an allowlist of base URLs is a possible
+  follow-up.
+- **Dependency pinning**: `requirements.txt` / `pyproject.toml` use unbounded
+  `>=` constraints with no lockfile. Consider pinning for reproducible,
+  auditable builds.
+- **Base image pinning**: container images use mutable tags
+  (`python:3.11-slim`, `node:20`). Consider pinning by digest.
+- **Frontend security headers**: `next.config.mjs` sets no CSP/HSTS/X-Frame
+  headers. No active vulnerability, but worth adding.

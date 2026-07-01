@@ -17,9 +17,30 @@ from typing import List
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from backend.config import get_runtime_config_service
 from backend.repository.providers import get_provider
 
 router = APIRouter(tags=["repository"])
+
+
+def _resolve_within_project_root(path: str) -> Path:
+    """Resolve *path* and ensure it stays inside the configured project root.
+
+    Prevents an unauthenticated ``?path=`` from reading arbitrary files on the
+    host (e.g. ``/etc/passwd`` or ``~/.ssh/*``).
+    """
+    project_root = Path(
+        get_runtime_config_service().load().repository.project_root
+    ).resolve()
+    candidate = (project_root / Path(path).expanduser()).resolve()
+    try:
+        candidate.relative_to(project_root)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail="Path resolves outside the configured project root.",
+        ) from exc
+    return candidate
 
 
 class SymbolsResponse(BaseModel):
@@ -35,7 +56,7 @@ def extract_symbols(
 ) -> SymbolsResponse:
     """Extract top-level symbols from a source file or raw code snippet."""
     if path is not None:
-        file_path = Path(path).expanduser()
+        file_path = _resolve_within_project_root(path)
         if not file_path.is_file():
             raise HTTPException(status_code=404, detail=f"File not found: {path!r}")
         source = file_path.read_text(encoding="utf-8")

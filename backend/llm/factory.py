@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import httpx
+import logging
 import os
 from functools import lru_cache
 from typing import Any, Iterable, List, Optional
@@ -10,6 +11,8 @@ from typing import Any, Iterable, List, Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "LLMConfigurationError",
@@ -58,7 +61,16 @@ class StubChatModel(BaseChatModel):
 
 def _read_ssl_verify() -> bool:
     raw = os.getenv("OPENAI_VERIFY_SSL", "true").strip().lower()
-    return raw not in {"false", "0", "no"}
+    verify = raw not in {"false", "0", "no"}
+    if not verify:
+        logger.warning(
+            "TLS certificate verification is DISABLED for LLM traffic "
+            "(OPENAI_VERIFY_SSL=%s). This exposes the API key to "
+            "man-in-the-middle attacks and must only be used in trusted "
+            "development environments.",
+            raw,
+        )
+    return verify
 
 
 def _read_temperature(value: str | None, default: float = 0.2) -> float:

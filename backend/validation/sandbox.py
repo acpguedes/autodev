@@ -3,8 +3,10 @@
 Execution is disabled by default.  Set the environment variable
 ``AUTODEV_ENABLE_SANDBOX`` (any non-empty value) to enable it.
 
-When enabled the runner prefers Docker if ``docker`` is on PATH; falls back to
-a local ``subprocess.run`` call otherwise.
+When enabled the runner prefers Docker if ``docker`` is on PATH and runs the
+command in a hardened container (no network, non-root, dropped capabilities,
+resource caps). If Docker is unavailable it fails closed unless the operator
+opts in to unsandboxed host execution via ``AUTODEV_SANDBOX_ALLOW_LOCAL``.
 
 Optional command allowlist
 --------------------------
@@ -78,17 +80,48 @@ class SandboxRunner:
 
         if shutil.which("docker"):
             return self._run_docker(job)
-        return self._run_local(job)
+
+        # Fail closed: without Docker there is no isolation. Running directly on
+        # the host is only permitted when the operator explicitly opts in via
+        # AUTODEV_SANDBOX_ALLOW_LOCAL, so the default deployment cannot be
+        # tricked into unsandboxed host execution.
+        if os.environ.get("AUTODEV_SANDBOX_ALLOW_LOCAL"):
+            return self._run_local(job)
+
+        return ValidationResult(
+            job_id=job.job_id,
+            returncode=1,
+            stdout="",
+            stderr=(
+                "Docker is not available and unsandboxed local execution is "
+                "disabled. Install Docker or set AUTODEV_SANDBOX_ALLOW_LOCAL=1 "
+                "to run commands directly on the host (unsafe)."
+            ),
+            backend="unavailable",
+            skipped=True,
+        )
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
     def _run_docker(self, job: ValidationJob) -> ValidationResult:
+        # Harden the container: no network by default, non-root, dropped
+        # capabilities, no privilege escalation, and resource caps. Network can
+        # be re-enabled per-deployment via AUTODEV_SANDBOX_DOCKER_NETWORK for
+        # workloads that legitimately need it (e.g. dependency installs).
+        network = os.environ.get("AUTODEV_SANDBOX_DOCKER_NETWORK", "none")
         docker_cmd = [
             "docker",
             "run",
             "--rm",
+            f"--network={network}",
+            "--user=65534:65534",
+            "--cap-drop=ALL",
+            "--security-opt=no-new-privileges",
+            "--pids-limit=256",
+            "--memory=512m",
+            "--cpus=1",
             "-w",
             "/workspace",
             _DOCKER_IMAGE,

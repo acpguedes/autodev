@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import os
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -16,6 +17,8 @@ load_dotenv(override=True)
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+
+from backend.api.security import require_api_token
 
 from backend.config import (
     RuntimeConfig,
@@ -178,17 +181,33 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="AutoDev Orchestrator", version="0.3.0", lifespan=lifespan)
+app = FastAPI(
+    title="AutoDev Orchestrator",
+    version="0.3.0",
+    lifespan=lifespan,
+    # Global gate — a no-op unless AUTODEV_API_TOKEN is configured.
+    dependencies=[Depends(require_api_token)],
+)
+
+
+def _cors_allowed_origins() -> List[str]:
+    """Resolve CORS origins, allowing deployment-time override.
+
+    Defaults to the local Next.js dev server. Set ``AUTODEV_CORS_ORIGINS`` to a
+    comma-separated list to override for other deployments.
+    """
+    raw = os.getenv("AUTODEV_CORS_ORIGINS", "").strip()
+    if raw:
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return ["http://localhost:3000", "http://127.0.0.1:3000"]
+
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-    ],
+    allow_origins=_cors_allowed_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 try:
@@ -207,7 +226,7 @@ def healthcheck() -> Dict[str, str]:
 def get_runtime_config(
     config_service: RuntimeConfigService = Depends(get_runtime_config_service),
 ) -> RuntimeConfigResponse:
-    document = config_service.load_document()
+    document = config_service.load_document(redact_secrets=True)
     return RuntimeConfigResponse(config=document.config, instructions=document.instructions)
 
 
@@ -221,7 +240,7 @@ def update_runtime_config(
     get_chat_model.cache_clear()
     get_orchestrator.cache_clear()
     get_repository_intelligence.cache_clear()
-    document = config_service.load_document()
+    document = config_service.load_document(redact_secrets=True)
     return RuntimeConfigResponse(config=document.config, instructions=document.instructions)
 
 

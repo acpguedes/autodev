@@ -9,10 +9,16 @@ services:
       DATABASE_URL: sqlite:////data/autodev.db
       LLM_PROVIDER: stub
       UVICORN_RELOAD: "false"
+      # Set a token to require Authorization: Bearer <token> on the API.
+      AUTODEV_API_TOKEN: "${AUTODEV_API_TOKEN:-}"
     ports:
       - "8000:8000"
     volumes:
       - autodev_data:/data
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    pids_limit: 512
 
   frontend:
     image: node:20
