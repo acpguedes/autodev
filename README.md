@@ -196,6 +196,7 @@ For rationale, read [`docs/architecture/stack_decisions.md`](docs/architecture/s
 
 ### Implementation status
 - [`docs/feature_matrix.md`](docs/feature_matrix.md): per-feature status (`default / optional / stub / planned`) covering persistence, LLM providers, agents, patches, validation, and more.
+- [`CHANGELOG.md`](CHANGELOG.md): tagged releases, starting with `v1.0.0` — the v1 architecture baseline cut immediately before the v2.0 platform rewrite.
 
 ### Developer workflow
 - [`Makefile`](Makefile): install, test, lint, build, run, and clean targets.
