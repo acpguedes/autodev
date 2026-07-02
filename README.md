@@ -182,6 +182,7 @@ For rationale, read [`docs/architecture/stack_decisions.md`](docs/architecture/s
 - [`docs/roadmap.md`](docs/roadmap.md): phased roadmap from MVP to production platform.
 
 ### Architecture
+- [`docs/architecture/v2_platform_reference.md`](docs/architecture/v2_platform_reference.md): **v2.0 platform reference** — full design of the customizable/extensible platform (plugins, agents, flows, reasoning, routing/selection/evaluation, skills, UI/UX) with a staged roadmap governed by functional/non-functional criteria and DoR/DoD.
 - [`docs/architecture/initial_architecture.md`](docs/architecture/initial_architecture.md): original early decisions for historical context.
 - [`docs/architecture/target_architecture.md`](docs/architecture/target_architecture.md): target production architecture.
 - [`docs/architecture/stack_decisions.md`](docs/architecture/stack_decisions.md): chosen stack and technical tradeoffs.
