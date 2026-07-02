@@ -1,0 +1,122 @@
+# flow.yaml — declarative, versioned graph of nodes that orchestrates agents/skills/tools/humans.
+# Executed by the Orchestration Engine (checkpointing, retries, human-in-the-loop).
+#
+# Source: docs/architecture/v2_platform_reference.md, Appendix (C) "Definição de Fluxo".
+schemaVersion: "1"
+
+id: "autodev/flow-feature-delivery"  # namespace/name in kebab-case
+version: "1.0.0"                     # flow SemVer
+name: "Feature Delivery"
+description: "Plan -> code -> apply patch -> validate -> human review -> evaluate."
+hostApi: ">=2.0 <3.0"
+
+# Triggers that start the flow. Emit run.* events on the Event Bus.
+triggers:
+  - type: "message"                  # message | webhook | cron | event
+  - type: "event"
+    on: "flow.run.requested"         # domain.entity.action, past tense
+
+# Typed run input (persisted in the Run's durable state).
+input:
+  schemaVersion: "1"
+  type: object
+  required: ["task", "repoRef"]
+  properties:
+    task:    { type: string }
+    repoRef: { type: string }
+
+# Defaults applied to all nodes (overridable per node).
+defaults:
+  retries:
+    maxAttempts: 3                   # total attempt count
+    backoff: "exponential"           # fixed | exponential
+    initialDelaySec: 2
+  timeoutSec: 120                    # timeout per node activation (Step)
+
+# Flow nodes. Each node becomes a Step in the run.
+nodes:
+  - id: "plan"                       # agent-type node
+    type: "agent"
+    ref: "autodev/agent-planner@>=1.0 <2.0"  # ref with SemVer range
+    input:
+      task: "{{ flow.input.task }}"  # binding to flow state (template)
+
+  - id: "code"
+    type: "agent"
+    ref: "autodev/agent-coder@2.1.0"
+    timeoutSec: 300                  # overrides the default timeout
+    retries: { maxAttempts: 2, backoff: "exponential", initialDelaySec: 5 }
+
+  - id: "apply-and-validate"         # skill-type node (deterministic)
+    type: "skill"
+    ref: "autodev/skill-apply-patch@>=1.0 <2.0"
+    input:
+      patch: "{{ nodes.code.output.patch }}"
+
+  - id: "quality-gate"               # conditional node: evaluates state and branches
+    type: "conditional"
+    # The conditional edges below (in `edges`) govern the transition.
+
+  - id: "human-review"               # human-in-the-loop node: pauses awaiting a decision
+    type: "human"
+    prompt: "Review the patch and Validation Gate results. Approve merge?"
+    form:                            # schema of the human decision/edit
+      schemaVersion: "1"
+      type: object
+      required: ["decision"]
+      properties:
+        decision: { type: string, enum: ["approve", "reject", "request-changes"] }
+        notes:    { type: string }
+    timeoutSec: 86400                # human SLA: 24h; on expiry, follows the `on: timeout` edge
+    onTimeout: "escalate"            # edge label followed if the human does not respond
+
+  - id: "evaluate"                   # skill node that invokes the Evaluation Service
+    type: "skill"
+    ref: "autodev/skill-run-eval@>=1.0 <2.0"
+
+  - id: "escalate"
+    type: "skill"
+    ref: "autodev/skill-notify@>=1.0 <2.0"
+
+# Edges: transitions between nodes. Can be unconditional or conditional
+# (governed by an expression/predicate over flow state).
+edges:
+  - from: "plan"
+    to: "code"
+  - from: "code"
+    to: "apply-and-validate"
+  - from: "apply-and-validate"
+    to: "quality-gate"
+
+  # Conditional edges leaving the conditional node:
+  - from: "quality-gate"
+    to: "human-review"
+    when: "{{ nodes['apply-and-validate'].output.testsPassed == true }}"
+  - from: "quality-gate"
+    to: "code"                       # rework loop if the Validation Gate fails
+    when: "{{ nodes['apply-and-validate'].output.testsPassed == false }}"
+
+  # Edges leaving the human node (by decision and by timeout):
+  - from: "human-review"
+    to: "evaluate"
+    when: "{{ nodes['human-review'].output.decision == 'approve' }}"
+  - from: "human-review"
+    to: "code"
+    when: "{{ nodes['human-review'].output.decision == 'request-changes' }}"
+  - from: "human-review"
+    to: "escalate"
+    on: "timeout"                    # edge taken when the human SLA expires
+
+# Budgets for the whole run (fail closed when exceeded; complements per-agent budgets).
+budgets:
+  maxCostUsd: 10.0
+  maxWallClockSec: 3600
+  maxTokens: 2000000
+
+# Final consolidated run output.
+output:
+  schemaVersion: "1"
+  type: object
+  properties:
+    merged:     { type: boolean }
+    evalScore:  { type: number }
