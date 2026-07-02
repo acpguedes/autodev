@@ -7,7 +7,7 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-02 (directory created; no epic work started yet)
+**Last updated:** 2026-07-02 (`v1.0.0` baseline tagged; no epic work started yet)
 
 ## How to update this file
 
@@ -34,6 +34,13 @@ each `phases/E<n>_*.md` file's "v1 precursor / starting point" section for how t
 map onto the v2 epics. None of them satisfy the v2 contracts (manifests, `hostApi`
 versioning, permissions, contract tests) as written, so they are starting points, not
 completed epic work.
+
+The v1 codebase is now frozen at the `v1.0.0` git tag (see `CHANGELOG.md`) as the
+baseline these epics build on and are measured against — `make check` (lint, mypy,
+backend/frontend tests, frontend build) is green and `docs/feature_matrix.md` is
+current as of that tag. **Next action: pick up `E0-S1` (declarative, typed
+configuration layer)** — read `phases/e0_foundations_hardening.md` and
+`agent_guide.md` §1-2 before starting.
 
 ## Epic status
 
@@ -109,3 +116,12 @@ Add a dated entry every time a story/epic/wave status changes.
   process/manifest templates, agent guide, decisions log, documentation-rebuild
   playbook). No implementation work started. Baseline captured from
   `docs/architecture/v2_platform_reference.md` and `docs/feature_matrix.md`.
+- **2026-07-02** — Packaged and tagged the v1 architecture as `v1.0.0` (see
+  `CHANGELOG.md`) immediately before starting Alpha-wave work: validated `make check`
+  end-to-end, fixed two mypy failures uncovered by that pass, refreshed
+  `docs/feature_matrix.md` (several rows had gone stale — typed settings module,
+  `GET /features`, env-driven CORS, CI coverage/smoke gates, the Tailwind/shadcn
+  foundation — plus a new Security section and reclassifying tree-sitter extraction
+  as a `stub`), and synced the status banner in
+  `docs/architecture/weaknesses_and_strategies.md`. No epic/story status changes from
+  this pass — it is a baseline/documentation checkpoint, not epic work.

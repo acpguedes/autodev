@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any, Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,7 +18,7 @@ from backend.repository import RepositoryIntelligenceService
 
 
 @pytest.fixture()
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     database_path = tmp_path / "sec-test.db"
     config_path = tmp_path / "autodev.config.json"
     repository_root = tmp_path / "workspace"
@@ -111,7 +112,7 @@ def test_put_with_redaction_placeholder_preserves_stored_key(
     client: TestClient, tmp_path: Path, monkeypatch
 ) -> None:
     monkeypatch.delenv("AUTODEV_API_TOKEN", raising=False)
-    base = {
+    base: dict[str, Any] = {
         "version": 1,
         "llm": {
             "provider": "openai",

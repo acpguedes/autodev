@@ -62,7 +62,7 @@ For the full list of environment flags see `backend/` source and
 |---------|--------|-------|
 | File inventory + ranked candidate retrieval | `default` | `GET /repository/context`; `backend/repository/intelligence.py` |
 | Lexical symbol extraction (regex) | `default` | `backend/repository/providers/lexical_provider.py`; `GET /repository/symbols` with `AUTODEV_REPO_PROVIDER` unset |
-| tree-sitter symbol extraction | `optional` | `AUTODEV_REPO_PROVIDER=treesitter`; requires `pip install tree-sitter`; `backend/repository/providers/treesitter_provider.py` — falls back to lexical when package absent |
+| tree-sitter symbol extraction | `stub` | `AUTODEV_REPO_PROVIDER=treesitter`; `backend/repository/providers/treesitter_provider.py` always delegates to the lexical provider — real AST-based extraction has not been implemented yet, present or absent the `tree_sitter` package |
 | Semantic retrieval (pgvector embeddings) | `planned` | Requires PostgreSQL + pgvector; tracked in roadmap release 0.3 |
 | Full-text search (PostgreSQL FTS / ripgrep) | `planned` | Tracked in roadmap release 0.3 |
 | Repository metadata graph (symbols, edges) | `planned` | Tracked in roadmap releases 0.3 / 1.0 |
@@ -85,7 +85,7 @@ For the full list of environment flags see `backend/` source and
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Validation sandbox (Docker or local subprocess) | `optional` | `AUTODEV_ENABLE_SANDBOX=1`; `backend/validation/sandbox.py`; prefers Docker, falls back to subprocess; command allowlist enforced |
+| Validation sandbox (Docker or local subprocess) | `optional` | `AUTODEV_ENABLE_SANDBOX=1`; `backend/validation/sandbox.py`; prefers hardened Docker (`--network=none`, non-root, `--cap-drop=ALL`, `--security-opt=no-new-privileges`, CPU/memory/pids limits); fails closed without Docker unless `AUTODEV_SANDBOX_ALLOW_LOCAL=1` is also set; command allowlist enforced by basename |
 | Executable validation pipeline | `optional` | Same flag as above; returns real exit codes and captured output when enabled |
 | Validation skipped by default | `default` | Returns `skipped=true, backend="disabled"` unless flag is set |
 | Failure classification / rework loop | `planned` | Tracked as Unit 29 in `mvp_refactor_plan.md` |
@@ -119,10 +119,24 @@ For the full list of environment flags see `backend/` source and
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Runtime config (`autodev.config.json`) | `default` | `backend/config/runtime.py`; `GET /config`, `PUT /config`; configures LLM provider and project root |
-| Feature-flags endpoint (`GET /features`) | `planned` | Tracked as Unit 4 in `mvp_refactor_plan.md`; env flags currently scattered via `os.getenv` |
-| Centralized typed settings module | `planned` | Tracked as Unit 4; `pydantic-settings` not yet introduced |
-| CORS configuration (env-driven) | `planned` | CORS origins are hardcoded to `localhost:3000` in `backend/api/main.py`; env override tracked as Unit 5 |
+| Runtime config (`autodev.config.json`) | `default` | `backend/config/runtime.py`; `GET /config`, `PUT /config`; configures LLM provider and project root; API key redacted in responses, file persisted with `0600` permissions (see Security) |
+| Feature-flags endpoint (`GET /features`) | `default` | `backend/api/routers/features.py`; returns `Settings.model_dump()` with `openai_api_key` redacted — **partial**: only exposes generic `Settings` fields, not the ~12 `AUTODEV_*` flags that actually gate behavior (sandbox, patch-apply, dynamic-orch, job-backend, repo-provider, cors-origins, api-token, ...), which stay invisible, scattered `os.getenv` reads; the three `feature_*` booleans in `Settings` are hardcoded `True` and unread elsewhere |
+| Centralized typed settings module | `default` | `backend/config/settings.py` (`pydantic-settings`, LRU-cached `get_settings()`) — **partial**: wired into only `database_url` and the `/features` endpoint; the ~12 `AUTODEV_*` flags above have not been migrated off scattered `os.getenv`/`os.environ` calls; full migration + local/prod profiles tracked under v2 epic E0-S1 |
+| CORS configuration (env-driven) | `default` | `backend/api/main.py` `_cors_allowed_origins()`; override with `AUTODEV_CORS_ORIGINS` (comma-separated); defaults to `localhost:3000` / `127.0.0.1:3000`; methods/headers restricted (`GET,POST,PUT,OPTIONS` / `Authorization,Content-Type`) rather than wildcarded |
+
+---
+
+## Security
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Bearer-token API authentication | `optional` | `AUTODEV_API_TOKEN`; `backend/api/security.py` global FastAPI dependency; no-op when unset (open by default for local dev); constant-time `hmac.compare_digest`; `/health`, `/docs`, `/redoc`, `/openapi.json` stay public even when a token is configured |
+| Secret redaction (`/config`, `/features`) | `default` | `GET`/`PUT /config` redact the stored LLM API key to `***` (`backend/config/runtime.py`); re-submitting `***` preserves the previously stored key; `/features` separately redacts `openai_api_key` |
+| `autodev.config.json` file permissions | `default` | `RuntimeConfigService.save()` chmods the config file to `0600` after every write (best-effort) |
+| Filesystem path confinement (`/repository/symbols`) | `default` | `backend/api/routers/repo_symbols.py` resolves `?path=` against the configured project root and returns `403` on traversal outside it; the patch engine enforces the same guard |
+| Sandbox hardening + fail-closed execution | `optional` | See Validation / Sandbox below; same `AUTODEV_ENABLE_SANDBOX` / `AUTODEV_SANDBOX_ALLOW_LOCAL` flags |
+
+See [`docs/security.md`](security.md) for the full threat model and residual risks (no dependency lockfile, mutable base image tags, no frontend CSP/HSTS headers).
 
 ---
 
@@ -159,13 +173,13 @@ For the full list of environment flags see `backend/` source and
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Next.js 14 App Router UI | `default` | Six pages: `/` (chat), `/config`, `/agents`, `/plans`, `/skills`, `/patches` |
-| Dark-theme only (pure CSS) | `default` | `frontend/styles/globals.css`; ~695 lines; no component library |
-| Tailwind CSS + shadcn/ui | `planned` | Tracked as Unit 11–18 in `mvp_refactor_plan.md` |
+| Dark-theme only (pure CSS) | `default` | `frontend/styles/globals.css` (757 lines); `ThemeProvider` forces `defaultTheme="dark"`, `enableSystem={false}`, no toggle UI |
+| Tailwind CSS + shadcn/ui | `default` | Unit 11 landed: `tailwind.config.ts`, `ThemeProvider.tsx` (next-themes) wraps every page, one shadcn primitive (`components/ui/button.tsx`) — **foundation/shell only**: zero pages or components import Tailwind utility classes or `Button` yet; all six pages still render via bespoke `globals.css` classNames. Adoption tracked as Units 12–18 |
 | Plan approval UI (interactive) | `planned` | Current plan page is read-only; tracked as Unit 15 |
 | Diff viewer | `planned` | Current patch view is a plain `<pre>`; tracked as Unit 14 |
 | Run history panel | `planned` | `RunHistoryPanel.tsx` exists but is never rendered; tracked as Unit 16 |
 | Observability dashboard | `planned` | Tracked as Unit 17 |
-| Light/dark toggle | `planned` | Tracked as Unit 11 |
+| Light/dark toggle | `planned` | Unit 11 wired `ThemeProvider` (next-themes) but hardcoded `defaultTheme="dark"`, `enableSystem={false}`; no toggle component exists yet |
 
 ---
 
@@ -175,9 +189,9 @@ For the full list of environment flags see `backend/` source and
 |---------|--------|-------|
 | Backend CI (ruff + mypy + pytest) | `default` | GitHub Actions; `make check-backend` |
 | Frontend CI (lint + typecheck + vitest) | `default` | GitHub Actions; `make check-frontend` |
-| Coverage gates | `planned` | Tracked as Unit 22 in `mvp_refactor_plan.md` |
-| Smoke e2e job (boot + health check) | `planned` | Tracked as Unit 22 |
-| Infra / docs validation | `planned` | Tracked as Unit 22 |
+| Coverage gates | `default` | `.github/workflows/ci-backend.yml`; `pytest --cov=backend --cov-fail-under=60` |
+| Smoke e2e job (boot + health check) | `default` | `.github/workflows/ci-backend.yml` `smoke-e2e` job: boots `uvicorn`, polls `/health`, asserts HTTP 200 |
+| Infra / docs validation | `planned` | No docker-compose/terraform lint or docs-link-check step in CI yet; tracked as Unit 22 |
 
 ---
 
@@ -191,4 +205,6 @@ For the full list of environment flags see `backend/` source and
 
 ---
 
-*Last updated: 2026-06-22. Reflects Unit 1 (Repository pattern + SQLite adapter) as the most recently merged unit.*
+*Last updated: 2026-07-02, as part of packaging the v1 architecture baseline (tag `v1.0.0`) ahead
+of the v2.0 platform rewrite. Reflects Units 1, 4, 11, and 22, plus the control-plane security
+hardening pass, as the most recently merged work — see `git log` for the full history.*
