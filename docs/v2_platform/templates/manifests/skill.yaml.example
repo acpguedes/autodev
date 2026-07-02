@@ -1,0 +1,52 @@
+# skill.yaml — descriptor of a Skill (reusable function, deterministic or LLM-assisted,
+# invocable by agents/flows). Registered in the Skill Registry.
+#
+# Source: docs/architecture/v2_platform_reference.md, Appendix (D) "Manifesto de Skill".
+schemaVersion: "1"
+
+id: "autodev/skill-run-tests"      # namespace/name in kebab-case
+version: "1.2.0"                   # skill SemVer
+name: "Run Tests"
+description: "Runs the project's test suite in the Execution Sandbox and returns the result."
+hostApi: ">=2.0 <3.0"
+
+kind: "deterministic"              # deterministic | llm-assisted
+entrypoint: "autodev_skills.testing:run_tests"  # module:function (Python) or export (TS)
+
+# Typed IO contract (validated on invocation).
+io:
+  input:
+    schemaVersion: "1"
+    type: object
+    required: ["repoRef"]
+    properties:
+      repoRef: { type: string }
+      command: { type: string, default: "pytest -q" }
+  output:
+    schemaVersion: "1"
+    type: object
+    required: ["testsPassed", "report"]
+    properties:
+      testsPassed: { type: boolean }
+      report:      { type: string, description: "Test output/artifact (Artifact Store reference)." }
+
+# Explicit permissions (least privilege; denied by default).
+permissions:
+  filesystem: "read"               # none | read | read-write
+  network: "none"                  # no network by default in the sandbox
+  sandbox: true                    # requires the Execution Sandbox (hardened Docker)
+
+# Dependencies on other skills (resolved via SemVer in the Skill Registry).
+dependencies:
+  - id: "autodev/skill-checkout"
+    version: ">=1.0 <2.0"
+
+# Triggers that expose/suggest the skill (composition in flows and by agents).
+triggers:
+  - "code.after-edit"
+  - "flow.validation"
+
+# Skill execution budgets.
+budgets:
+  timeoutSec: 300
+  maxCostUsd: 0.10                 # relevant when kind == llm-assisted

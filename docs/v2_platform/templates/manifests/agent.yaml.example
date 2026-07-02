@@ -1,0 +1,73 @@
+# agent.yaml — declarative descriptor of an Agent (autonomous unit that receives a task,
+# reasons, and produces output per contract). Registered in the Agent Registry.
+#
+# Source: docs/architecture/v2_platform_reference.md, Appendix (B) "Manifesto de Agent".
+schemaVersion: "1"
+
+id: "autodev/agent-coder"          # namespace/name in kebab-case
+version: "2.1.0"                   # agent SemVer
+name: "Coder Agent"
+description: "Generates and edits code, producing patches as unified diffs."
+hostApi: ">=2.0 <3.0"              # compatibility range with the core
+
+# Capabilities: skill contracts the Selector uses to match tasks to agents.
+capabilities:
+  - "code.generate"
+  - "code.edit"
+  - "patch.produce"
+
+# Typed IO contract (validated on Agent Runtime input and output).
+io:
+  input:
+    schemaVersion: "1"
+    type: object
+    required: ["task", "repoRef"]
+    properties:
+      task:    { type: string, description: "Coding task description." }
+      repoRef: { type: string, description: "Repository/branch reference." }
+      context: { type: array, items: { type: string }, description: "Context snippets (RAG)." }
+  output:
+    schemaVersion: "1"
+    type: object
+    required: ["patch", "summary"]
+    properties:
+      patch:   { type: string, description: "Unified diff to be applied by the Validation Gate." }
+      summary: { type: string, description: "Human-readable change summary (kept separate from control metadata)." }
+
+# Default Reasoning Strategy and pluggable alternatives (Reasoning Engine).
+reasoning:
+  strategy: "plan-and-execute"     # react | plan-and-execute | reflection | debate
+  allowedStrategies: ["react", "reflection"]
+
+# Low-level tools and reusable skills the agent may invoke.
+# The Agent Runtime mediates all access and enforces least privilege.
+tools:
+  - "fs.read"
+  - "fs.write"
+  - "sandbox.run"                  # execution in the Execution Sandbox (no network by default)
+skills:
+  - id: "autodev/skill-run-tests"
+    version: ">=1.0 <2.0"
+
+# Model preferences (the Selector decides the final model by policy/cost).
+model:
+  preferred: "anthropic/claude-opus-4-8"
+  fallbacks: ["anthropic/claude-sonnet-4-5"]
+
+# Budgets enforced by the Agent Runtime (fail closed when exceeded).
+budgets:
+  maxTokens: 200000
+  maxCostUsd: 1.50
+  maxWallClockSec: 300
+  maxSteps: 25
+
+# Guardrails: checks that block/correct out-of-policy output.
+guardrails:
+  - type: "output-schema"          # validates output against io.output
+  - type: "path-guard"             # patches restricted to allowed paths + dry-run
+    allow: ["src/**", "tests/**"]
+  - type: "secret-scan"            # blocks secret leakage
+
+# Declarative policies associated with this agent (selection/routing/budget).
+policies:
+  - "autodev/policy-cost-aware"

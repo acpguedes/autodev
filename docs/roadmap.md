@@ -4,6 +4,16 @@
 
 AutoDev Architect becomes an open source, self-hostable, patch-first GenAI engineering platform with planning, repository intelligence, validation, approvals, and observability.
 
+> **v2.0 platform rewrite.** Everything below tracks incremental, additive work on the
+> current (v1) linear-pipeline architecture. A larger, separate initiative —
+> inverting the pipeline into a plugin core with agents/flows/reasoning/routing/skills
+> as versioned extension points — is specified in
+> [`docs/architecture/v2_platform_reference.md`](architecture/v2_platform_reference.md)
+> and tracked in [`docs/v2_platform/`](v2_platform/README.md). See
+> [`docs/v2_platform/progress.md`](v2_platform/progress.md) for its current status and
+> [`docs/v2_platform/documentation_rebuild.md`](v2_platform/documentation_rebuild.md)
+> for how the two roadmaps get reconciled as v2 epics land.
+
 ---
 
 ## Delivered — additive multi-agent / skills / plans platform buildout

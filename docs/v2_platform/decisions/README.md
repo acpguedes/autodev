@@ -1,0 +1,43 @@
+# Decisions Log (ADR / RFC)
+
+This directory is the decision log for the v2 platform refactor. It holds the two
+complementary instruments defined in `docs/architecture/v2_platform_reference.md` §19.3:
+
+- **RFC (Request for Comments)** — a formal proposal opened for discussion **before**
+  a change that affects contracts, extension points, `/v2` APIs, events, the data
+  model, or security policy. Lifecycle: `Draft -> Under review -> Accepted/Rejected ->
+  Implemented`.
+- **ADR (Architecture Decision Record)** — an immutable record of a decision and its
+  context/consequences, written once the decision is fixed (often when an RFC is
+  accepted). ADRs are numbered sequentially and are never rewritten: a later change is
+  recorded as a new ADR that **supersedes** the previous one.
+
+## When each is required
+
+Per §19.1/§19.3 of the reference doc: any change that causes a **MAJOR** version bump
+of a platform artifact (core, plugin, agent, skill, flow, eval, API, event) requires an
+accepted RFC and a corresponding ADR. A **MINOR** change to a public contract does not
+require an RFC but should still record a lightweight ADR. **PATCH** changes require
+neither.
+
+## How to add one
+
+1. Copy `docs/v2_platform/templates/rfc_template.md` (if a proposal needs discussion
+   first) or `docs/v2_platform/templates/adr_template.md` (if the decision is already
+   made) into this directory.
+2. Name the file `RFC-<NNN>-<slug>.md` or `ADR-<NNN>-<slug>.md`, using the next
+   sequential number for that instrument (check the index table below).
+3. Reference the epic(s) (`E<n>`) and story/stories (`E<n>-S<m>`) it relates to.
+4. Add a row to the index table below in the same PR.
+5. If an ADR supersedes a previous one, set the old ADR's `Status` to `Superseded by
+   ADR-<NNN>` — do not delete or rewrite it.
+
+## Index
+
+| ID | Title | Status | Epic | Date |
+| --- | --- | --- | --- | --- |
+| _(none yet)_ | | | | |
+
+> Update this table whenever an ADR or RFC is added or changes status. This index,
+> together with `docs/v2_platform/progress.md`, is the fastest way to see which
+> architectural decisions already exist before starting new work.

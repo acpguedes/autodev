@@ -1,0 +1,75 @@
+# eval.yaml — evaluation spec (dataset + rubric + metrics) executable offline/online
+# by the Evaluation Service. Feeds the routing feedback loop (E5).
+#
+# Source: docs/architecture/v2_platform_reference.md, Appendix (E) "Especificação de Eval".
+schemaVersion: "1"
+
+id: "autodev/eval-coder-quality"   # namespace/name in kebab-case
+version: "1.0.0"                   # eval SemVer
+name: "Coder Agent Quality"
+description: "Evaluates the quality of patches produced by agent-coder."
+hostApi: ">=2.0 <3.0"
+
+# Evaluated target (agent/flow/skill + version range).
+target:
+  type: "agent"                    # agent | flow | skill | router
+  ref: "autodev/agent-coder@>=2.0 <3.0"
+
+# Case dataset. May be inline or reference an artifact in the Artifact Store.
+dataset:
+  source: "artifact://evals/coder/v1/cases.jsonl"  # or `inline:` for embedded cases
+  format: "jsonl"
+  splits:
+    - name: "regression"
+      count: 120
+    - name: "smoke"
+      count: 15
+  # Each case must contain { input, expected? } consistent with the target's io.
+
+# Rubric: scoring criteria (deterministic and/or LLM-as-judge).
+rubric:
+  criteria:
+    - id: "compiles"
+      description: "The patch applies and the project compiles/imports without error."
+      type: "deterministic"        # verified via skill/sandbox
+      weight: 0.3
+    - id: "tests-pass"
+      description: "The test suite passes after applying the patch."
+      type: "deterministic"
+      weight: 0.4
+    - id: "code-quality"
+      description: "Readability, cohesion, and adherence to the repo's style."
+      type: "llm-judge"            # LLM-as-judge, 0..1 scale
+      judgeModel: "anthropic/claude-opus-4-8"
+      weight: 0.3
+
+# Aggregated metrics emitted at the end of the run.
+metrics:
+  - name: "pass_rate"              # fraction of cases with score >= the case's threshold
+    aggregation: "mean"
+  - name: "weighted_score"        # rubric-weighted average
+    aggregation: "mean"
+  - name: "p95_cost_usd"
+    aggregation: "p95"
+  - name: "p95_latency_ms"
+    aggregation: "p95"
+
+# Thresholds: quality gates. Failure => blocks promotion/routing (CI quality gate).
+thresholds:
+  - metric: "pass_rate"
+    op: ">="
+    value: 0.90
+  - metric: "weighted_score"
+    op: ">="
+    value: 0.80
+  - metric: "p95_cost_usd"
+    op: "<="
+    value: 1.50
+
+# Execution: offline (CI) and/or online (real traffic sampling).
+execution:
+  mode: "offline"                  # offline | online | both
+  onlineSampleRate: 0.05           # sampling rate if mode includes online
+  budgets:
+    maxCostUsd: 25.0
+    maxWallClockSec: 1800

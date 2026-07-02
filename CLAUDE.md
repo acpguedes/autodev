@@ -51,3 +51,11 @@ When proposing changes, optimize for:
 ## Documentation expectation
 For any meaningful architecture or behavior change, update documentation in the corresponding files under `docs/` and the project root.
 
+## v2 platform refactor
+The v2.0 platform rewrite (plugin core, agent framework, flow engine, and the rest of
+the E0-E13 roadmap) is specified in `docs/architecture/v2_platform_reference.md` and
+tracked in `docs/v2_platform/` (progress, per-epic phase docs, ADR/RFC log, and
+templates). Read `docs/v2_platform/agent_guide.md` before picking up any `E<n>-S<m>`
+story, and follow `docs/v2_platform/documentation_rebuild.md` when a wave (Alpha/Beta/
+GA) exits — it supersedes ad hoc doc edits for that kind of change.
+

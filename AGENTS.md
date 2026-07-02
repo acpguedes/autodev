@@ -70,6 +70,17 @@ When behavior, architecture, stack choices, or workflow semantics change, update
 - `docs/implementation/*`
 - `docs/roadmap.md`
 
+## v2 platform refactor
+
+The v2.0 platform rewrite — inverting the current fixed pipeline into a plugin core
+with agents/flows/reasoning/routing/skills/context as typed extension points — is
+specified in `docs/architecture/v2_platform_reference.md` and tracked epic-by-epic in
+`docs/v2_platform/` (see `docs/v2_platform/README.md` for an index). Before starting
+work on any `E<n>-S<m>` story, read `docs/v2_platform/agent_guide.md`. When a wave
+(Alpha/Beta/GA) exits, follow `docs/v2_platform/documentation_rebuild.md` to bring the
+rest of this documentation tree back in sync, rather than patching individual files
+ad hoc.
+
 ## Contributor mindset
 
 The project should grow into a serious OSS alternative in the AI software engineering space. Favor maintainability, transparency, and deployability over short-lived demos.

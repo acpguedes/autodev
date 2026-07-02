@@ -1,0 +1,62 @@
+# plugin.yaml — descriptor of a Plugin (versioned package that inhabits extension points).
+# Loaded, isolated, and managed by the Plugin Host.
+#
+# Source: docs/architecture/v2_platform_reference.md, Appendix (A) "Manifesto de Plugin".
+# Verbatim from the canonical pt-BR reference; comments translated for this working copy.
+schemaVersion: "1"                 # schema version of this manifest (independent of the plugin's own version)
+
+id: "acme/plugin-jira"             # canonical id: namespace/name in kebab-case (required, unique)
+version: "1.4.2"                   # plugin SemVer MAJOR.MINOR.PATCH
+name: "Jira Integration"           # human-readable name (UI/Marketplace)
+description: "Synchronizes issues and sub-tasks with Jira Cloud."
+publisher: "Acme Corp"             # publisher/author; shown in the Marketplace
+license: "Apache-2.0"              # OSS-first license (SPDX id)
+homepage: "https://github.com/acme/plugin-jira"
+
+# Compatibility range with the core API (stable SemVer contracts).
+# The Plugin Host refuses to load if the core version is outside this range.
+hostApi: ">=2.0 <3.0"
+
+# Extension points this plugin implements.
+# Each entry matches a typed interface exposed by the core.
+extensionPoints:
+  - type: "context-provider"       # e.g. context-provider | reasoning-strategy | evaluator | router | selector | ui-panel
+    entrypoint: "acme_plugin_jira.providers:JiraContextProvider"  # module:class (Python) or export (TS)
+  - type: "ui-panel"
+    entrypoint: "acme_plugin_jira.ui:JiraPanel"
+
+# Declarative assets shipped by the plugin and registered in the registries.
+provides:
+  agents:  ["agent.yaml"]          # packaged Agent Manifests (Agent Registry)
+  skills:  ["skills/jira-sync.yaml"]  # Skill Manifests (Skill Registry)
+  flows:   ["flows/triage.yaml"]   # published declarative flows
+
+# Explicit permissions (least privilege). No entry = denied by default.
+permissions:
+  network:                         # network egress requires an explicit allowlist
+    egress:
+      - "https://*.atlassian.net"
+  secrets:                         # secrets the plugin may read (injected by the vault, never hardcoded)
+    - "JIRA_API_TOKEN"
+  filesystem: "none"               # none | read | read-write (sandbox scope)
+  events:                          # Event Bus events it may publish/subscribe to
+    publish: ["plugin.jira.synced"]      # domain.entity.action, past tense
+    subscribe: ["run.step.completed"]
+
+# Dependencies between plugins (resolved by the Plugin Host via SemVer).
+dependencies:
+  - id: "autodev/plugin-core-http"
+    version: ">=1.0 <2.0"
+
+# Operator-facing configuration (validated by JSON Schema at install time).
+configSchema:
+  type: object
+  required: ["baseUrl", "projectKey"]
+  properties:
+    baseUrl:    { type: string, format: uri }
+    projectKey: { type: string, pattern: "^[A-Z][A-Z0-9]+$" }
+
+# Publication/signing metadata (integrity verification in the Marketplace).
+signing:
+  algorithm: "cosign"              # signature verified at install time (E13)
+  publicKeyRef: "acme/keys/plugin-jira.pub"
