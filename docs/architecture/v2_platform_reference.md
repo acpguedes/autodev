@@ -497,7 +497,7 @@ mesmo significado) em todas as demais seções deste documento, na base de códi
 nos manifests e na documentação. A coluna **Componente/Onde se aplica** indica o
 subsistema, plano ou artefato em que o termo é primariamente materializado,
 conectando o vocabulário à arquitetura canônica (Seção 4) e aos épicos E0–E13
-(Seção 5).
+(Seção 18).
 
 ### 3.1 Glossário canônico
 
@@ -4454,7 +4454,7 @@ Em conjunto, a pirâmide de testes, os contract tests obrigatórios, os agent/pr
 
 ## 18. Roadmap de Entrega por Etapas
 
-Esta seção define **como** cada etapa (Épico) e subetapa (História → Subtarefa) do AutoDev Architect v2.0 é governada: pelo **fluxo de trabalho com portas (gates)**, por **Definition of Ready (DoR)** e **Definition of Done (DoD)** globais, por um **template padrão de História** e por **critérios funcionais e não-funcionais** explícitos. As metas não-funcionais aqui referenciadas herdam integralmente os alvos da Seção 6 do brief (latência p95 < 300 ms, SLO 99.9%, cobertura de núcleo ≥ 85%, WCAG 2.2 AA, RPO ≤ 5 min / RTO ≤ 30 min, budgets que falham fechado). O sequenciamento fino (dependências entre histórias, ondas e cronograma) é detalhado na parte **18b**; aqui fica a **visão de fases** e o **detalhamento dos épicos E0–E6**.
+Esta seção define **como** cada etapa (Épico) e subetapa (História → Subtarefa) do AutoDev Architect v2.0 é governada: pelo **fluxo de trabalho com portas (gates)**, por **Definition of Ready (DoR)** e **Definition of Done (DoD)** globais, por um **template padrão de História** e por **critérios funcionais e não-funcionais** explícitos. As metas não-funcionais aqui referenciadas herdam integralmente os alvos da Seção 6 do brief (latência p95 < 300 ms, SLO 99.9%, cobertura de núcleo ≥ 85%, WCAG 2.2 AA, RPO ≤ 5 min / RTO ≤ 30 min, budgets que falham fechado). O sequenciamento fino (dependências entre histórias, ondas e cronograma) é detalhado nas subseções **18.7–18.9**; aqui fica a **visão de fases** e o **detalhamento dos épicos E0–E6**.
 
 > Convenções de identificação (brief §7): Épico `E<n>`, História `E<n>-S<m>`, Subtarefa `E<n>-S<m>-T<k>`. Ids de plugin/agent/skill em `namespace/nome` kebab-case; versões em SemVer; eventos em `dominio.entidade.acao` no passado.
 
@@ -4566,7 +4566,7 @@ dod_especifico:                # além do DoD global (18.3)
   - <critério de conclusão específico>
 
 dependencias:
-  - <E<n>-S<m> ou componente>   # ver 18b para sequenciamento
+  - <E<n>-S<m> ou componente>   # ver 18.8 para sequenciamento
 
 riscos:
   - risco: <descrição>
@@ -4589,7 +4589,7 @@ subtarefas:
 
 ### 18.5 Fases e ondas de release (visão geral)
 
-Três marcos de maturidade. O sequenciamento detalhado (quais histórias em cada onda, gráfico de dependências) está em **18b**.
+Três marcos de maturidade. O sequenciamento detalhado (quais histórias em cada onda, gráfico de dependências) está nas subseções **18.7–18.9**.
 
 | Marco | Objetivo do marco | Épicos-âncora | Portão de saída do marco | Estabilidade dos contratos |
 | --- | --- | --- | --- | --- |
@@ -5053,7 +5053,7 @@ Para cada épico: objetivo, resultado-chave e 3–6 histórias; cada história c
 
 ---
 
-*O sequenciamento detalhado entre estas histórias, as dependências cruzadas com E7–E13 e a alocação por ondas alpha/beta/GA são desenvolvidos na parte **18b — Sequenciamento e Ondas de Release**.*
+*O sequenciamento detalhado entre estas histórias, as dependências cruzadas com E7–E13 e a alocação por ondas alpha/beta/GA são desenvolvidos nas subseções **18.7–18.9 (Épicos E7–E13, Sequenciamento e Ondas de Release)**.*
 
 
 ---
@@ -5213,7 +5213,7 @@ seguem o brief canônico (§3–§7).
 | **Objetivo** | Expor a **Control Plane API /v2** (FastAPI) com sessões, fluxos, runs, config e registries; streaming de runs; **catálogo de eventos** no Event Bus; e interoperabilidade **MCP**. |
 | **Resultado-chave** | Clientes (UI, CLI, agents externos) operam a plataforma por contratos `/v2` versionados (`schemaVersion`), recebem streaming de runs em < 1 s e integram ferramentas via MCP. |
 
-##### História E9-S1 — Control Plane API /v2
+##### História E9-S1 — Control Plane API /v2 (núcleo)
 
 - **E9-S1-T1**: Endpoints REST versionados de sessões, fluxos, runs, config e registries.
 - **E9-S1-T2**: Modelos tipados com `schemaVersion` e validação de entrada/saída.
@@ -5226,7 +5226,7 @@ seguem o brief canônico (§3–§7).
 | **CNF** | p95 de leitura < 300 ms; retrocompatibilidade dentro de MAJOR; RBAC obrigatório em produção. |
 | **DoR** | E8 (persistência) e contratos de recursos aprovados; convenções §7 seguidas. |
 | **DoD** | Contract tests verdes; OpenAPI publicado; docs de API `/v2`. |
-| **Dependências** | E8, E11 |
+| **Dependências** | E8 (RBAC não é pré-requisito do núcleo; a autorização por papéis é integrada depois via E11-S2 — ver 18.9) |
 
 ##### História E9-S2 — Streaming de runs
 
@@ -5547,7 +5547,7 @@ A tabela abaixo consolida as dependências de nível de épico (predecessores di
 | **E6 — Skills v2** | E1 | Habilita E9-S4 (MCP) e composição em fluxos. |
 | **E7 — Context & RAG** | E1, E2, E8, E5 | Fornece contexto a agents/fluxos. |
 | **E8 — Persistência & Dados** | E0 | Base durável para E3, E9, E11; integra E11 (backup). |
-| **E9 — APIs, Eventos & MCP** | E8, E11 (RBAC), E2, E6 | Habilita E10; expõe streaming/eventos/MCP. |
+| **E9 — APIs, Eventos & MCP** | E8, E2, E6 | Habilita E10; expõe streaming/eventos/MCP. RBAC é integrado depois via E11-S2 (não cria dependência circular com E11). |
 | **E10 — UI/UX & Design System** | E3, E9, E1 | Consome API/streaming; editor de fluxos; painéis plugáveis. |
 | **E11 — Observabilidade, Segurança & Multi-tenant** | E0, E8, E9-S1, E4 | Governa acesso, tenants, quotas/budgets; integra backups. |
 | **E12 — Qualidade & Evals** | E0, E1–E6, E5 | Gates de CI; contract tests; agent evals. |
@@ -5585,7 +5585,7 @@ graph TD
     E8 --> E7
     E5 --> E7
     E8 --> E9
-    E11 --> E9
+    E9 --> E11
     E2 --> E9
     E6 --> E9
     E3 --> E10
@@ -5638,12 +5638,15 @@ O sequenciamento é entregue em três ondas cumulativas. Cada onda tem **conteú
 
 ### 18.10 Governança por DoR/DoD e critérios ao longo do fluxo de estados
 
-Os **DoR** e **DoD** e os **Critérios Funcionais/Não-Funcionais** de cada história
-não são documentação passiva: eles **governam** cada etapa (épico), história e
-subtarefa e se conectam diretamente ao **fluxo de estados** definido na parte 18a.
+Os **DoR** e **DoD** e os **Critérios Funcionais/Não-Funcionais** são definidos no
+**nível de História** (a unidade de valor com critérios de aceite); as
+**Subtarefas** herdam esses critérios e aplicam os templates do Apêndice
+(checklists H/I e template J). Eles não são documentação passiva: **governam**
+cada etapa (épico) e história e se conectam diretamente ao **fluxo de estados**
+definido na subseção 18.1.
 Uma história só transiciona de *Backlog/Pronta* para *Em Execução* quando seu
 **DoR** está integralmente satisfeito (dependências resolvidas, contratos e ADRs
-aprovados, ambientes provisionados) — o mesmo gate que a parte 18a descreve para
+aprovados, ambientes provisionados) — o mesmo gate que a subseção 18.1 descreve para
 entrada de trabalho. Durante a execução, os **Critérios Funcionais** definem o
 comportamento a ser demonstrado e os **Critérios Não-Funcionais** (as metas
 globais de §6: latência, disponibilidade, cobertura ≥ 85%, WCAG 2.2 AA, budgets
@@ -5651,10 +5654,10 @@ que falham fechado, RPO/RTO, isolamento por tenant) são medidos e observados vi
 traços/métricas emitidos por cada `step`. A transição para *Concluída* exige o
 **DoD** verde — incluindo os **Validation Gates** e **contract tests** de E12,
 que bloqueiam qualquer merge/publicação fora de política. Assim, o mesmo par
-DoR→(CF+CNF)→DoD que rege uma subtarefa individual escala, por composição, para
-governar a história, o épico e finalmente os **critérios de saída de cada onda de
+DoR→(CF+CNF)→DoD que rege uma história escala, por composição, para
+governar o épico e finalmente os **critérios de saída de cada onda de
 release**, mantendo o encadeamento auditável e reproduzível descrito no fluxo de
-estados de 18a — do menor `Step` até o gate de GA.
+estados da subseção 18.1 — do menor `Step` até o gate de GA.
 
 
 ---
