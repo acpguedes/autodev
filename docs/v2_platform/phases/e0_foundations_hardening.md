@@ -1,7 +1,7 @@
 # E0 — Foundations & Hardening
 
 **Wave:** Alpha (complete within Alpha; everything else depends on it)
-**Status:** In progress · **Stories:** 4/7 complete
+**Status:** In progress · **Stories:** 5/7 complete
 **Depends on:** — (root of the dependency graph)
 **Enables:** E1, E2 (transitively E3-E13); direct consumers: E1-S1/S2/S3 (E0-S1), E3-S2 (E0-S2), E11-S1 (E0-S3), E1-S3 (E0-S4)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E0), §18.8, §18.9
@@ -150,7 +150,7 @@ Subtasks:
 | E0-S1 | Done | Container-first Makefile targets for build/up/shell/test/check/down/logs and docs/testing.md workflow |
 | E0-S2 | Done | Typed Settings profiles, JSON/env precedence, fail-fast `config validate`, `docs/config.md` |
 | E0-S3 | Done | PostgreSQL store/plan-store implementation, production Compose service, ADR-001, backup/restore runbook |
-| E0-S4 | Not started | — |
+| E0-S4 | Done | OpenTelemetry request and run-step spans, error metrics, non-PII span attributes, observability runbook |
 | E0-S5 | Not started | — |
 | E0-S6 | Not started | — |
 

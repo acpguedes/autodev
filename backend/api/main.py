@@ -27,6 +27,7 @@ from backend.config import (
 )
 from backend.config.settings import get_settings
 from backend.llm.factory import get_chat_model
+from backend.observability.tracing import configure_tracing
 from backend.orchestrator.service import (
     AgentExecution,
     ExecutionPlan,
@@ -176,7 +177,7 @@ def get_repository_intelligence() -> RepositoryIntelligenceService:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    get_settings()
+    configure_tracing(get_settings())
     get_runtime_config_service().apply_to_environment()
     get_orchestrator()
     yield

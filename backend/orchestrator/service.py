@@ -35,6 +35,7 @@ from backend.agents import (
     ValidatorAgent,
 )
 from backend.persistence import DurableStore, get_store
+from backend.observability.tracing import trace_run_step
 
 
 @dataclass(slots=True)
@@ -232,6 +233,7 @@ class AgentGraphState(TypedDict):
     results: List[AgentExecution]
     steps: List[RunStep]
     current_state: str
+    run_id: str
 
 
 class OrchestratorService:
@@ -314,6 +316,7 @@ class OrchestratorService:
             "results": [],
             "steps": [],
             "current_state": "starting",
+            "run_id": run_id,
         }
         final_state = self._graph.invoke(initial_state)
         final_context = final_state["context"]
@@ -705,7 +708,13 @@ class OrchestratorService:
             agent = self._require_agent(agent_name)
             context = state["context"]
             started_at = self._timestamp()
-            agent_result: AgentResult = agent.run(context)
+            with trace_run_step(
+                run_id=state["run_id"],
+                step_id=agent_name,
+                agent=agent.name,
+                status=StepStatus.COMPLETED,
+            ):
+                agent_result: AgentResult = agent.run(context)
             execution = AgentExecution(
                 agent=agent.name,
                 content=agent_result.content,
@@ -731,6 +740,7 @@ class OrchestratorService:
                 "results": next_results,
                 "steps": next_steps,
                 "current_state": "completed",
+                "run_id": state["run_id"],
             }
 
         return node

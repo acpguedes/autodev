@@ -38,7 +38,7 @@ completed epic work.
 The v1 codebase is now frozen at the `v1.0.0` git tag (see `CHANGELOG.md`) as the
 baseline these epics build on and are measured against — `make check` (lint, mypy,
 backend/frontend tests, frontend build) is green and `docs/feature_matrix.md` is
-current as of that tag. **Next action: pick up `E0-S4` (observability baseline)** —
+current as of that tag. **Next action: pick up `E0-S5` (security baseline)** —
 read `phases/e0_foundations_hardening.md` and
 `agent_guide.md` §1-2 before starting.
 
@@ -46,7 +46,7 @@ read `phases/e0_foundations_hardening.md` and
 
 | Epic | Name | Wave | Status | Stories | Depends on | Doc |
 | --- | --- | --- | --- | --- | --- | --- |
-| E0 | Foundations & Hardening | Alpha | In progress | 4/7 | — | [phases/e0_foundations_hardening.md](phases/e0_foundations_hardening.md) |
+| E0 | Foundations & Hardening | Alpha | In progress | 5/7 | — | [phases/e0_foundations_hardening.md](phases/e0_foundations_hardening.md) |
 | E1 | Plugin Core & SDK | Alpha | Not started | 0/5 | E0 | [phases/e1_plugin_core_sdk.md](phases/e1_plugin_core_sdk.md) |
 | E2 | Agent Framework | Alpha | Not started | 0/5 | E0, E1 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
 | E3 | Orchestration Engine | Alpha/Beta | Not started | 0/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
@@ -61,7 +61,7 @@ read `phases/e0_foundations_hardening.md` and
 | E12 | Quality & Evals | Alpha/Beta | Not started | 0/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 
-Total: **4/64 stories complete** across 14 epics.
+Total: **5/64 stories complete** across 14 epics.
 
 ## Wave exit gates (§18.9 of the reference doc)
 
@@ -137,3 +137,6 @@ Add a dated entry every time a story/epic/wave status changes.
 - **2026-07-03** — Completed E0-S3: implemented PostgreSQL-backed sessions/runs/
   messages/plans, selected it from `DATABASE_URL`, added local Compose Postgres
   support, recorded ADR-001, and published the backup/restore runbook.
+- **2026-07-03** — Completed E0-S4: added configured OpenTelemetry request and
+  run-step spans, non-PII trace correlation attributes, Prometheus 5xx counters,
+  and `docs/ops/observability.md`.
