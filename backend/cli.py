@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
+import sys
 from typing import Sequence
 
 from backend.config import RuntimeConfigService
+from backend.config.settings import get_settings, reset_settings_cache
 from backend.llm.factory import get_chat_model
 from backend.orchestrator.service import OrchestratorService
 from backend.persistence.database import reset_store_cache
@@ -43,6 +46,14 @@ def build_parser() -> argparse.ArgumentParser:
     config_set_parser.add_argument("--repository-label")
     config_set_parser.add_argument("--default-goal")
     config_set_parser.set_defaults(handler=_handle_config_set)
+
+    config_validate_parser = config_subparsers.add_parser(
+        "validate",
+        help="Valida a configuração declarativa ativa.",
+    )
+    config_validate_parser.add_argument("--profile", choices=("local", "prod"))
+    config_validate_parser.add_argument("--settings-file")
+    config_validate_parser.set_defaults(handler=_handle_config_validate)
 
     sessions_parser = subparsers.add_parser("sessions", help="Operações de sessão")
     sessions_subparsers = sessions_parser.add_subparsers(dest="sessions_command", required=True)
@@ -146,6 +157,49 @@ def _handle_config_set(args: argparse.Namespace) -> int:
     config_service.apply_to_environment(saved)
     get_chat_model.cache_clear()
     print(json.dumps({"config": saved.model_dump()}, indent=2, ensure_ascii=False))
+    return 0
+
+
+def _handle_config_validate(args: argparse.Namespace) -> int:
+    old_profile = os.environ.get("AUTODEV_PROFILE")
+    old_settings_file = os.environ.get("AUTODEV_SETTINGS_FILE")
+    try:
+        if args.profile is not None:
+            os.environ["AUTODEV_PROFILE"] = args.profile
+        if args.settings_file is not None:
+            os.environ["AUTODEV_SETTINGS_FILE"] = args.settings_file
+        reset_settings_cache()
+        settings = get_settings()
+    except Exception as exc:  # noqa: BLE001
+        print(
+            json.dumps({"status": "error", "error": str(exc)}, ensure_ascii=False),
+            file=sys.stderr,
+        )
+        return 1
+    finally:
+        if old_profile is None:
+            os.environ.pop("AUTODEV_PROFILE", None)
+        else:
+            os.environ["AUTODEV_PROFILE"] = old_profile
+        if old_settings_file is None:
+            os.environ.pop("AUTODEV_SETTINGS_FILE", None)
+        else:
+            os.environ["AUTODEV_SETTINGS_FILE"] = old_settings_file
+        reset_settings_cache()
+
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "profile": settings.autodev_profile,
+                "database_url": settings.database_url,
+                "llm_provider": settings.llm_provider,
+                "storage_backend": settings.storage_backend,
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
     return 0
 
 

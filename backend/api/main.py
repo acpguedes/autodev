@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-import os
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -26,6 +25,7 @@ from backend.config import (
     RuntimeInstructions,
     get_runtime_config_service,
 )
+from backend.config.settings import get_settings
 from backend.llm.factory import get_chat_model
 from backend.orchestrator.service import (
     AgentExecution,
@@ -176,6 +176,7 @@ def get_repository_intelligence() -> RepositoryIntelligenceService:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    get_settings()
     get_runtime_config_service().apply_to_environment()
     get_orchestrator()
     yield
@@ -196,10 +197,7 @@ def _cors_allowed_origins() -> List[str]:
     Defaults to the local Next.js dev server. Set ``AUTODEV_CORS_ORIGINS`` to a
     comma-separated list to override for other deployments.
     """
-    raw = os.getenv("AUTODEV_CORS_ORIGINS", "").strip()
-    if raw:
-        return [origin.strip() for origin in raw.split(",") if origin.strip()]
-    return ["http://localhost:3000", "http://127.0.0.1:3000"]
+    return get_settings().cors_origins()
 
 
 app.add_middleware(

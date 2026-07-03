@@ -57,6 +57,17 @@ def test_cli_can_update_config_for_ollama(capsys: pytest.CaptureFixture[str]) ->
     assert payload["config"]["repository"]["repository_label"] == "CLI Workspace"
 
 
+def test_cli_config_validate_reports_active_profile(capsys: pytest.CaptureFixture[str]) -> None:
+    exit_code = main(["config", "validate", "--profile", "local"])
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert payload["status"] == "ok"
+    assert payload["profile"] == "local"
+
+
 def test_cli_can_create_plan_and_list_sessions(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["plan", "Ship CLI release slice"]) == 0
     plan_payload = json.loads(capsys.readouterr().out)
