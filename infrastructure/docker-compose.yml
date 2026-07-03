@@ -8,6 +8,7 @@ services:
       AUTODEV_PROFILE: local
       DATABASE_URL: sqlite:////data/autodev.db
       LLM_PROVIDER: stub
+      PYTEST_ADDOPTS: -p no:cacheprovider
       UVICORN_RELOAD: "false"
       AUTODEV_CONFIG_PATH: /data/autodev.config.json
       AUTODEV_PROJECT_ROOT: /workspace

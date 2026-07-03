@@ -27,6 +27,7 @@ PYTEST_PATHS := tests backend/tests
 APP          := backend.api.main:app
 HOST         ?= 0.0.0.0
 PORT         ?= 8000
+COMPOSE      ?= docker compose -f infrastructure/docker-compose.yml
 
 # Use one shell per recipe and fail fast.
 .ONESHELL:
@@ -135,19 +136,38 @@ run-frontend: ## Start the Next.js dev server
 	cd $(FRONTEND_DIR) && $(NPM) run dev
 
 # --------------------------------------------------------------------------
-# Docker
+# Container-first E0 workflow
 # --------------------------------------------------------------------------
-.PHONY: docker-up docker-down
+.PHONY: container-build container-up container-shell container-test container-check container-down container-logs docker-up docker-down
 
-docker-up: ## Boot the full stack via Docker Compose
-	@if [ ! -f infrastructure/docker-compose.yml ]; then \
-		echo "WARNING: infrastructure/docker-compose.yml not found — skipping docker-up"; \
-	else \
-		docker compose -f infrastructure/docker-compose.yml up --build; \
-	fi
+container-build: ## Build the backend dev/test container
+	$(COMPOSE) build backend
 
-docker-down: ## Tear down the Docker Compose stack
-	docker compose -f infrastructure/docker-compose.yml down
+container-up: ## Boot the backend container for E0 development
+	$(COMPOSE) up --build backend
+
+container-shell: ## Open a shell inside the backend dev/test container
+	$(COMPOSE) run --rm backend sh
+
+container-test: ## Run backend tests inside the backend container
+	$(COMPOSE) run --rm backend pytest $(PYTEST_PATHS) -q \
+		--cov=backend --cov-report=term-missing --cov-fail-under=60
+
+container-check: ## Run backend lint, typecheck, and tests inside the backend container
+	$(COMPOSE) run --rm backend sh -lc '\
+		ruff check backend tests && \
+		mypy backend && \
+		pytest $(PYTEST_PATHS) -q --cov=backend --cov-report=term-missing --cov-fail-under=60'
+
+container-down: ## Tear down the Docker Compose stack
+	$(COMPOSE) down
+
+container-logs: ## Follow backend container logs
+	$(COMPOSE) logs -f backend
+
+docker-up: container-up ## Alias for container-up
+
+docker-down: container-down ## Alias for container-down
 
 # --------------------------------------------------------------------------
 # CI parity: everything the pipelines run

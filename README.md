@@ -291,17 +291,18 @@ container. The image owns the Python runtime and `.venv`, so the host does not
 need a project virtualenv for E0 validation.
 
 ```bash
-docker compose -f infrastructure/docker-compose.yml up --build backend
-docker compose -f infrastructure/docker-compose.yml exec backend pytest tests backend/tests -q
-docker compose -f infrastructure/docker-compose.yml exec backend python -m backend.cli config show
-docker compose -f infrastructure/docker-compose.yml down
+make container-build   # build the backend dev/test image
+make container-up      # boot FastAPI on http://localhost:8000
+make container-test    # run backend pytest inside the container
+make container-check   # run backend lint + typecheck + tests inside the container
+make container-shell   # open an interactive backend container shell
+make container-down    # stop and remove the Compose stack
 ```
 
 The backend container mounts the source tree paths needed for backend work,
 stores SQLite/config state under the `autodev_data` volume, uses
-`LLM_PROVIDER=stub`, and sets `AUTODEV_PROFILE=local` by default. Use the
-Makefile container targets added by E0 for the canonical workflow once they are
-available.
+`LLM_PROVIDER=stub`, and sets `AUTODEV_PROFILE=local` by default. Inside the
+shell, run CLI commands as `python -m backend.cli ...`.
 
 ### Quickstart with `make`
 

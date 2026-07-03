@@ -10,7 +10,8 @@ WORKDIR /workspace
 COPY backend/requirements.txt /tmp/requirements.txt
 RUN python -m venv /workspace/.venv \
     && /workspace/.venv/bin/pip install --no-cache-dir --upgrade pip \
-    && /workspace/.venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt
+    && /workspace/.venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt \
+    && /workspace/.venv/bin/pip install --no-cache-dir black ruff mypy pytest-cov
 
 COPY backend /workspace/backend
 COPY tests /workspace/tests
