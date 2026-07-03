@@ -20,16 +20,15 @@ DurableStore = SQLiteStore
 
 
 @lru_cache(maxsize=1)
-def get_store() -> SQLiteStore:
+def get_store():
     """Return a cached store keyed off DATABASE_URL.
 
-    Raises ``NotImplementedError`` when the URL is a postgres:// URL (the
-    PostgresStore scaffold is not yet fully implemented).
+    Returns SQLite for local-first URLs and PostgreSQL for production URLs.
     """
     url = get_settings().database_url
     if url.startswith("postgresql://") or url.startswith("postgres://"):
         from backend.persistence.postgres_adapter import PostgresStore  # noqa: PLC0415
-        return PostgresStore(url)  # type: ignore[return-value]  # will raise NIE
+        return PostgresStore(url)
     return SQLiteStore(url)
 
 

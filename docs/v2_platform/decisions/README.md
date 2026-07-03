@@ -36,7 +36,7 @@ neither.
 
 | ID | Title | Status | Epic | Date |
 | --- | --- | --- | --- | --- |
-| _(none yet)_ | | | | |
+| ADR-001 | PostgreSQL as Default Production State Store | Accepted | E0-S3 | 2026-07-03 |
 
 > Update this table whenever an ADR or RFC is added or changes status. This index,
 > together with `docs/v2_platform/progress.md`, is the fastest way to see which
