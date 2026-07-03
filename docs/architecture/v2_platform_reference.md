@@ -4619,12 +4619,34 @@ Para cada épico: objetivo, resultado-chave e 3–6 histórias; cada história c
 #### E0 — Fundações & Hardening
 
 **Objetivo.** Estabelecer a base de segurança, configuração e observabilidade e tornar **PostgreSQL** o padrão de persistência (mantendo SQLite no modo local-first).
-**Resultado-chave.** Um esqueleto de plataforma que sobe local (SQLite + provider stub) e em produção (PostgreSQL + Redis + MinIO) sem mudança de código, já emitindo traços/métricas via OpenTelemetry e com configuração declarativa validada.
+**Resultado-chave.** Um esqueleto de plataforma que sobe local (SQLite + provider stub) e em produção (PostgreSQL + Redis + MinIO) sem mudança de código, executa testes/CLI no container canônico, já emitindo traços/métricas via OpenTelemetry e com configuração declarativa validada.
 
 **Histórias.**
 
-- **E0-S1 — Camada de configuração declarativa e tipada**
-  - Subtarefas: `E0-S1-T1` esquema de config (Pydantic Settings) com perfis local/prod; `E0-S1-T2` carregamento por env/arquivo com precedência; `E0-S1-T3` validação fail-fast + comando `config validate`.
+- **E0-S0 — Runtime containerizado de desenvolvimento/testes**
+  - Subtarefas: `E0-S0-T1` container backend de dev/test com `.venv` dentro do container; `E0-S0-T2` Compose para testes, CLI e estado local SQLite/config; `E0-S0-T3` README e guia v2 com inicialização e uso do container.
+
+  | Critério | Detalhe |
+  | --- | --- |
+  | Funcionais | Testes backend e CLI executam dentro do container backend; `.venv` do host não é pré-requisito para E0; estado local fica isolado em volumes Docker |
+  | Não-Funcionais | Boot local-first usa provider stub e SQLite; sem serviço pago ou dependência externa de cloud |
+  | DoR específico | Dockerfile/Compose e Makefile host existentes inventariados |
+  | DoD específico | README documenta inicialização; docs v2 definem execução em container como baseline de E0 |
+  | Dependências | — (raiz do épico) |
+
+- **E0-S1 — Workflow Makefile container-first**
+  - Subtarefas: `E0-S1-T1` targets canônicos de build/up/shell/test/check/down/logs; `E0-S1-T2` docs apontam agentes/contribuidores para os targets container-first; `E0-S1-T3` targets locais permanecem como conveniência, mas não são o gate canônico de E0.
+
+  | Critério | Detalhe |
+  | --- | --- |
+  | Funcionais | Contribuidor consegue construir, entrar, testar, validar, ver logs e parar o container por Makefile |
+  | Não-Funcionais | Targets são wrappers determinísticos sobre Docker Compose e não criam artefatos versionados |
+  | DoR específico | E0-S0 disponível |
+  | DoD específico | `make help` mostra targets de container; `docs/testing.md` documenta o workflow |
+  | Dependências | E0-S0 |
+
+- **E0-S2 — Camada de configuração declarativa e tipada**
+  - Subtarefas: `E0-S2-T1` esquema de config (Pydantic Settings) com perfis local/prod; `E0-S2-T2` carregamento por env/arquivo com precedência; `E0-S2-T3` validação fail-fast + comando `config validate`.
 
   | Critério | Detalhe |
   | --- | --- |
@@ -4632,10 +4654,10 @@ Para cada épico: objetivo, resultado-chave e 3–6 histórias; cada história c
   | Não-Funcionais | Boot com config válida < 2 s; 100% dos campos com tipo e default seguro; cobertura do módulo ≥ 85% |
   | DoR específico | Inventário de todas as variáveis atuais da v1 levantado |
   | DoD específico | `docs/config.md` publicado; matriz local×prod testada em CI |
-  | Dependências | — (raiz do épico) |
+  | Dependências | E0-S1 |
 
-- **E0-S2 — Migração para PostgreSQL como padrão (State Store)**
-  - Subtarefas: `E0-S2-T1` modelagem inicial (sessões/runs/steps) com Alembic; `E0-S2-T2` abstração de repositório agnóstica (SQLite↔PostgreSQL); `E0-S2-T3` migração/seed reversível.
+- **E0-S3 — Migração para PostgreSQL como padrão (State Store)**
+  - Subtarefas: `E0-S3-T1` modelagem inicial (sessões/runs/steps) com Alembic; `E0-S3-T2` abstração de repositório agnóstica (SQLite↔PostgreSQL); `E0-S3-T3` migração/seed reversível.
 
   | Critério | Detalhe |
   | --- | --- |
@@ -4643,10 +4665,10 @@ Para cada épico: objetivo, resultado-chave e 3–6 histórias; cada história c
   | Não-Funcionais | Migração versionada e reversível; RPO ≤ 5 min / RTO ≤ 30 min documentados; sem downtime em migração aditiva |
   | DoR específico | ADR "PostgreSQL como padrão" aprovado |
   | DoD específico | Runbook de backup/restore em `docs/ops/`; teste de round-trip de migração no CI |
-  | Dependências | E0-S1 |
+  | Dependências | E0-S2 |
 
-- **E0-S3 — Observabilidade base (OpenTelemetry)**
-  - Subtarefas: `E0-S3-T1` tracing de requisição/step; `E0-S3-T2` métricas (contadores/histogramas) e exporter OTLP; `E0-S3-T3` correlação trace↔run↔step.
+- **E0-S4 — Observabilidade base (OpenTelemetry)**
+  - Subtarefas: `E0-S4-T1` tracing de requisição/step; `E0-S4-T2` métricas (contadores/histogramas) e exporter OTLP; `E0-S4-T3` correlação trace↔run↔step.
 
   | Critério | Detalhe |
   | --- | --- |
@@ -4654,10 +4676,10 @@ Para cada épico: objetivo, resultado-chave e 3–6 histórias; cada história c
   | Não-Funcionais | Overhead de tracing < 5% de latência; amostragem configurável; sem PII em spans |
   | DoR específico | Convenção de nomes de spans/métricas definida |
   | DoD específico | Dashboard base publicado; alerta de erro-rate ativo em staging |
-  | Dependências | E0-S1 |
+  | Dependências | E0-S2 |
 
-- **E0-S4 — Baseline de segurança e higiene de segredos**
-  - Subtarefas: `E0-S4-T1` gestão de segredos (env/secret store) sem hardcode; `E0-S4-T2` scanning de segredos e SCA no CI; `E0-S4-T3` cabeçalhos/segurança HTTP default.
+- **E0-S5 — Baseline de segurança e higiene de segredos**
+  - Subtarefas: `E0-S5-T1` gestão de segredos (env/secret store) sem hardcode; `E0-S5-T2` scanning de segredos e SCA no CI; `E0-S5-T3` cabeçalhos/segurança HTTP default.
 
   | Critério | Detalhe |
   | --- | --- |
@@ -4665,10 +4687,10 @@ Para cada épico: objetivo, resultado-chave e 3–6 histórias; cada história c
   | Não-Funcionais | Sandbox padrão sem rede; dependências sem CVE crítico; scanning < 3 min no CI |
   | DoR específico | Política de severidade de CVE acordada |
   | DoD específico | `run_secret_scanning` integrado; `docs/security/baseline.md` |
-  | Dependências | E0-S1 |
+  | Dependências | E0-S2 |
 
-- **E0-S5 — Redis (Cache/Queue/Locks) e MinIO (Artifact Store)**
-  - Subtarefas: `E0-S5-T1` conexão Redis com locks distribuídos; `E0-S5-T2` cliente MinIO/S3 para artefatos; `E0-S5-T3` fallback local sem essas dependências.
+- **E0-S6 — Redis (Cache/Queue/Locks) e MinIO (Artifact Store)**
+  - Subtarefas: `E0-S6-T1` conexão Redis com locks distribuídos; `E0-S6-T2` cliente MinIO/S3 para artefatos; `E0-S6-T3` fallback local sem essas dependências.
 
   | Critério | Detalhe |
   | --- | --- |
@@ -4676,7 +4698,7 @@ Para cada épico: objetivo, resultado-chave e 3–6 histórias; cada história c
   | Não-Funcionais | Lock com timeout/renovação; put/get de artefato p95 < 200 ms local; cobertura ≥ 85% |
   | DoR específico | Convenção de chaves/buckets definida |
   | DoD específico | Teste de contenção de lock; `docs/ops/storage.md` |
-  | Dependências | E0-S1 |
+  | Dependências | E0-S2 |
 
 ---
 

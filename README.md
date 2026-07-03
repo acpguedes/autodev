@@ -284,6 +284,25 @@ This repository is still in the transition from prototype to platform. The new d
 
 ## Running the first durable stage
 
+### Container-first quickstart
+
+E0 v2 platform work runs backend tests and CLI commands inside the backend
+container. The image owns the Python runtime and `.venv`, so the host does not
+need a project virtualenv for E0 validation.
+
+```bash
+docker compose -f infrastructure/docker-compose.yml up --build backend
+docker compose -f infrastructure/docker-compose.yml exec backend pytest tests backend/tests -q
+docker compose -f infrastructure/docker-compose.yml exec backend python -m backend.cli config show
+docker compose -f infrastructure/docker-compose.yml down
+```
+
+The backend container mounts the source tree paths needed for backend work,
+stores SQLite/config state under the `autodev_data` volume, uses
+`LLM_PROVIDER=stub`, and sets `AUTODEV_PROFILE=local` by default. Use the
+Makefile container targets added by E0 for the canonical workflow once they are
+available.
+
 ### Quickstart with `make`
 
 The root [`Makefile`](Makefile) wraps install, test, build, run, and clean

@@ -1,20 +1,29 @@
-version: "3.9"
-
 services:
   backend:
     build:
       context: ..
       dockerfile: infrastructure/docker/backend.Dockerfile
+    working_dir: /workspace
     environment:
+      AUTODEV_PROFILE: local
       DATABASE_URL: sqlite:////data/autodev.db
       LLM_PROVIDER: stub
       UVICORN_RELOAD: "false"
+      AUTODEV_CONFIG_PATH: /data/autodev.config.json
+      AUTODEV_PROJECT_ROOT: /workspace
       # Set a token to require Authorization: Bearer <token> on the API.
       AUTODEV_API_TOKEN: "${AUTODEV_API_TOKEN:-}"
     ports:
       - "8000:8000"
     volumes:
       - autodev_data:/data
+      - ../backend:/workspace/backend
+      - ../tests:/workspace/tests
+      - ../docs:/workspace/docs
+      - ../infrastructure:/workspace/infrastructure
+      - ../sandbox:/workspace/sandbox
+      - ../Makefile:/workspace/Makefile:ro
+      - ../mypy.ini:/workspace/mypy.ini:ro
     security_opt:
       - no-new-privileges:true
     mem_limit: 1g

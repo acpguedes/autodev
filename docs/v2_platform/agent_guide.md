@@ -101,7 +101,13 @@ After a story or epic changes state:
 
 ## 7. Execution environment reminder
 
-This repo's `CLAUDE.md`/`AGENTS.md` require activating the project virtualenv for
-anything Python-related: `source .venv/bin/activate && <command>` (create it first
-with `python -m venv .venv` if missing). That rule applies unchanged to all v2 epic
-work — backend code, tests, migrations, and scripts.
+E0 and later v2 platform work should prefer the containerized backend runtime introduced
+by E0-S0. Run backend tests, CLI commands, migrations, and validation through the
+container targets once available, or directly through Docker Compose before E0-S1 lands.
+The backend image owns the Python runtime and `.venv`, while SQLite/config state lives
+in Docker volumes.
+
+For pre-E0 work or emergency local-only debugging, this repo's `CLAUDE.md`/`AGENTS.md`
+still require activating the project virtualenv for Python-related host commands:
+`source .venv/bin/activate && <command>` (create it first with
+`python -m venv .venv` if missing).
