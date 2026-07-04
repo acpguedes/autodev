@@ -1,7 +1,7 @@
 # E2 — Agent Framework
 
 **Wave:** Alpha
-**Status:** In progress · **Stories:** 1/5 complete
+**Status:** In progress · **Stories:** 2/5 complete
 **Depends on:** E0, E1
 **Enables:** E4, E5, E9-S4
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E2), §18.8, §18.9
@@ -34,7 +34,7 @@ Subtasks:
 | DoD (specific) | Schema in the SDK; `docs/agents/manifest.md` |
 | Dependencies | E1-S1 |
 
-### E2-S2 — Agent Registry (registration/discovery/versioning)
+### E2-S2 — Agent Registry (registration/discovery/versioning) — Done
 
 Subtasks:
 - `E2-S2-T1`: registry persistence.
