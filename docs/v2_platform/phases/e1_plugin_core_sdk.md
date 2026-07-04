@@ -1,7 +1,7 @@
 # E1 — Plugin Core & SDK
 
 **Wave:** Alpha
-**Status:** In progress · **Stories:** 2/5 complete
+**Status:** In progress · **Stories:** 3/5 complete
 **Depends on:** E0
 **Enables:** E2, E4, E6, E7-S4, E10-S4, E13
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E1), §18.8, §18.9
@@ -55,7 +55,7 @@ Subtasks:
 
 ### E1-S3 — Isolation and permissions (least privilege)
 
-**Status:** Not started
+**Status:** Done (2026-07-04)
 
 Subtasks:
 - `E1-S3-T1`: declared permission model (fs/net/exec/secrets).

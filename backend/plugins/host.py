@@ -18,6 +18,7 @@ from packaging.version import Version
 from backend.persistence.database import get_store
 from backend.plugins.events import PluginEvent
 from backend.plugins.manifest import PluginManifest, load_manifest
+from backend.plugins.permissions import PermissionBroker
 from backend.plugins.store import PluginStore
 
 HOST_API_VERSION = "2.0.0"
@@ -52,6 +53,7 @@ class PluginRecord:
 @dataclass
 class ScopedHostApi:
     manifest: PluginManifest
+    broker: PermissionBroker
     extensions: list[dict[str, Any]] = field(default_factory=list)
 
     def register_extension(self, kind: str, extension_id: str, metadata: dict[str, Any] | None = None) -> None:
@@ -59,6 +61,21 @@ class ScopedHostApi:
         if (kind, extension_id) not in declared:
             raise PermissionError(f"extension {kind}:{extension_id} is not declared in plugin.yaml")
         self.extensions.append({"kind": kind, "id": extension_id, "metadata": metadata or {}})
+
+    def read_text(self, path: Path | str) -> str:
+        return self.broker.read_text(path)
+
+    def write_text(self, path: Path | str, content: str) -> None:
+        self.broker.write_text(path, content)
+
+    def open_network(self, host: str, port: int) -> tuple[str, int]:
+        return self.broker.open_network(host, port)
+
+    def run_command(self, command: str) -> str:
+        return self.broker.run_command(command)
+
+    def get_secret(self, name: str) -> str:
+        return self.broker.get_secret(name)
 
 
 class PluginHost:
@@ -68,10 +85,14 @@ class PluginHost:
         store: Any | None = None,
         plugin_dirs: Iterable[Path | str] = (),
         host_api_version: str = HOST_API_VERSION,
+        workspace: Path | str = ".",
+        secrets: dict[str, str] | None = None,
     ) -> None:
         self._store = PluginStore(store or get_store())
         self._plugin_dirs = tuple(Path(path) for path in plugin_dirs)
         self._host_api_version = Version(host_api_version)
+        self._workspace = Path(workspace)
+        self._secrets = secrets or {}
         self._loaded: dict[str, ScopedHostApi] = {}
 
     @property
@@ -112,9 +133,10 @@ class PluginHost:
         if record.state not in {PluginState.INSTALLED, PluginState.DISABLED}:
             raise ValueError(f"Cannot enable plugin {plugin_id} from state {record.state.value}")
         try:
-            register = self._load_entrypoint(record.manifest, record.manifest_path.parent)
-            host_api = ScopedHostApi(record.manifest)
-            register(host_api)
+            host_api = self._build_host_api(record.manifest)
+            with host_api.broker.import_sandbox():
+                register = self._load_entrypoint(record.manifest, record.manifest_path.parent)
+                register(host_api)
         except Exception as exc:  # noqa: BLE001 - failure must be isolated and audited
             return self._transition(record, PluginState.QUARANTINED, reason=str(exc))
         self._loaded[plugin_id] = host_api
@@ -198,6 +220,20 @@ class PluginHost:
 
     def _emit(self, name: str, manifest: PluginManifest, payload: dict[str, Any]) -> None:
         self._store.append_event(PluginEvent(name=name, plugin_id=manifest.id, payload=payload))
+
+    def audit_permission_denial(self, event: PluginEvent) -> None:
+        if event.name != "plugin.permission.denied":
+            raise ValueError("PluginHost only accepts plugin.permission.denied audit events")
+        self._store.append_event(event)
+
+    def _build_host_api(self, manifest: PluginManifest) -> ScopedHostApi:
+        broker = PermissionBroker(
+            manifest,
+            workspace=self._workspace,
+            secrets=self._secrets,
+            event_sink=self.audit_permission_denial,
+        )
+        return ScopedHostApi(manifest=manifest, broker=broker)
 
     def _record_from_row(self, row: dict[str, Any]) -> PluginRecord:
         manifest = load_manifest(row["manifest_path"])

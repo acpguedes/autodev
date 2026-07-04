@@ -13,11 +13,14 @@ from backend.plugins.manifest import (
     validate_manifest,
 )
 from backend.plugins.host import PluginHost, PluginRecord, PluginState
+from backend.plugins.permissions import PermissionBroker, PermissionDenied
 
 __all__ = [
     "EXTENSION_POINT_KINDS",
     "ExtensionPoint",
     "ExtensionPointKind",
+    "PermissionBroker",
+    "PermissionDenied",
     "PluginHost",
     "PluginManifest",
     "PluginRecord",
