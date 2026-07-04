@@ -3,9 +3,8 @@
 ``InProcessJobQueue`` runs jobs in a ``ThreadPoolExecutor`` and keeps results
 in a plain dict — suitable for development and single-process deployments.
 
-``RedisJobQueue`` is a stub selected only when **both**:
-- ``redis`` is importable (optional dependency), **and**
-- the env var ``AUTODEV_JOB_BACKEND`` equals ``"redis"`` (case-insensitive).
+``RedisJobQueue`` persists job state in Redis and runs registered handlers from
+the current worker process.
 
 ``get_queue()`` returns the module-level ``InProcessJobQueue`` singleton by
 default.
@@ -14,11 +13,15 @@ default.
 from __future__ import annotations
 
 import os
+import json
 import threading
+import time
 import uuid
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
+
+from backend.config.settings import Settings
 
 # ---------------------------------------------------------------------------
 # Abstract base
@@ -147,32 +150,139 @@ class InProcessJobQueue(AbstractJobQueue):
 
 
 # ---------------------------------------------------------------------------
-# Redis stub (optional)
+# Redis queue
 # ---------------------------------------------------------------------------
 
 
 class RedisJobQueue(AbstractJobQueue):
-    """Stub implementation backed by Redis.
+    """Redis-backed queue for production-like deployments."""
 
-    Selected only when ``redis`` is importable AND
-    ``AUTODEV_JOB_BACKEND=redis``.  Raises ``RuntimeError`` on any call when
-    the real Redis connection is not configured.
-    """
+    _pending_key = "autodev:jobs:pending"
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        client: Any | None = None,
+        url: str | None = None,
+        start_worker: bool = True,
+        poll_interval: float = 0.1,
+    ) -> None:
+        if client is None:
+            try:
+                import redis as _redis  # type: ignore[import-untyped]
+            except ImportError as exc:
+                raise RuntimeError("redis package is not installed.") from exc
+
+            redis_url = (url or os.environ.get("AUTODEV_REDIS_URL", "")).strip()
+            if not redis_url:
+                raise RuntimeError("AUTODEV_REDIS_URL is required for RedisJobQueue.")
+            client = _redis.from_url(redis_url)
+
+        self._client = client
+        self._client.ping()
+        self._poll_interval = poll_interval
+        if start_worker:
+            thread = threading.Thread(target=self._worker_loop, daemon=True)
+            thread.start()
+
+    def enqueue(self, job_type: str, payload: dict) -> str:
+        job_id = str(uuid.uuid4())
+        self._client.hset(
+            self._job_key(job_id),
+            mapping={
+                "job_id": job_id,
+                "job_type": job_type,
+                "payload": json.dumps(payload),
+                "status": _STATUS_PENDING,
+                "result": "null",
+                "error": "",
+            },
+        )
+        self._client.rpush(self._pending_key, job_id)
+        return job_id
+
+    def get(self, job_id: str) -> dict:
+        record = _decode_hash(self._client.hgetall(self._job_key(job_id)))
+        if not record:
+            return {
+                "job_id": job_id,
+                "job_type": "unknown",
+                "status": _STATUS_ERROR,
+                "result": None,
+                "error": f"Unknown job_id: {job_id!r}",
+            }
+        return {
+            "job_id": record["job_id"],
+            "job_type": record["job_type"],
+            "status": record["status"],
+            "result": json.loads(record.get("result") or "null"),
+            "error": record.get("error") or None,
+        }
+
+    def run_pending_once(self) -> bool:
+        raw_job_id = self._client.lpop(self._pending_key)
+        if raw_job_id is None:
+            return False
+        job_id = _decode_value(raw_job_id)
+        self._run_redis_job(job_id)
+        return True
+
+    def _worker_loop(self) -> None:
+        while True:
+            ran_job = self.run_pending_once()
+            if not ran_job:
+                time.sleep(self._poll_interval)
+
+    def _run_redis_job(self, job_id: str) -> None:
+        key = self._job_key(job_id)
+        record = _decode_hash(self._client.hgetall(key))
+        if not record:
+            return
+
+        self._client.hset(key, mapping={"status": _STATUS_RUNNING})
+        handler = _HANDLERS.get(record["job_type"])
+        if handler is None:
+            self._client.hset(
+                key,
+                mapping={
+                    "status": _STATUS_ERROR,
+                    "error": f"No handler registered for job_type {record['job_type']!r}.",
+                },
+            )
+            return
+
         try:
-            import redis as _redis  # type: ignore[import-untyped]
-        except ImportError as exc:
-            raise RuntimeError("redis package is not installed.") from exc
+            result = handler(json.loads(record.get("payload") or "{}"))
+            self._client.hset(
+                key,
+                mapping={
+                    "status": _STATUS_DONE,
+                    "result": json.dumps(result),
+                    "error": "",
+                },
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._client.hset(
+                key,
+                mapping={
+                    "status": _STATUS_ERROR,
+                    "result": "null",
+                    "error": str(exc),
+                },
+            )
 
-        url = os.environ.get("AUTODEV_REDIS_URL", "redis://localhost:6379/0")
-        self._client = _redis.from_url(url)
+    def _job_key(self, job_id: str) -> str:
+        return f"autodev:jobs:{job_id}"
 
-    def enqueue(self, job_type: str, payload: dict) -> str:  # pragma: no cover
-        raise NotImplementedError("RedisJobQueue.enqueue is a stub.")
 
-    def get(self, job_id: str) -> dict:  # pragma: no cover
-        raise NotImplementedError("RedisJobQueue.get is a stub.")
+def _decode_value(value: Any) -> str:
+    if isinstance(value, bytes):
+        return value.decode()
+    return str(value)
+
+
+def _decode_hash(record: dict[Any, Any]) -> dict[str, str]:
+    return {_decode_value(key): _decode_value(value) for key, value in record.items()}
 
 
 # ---------------------------------------------------------------------------
@@ -183,7 +293,7 @@ _queue_singleton: AbstractJobQueue | None = None
 _queue_lock = threading.Lock()
 
 
-def get_queue() -> AbstractJobQueue:
+def get_queue(settings: Settings | None = None) -> AbstractJobQueue:
     """Return the active job queue (singleton).
 
     Returns :class:`RedisJobQueue` only when ``redis`` is importable **and**
@@ -196,15 +306,15 @@ def get_queue() -> AbstractJobQueue:
         if _queue_singleton is not None:
             return _queue_singleton
 
-        want_redis = (
-            os.environ.get("AUTODEV_JOB_BACKEND", "").strip().lower() == "redis"
-        )
+        if settings is None:
+            want_redis = os.environ.get("AUTODEV_JOB_BACKEND", "").strip().lower() == "redis"
+            redis_url = os.environ.get("AUTODEV_REDIS_URL", "")
+        else:
+            want_redis = settings.autodev_job_backend == "redis"
+            redis_url = settings.autodev_redis_url
         if want_redis:
-            try:
-                _queue_singleton = RedisJobQueue()
-                return _queue_singleton
-            except (RuntimeError, ImportError):
-                pass
+            _queue_singleton = RedisJobQueue(url=redis_url)
+            return _queue_singleton
 
         _queue_singleton = InProcessJobQueue()
         return _queue_singleton

@@ -1,7 +1,7 @@
 # E0 — Foundations & Hardening
 
 **Wave:** Alpha (complete within Alpha; everything else depends on it)
-**Status:** In progress · **Stories:** 5/7 complete
+**Status:** Done · **Stories:** 7/7 complete
 **Depends on:** — (root of the dependency graph)
 **Enables:** E1, E2 (transitively E3-E13); direct consumers: E1-S1/S2/S3 (E0-S1), E3-S2 (E0-S2), E11-S1 (E0-S3), E1-S3 (E0-S4)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E0), §18.8, §18.9
@@ -152,12 +152,12 @@ Subtasks:
 | E0-S3 | Done | PostgreSQL store/plan-store implementation, production Compose service, ADR-001, backup/restore runbook |
 | E0-S4 | Done | OpenTelemetry request and run-step spans, error metrics, non-PII span attributes, observability runbook |
 | E0-S5 | Done | Secret scanner integrated with Makefile/CI, Trivy critical-CVE gate, default HTTP security headers, security baseline doc |
-| E0-S6 | Not started | — |
+| E0-S6 | Done | Redis-backed queue/cache/locks with timeout/renewal, local fallbacks, local/MinIO artifact stores, prod-like Compose Redis/MinIO services, `docs/ops/storage.md` |
 
 ## Epic exit checklist
 
-- [ ] All 7 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
+- [x] All 7 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
       story-specific DoD above.
-- [ ] Contract tests green for the config/observability surfaces this epic introduces.
-- [ ] `docs/v2_platform/progress.md` updated.
-- [ ] Alpha wave exit criteria this epic contributes to (§18.9) satisfied.
+- [x] Contract tests green for the config/observability/storage surfaces this epic introduces.
+- [x] `docs/v2_platform/progress.md` updated.
+- [x] Alpha wave exit criteria this epic contributes to (§18.9) satisfied.

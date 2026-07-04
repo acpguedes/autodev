@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import cast
 
 from backend.api.security_headers import SecurityHeadersMiddleware
 from backend.config.settings import reset_settings_cache
@@ -26,9 +27,10 @@ def _middleware_headers() -> dict[str, str]:
     middleware = SecurityHeadersMiddleware(app)
     asyncio.run(middleware({"type": "http", "method": "GET", "path": "/health"}, receive, send))
     start = next(message for message in messages if message["type"] == "http.response.start")
+    raw_headers = cast(list[tuple[bytes, bytes]], start["headers"])
     return {
         key.decode("latin1"): value.decode("latin1")
-        for key, value in start["headers"]  # type: ignore[index]
+        for key, value in raw_headers
     }
 
 

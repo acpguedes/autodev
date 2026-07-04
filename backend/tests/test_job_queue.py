@@ -19,6 +19,7 @@ from fastapi.testclient import TestClient
 from backend.api.main import app as main_app
 from backend.jobs.queue import (
     InProcessJobQueue,
+    RedisJobQueue,
     _reset_queue_singleton,
     get_queue,
 )
@@ -84,6 +85,48 @@ def test_inprocess_initial_status_is_pending_or_running_or_done() -> None:
     job_id = q.enqueue("echo", {})
     rec = q.get(job_id)
     assert rec["status"] in {"pending", "running", "done", "error"}
+
+
+class _FakeRedisQueueClient:
+    def __init__(self) -> None:
+        self.hashes: dict[str, dict[str, str]] = {}
+        self.queues: dict[str, list[str]] = {}
+
+    def ping(self) -> bool:
+        return True
+
+    def hset(self, key: str, mapping: dict[str, str]) -> int:
+        self.hashes.setdefault(key, {}).update(mapping)
+        return len(mapping)
+
+    def hgetall(self, key: str) -> dict[str, str]:
+        return dict(self.hashes.get(key, {}))
+
+    def rpush(self, key: str, value: str) -> int:
+        self.queues.setdefault(key, []).append(value)
+        return len(self.queues[key])
+
+    def lpop(self, key: str) -> str | None:
+        values = self.queues.setdefault(key, [])
+        if not values:
+            return None
+        return values.pop(0)
+
+
+def test_redis_queue_persists_pending_job_and_runs_registered_handler() -> None:
+    client = _FakeRedisQueueClient()
+    queue = RedisJobQueue(client=client, start_worker=False)
+
+    job_id = queue.enqueue("echo", {"msg": "redis"})
+
+    assert client.queues["autodev:jobs:pending"] == [job_id]
+    assert queue.get(job_id)["status"] == "pending"
+
+    assert queue.run_pending_once() is True
+    record = queue.get(job_id)
+
+    assert record["status"] == "done"
+    assert record["result"] == {"echoed": {"msg": "redis"}}
 
 
 # ---------------------------------------------------------------------------

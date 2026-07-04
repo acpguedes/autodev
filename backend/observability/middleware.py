@@ -16,12 +16,12 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
+from backend.observability.tracing import get_tracer
+
 if TYPE_CHECKING:
     from fastapi import FastAPI
 
 logger = logging.getLogger(__name__)
-
-from backend.observability.tracing import get_tracer
 
 
 # ---------------------------------------------------------------------------

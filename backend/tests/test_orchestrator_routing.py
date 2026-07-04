@@ -75,6 +75,7 @@ def test_supervisor_policy_advances() -> None:
         "results": [],
         "steps": [],
         "current_state": "start",
+        "run_id": "test-run",
     }
     policy = SupervisorPolicy(order=["navigator", "validator", "responder"])
     assert policy.next_agent(dummy_state) == "navigator"
@@ -89,6 +90,7 @@ def test_supervisor_policy_reset() -> None:
         "results": [],
         "steps": [],
         "current_state": "start",
+        "run_id": "test-run",
     }
     policy = SupervisorPolicy(order=["navigator"])
     policy.next_agent(dummy_state)
@@ -145,6 +147,7 @@ def test_build_graph_for_validation_only_runs() -> None:
         "results": [],
         "steps": [],
         "current_state": "start",
+        "run_id": "test-run",
     }
 
     final_state: AgentGraphState = graph.invoke(initial_state)

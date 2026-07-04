@@ -70,7 +70,7 @@ Current implementation status:
 - durable sessions, runs, and message history are now persisted via a SQLite-backed bootstrap store;
 - API endpoints expose session and run history for inspection;
 - explicit run typing and persisted run-step history now provide the first workflow-state slice;
-- PostgreSQL and Redis-backed async execution remain pending in the next slices.
+- PostgreSQL and Redis-backed async execution are available in the v2 foundation profiles; deeper run-state semantics continue in later slices.
 
 Success criteria:
 - sessions survive restart

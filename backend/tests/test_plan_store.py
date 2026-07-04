@@ -11,6 +11,8 @@ Assertions:
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from backend.plans.models import ApprovalRecord, PlanDocument, PlanStatus
@@ -34,7 +36,7 @@ def store(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_upsert_and_get_round_trip(store: PlanStore) -> None:
+def test_upsert_and_get_round_trip(store: Any) -> None:
     steps = ["Step 1: analyse", "Step 2: implement", "Step 3: test"]
     store.upsert_plan("session-1", steps)
 
@@ -46,7 +48,7 @@ def test_upsert_and_get_round_trip(store: PlanStore) -> None:
     assert plan.status == PlanStatus.DRAFT
 
 
-def test_upsert_overwrites_existing_plan(store: PlanStore) -> None:
+def test_upsert_overwrites_existing_plan(store: Any) -> None:
     store.upsert_plan("session-2", ["old step"])
     store.upsert_plan("session-2", ["new step A", "new step B"])
 
@@ -57,7 +59,7 @@ def test_upsert_overwrites_existing_plan(store: PlanStore) -> None:
     assert plan.status == PlanStatus.DRAFT
 
 
-def test_get_plan_unknown_session_returns_none(store: PlanStore) -> None:
+def test_get_plan_unknown_session_returns_none(store: Any) -> None:
     result = store.get_plan("does-not-exist")
     assert result is None
 
@@ -67,7 +69,7 @@ def test_get_plan_unknown_session_returns_none(store: PlanStore) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_approve_updates_status(store: PlanStore) -> None:
+def test_approve_updates_status(store: Any) -> None:
     store.upsert_plan("session-3", ["do something"])
     store.approve("session-3", actor="alice", note="Looks good")
 
@@ -76,7 +78,7 @@ def test_approve_updates_status(store: PlanStore) -> None:
     assert plan.status == PlanStatus.APPROVED
 
 
-def test_approve_appends_approval_record(store: PlanStore) -> None:
+def test_approve_appends_approval_record(store: Any) -> None:
     store.upsert_plan("session-4", ["step"])
     store.approve("session-4", actor="bob", note="LGTM")
 
@@ -90,7 +92,7 @@ def test_approve_appends_approval_record(store: PlanStore) -> None:
     assert rec.note == "LGTM"
 
 
-def test_reject_updates_status(store: PlanStore) -> None:
+def test_reject_updates_status(store: Any) -> None:
     store.upsert_plan("session-5", ["step"])
     store.reject("session-5", actor="carol", note="Needs revision")
 
@@ -99,7 +101,7 @@ def test_reject_updates_status(store: PlanStore) -> None:
     assert plan.status == PlanStatus.REJECTED
 
 
-def test_reject_appends_approval_record(store: PlanStore) -> None:
+def test_reject_appends_approval_record(store: Any) -> None:
     store.upsert_plan("session-6", ["step"])
     store.reject("session-6", actor="dave", note="Not ready")
 
@@ -110,7 +112,7 @@ def test_reject_appends_approval_record(store: PlanStore) -> None:
     assert rec.actor == "dave"
 
 
-def test_multiple_approvals_accumulate(store: PlanStore) -> None:
+def test_multiple_approvals_accumulate(store: Any) -> None:
     """Approve then reject appends two records and final status is rejected."""
     store.upsert_plan("session-7", ["step"])
     store.approve("session-7", actor="alice")
@@ -131,7 +133,7 @@ def test_multiple_approvals_accumulate(store: PlanStore) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_list_plans_returns_all(store: PlanStore) -> None:
+def test_list_plans_returns_all(store: Any) -> None:
     store.upsert_plan("s-a", ["step a"])
     store.upsert_plan("s-b", ["step b"])
     store.upsert_plan("s-c", ["step c"])
@@ -141,7 +143,7 @@ def test_list_plans_returns_all(store: PlanStore) -> None:
     assert {"s-a", "s-b", "s-c"}.issubset(session_ids)
 
 
-def test_list_plans_empty_on_fresh_store(store: PlanStore) -> None:
+def test_list_plans_empty_on_fresh_store(store: Any) -> None:
     assert store.list_plans() == []
 
 
