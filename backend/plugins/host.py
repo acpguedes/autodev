@@ -17,7 +17,7 @@ from packaging.version import Version
 
 from backend.persistence.database import get_store
 from backend.plugins.events import PluginEvent
-from backend.plugins.manifest import PluginManifest, load_manifest
+from backend.plugins.manifest import PluginManifest, load_manifest, validate_manifest
 from backend.plugins.permissions import PermissionBroker
 from backend.plugins.store import PluginStore
 
@@ -161,6 +161,39 @@ class PluginHost:
         self._store.delete_plugin(plugin_id)
         return updated
 
+    def hot_reload(self, plugin_id: str) -> PluginRecord:
+        old_row = self._store.get_plugin(plugin_id)
+        if old_row is None:
+            raise KeyError(plugin_id)
+        old_record = self._record_from_row(old_row)
+        if old_record.state is not PluginState.ENABLED:
+            raise ValueError(f"Cannot hot-reload plugin {plugin_id} from state {old_record.state.value}")
+        try:
+            new_manifest = load_manifest(old_record.manifest_path)
+            reason = self._compatibility_reason(new_manifest)
+            if reason:
+                raise ValueError(reason)
+            host_api = self._build_host_api(new_manifest)
+            with host_api.broker.import_sandbox():
+                register = self._load_entrypoint(new_manifest, old_record.manifest_path.parent)
+                register(host_api)
+        except Exception as exc:  # noqa: BLE001 - rollback must be fail-closed
+            self._store.upsert_plugin(
+                plugin_id=old_record.plugin_id,
+                version=old_record.version,
+                state=old_record.state.value,
+                manifest_path=str(old_record.manifest_path),
+                manifest_json=old_record.manifest.raw,
+                reason="",
+            )
+            self._emit("plugin.reload.failed", old_record.manifest, {"reason": str(exc)})
+            return old_record
+        candidate = PluginCandidate(old_record.manifest_path.parent, old_record.manifest_path, new_manifest)
+        self._loaded[plugin_id] = host_api
+        updated = self._persist(candidate, state=PluginState.ENABLED)
+        self._emit("plugin.reloaded", new_manifest, {"version": new_manifest.version})
+        return updated
+
     def get(self, plugin_id: str) -> PluginRecord:
         row = self._store.get_plugin(plugin_id)
         if row is None:
@@ -236,7 +269,10 @@ class PluginHost:
         return ScopedHostApi(manifest=manifest, broker=broker)
 
     def _record_from_row(self, row: dict[str, Any]) -> PluginRecord:
-        manifest = load_manifest(row["manifest_path"])
+        result = validate_manifest(row["manifest_json"])
+        if not result.valid or result.manifest is None:
+            raise ValueError("; ".join(result.errors))
+        manifest = result.manifest
         return PluginRecord(
             plugin_id=row["id"],
             version=row["version"],

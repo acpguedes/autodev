@@ -1,7 +1,7 @@
 # E1 — Plugin Core & SDK
 
 **Wave:** Alpha
-**Status:** In progress · **Stories:** 4/5 complete
+**Status:** Done · **Stories:** 5/5 complete
 **Depends on:** E0
 **Enables:** E2, E4, E6, E7-S4, E10-S4, E13
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E1), §18.8, §18.9
@@ -89,7 +89,7 @@ Subtasks:
 
 ### E1-S5 — Registry and resolution of active plugins
 
-**Status:** Not started
+**Status:** Done (2026-07-04)
 
 Subtasks:
 - `E1-S5-T1`: index of plugins/inhabited extension points.
@@ -117,8 +117,8 @@ Subtasks:
 
 ## Epic exit checklist
 
-- [ ] All 5 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
+- [x] All 5 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
       story-specific DoD above.
-- [ ] Contract tests green for every extension point declared in E1-S1's catalog.
-- [ ] `docs/v2_platform/progress.md` updated.
-- [ ] Alpha wave exit criteria this epic contributes to (§18.9) satisfied.
+- [x] Contract tests green for every extension point declared in E1-S1's catalog.
+- [x] `docs/v2_platform/progress.md` updated.
+- [x] Alpha wave exit criteria this epic contributes to (§18.9) satisfied.

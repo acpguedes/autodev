@@ -14,8 +14,10 @@ from backend.plugins.manifest import (
 )
 from backend.plugins.host import PluginHost, PluginRecord, PluginState
 from backend.plugins.permissions import PermissionBroker, PermissionDenied
+from backend.plugins.registry import ActivePluginRegistry
 
 __all__ = [
+    "ActivePluginRegistry",
     "EXTENSION_POINT_KINDS",
     "ExtensionPoint",
     "ExtensionPointKind",
