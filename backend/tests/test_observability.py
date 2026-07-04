@@ -19,6 +19,13 @@ from fastapi.testclient import TestClient
 
 from backend.api.main import app as main_app
 from backend.observability.middleware import MetricsRegistry, attach
+from backend.observability.tracing import (
+    InMemorySpanExporter,
+    configure_tracing,
+    step_span_attributes,
+)
+from backend.orchestrator.service import OrchestratorService
+from backend.persistence.sqlite_adapter import SQLiteStore
 
 
 # ---------------------------------------------------------------------------
@@ -95,6 +102,50 @@ def test_counter_increments_after_request() -> None:
         assert counts.get("GET /count-me", 0) >= 1
     finally:
         _mw_module._registry = original_registry
+
+
+def test_error_counter_increments_for_500_response() -> None:
+    registry = MetricsRegistry()
+    registry.record("GET", "/boom", 0.01, status_code=500)
+
+    text = registry.prometheus_text()
+
+    assert 'http_request_errors_total{method="GET",path="/boom"} 1' in text
+
+
+def test_step_span_attributes_exclude_content() -> None:
+    attrs = step_span_attributes(
+        run_id="run-1",
+        step_id="navigator",
+        agent="navigator",
+        status="completed",
+    )
+
+    assert attrs == {
+        "autodev.run_id": "run-1",
+        "autodev.step_id": "navigator",
+        "autodev.agent": "navigator",
+        "autodev.status": "completed",
+    }
+
+
+def test_orchestrator_agent_step_emits_correlated_span(tmp_path) -> None:
+    exporter = InMemorySpanExporter()
+    configure_tracing(span_exporter=exporter, service_name="autodev-test")
+    store = SQLiteStore(f"sqlite:///{tmp_path / 'trace.db'}")
+    service = OrchestratorService(store=store, project_root=tmp_path)
+    session = service.create_plan("Trace the workflow")
+
+    run = service.handle_message(session.session_id, "validate the repo")
+
+    step_spans = [
+        span
+        for span in exporter.get_finished_spans()
+        if span.name.startswith("autodev.run.step.")
+    ]
+    assert step_spans
+    assert step_spans[0].attributes["autodev.run_id"] == run.run_id
+    assert step_spans[0].attributes["autodev.step_id"]
 
 
 # ---------------------------------------------------------------------------

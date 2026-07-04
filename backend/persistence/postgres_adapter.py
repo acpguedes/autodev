@@ -1,101 +1,484 @@
-"""PostgreSQL store — scaffold only.
-
-TODO: Implement PostgresStore and PostgresPlanStore using asyncpg or psycopg3.
-      All methods below raise NotImplementedError until then.
-"""
+"""PostgreSQL implementations of the persistence repository protocols."""
 
 from __future__ import annotations
 
+import datetime
+import json
+import os
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-from backend.plans.models import ApprovalRecord, PlanDocument
+from backend.plans.models import ApprovalRecord, PlanDocument, PlanStatus
+
+
+_DEFAULT_DATABASE_URL = "postgresql://autodev:autodev@postgres:5432/autodev"
+
+
+def _connect(database_url: str):
+    try:
+        import psycopg  # type: ignore[import-untyped]
+    except ImportError as exc:  # pragma: no cover - exercised when optional dep missing
+        raise RuntimeError(
+            "psycopg is required for PostgreSQL persistence. Install backend requirements."
+        ) from exc
+    return psycopg.connect(database_url)
+
+
+def _json(value: Any) -> str:
+    return json.dumps(value)
+
+
+def _loads(value: Any) -> Any:
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
+
+
+def _run_sql(conn: Any, statements: Iterable[str]) -> None:
+    with conn.cursor() as cur:
+        for statement in statements:
+            cur.execute(statement)
+    conn.commit()
 
 
 class PostgresStore:
-    """Postgres-backed store (not yet implemented).
+    """Postgres-backed store implementing sessions, runs, and messages."""
 
-    Satisfies the same interface as SQLiteStore so the factory can return it
-    without callers needing to know the backend.
-    """
-
-    def __init__(self, database_url: str) -> None:
+    def __init__(self, database_url: str = _DEFAULT_DATABASE_URL) -> None:
         self.database_url = database_url
-        raise NotImplementedError(
-            "PostgresStore is not yet implemented. "
-            "Use a sqlite:// DATABASE_URL or set DATABASE_URL accordingly. "
-            "TODO: implement with psycopg3 or asyncpg."
+        with self.connect() as conn:
+            self._run_migrations(conn)
+
+    def connect(self):
+        return _connect(self.database_url)
+
+    def _run_migrations(self, conn: Any) -> None:
+        _run_sql(
+            conn,
+            [
+                """
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    namespace TEXT PRIMARY KEY,
+                    version INTEGER NOT NULL
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS sessions (
+                    id TEXT PRIMARY KEY,
+                    goal TEXT NOT NULL,
+                    plan_json JSONB NOT NULL,
+                    artifacts_json JSONB NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS runs (
+                    id TEXT PRIMARY KEY,
+                    session_id TEXT NOT NULL REFERENCES sessions(id),
+                    status TEXT NOT NULL,
+                    run_type TEXT NOT NULL DEFAULT 'existing_repo_change',
+                    current_state TEXT NOT NULL DEFAULT 'starting',
+                    trigger_message TEXT NOT NULL,
+                    results_json JSONB NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    completed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS run_steps (
+                    id BIGSERIAL PRIMARY KEY,
+                    run_id TEXT NOT NULL REFERENCES runs(id),
+                    step_key TEXT NOT NULL,
+                    agent TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT NOT NULL,
+                    attempt INTEGER NOT NULL DEFAULT 1
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS messages (
+                    id BIGSERIAL PRIMARY KEY,
+                    session_id TEXT NOT NULL REFERENCES sessions(id),
+                    run_id TEXT REFERENCES runs(id),
+                    sequence INTEGER NOT NULL,
+                    role TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                "CREATE INDEX IF NOT EXISTS idx_pg_runs_session_id ON runs(session_id)",
+                "CREATE INDEX IF NOT EXISTS idx_pg_run_steps_run_id ON run_steps(run_id, id)",
+                "CREATE INDEX IF NOT EXISTS idx_pg_messages_session_id ON messages(session_id, sequence)",
+                """
+                INSERT INTO schema_version (namespace, version)
+                VALUES ('store', 1)
+                ON CONFLICT(namespace) DO UPDATE SET version = EXCLUDED.version
+                """,
+            ],
         )
 
-    # SessionRepository
-
-    def create_session(self, *, session_id: str, goal: str, plan: list[str], artifacts: dict[str, Any]) -> None:
-        raise NotImplementedError
+    def create_session(
+        self,
+        *,
+        session_id: str,
+        goal: str,
+        plan: list[str],
+        artifacts: dict[str, Any],
+    ) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO sessions (id, goal, plan_json, artifacts_json) VALUES (%s, %s, %s::jsonb, %s::jsonb)",
+                (session_id, goal, _json(plan), _json(artifacts)),
+            )
+            conn.commit()
 
     def get_session(self, session_id: str) -> dict[str, Any] | None:
-        raise NotImplementedError
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT id, goal, plan_json, artifacts_json, created_at, updated_at FROM sessions WHERE id = %s",
+                (session_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "id": row[0],
+            "goal": row[1],
+            "plan": _loads(row[2]),
+            "artifacts": _loads(row[3]),
+            "created_at": str(row[4]),
+            "updated_at": str(row[5]),
+        }
 
     def list_sessions(self) -> list[dict[str, Any]]:
-        raise NotImplementedError
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT id, goal, plan_json, artifacts_json, created_at, updated_at FROM sessions ORDER BY created_at DESC"
+            ).fetchall()
+        return [
+            {
+                "id": row[0],
+                "goal": row[1],
+                "plan": _loads(row[2]),
+                "artifacts": _loads(row[3]),
+                "created_at": str(row[4]),
+                "updated_at": str(row[5]),
+            }
+            for row in rows
+        ]
 
     def update_session_artifacts(self, session_id: str, artifacts: dict[str, Any]) -> None:
-        raise NotImplementedError
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE sessions SET artifacts_json = %s::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+                (_json(artifacts), session_id),
+            )
+            conn.commit()
 
-    # RunRepository
+    def create_run(
+        self,
+        *,
+        run_id: str,
+        session_id: str,
+        status: str,
+        run_type: str,
+        current_state: str,
+        trigger_message: str,
+        results: list[dict[str, Any]],
+        steps: list[dict[str, Any]],
+    ) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO runs (id, session_id, status, run_type, current_state, trigger_message, results_json)
+                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
+                """,
+                (run_id, session_id, status, run_type, current_state, trigger_message, _json(results)),
+            )
+            self._replace_run_steps(conn, run_id, steps)
+            conn.commit()
 
-    def create_run(self, *, run_id: str, session_id: str, status: str, run_type: str, current_state: str, trigger_message: str, results: list[dict[str, Any]], steps: list[dict[str, Any]]) -> None:
-        raise NotImplementedError
-
-    def update_run(self, *, run_id: str, status: str, current_state: str, results: list[dict[str, Any]], steps: list[dict[str, Any]]) -> None:
-        raise NotImplementedError
+    def update_run(
+        self,
+        *,
+        run_id: str,
+        status: str,
+        current_state: str,
+        results: list[dict[str, Any]],
+        steps: list[dict[str, Any]],
+    ) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                UPDATE runs
+                SET status = %s, current_state = %s, results_json = %s::jsonb, completed_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                """,
+                (status, current_state, _json(results), run_id),
+            )
+            self._replace_run_steps(conn, run_id, steps)
+            conn.commit()
 
     def list_runs(self, session_id: str) -> list[dict[str, Any]]:
-        raise NotImplementedError
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, session_id, status, run_type, current_state, trigger_message,
+                       results_json, created_at, completed_at
+                FROM runs WHERE session_id = %s ORDER BY created_at DESC
+                """,
+                (session_id,),
+            ).fetchall()
+        return [
+            {
+                "id": row[0],
+                "session_id": row[1],
+                "status": row[2],
+                "run_type": row[3],
+                "current_state": row[4],
+                "trigger_message": row[5],
+                "results": _loads(row[6]),
+                "steps": self.list_run_steps(row[0]),
+                "created_at": str(row[7]),
+                "completed_at": str(row[8]),
+            }
+            for row in rows
+        ]
 
     def list_run_steps(self, run_id: str) -> list[dict[str, Any]]:
-        raise NotImplementedError
-
-    # MessageRepository
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT step_key, agent, status, started_at, completed_at, attempt
+                FROM run_steps WHERE run_id = %s ORDER BY id ASC
+                """,
+                (run_id,),
+            ).fetchall()
+        return [
+            {
+                "step_key": row[0],
+                "agent": row[1],
+                "status": row[2],
+                "started_at": row[3],
+                "completed_at": row[4],
+                "attempt": row[5],
+            }
+            for row in rows
+        ]
 
     def list_messages(self, session_id: str) -> list[dict[str, Any]]:
-        raise NotImplementedError
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, session_id, run_id, sequence, role, content, created_at
+                FROM messages WHERE session_id = %s ORDER BY sequence ASC
+                """,
+                (session_id,),
+            ).fetchall()
+        return [
+            {
+                "id": row[0],
+                "session_id": row[1],
+                "run_id": row[2],
+                "sequence": row[3],
+                "role": row[4],
+                "content": row[5],
+                "created_at": str(row[6]),
+            }
+            for row in rows
+        ]
 
-    def append_messages(self, session_id: str, run_id: str, history: Iterable[dict[str, str]]) -> None:
-        raise NotImplementedError
+    def append_messages(
+        self,
+        session_id: str,
+        run_id: str,
+        history: Iterable[dict[str, str]],
+    ) -> None:
+        existing = self.list_messages(session_id)
+        start = len(existing)
+        new_messages = list(history)[start:]
+        if not new_messages:
+            return
+        with self.connect() as conn:
+            with conn.cursor() as cur:
+                for offset, item in enumerate(new_messages, start=start):
+                    cur.execute(
+                        """
+                        INSERT INTO messages (session_id, run_id, sequence, role, content)
+                        VALUES (%s, %s, %s, %s, %s)
+                        """,
+                        (session_id, run_id, offset, item["role"], item["content"]),
+                    )
+            conn.commit()
+
+    def _replace_run_steps(self, conn: Any, run_id: str, steps: list[dict[str, Any]]) -> None:
+        conn.execute("DELETE FROM run_steps WHERE run_id = %s", (run_id,))
+        with conn.cursor() as cur:
+            for step in steps:
+                cur.execute(
+                    """
+                    INSERT INTO run_steps (run_id, step_key, agent, status, started_at, completed_at, attempt)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        run_id,
+                        step["step_key"],
+                        step["agent"],
+                        step["status"],
+                        step["started_at"],
+                        step["completed_at"],
+                        step.get("attempt", 1),
+                    ),
+                )
 
 
 class PostgresPlanStore:
-    """Postgres-backed plan store (not yet implemented).
-
-    TODO: Implement with psycopg3 or asyncpg.
-    """
+    """Postgres-backed plan store."""
 
     def __init__(self, db_path: Optional[Path] = None, database_url: str = "") -> None:
-        raise NotImplementedError(
-            "PostgresPlanStore is not yet implemented. "
-            "TODO: implement with psycopg3 or asyncpg."
+        del db_path
+        self.database_url = database_url or os.environ.get("DATABASE_URL", _DEFAULT_DATABASE_URL)
+        with self.connect() as conn:
+            self._run_migrations(conn)
+
+    def connect(self):
+        return _connect(self.database_url)
+
+    def _run_migrations(self, conn: Any) -> None:
+        _run_sql(
+            conn,
+            [
+                """
+                CREATE TABLE IF NOT EXISTS schema_version (
+                    namespace TEXT PRIMARY KEY,
+                    version INTEGER NOT NULL
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS plan_documents (
+                    session_id TEXT PRIMARY KEY,
+                    steps_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    status TEXT NOT NULL DEFAULT 'draft',
+                    updated_at TEXT NOT NULL
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS plan_approvals (
+                    id BIGSERIAL PRIMARY KEY,
+                    session_id TEXT NOT NULL,
+                    decision TEXT NOT NULL,
+                    actor TEXT NOT NULL,
+                    note TEXT NOT NULL DEFAULT '',
+                    created_at TEXT NOT NULL
+                )
+                """,
+                """
+                INSERT INTO schema_version (namespace, version)
+                VALUES ('plan_store', 1)
+                ON CONFLICT(namespace) DO UPDATE SET version = EXCLUDED.version
+                """,
+            ],
         )
 
     def upsert_plan(self, session_id: str, steps: list[str]) -> None:
-        raise NotImplementedError
+        now = self._now()
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO plan_documents (session_id, steps_json, status, updated_at)
+                VALUES (%s, %s::jsonb, 'draft', %s)
+                ON CONFLICT(session_id) DO UPDATE SET
+                    steps_json = EXCLUDED.steps_json,
+                    status = 'draft',
+                    updated_at = EXCLUDED.updated_at
+                """,
+                (session_id, _json(steps), now),
+            )
+            conn.commit()
 
     def get_plan(self, session_id: str) -> Optional[PlanDocument]:
-        raise NotImplementedError
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT session_id, steps_json, status, updated_at FROM plan_documents WHERE session_id = %s",
+                (session_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return PlanDocument(
+            session_id=row[0],
+            steps=_loads(row[1]),
+            status=row[2],
+            updated_at=row[3],
+        )
 
     def set_status(self, session_id: str, status: str) -> None:
-        raise NotImplementedError
+        now = self._now()
+        with self.connect() as conn:
+            conn.execute(
+                "UPDATE plan_documents SET status = %s, updated_at = %s WHERE session_id = %s",
+                (status, now, session_id),
+            )
+            conn.commit()
 
     def approve(self, session_id: str, actor: str, note: str = "") -> None:
-        raise NotImplementedError
+        self.set_status(session_id, PlanStatus.APPROVED)
+        self._append_approval(session_id, decision=PlanStatus.APPROVED, actor=actor, note=note)
 
     def reject(self, session_id: str, actor: str, note: str = "") -> None:
-        raise NotImplementedError
+        self.set_status(session_id, PlanStatus.REJECTED)
+        self._append_approval(session_id, decision=PlanStatus.REJECTED, actor=actor, note=note)
 
     def list_plans(self) -> list[PlanDocument]:
-        raise NotImplementedError
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT session_id, steps_json, status, updated_at FROM plan_documents ORDER BY updated_at DESC"
+            ).fetchall()
+        return [
+            PlanDocument(
+                session_id=row[0],
+                steps=_loads(row[1]),
+                status=row[2],
+                updated_at=row[3],
+            )
+            for row in rows
+        ]
 
     def list_approvals(self, session_id: str) -> list[ApprovalRecord]:
-        raise NotImplementedError
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT session_id, decision, actor, note, created_at
+                FROM plan_approvals WHERE session_id = %s ORDER BY created_at ASC
+                """,
+                (session_id,),
+            ).fetchall()
+        return [
+            ApprovalRecord(
+                session_id=row[0],
+                decision=row[1],
+                actor=row[2],
+                note=row[3],
+                created_at=row[4],
+            )
+            for row in rows
+        ]
+
+    def _append_approval(self, session_id: str, decision: str, actor: str, note: str) -> None:
+        now = self._now()
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO plan_approvals (session_id, decision, actor, note, created_at)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (session_id, decision, actor, note, now),
+            )
+            conn.commit()
+
+    @staticmethod
+    def _now() -> str:
+        return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
 __all__ = ["PostgresPlanStore", "PostgresStore"]

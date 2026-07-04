@@ -83,6 +83,20 @@ enabled:
   for corporate proxies with self-signed certs). It now logs a loud warning and
   is documented as **development-only** — disabling it exposes the API key to
   man-in-the-middle attacks.
+- The API emits conservative browser security headers by default:
+  `Content-Security-Policy`, `Permissions-Policy`, `Referrer-Policy`,
+  `X-Content-Type-Options`, and `X-Frame-Options`.
+- `Strict-Transport-Security` is opt-in with `AUTODEV_ENABLE_HSTS=true`, so
+  local HTTP development is not accidentally pinned to HTTPS.
+
+## Security scanning
+
+- `make run_secret_scanning` runs the repository secret scanner inside the
+  backend container.
+- The backend CI workflow runs the same scanner and a Trivy filesystem SCA gate.
+  Pull requests fail on detected secrets or `CRITICAL` CVEs.
+- The current baseline policy is documented in
+  [`docs/security/baseline.md`](security/baseline.md).
 
 ## Container / infrastructure
 
@@ -101,5 +115,5 @@ enabled:
   auditable builds.
 - **Base image pinning**: container images use mutable tags
   (`python:3.11-slim`, `node:20`). Consider pinning by digest.
-- **Frontend security headers**: `next.config.mjs` sets no CSP/HSTS/X-Frame
-  headers. No active vulnerability, but worth adding.
+- **Frontend security headers**: backend headers are now set by default, but
+  `next.config.mjs` still sets no frontend-specific CSP/HSTS/X-Frame headers.

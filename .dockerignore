@@ -1,0 +1,17 @@
+.git
+.agents
+.codex
+.claude
+.venv
+frontend/node_modules
+frontend/.next
+__pycache__
+*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+autodev.db
+autodev.config.json
+.env

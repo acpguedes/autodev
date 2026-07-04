@@ -1,20 +1,31 @@
-version: "3.9"
-
 services:
   backend:
     build:
       context: ..
       dockerfile: infrastructure/docker/backend.Dockerfile
+    working_dir: /workspace
     environment:
+      AUTODEV_PROFILE: local
       DATABASE_URL: sqlite:////data/autodev.db
       LLM_PROVIDER: stub
+      PYTEST_ADDOPTS: -p no:cacheprovider
       UVICORN_RELOAD: "false"
+      AUTODEV_CONFIG_PATH: /data/autodev.config.json
+      AUTODEV_PROJECT_ROOT: /workspace
       # Set a token to require Authorization: Bearer <token> on the API.
       AUTODEV_API_TOKEN: "${AUTODEV_API_TOKEN:-}"
     ports:
       - "8000:8000"
     volumes:
       - autodev_data:/data
+      - ../backend:/workspace/backend
+      - ../scripts:/workspace/scripts
+      - ../tests:/workspace/tests
+      - ../docs:/workspace/docs
+      - ../infrastructure:/workspace/infrastructure
+      - ../sandbox:/workspace/sandbox
+      - ../Makefile:/workspace/Makefile:ro
+      - ../mypy.ini:/workspace/mypy.ini:ro
     security_opt:
       - no-new-privileges:true
     mem_limit: 1g
@@ -33,5 +44,23 @@ services:
     depends_on:
       - backend
 
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["prod", "postgres"]
+    environment:
+      POSTGRES_DB: autodev
+      POSTGRES_USER: autodev
+      POSTGRES_PASSWORD: autodev
+    ports:
+      - "5432:5432"
+    volumes:
+      - autodev_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U autodev -d autodev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   autodev_data:
+  autodev_postgres:

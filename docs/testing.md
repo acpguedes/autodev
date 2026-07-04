@@ -1,9 +1,9 @@
 # Testing & Local Development
 
-This guide explains how to install, test, lint, and build AutoDev Architect
-locally. Every command below is wrapped by the root [`Makefile`](../Makefile),
-so the fastest path is `make <target>`. The equivalent raw commands are listed
-too, in case you prefer to run them by hand.
+This guide explains how to install, test, lint, and build AutoDev Architect.
+E0 v2 platform work uses the backend container as the canonical execution
+environment. Every command below is wrapped by the root
+[`Makefile`](../Makefile), so the fastest path is `make <target>`.
 
 > **Clean-tree guarantee.** Running `make install`, `make test`, or `make build`
 > never dirties your git working tree. Every artifact these targets create
@@ -21,7 +21,7 @@ too, in case you prefer to run them by hand.
 | Python     | 3.10+ (3.11 in CI) | backend API, CLI, pytest          |
 | Node.js    | 20+ (22 supported) | Next.js frontend, vitest          |
 | npm        | bundled with Node  | frontend dependency management    |
-| Docker     | optional           | full-stack `make docker-up`       |
+| Docker     | required for E0    | container-first backend workflow  |
 
 Check what you have:
 
@@ -33,7 +33,34 @@ npm --version
 
 ---
 
-## 1. Install
+## 1. Container-first backend workflow
+
+Use these targets for E0 backend development, tests, CLI commands, migrations,
+and validation:
+
+```bash
+make container-build   # build the backend dev/test image
+make container-up      # boot FastAPI on http://localhost:8000
+make container-test    # pytest + backend coverage gate inside the container
+make container-check   # ruff + mypy + pytest inside the container
+make container-shell   # interactive shell with the in-container .venv active on PATH
+make container-logs    # follow backend logs
+make container-down    # tear down the Compose stack
+```
+
+The backend image owns `/workspace/.venv`; do not rely on the host `.venv` for
+E0 validation. Source directories are bind-mounted into `/workspace`, and
+SQLite/config state is stored in Docker volumes.
+
+Raw equivalents:
+
+```bash
+docker compose -f infrastructure/docker-compose.yml build backend
+docker compose -f infrastructure/docker-compose.yml run --rm backend pytest tests backend/tests -q
+docker compose -f infrastructure/docker-compose.yml run --rm backend python -m backend.cli config show
+```
+
+## 2. Host install
 
 ```bash
 make install
@@ -67,7 +94,7 @@ cd frontend && npm install
 
 ---
 
-## 2. Run the tests
+## 3. Run the tests
 
 Run everything (backend + frontend):
 
@@ -116,7 +143,7 @@ Vitest picks up `frontend/lib/**/*.test.ts` (see `frontend/vitest.config.ts`).
 
 ---
 
-## 3. Coverage (optional)
+## 4. Coverage (optional)
 
 Requires `make install-dev` (for `pytest-cov`):
 
@@ -129,7 +156,7 @@ Prints a `term-missing` report and writes an HTML report to `htmlcov/`
 
 ---
 
-## 4. Lint, format, typecheck (optional)
+## 5. Lint, format, typecheck (optional)
 
 Requires `make install-dev` for the backend Python tools:
 
@@ -144,7 +171,7 @@ The frontend tools (`eslint`, `tsc`) ship with `make install-frontend`, so
 
 ---
 
-## 5. Build
+## 6. Build
 
 ```bash
 make build          # production build of the Next.js frontend
@@ -156,7 +183,7 @@ The backend is a FastAPI app served from source (no compile step); run it with
 
 ---
 
-## 6. Run the servers
+## 7. Run the servers
 
 ```bash
 make run-backend    # FastAPI on http://localhost:8000 (autoreload)
@@ -169,16 +196,16 @@ Configure the LLM provider via `.env` (copy from `.env.example`) before
 starting the backend — see the [README](../README.md) for provider options
 (`stub`, `openai`, `ollama`).
 
-Full stack via Docker:
+Backend stack via Docker:
 
 ```bash
-make docker-up      # build + boot backend (:8000) and frontend (:3000)
-make docker-down    # tear it down
+make container-up      # build + boot backend (:8000)
+make container-down    # tear it down
 ```
 
 ---
 
-## 7. Reproduce CI locally
+## 8. Reproduce CI locally
 
 The GitHub Actions pipelines run the backend pytest suite
 (`.github/workflows/ci-backend.yml`) and the frontend lint → typecheck → test →
@@ -196,7 +223,7 @@ make check-frontend # frontend slice only
 
 ---
 
-## 8. Clean up
+## 9. Clean up
 
 ```bash
 make clean       # remove build/test artifacts (tree returns to git-clean)

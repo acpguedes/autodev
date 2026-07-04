@@ -9,6 +9,31 @@ permissions:
   contents: read
 
 jobs:
+  security-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run secret scanning
+        run: python scripts/run_secret_scanning.py .
+
+      - name: Run critical-CVE scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          timeout: 3m
+
   backend-tests:
     runs-on: ubuntu-latest
     steps:

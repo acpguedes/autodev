@@ -1,19 +1,28 @@
 FROM python:3.11-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/workspace/.venv \
+    PATH="/workspace/.venv/bin:$PATH"
 
-WORKDIR /app
+WORKDIR /workspace
 
-COPY backend/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r /app/requirements.txt
+COPY backend/requirements.txt /tmp/requirements.txt
+RUN python -m venv /workspace/.venv \
+    && /workspace/.venv/bin/pip install --no-cache-dir --upgrade pip \
+    && /workspace/.venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt \
+    && /workspace/.venv/bin/pip install --no-cache-dir black ruff mypy pytest-cov
 
-COPY backend /app/backend
+COPY backend /workspace/backend
+COPY scripts /workspace/scripts
+COPY tests /workspace/tests
+COPY mypy.ini /workspace/mypy.ini
+COPY Makefile /workspace/Makefile
 
 # Run as an unprivileged user rather than root.
 RUN useradd --system --no-create-home --uid 10001 autodev \
-    && chown -R autodev:autodev /app
+    && mkdir -p /data /workspace/tests/reports \
+    && chown -R autodev:autodev /workspace /data
 USER autodev
 
 EXPOSE 8000

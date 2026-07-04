@@ -14,9 +14,10 @@ secret through timing side-channels.
 from __future__ import annotations
 
 import hmac
-import os
 
 from fastapi import HTTPException, Request
+
+from backend.config.settings import Settings
 
 # Paths that must stay reachable without a token so health checks and API
 # discovery continue to work when authentication is enabled.
@@ -28,7 +29,7 @@ _BEARER_PREFIX = "bearer "
 
 
 def _configured_token() -> str:
-    return os.getenv("AUTODEV_API_TOKEN", "").strip()
+    return Settings().autodev_api_token.strip()
 
 
 def require_api_token(request: Request) -> None:

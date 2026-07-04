@@ -284,6 +284,26 @@ This repository is still in the transition from prototype to platform. The new d
 
 ## Running the first durable stage
 
+### Container-first quickstart
+
+E0 v2 platform work runs backend tests and CLI commands inside the backend
+container. The image owns the Python runtime and `.venv`, so the host does not
+need a project virtualenv for E0 validation.
+
+```bash
+make container-build   # build the backend dev/test image
+make container-up      # boot FastAPI on http://localhost:8000
+make container-test    # run backend pytest inside the container
+make container-check   # run backend lint + typecheck + tests inside the container
+make container-shell   # open an interactive backend container shell
+make container-down    # stop and remove the Compose stack
+```
+
+The backend container mounts the source tree paths needed for backend work,
+stores SQLite/config state under the `autodev_data` volume, uses
+`LLM_PROVIDER=stub`, and sets `AUTODEV_PROFILE=local` by default. Inside the
+shell, run CLI commands as `python -m backend.cli ...`.
+
 ### Quickstart with `make`
 
 The root [`Makefile`](Makefile) wraps install, test, build, run, and clean
