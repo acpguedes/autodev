@@ -86,6 +86,15 @@ def build_parser() -> argparse.ArgumentParser:
     repository_context_parser.add_argument("--limit", type=int, default=6)
     repository_context_parser.set_defaults(handler=_handle_repository_context)
 
+    sdk_parser = subparsers.add_parser("sdk", help="Ferramentas do SDK de plugins")
+    sdk_subparsers = sdk_parser.add_subparsers(dest="sdk_command", required=True)
+    sdk_new_parser = sdk_subparsers.add_parser("new", help="Cria projetos do SDK")
+    sdk_new_subparsers = sdk_new_parser.add_subparsers(dest="sdk_new_kind", required=True)
+    sdk_plugin_parser = sdk_new_subparsers.add_parser("plugin", help="Cria um plugin")
+    sdk_plugin_parser.add_argument("plugin_id")
+    sdk_plugin_parser.add_argument("--output", required=True)
+    sdk_plugin_parser.set_defaults(handler=_handle_sdk_new_plugin)
+
     try:
         from backend.cli_plugins import register_subcommands
         register_subcommands(subparsers)
@@ -129,6 +138,13 @@ def _handle_config_show(args: argparse.Namespace) -> int:
             ensure_ascii=False,
         )
     )
+    return 0
+
+
+def _handle_sdk_new_plugin(args: argparse.Namespace) -> int:
+    from backend.sdk.scaffold import scaffold_plugin
+    path = scaffold_plugin(args.plugin_id, Path(args.output))
+    print(json.dumps({"status": "ok", "path": str(path)}, ensure_ascii=False))
     return 0
 
 

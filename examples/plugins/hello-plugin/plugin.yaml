@@ -1,0 +1,13 @@
+schemaVersion: "1"
+id: "autodev/hello-plugin"
+name: "Hello Plugin"
+version: "0.1.0"
+hostApi: ">=2.0 <3.0"
+runtime:
+  loader: "in-process"
+  entrypoint: "hello_plugin:register"
+permissions: {}
+extensionPoints:
+  - kind: "skill"
+    id: "autodev/hello-plugin.skill"
+    contract: "^1.0"

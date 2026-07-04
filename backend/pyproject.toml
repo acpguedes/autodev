@@ -15,6 +15,8 @@ dependencies = [
   "langchain>=0.1.16",
   "langgraph>=0.0.53",
   "langchain-openai>=0.1.1",
+  "packaging>=24.0",
+  "PyYAML>=6.0",
 ]
 
 [project.scripts]
@@ -24,6 +26,7 @@ autodev = "backend.cli:main"
 dev = [
   "pytest>=8.0",
   "httpx>=0.27",
+  "types-PyYAML>=6.0",
 ]
 
 [build-system]

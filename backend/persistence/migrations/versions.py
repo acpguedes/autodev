@@ -86,10 +86,38 @@ def _m3_runs_add_current_state(conn: sqlite3.Connection) -> None:
         )
 
 
+def _m4_create_plugin_tables(conn: sqlite3.Connection) -> None:
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS plugins (
+            id TEXT PRIMARY KEY,
+            version TEXT NOT NULL,
+            state TEXT NOT NULL,
+            manifest_path TEXT NOT NULL,
+            manifest_json TEXT NOT NULL,
+            reason TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS plugin_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_name TEXT NOT NULL,
+            plugin_id TEXT NOT NULL,
+            payload_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_plugin_events_plugin_id ON plugin_events(plugin_id, id);
+        """
+    )
+
+
 STORE_MIGRATIONS = [
     _m1_create_core_tables,
     _m2_runs_add_run_type,
     _m3_runs_add_current_state,
+    _m4_create_plugin_tables,
 ]
 
 
