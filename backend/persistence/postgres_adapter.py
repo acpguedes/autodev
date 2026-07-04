@@ -10,7 +10,6 @@ from typing import Any, Iterable, Optional
 
 from backend.plans.models import ApprovalRecord, PlanDocument, PlanStatus
 
-
 _DEFAULT_DATABASE_URL = "postgresql://autodev:autodev@postgres:5432/autodev"
 
 
@@ -23,23 +22,19 @@ def _connect(database_url: str):
         ) from exc
     return psycopg.connect(database_url)
 
-
 def _json(value: Any) -> str:
     return json.dumps(value)
-
 
 def _loads(value: Any) -> Any:
     if isinstance(value, str):
         return json.loads(value)
     return value
 
-
 def _run_sql(conn: Any, statements: Iterable[str]) -> None:
     with conn.cursor() as cur:
         for statement in statements:
             cur.execute(statement)
     conn.commit()
-
 
 class PostgresStore:
     """Postgres-backed store implementing sessions, runs, and messages."""
@@ -108,9 +103,31 @@ class PostgresStore:
                     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """,
+                """
+                CREATE TABLE IF NOT EXISTS plugins (
+                    id TEXT PRIMARY KEY,
+                    version TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    manifest_path TEXT NOT NULL,
+                    manifest_json JSONB NOT NULL,
+                    reason TEXT NOT NULL DEFAULT '',
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS plugin_events (
+                    id BIGSERIAL PRIMARY KEY,
+                    event_name TEXT NOT NULL,
+                    plugin_id TEXT NOT NULL,
+                    payload_json JSONB NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
                 "CREATE INDEX IF NOT EXISTS idx_pg_runs_session_id ON runs(session_id)",
                 "CREATE INDEX IF NOT EXISTS idx_pg_run_steps_run_id ON run_steps(run_id, id)",
                 "CREATE INDEX IF NOT EXISTS idx_pg_messages_session_id ON messages(session_id, sequence)",
+                "CREATE INDEX IF NOT EXISTS idx_pg_plugin_events_plugin_id ON plugin_events(plugin_id, id)",
                 """
                 INSERT INTO schema_version (namespace, version)
                 VALUES ('store', 1)
@@ -479,6 +496,5 @@ class PostgresPlanStore:
     @staticmethod
     def _now() -> str:
         return datetime.datetime.now(datetime.timezone.utc).isoformat()
-
 
 __all__ = ["PostgresPlanStore", "PostgresStore"]
