@@ -151,7 +151,7 @@ Subtasks:
 | E0-S2 | Done | Typed Settings profiles, JSON/env precedence, fail-fast `config validate`, `docs/config.md` |
 | E0-S3 | Done | PostgreSQL store/plan-store implementation, production Compose service, ADR-001, backup/restore runbook |
 | E0-S4 | Done | OpenTelemetry request and run-step spans, error metrics, non-PII span attributes, observability runbook |
-| E0-S5 | Not started | — |
+| E0-S5 | Done | Secret scanner integrated with Makefile/CI, Trivy critical-CVE gate, default HTTP security headers, security baseline doc |
 | E0-S6 | Not started | — |
 
 ## Epic exit checklist

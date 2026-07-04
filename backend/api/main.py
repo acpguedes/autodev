@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from backend.api.security import require_api_token
+from backend.api.security_headers import SecurityHeadersMiddleware
 
 from backend.config import (
     RuntimeConfig,
@@ -208,6 +209,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+app.add_middleware(SecurityHeadersMiddleware)
 
 try:
     include_all_routers(app)

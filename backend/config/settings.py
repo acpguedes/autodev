@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     autodev_config_path: str = ""
     autodev_cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
     autodev_api_token: str = ""
+    autodev_enable_hsts: bool = False
     autodev_host: str = "127.0.0.1"
     autodev_port: int = 8000
 

@@ -138,7 +138,7 @@ run-frontend: ## Start the Next.js dev server
 # --------------------------------------------------------------------------
 # Container-first E0 workflow
 # --------------------------------------------------------------------------
-.PHONY: container-build container-up container-shell container-test container-check container-down container-logs docker-up docker-down
+.PHONY: container-build container-up container-shell container-test container-check container-down container-logs docker-up docker-down run_secret_scanning security-scan
 
 container-build: ## Build the backend dev/test container
 	$(COMPOSE) build backend
@@ -153,8 +153,14 @@ container-test: ## Run backend tests inside the backend container
 	$(COMPOSE) run --rm backend pytest $(PYTEST_PATHS) -q \
 		--cov=backend --cov-report=term-missing --cov-fail-under=60
 
+run_secret_scanning: ## Run the repository secret scanner inside the backend container
+	$(COMPOSE) run --rm backend python scripts/run_secret_scanning.py .
+
+security-scan: run_secret_scanning ## Alias for local/container secret scanning
+
 container-check: ## Run backend lint, typecheck, and tests inside the backend container
 	$(COMPOSE) run --rm backend sh -lc '\
+		python scripts/run_secret_scanning.py . && \
 		ruff check backend tests && \
 		mypy backend && \
 		pytest $(PYTEST_PATHS) -q --cov=backend --cov-report=term-missing --cov-fail-under=60'

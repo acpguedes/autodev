@@ -14,6 +14,7 @@ RUN python -m venv /workspace/.venv \
     && /workspace/.venv/bin/pip install --no-cache-dir black ruff mypy pytest-cov
 
 COPY backend /workspace/backend
+COPY scripts /workspace/scripts
 COPY tests /workspace/tests
 COPY mypy.ini /workspace/mypy.ini
 COPY Makefile /workspace/Makefile

@@ -53,6 +53,7 @@ AUTODEV_PROJECT_ROOT=/workspace
 | `AUTODEV_CONFIG_PATH` | empty | Runtime UI config document path. |
 | `AUTODEV_CORS_ORIGINS` | local Next.js origins | Comma-separated CORS allowlist. |
 | `AUTODEV_API_TOKEN` | empty | Optional bearer token for the API. |
+| `AUTODEV_ENABLE_HSTS` | `false` | Emit `Strict-Transport-Security` for HTTPS deployments. |
 | `AUTODEV_ENABLE_PATCH_APPLY` | `false` | Enables non-dry-run patch writes. |
 | `AUTODEV_ENABLE_SANDBOX` | `false` | Enables validation command execution. |
 | `AUTODEV_SANDBOX_ALLOW_LOCAL` | `false` | Allows unsandboxed local fallback. |

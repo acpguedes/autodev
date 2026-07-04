@@ -19,6 +19,7 @@ services:
     volumes:
       - autodev_data:/data
       - ../backend:/workspace/backend
+      - ../scripts:/workspace/scripts
       - ../tests:/workspace/tests
       - ../docs:/workspace/docs
       - ../infrastructure:/workspace/infrastructure

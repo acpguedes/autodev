@@ -7,7 +7,7 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-02 (`v1.0.0` baseline tagged; no epic work started yet)
+**Last updated:** 2026-07-03 (E0 foundations in progress)
 
 ## How to update this file
 
@@ -26,19 +26,21 @@
 
 ## Current wave: Alpha (in progress)
 
-No epic in this framework has been started yet. The repository already contains
-several **informal precursors** to Alpha-wave capabilities (auto-discovered plugin
-seams, an agent/skill registry, dynamic orchestration behind a flag, a SQLite store
-abstraction with migrations) — see `docs/feature_matrix.md` for their exact status and
-each `phases/E<n>_*.md` file's "v1 precursor / starting point" section for how they
-map onto the v2 epics. None of them satisfy the v2 contracts (manifests, `hostApi`
-versioning, permissions, contract tests) as written, so they are starting points, not
+E0 is in progress with six of seven foundation stories complete. The repository
+also contains several **informal precursors** to Alpha-wave capabilities
+(auto-discovered plugin seams, an agent/skill registry, dynamic orchestration
+behind a flag, a SQLite store abstraction with migrations) — see
+`docs/feature_matrix.md` for their exact status and each `phases/E<n>_*.md`
+file's "v1 precursor / starting point" section for how they map onto the v2
+epics. None of them satisfy the v2 contracts (manifests, `hostApi` versioning,
+permissions, contract tests) as written, so they are starting points, not
 completed epic work.
 
 The v1 codebase is now frozen at the `v1.0.0` git tag (see `CHANGELOG.md`) as the
 baseline these epics build on and are measured against — `make check` (lint, mypy,
 backend/frontend tests, frontend build) is green and `docs/feature_matrix.md` is
-current as of that tag. **Next action: pick up `E0-S5` (security baseline)** —
+current as of that tag. **Next action: pick up `E0-S6` (Redis, MinIO, and local
+fallbacks)** —
 read `phases/e0_foundations_hardening.md` and
 `agent_guide.md` §1-2 before starting.
 
@@ -46,7 +48,7 @@ read `phases/e0_foundations_hardening.md` and
 
 | Epic | Name | Wave | Status | Stories | Depends on | Doc |
 | --- | --- | --- | --- | --- | --- | --- |
-| E0 | Foundations & Hardening | Alpha | In progress | 5/7 | — | [phases/e0_foundations_hardening.md](phases/e0_foundations_hardening.md) |
+| E0 | Foundations & Hardening | Alpha | In progress | 6/7 | — | [phases/e0_foundations_hardening.md](phases/e0_foundations_hardening.md) |
 | E1 | Plugin Core & SDK | Alpha | Not started | 0/5 | E0 | [phases/e1_plugin_core_sdk.md](phases/e1_plugin_core_sdk.md) |
 | E2 | Agent Framework | Alpha | Not started | 0/5 | E0, E1 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
 | E3 | Orchestration Engine | Alpha/Beta | Not started | 0/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
@@ -61,7 +63,7 @@ read `phases/e0_foundations_hardening.md` and
 | E12 | Quality & Evals | Alpha/Beta | Not started | 0/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 
-Total: **5/64 stories complete** across 14 epics.
+Total: **6/64 stories complete** across 14 epics.
 
 ## Wave exit gates (§18.9 of the reference doc)
 
@@ -140,3 +142,6 @@ Add a dated entry every time a story/epic/wave status changes.
 - **2026-07-03** — Completed E0-S4: added configured OpenTelemetry request and
   run-step spans, non-PII trace correlation attributes, Prometheus 5xx counters,
   and `docs/ops/observability.md`.
+- **2026-07-03** — Completed E0-S5: added default HTTP security headers, an
+  opt-in HSTS setting, dependency-free `run_secret_scanning`, a backend CI
+  secret/SCA gate, and `docs/security/baseline.md`.
