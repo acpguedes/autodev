@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 from backend.api.security import require_api_token
 from backend.api.security_headers import SecurityHeadersMiddleware
 
+from backend.artifacts import get_artifact_store
 from backend.config import (
     RuntimeConfig,
     RuntimeConfigService,
@@ -27,6 +28,8 @@ from backend.config import (
     get_runtime_config_service,
 )
 from backend.config.settings import get_settings
+from backend.coordination import get_cache, get_lock_manager
+from backend.jobs.queue import get_queue
 from backend.llm.factory import get_chat_model
 from backend.observability.tracing import configure_tracing
 from backend.orchestrator.service import (
@@ -178,7 +181,13 @@ def get_repository_intelligence() -> RepositoryIntelligenceService:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    configure_tracing(get_settings())
+    settings = get_settings()
+    configure_tracing(settings)
+    if settings.autodev_profile == "prod":
+        get_cache(settings)
+        get_lock_manager(settings)
+        get_artifact_store(settings)
+        get_queue(settings)
     get_runtime_config_service().apply_to_environment()
     get_orchestrator()
     yield

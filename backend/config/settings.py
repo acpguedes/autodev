@@ -11,6 +11,7 @@ import json
 import os
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Any, Literal
 
 from pydantic import Field, model_validator
@@ -140,8 +141,14 @@ class Settings(BaseSettings):
                 or self.database_url.startswith("postgres://")
             ):
                 errors.append("prod profile requires DATABASE_URL to use PostgreSQL")
+            if self.autodev_job_backend != "redis":
+                errors.append("prod profile requires AUTODEV_JOB_BACKEND=redis")
             if not self.autodev_redis_url.strip():
                 errors.append("prod profile requires AUTODEV_REDIS_URL")
+            elif urlparse(self.autodev_redis_url).scheme not in {"redis", "rediss"}:
+                errors.append("AUTODEV_REDIS_URL must start with redis:// or rediss://")
+            if self.storage_backend != "s3":
+                errors.append("prod profile requires STORAGE_BACKEND=s3")
             if not (
                 self.autodev_minio_endpoint.strip()
                 and self.autodev_minio_access_key.strip()

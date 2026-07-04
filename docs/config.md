@@ -34,7 +34,37 @@ DATABASE_URL=sqlite:////data/autodev.db
 LLM_PROVIDER=stub
 AUTODEV_CONFIG_PATH=/data/autodev.config.json
 AUTODEV_PROJECT_ROOT=/workspace
+AUTODEV_JOB_BACKEND=inprocess
+STORAGE_BACKEND=local
+AUTODEV_ARTIFACT_DIR=/data/artifacts
 ```
+
+## Production-Like Storage Profile
+
+The `prod` profile fails fast unless PostgreSQL, Redis, and MinIO/S3 are all
+selected explicitly:
+
+```env
+AUTODEV_PROFILE=prod
+DATABASE_URL=postgresql://autodev:autodev@postgres:5432/autodev
+AUTODEV_JOB_BACKEND=redis
+AUTODEV_REDIS_URL=redis://redis:6379/0
+STORAGE_BACKEND=s3
+AUTODEV_MINIO_ENDPOINT=minio:9000
+AUTODEV_MINIO_ACCESS_KEY=<set outside git>
+AUTODEV_MINIO_SECRET_KEY=<set outside git>
+```
+
+Run the production-like local stack with:
+
+```bash
+docker compose -f infrastructure/docker-compose.yml --profile prod up --build backend-prod
+```
+
+`autodev config validate --profile prod` uses the same settings validation as
+startup. Missing Redis/MinIO settings, `AUTODEV_JOB_BACKEND` values other than
+`redis`, or `STORAGE_BACKEND` values other than `s3` abort with an actionable
+error before the API starts.
 
 ## Environment Inventory
 
@@ -61,11 +91,11 @@ AUTODEV_PROJECT_ROOT=/workspace
 | `AUTODEV_DYNAMIC_ORCH` | `false` | Enables dynamic orchestration endpoint behavior. |
 | `AUTODEV_REPO_PROVIDER` | `lexical` | Repository provider selector. |
 | `AUTODEV_JOB_BACKEND` | `inprocess` | `inprocess` or `redis`. |
-| `AUTODEV_REDIS_URL` | empty | Redis URL for prod queues/locks. |
+| `AUTODEV_REDIS_URL` | empty | Redis URL for prod queue/cache/locks. Must use `redis://` or `rediss://`. |
 | `STORAGE_BACKEND` | `local` | `local` or `s3` artifact storage. |
 | `AUTODEV_ARTIFACT_DIR` | `/data/artifacts` | Local artifact fallback directory. |
 | `AUTODEV_MINIO_ENDPOINT` | empty | MinIO/S3 endpoint. |
-| `AUTODEV_MINIO_BUCKET` | `autodev-artifacts` | Artifact bucket. |
+| `AUTODEV_MINIO_BUCKET` | `autodev-artifacts` | Reserved legacy setting; v2 E0-S6 uses logical buckets documented in `docs/ops/storage.md`. |
 | `AUTODEV_MINIO_ACCESS_KEY` | empty | MinIO/S3 access key. |
 | `AUTODEV_MINIO_SECRET_KEY` | empty | MinIO/S3 secret key. |
 | `AUTODEV_MINIO_SECURE` | `false` | Use TLS for MinIO/S3. |

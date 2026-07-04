@@ -110,18 +110,19 @@ def _run_dynamic(orchestrator: Any, session_id: str, message: str) -> DynamicCha
         history=[item.to_dict() for item in history] + [user_entry.to_dict()],
         artifacts=dict(session_record["artifacts"] or {}),
     )
+    run_id = str(uuid4())
     initial_state: AgentGraphState = {
         "context": context,
         "results": [],
         "steps": [],
         "current_state": "starting",
+        "run_id": run_id,
     }
 
     final_state = graph.invoke(initial_state)
     results = list(final_state["results"])
     steps = list(final_state["steps"])
     current_state = final_state["current_state"]
-    run_id = str(uuid4())
 
     return DynamicChatResponse(
         run_id=run_id,

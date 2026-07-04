@@ -144,8 +144,10 @@ def test_orchestrator_agent_step_emits_correlated_span(tmp_path) -> None:
         if span.name.startswith("autodev.run.step.")
     ]
     assert step_spans
-    assert step_spans[0].attributes["autodev.run_id"] == run.run_id
-    assert step_spans[0].attributes["autodev.step_id"]
+    attributes = step_spans[0].attributes
+    assert attributes is not None
+    assert attributes["autodev.run_id"] == run.run_id
+    assert attributes["autodev.step_id"]
 
 
 # ---------------------------------------------------------------------------

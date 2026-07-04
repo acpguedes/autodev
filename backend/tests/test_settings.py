@@ -20,6 +20,8 @@ def clean_settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "LLM_PROVIDER",
         "OPENAI_API_KEY",
         "AUTODEV_REDIS_URL",
+        "AUTODEV_JOB_BACKEND",
+        "STORAGE_BACKEND",
         "AUTODEV_MINIO_ENDPOINT",
         "AUTODEV_MINIO_ACCESS_KEY",
         "AUTODEV_MINIO_SECRET_KEY",
@@ -43,8 +45,42 @@ def test_prod_profile_requires_postgres_redis_and_minio() -> None:
 
     message = str(excinfo.value)
     assert "prod profile requires DATABASE_URL to use PostgreSQL" in message
+    assert "prod profile requires AUTODEV_JOB_BACKEND=redis" in message
     assert "prod profile requires AUTODEV_REDIS_URL" in message
+    assert "prod profile requires STORAGE_BACKEND=s3" in message
     assert "prod profile requires MinIO/S3 settings" in message
+
+
+def test_prod_profile_accepts_explicit_postgres_redis_and_s3() -> None:
+    settings = Settings(
+        autodev_profile="prod",
+        database_url="postgresql://autodev:autodev@postgres:5432/autodev",
+        autodev_job_backend="redis",
+        autodev_redis_url="redis://redis:6379/0",
+        storage_backend="s3",
+        autodev_minio_endpoint="minio:9000",
+        autodev_minio_access_key="minioadmin",
+        autodev_minio_secret_key="minioadmin",
+    )
+
+    assert settings.autodev_job_backend == "redis"
+    assert settings.storage_backend == "s3"
+
+
+def test_prod_profile_rejects_invalid_redis_url() -> None:
+    with pytest.raises(ValidationError) as excinfo:
+        Settings(
+            autodev_profile="prod",
+            database_url="postgresql://autodev:autodev@postgres:5432/autodev",
+            autodev_job_backend="redis",
+            autodev_redis_url="http://redis:6379/0",
+            storage_backend="s3",
+            autodev_minio_endpoint="minio:9000",
+            autodev_minio_access_key="minioadmin",
+            autodev_minio_secret_key="minioadmin",
+        )
+
+    assert "AUTODEV_REDIS_URL must start with redis:// or rediss://" in str(excinfo.value)
 
 
 def test_settings_file_loads_below_environment(

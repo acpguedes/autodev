@@ -61,6 +61,7 @@ def _make_node(agent_name: str, agent: Agent):
             results=next_results,
             steps=next_steps,
             current_state=agent_name,
+            run_id=state["run_id"],
         )
 
     return node

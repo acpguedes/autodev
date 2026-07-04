@@ -8,6 +8,13 @@ services:
       AUTODEV_PROFILE: local
       DATABASE_URL: sqlite:////data/autodev.db
       LLM_PROVIDER: stub
+      AUTODEV_JOB_BACKEND: "${AUTODEV_JOB_BACKEND:-inprocess}"
+      AUTODEV_REDIS_URL: "${AUTODEV_REDIS_URL:-redis://redis:6379/0}"
+      STORAGE_BACKEND: "${STORAGE_BACKEND:-local}"
+      AUTODEV_ARTIFACT_DIR: /data/artifacts
+      AUTODEV_MINIO_ENDPOINT: "${AUTODEV_MINIO_ENDPOINT:-minio:9000}"
+      AUTODEV_MINIO_ACCESS_KEY: "${AUTODEV_MINIO_ACCESS_KEY:-}"
+      AUTODEV_MINIO_SECRET_KEY: "${AUTODEV_MINIO_SECRET_KEY:-}"
       PYTEST_ADDOPTS: -p no:cacheprovider
       UVICORN_RELOAD: "false"
       AUTODEV_CONFIG_PATH: /data/autodev.config.json
@@ -16,6 +23,48 @@ services:
       AUTODEV_API_TOKEN: "${AUTODEV_API_TOKEN:-}"
     ports:
       - "8000:8000"
+    volumes:
+      - autodev_data:/data
+      - ../backend:/workspace/backend
+      - ../scripts:/workspace/scripts
+      - ../tests:/workspace/tests
+      - ../docs:/workspace/docs
+      - ../infrastructure:/workspace/infrastructure
+      - ../sandbox:/workspace/sandbox
+      - ../Makefile:/workspace/Makefile:ro
+      - ../mypy.ini:/workspace/mypy.ini:ro
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    pids_limit: 512
+
+  backend-prod:
+    profiles: ["prod"]
+    build:
+      context: ..
+      dockerfile: infrastructure/docker/backend.Dockerfile
+    working_dir: /workspace
+    environment:
+      AUTODEV_PROFILE: prod
+      DATABASE_URL: postgresql://autodev:autodev@postgres:5432/autodev
+      LLM_PROVIDER: stub
+      AUTODEV_JOB_BACKEND: redis
+      AUTODEV_REDIS_URL: redis://redis:6379/0
+      STORAGE_BACKEND: s3
+      AUTODEV_MINIO_ENDPOINT: minio:9000
+      AUTODEV_MINIO_ACCESS_KEY: "${AUTODEV_MINIO_ACCESS_KEY:-minioadmin}"
+      AUTODEV_MINIO_SECRET_KEY: "${AUTODEV_MINIO_SECRET_KEY:-minioadmin}"
+      AUTODEV_CONFIG_PATH: /data/autodev.config.json
+      AUTODEV_PROJECT_ROOT: /workspace
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    ports:
+      - "8001:8000"
     volumes:
       - autodev_data:/data
       - ../backend:/workspace/backend
@@ -61,6 +110,40 @@ services:
       timeout: 5s
       retries: 10
 
+  redis:
+    image: redis:7-alpine
+    profiles: ["prod", "redis"]
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - autodev_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    profiles: ["prod", "minio"]
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: "${AUTODEV_MINIO_ACCESS_KEY:-minioadmin}"
+      MINIO_ROOT_PASSWORD: "${AUTODEV_MINIO_SECRET_KEY:-minioadmin}"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - autodev_minio:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
 volumes:
   autodev_data:
   autodev_postgres:
+  autodev_redis:
+  autodev_minio:

@@ -24,8 +24,8 @@ For the full list of environment flags see `backend/` source and
 | Repository pattern / Store abstraction | `default` | `backend/persistence/base.py` protocol + `get_store()` factory; landed in Unit 1 |
 | PostgreSQL persistence | `stub` | `backend/persistence/postgres_adapter.py` — all methods raise `NotImplementedError`; set `DATABASE_URL=postgresql://…` to select it |
 | Schema migrations (versioned) | `default` | `backend/persistence/migrations/`; `MigrationRunner` with `schema_version` table and ordered callables |
-| Redis-backed state / queue | `stub` | `RedisJobQueue` in `backend/jobs/queue.py` raises `NotImplementedError`; in-process `ThreadPoolExecutor` queue is the default |
-| MinIO artifact storage | `planned` | Not yet wired; tracked in roadmap milestone 1.0 |
+| Redis-backed queue/cache/locks | `optional` | `RedisJobQueue` in `backend/jobs/queue.py` plus `backend/coordination/redis.py`; selected with `AUTODEV_JOB_BACKEND=redis`, while in-process/local fallbacks remain the default |
+| MinIO artifact storage | `optional` | `backend/artifacts/store.py` provides MinIO/S3 artifacts when `STORAGE_BACKEND=s3`; local filesystem artifacts remain the default |
 | pgvector semantic memory | `planned` | Requires PostgreSQL; tracked in roadmap release 0.3 |
 
 ---
@@ -155,7 +155,7 @@ See [`docs/security.md`](security.md) for the full threat model and residual ris
 | Feature | Status | Notes |
 |---------|--------|-------|
 | In-process job queue | `default` | `ThreadPoolExecutor`-backed; `POST /jobs`, `GET /jobs/{id}` |
-| Redis job queue | `stub` | `RedisJobQueue` in `backend/jobs/queue.py` raises `NotImplementedError`; activated by `AUTODEV_JOB_BACKEND=redis` and importable `redis` package |
+| Redis job queue | `optional` | `RedisJobQueue` persists job state in Redis and runs registered handlers; activated by `AUTODEV_JOB_BACKEND=redis` |
 
 ---
 
@@ -200,11 +200,11 @@ See [`docs/security.md`](security.md) for the full threat model and residual ris
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Docker Compose (backend + frontend) | `default` | `infrastructure/docker-compose.yml`; boots with `LLM_PROVIDER=stub` |
-| Full-stack Compose profile (Postgres + Redis + MinIO + Ollama) | `planned` | Tracked as Unit 20 in `mvp_refactor_plan.md` |
+| Production-like Compose profile (Postgres + Redis + MinIO) | `optional` | `infrastructure/docker-compose.yml --profile prod` starts `backend-prod` with PostgreSQL, Redis, and MinIO wiring |
 | Kubernetes deployment | `planned` | `terraform/main.tf` is a placeholder; tracked in roadmap release 1.0 |
 
 ---
 
-*Last updated: 2026-07-02, as part of packaging the v1 architecture baseline (tag `v1.0.0`) ahead
-of the v2.0 platform rewrite. Reflects Units 1, 4, 11, and 22, plus the control-plane security
-hardening pass, as the most recently merged work — see `git log` for the full history.*
+*Last updated: 2026-07-04, as part of closing E0-S6 Redis/MinIO/local fallback
+foundations. See `docs/v2_platform/progress.md` for the current v2 story tracker
+and `git log` for full history.*
