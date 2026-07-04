@@ -37,6 +37,8 @@ neither.
 | ID | Title | Status | Epic | Date |
 | --- | --- | --- | --- | --- |
 | ADR-001 | PostgreSQL as Default Production State Store | Accepted | E0-S3 | 2026-07-03 |
+| RFC-001 | Plugin Extension-Point Catalog | Accepted | E1-S1 | 2026-07-04 |
+| ADR-002 | Plugin Manifest and Extension Catalog | Accepted | E1 | 2026-07-04 |
 
 > Update this table whenever an ADR or RFC is added or changes status. This index,
 > together with `docs/v2_platform/progress.md`, is the fastest way to see which
