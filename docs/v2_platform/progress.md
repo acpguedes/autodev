@@ -7,7 +7,7 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-05 (E3 Alpha slice S1-S5 complete; S6 deferred to Beta with E10)
+**Last updated:** 2026-07-05 (E3 Alpha closed; E4-S1 Reasoning contract + Engine complete on `epic/e4-reasoning`)
 
 ## How to update this file
 
@@ -60,7 +60,7 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 | E1 | Plugin Core & SDK | Alpha | Done | 5/5 | E0 | [phases/e1_plugin_core_sdk.md](phases/e1_plugin_core_sdk.md) |
 | E2 | Agent Framework | Alpha | Done | 5/5 | E0, E1 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
 | E3 | Orchestration Engine | Alpha/Beta | Alpha done · S6→Beta | 5/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
-| E4 | Reasoning | Beta | Not started | 0/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
+| E4 | Reasoning | Beta | In progress | 1/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
 | E5 | Routing / Selection / Evaluation | Beta | Not started | 0/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
 | E6 | Skills v2 | Beta | Not started | 0/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
 | E7 | Context & RAG | Beta | Not started | 0/4 | E1, E2, E8, E5 | [phases/e7_context_rag.md](phases/e7_context_rag.md) |
@@ -72,7 +72,7 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 
-Total: **17/71 stories complete** across 15 epics.
+Total: **18/71 stories complete** across 15 epics.
 
 ## Wave exit gates (§18.9 of the reference doc)
 
@@ -125,6 +125,25 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-07-05** — **E4-S1 complete** (Reasoning Strategy contract + Reasoning
+  Engine). Added `backend/reasoning/`: the typed, SemVer-versioned contract
+  (`contract.py` — `ReasoningInput`/`ReasoningOutput`, the `ReasoningContext`
+  mediator, `ReasoningStrategy`, immutable `Usage`, `Budget`, `TraceEvent`,
+  guardrail/exception types, and the `reasoning-strategy.yaml` manifest); the
+  fail-closed **Reasoning Engine** (`engine.py` — mediates every LLM/tool call,
+  debits the budget, emits an ordered trace via an `on_event` Event Bus hook,
+  enforces guardrail `block`/`warn`/`repair_once`, and terminates with the
+  correct `stop_reason`); the SemVer strategy registry (`registry.py`); and the
+  declarative `reasoning-policy.yaml` model (`policy.py`). Published schemas
+  (`reasoning-strategy.schema.json`, `reasoning-policy.schema.json`); SDK
+  contract export bumped to `1.2.0`; RFC-003 + ADR-007 (async contract / sync
+  host; engine-owned fail-closed budgets; single-`tokens` budget model);
+  `docs/reasoning/contract.md`; and 12 contract tests
+  (`test_reasoning_contract.py`, incl. the fail-closed no-effect-past-ceiling
+  case). The `reasoning.strategy` extension point was already present in the
+  plugin catalog. Process note: implementation was to be handed to Codex per the
+  user's request, but the Codex CLI workspace was out of credits; with the
+  user's approval E4-S1 was implemented directly in Claude instead.
 - **2026-07-05** — **E3 Alpha slice verified complete** and closed for Alpha
   (S1-S5 Done; flow suite 38/38 green). **E3-S6 (visual flow editor) formally
   deferred to Beta** — it depends on **E10** (Design System, Not started) per
