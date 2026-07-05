@@ -18,8 +18,14 @@ from backend.reasoning.contract import (
     ReasoningStrategy,
     ReasoningStrategyManifest,
 )
+from backend.routing.contract import (
+    ROUTING_CONTRACT_HOST_API,
+    RouteDecision,
+    RouteRequest,
+    RouterPlugin,
+)
 
-SDK_CONTRACT_VERSION = "1.2.0"
+SDK_CONTRACT_VERSION = "1.3.0"
 
 
 @dataclass(frozen=True)
@@ -118,5 +124,9 @@ __all__ = [
     "ReasoningOutput",
     "ReasoningStrategy",
     "ReasoningStrategyManifest",
+    "ROUTING_CONTRACT_HOST_API",
+    "RouteDecision",
+    "RouteRequest",
+    "RouterPlugin",
     "SDK_CONTRACT_VERSION",
 ]
