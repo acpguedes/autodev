@@ -471,6 +471,7 @@ def default_reasoning_policy(
     cost_usd: float = 0.75,
     wall_clock_ms: int = 45000,
     max_steps: int = 12,
+    on_exceed: str = "fail_closed",
     guardrails: tuple[GuardrailSpec, ...] = (),
 ) -> ReasoningPolicy:
     """Build a permissive default reasoning policy (reference §8.4 defaults).
@@ -493,7 +494,11 @@ def default_reasoning_policy(
         host_api=">=2.0 <3.0",
         selection=SelectionSpec(default=default_strategy),
         budget=ReasoningBudgetPolicy(
-            tokens=tokens, cost_usd=cost_usd, wall_clock_ms=wall_clock_ms, max_steps=max_steps
+            tokens=tokens,
+            cost_usd=cost_usd,
+            wall_clock_ms=wall_clock_ms,
+            max_steps=max_steps,
+            on_exceed=on_exceed,
         ),
         guardrails=tuple(guardrails),
         tracing=TracingSpec(),

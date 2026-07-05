@@ -1,7 +1,7 @@
 # E4 — Reasoning
 
 **Wave:** Beta
-**Status:** In progress · **Stories:** 3/4 complete (E4-S1..S3 done; contract + Engine + registry + policy + 5 reference strategies, RFC-003/ADR-007)
+**Status:** Done · **Stories:** 4/4 complete (E4-S1..S4 done; contract + Engine + registry + policy + 5 reference strategies + policy-driven selection & fallback, RFC-003/ADR-007)
 **Depends on:** E1, E2
 **Enables:** E5; consumed by E11-S3 (budgets)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E4), §18.8, §18.9
@@ -90,8 +90,10 @@ Subtasks:
 
 ## Epic exit checklist
 
-- [ ] All 4 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
+- [x] All 4 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
       story-specific DoD above.
-- [ ] Contract tests green for the Reasoning Strategy extension point.
-- [ ] `docs/v2_platform/progress.md` updated.
-- [ ] Beta wave entry item "Reasoning" satisfied (§18.9).
+- [x] Contract tests green for the Reasoning Strategy extension point
+      (`backend/tests/test_reasoning_contract.py` + strategy/selection suites).
+- [x] `docs/v2_platform/progress.md` updated.
+- [x] Beta wave entry item "Reasoning" satisfied (§18.9) — pluggable strategies,
+      fail-closed budgets, guardrails, traced replayable runs, policy selection.

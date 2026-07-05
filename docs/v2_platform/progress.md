@@ -7,7 +7,7 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-05 (E3 Alpha closed; E4-S1..S3 complete on `epic/e4-reasoning` — contract, Engine, and 5 reference strategies; E4-S4 next)
+**Last updated:** 2026-07-05 (E3 Alpha closed; **E4 — Reasoning epic complete (4/4)** on `epic/e4-reasoning` — contract, Engine, 5 reference strategies, and policy-driven selection + fallback; ready for epic→main PR)
 
 ## How to update this file
 
@@ -60,7 +60,7 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 | E1 | Plugin Core & SDK | Alpha | Done | 5/5 | E0 | [phases/e1_plugin_core_sdk.md](phases/e1_plugin_core_sdk.md) |
 | E2 | Agent Framework | Alpha | Done | 5/5 | E0, E1 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
 | E3 | Orchestration Engine | Alpha/Beta | Alpha done · S6→Beta | 5/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
-| E4 | Reasoning | Beta | In progress | 3/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
+| E4 | Reasoning | Beta | Done | 4/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
 | E5 | Routing / Selection / Evaluation | Beta | Not started | 0/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
 | E6 | Skills v2 | Beta | Not started | 0/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
 | E7 | Context & RAG | Beta | Not started | 0/4 | E1, E2, E8, E5 | [phases/e7_context_rag.md](phases/e7_context_rag.md) |
@@ -72,7 +72,7 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 
-Total: **20/71 stories complete** across 15 epics.
+Total: **21/71 stories complete** across 15 epics.
 
 ## Wave exit gates (§18.9 of the reference doc)
 
@@ -125,6 +125,20 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-07-05** — **E4-S4 complete; E4 — Reasoning epic done (4/4)**. Added
+  policy-driven strategy **selection** (`selection.py`: precedence
+  default→policy-rule→manifest→flow-node→selector per §8.7, with operator-aware
+  `when` predicates including ordinal levels), the **`ReasoningService`**
+  (`service.py`: resolve → run → `degrade_to` fallback on `budget_exhausted`,
+  with the selection/degrade decisions traced), the **Agent Runtime binding**
+  (`agent_binding.py`: `AgentBudgets`→`Budget` mapping + `ReasoningInput` builder
+  — the E2 seam, deliberately kept out of the already-oversized `runtime.py`), an
+  `on_exceed` option on `default_reasoning_policy`, and `docs/reasoning/
+  policies.md`. 6 tests (`test_reasoning_selection.py`). **E4 now delivers the
+  five reference strategies, fail-closed budgets, guardrails, traced replayable
+  runs, and policy-driven selection** — the Beta "Reasoning" entry item. Deep
+  adoption in the default agent execution cycle (replacing the single-call step)
+  is progressive (E5/E14). Ready for the epic→`main` PR.
 - **2026-07-05** — **E4-S3 complete** (advanced reasoning strategies). Added
   **Reflection** (`autodev/reasoning-reflection` — draft→self-critique→revise,
   bounded by `max_revisions`, early-exit on approval) and **Debate/Tree-of-
