@@ -59,6 +59,12 @@ from backend.reasoning.registry import (
     ReasoningStrategyRegistry,
     is_host_compatible,
 )
+from backend.reasoning.selection import SelectionDecision, resolve_strategy
+from backend.reasoning.service import ReasoningRunResult, ReasoningService
+from backend.reasoning.agent_binding import (
+    budget_from_agent_budgets,
+    reasoning_input_from_agent,
+)
 
 __all__ = [
     "Budget",
@@ -79,10 +85,13 @@ __all__ = [
     "ReasoningInput",
     "ReasoningOutput",
     "ReasoningPolicy",
+    "ReasoningRunResult",
+    "ReasoningService",
     "ReasoningStrategy",
     "ReasoningStrategyManifest",
     "ReasoningStrategyRegistry",
     "STOP_REASONS",
+    "SelectionDecision",
     "SelectionRule",
     "SelectionSpec",
     "ToolImplementation",
@@ -91,9 +100,12 @@ __all__ = [
     "TraceEvent",
     "TracingSpec",
     "Usage",
+    "budget_from_agent_budgets",
     "budget_from_policy",
     "default_reasoning_policy",
     "is_host_compatible",
+    "reasoning_input_from_agent",
+    "resolve_strategy",
     "load_reasoning_policy",
     "load_reasoning_strategy_manifest",
     "select_strategy",
