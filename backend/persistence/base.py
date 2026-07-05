@@ -90,7 +90,21 @@ class PlanRepository(Protocol):
     def list_approvals(self, session_id: str) -> list[ApprovalRecord]: ...
 
 
+@runtime_checkable
+class EvalResultRepository(Protocol):
+    """Durable storage for immutable, versioned Evaluation Service (E5-S3) results."""
+
+    def create_eval_result(
+        self, *, eval_id: str, eval_version: str, run_id: str, document: dict[str, Any]
+    ) -> None: ...
+
+    def get_eval_result(self, eval_id: str, eval_version: str, run_id: str) -> dict[str, Any] | None: ...
+
+    def list_eval_results(self, eval_id: str, eval_version: str | None = None) -> list[dict[str, Any]]: ...
+
+
 __all__ = [
+    "EvalResultRepository",
     "MessageRepository",
     "PlanRepository",
     "RunRepository",

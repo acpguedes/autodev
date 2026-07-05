@@ -145,10 +145,24 @@ class PostgresStore:
                     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """,
+                """
+                CREATE TABLE IF NOT EXISTS eval_results (
+                    id BIGSERIAL PRIMARY KEY,
+                    eval_id TEXT NOT NULL,
+                    eval_version TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    mode TEXT NOT NULL,
+                    gate_passed BOOLEAN NOT NULL DEFAULT TRUE,
+                    document_json JSONB NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(eval_id, eval_version, run_id)
+                )
+                """,
                 "CREATE INDEX IF NOT EXISTS idx_pg_runs_session_id ON runs(session_id)",
                 "CREATE INDEX IF NOT EXISTS idx_pg_run_steps_run_id ON run_steps(run_id, id)",
                 "CREATE INDEX IF NOT EXISTS idx_pg_messages_session_id ON messages(session_id, sequence)",
                 "CREATE INDEX IF NOT EXISTS idx_pg_plugin_events_plugin_id ON plugin_events(plugin_id, id)",
+                "CREATE INDEX IF NOT EXISTS idx_pg_eval_results_eval_id ON eval_results(eval_id, eval_version, id DESC)",
                 """
                 INSERT INTO schema_version (namespace, version)
                 VALUES ('store', 1)
@@ -359,6 +373,46 @@ class PostgresStore:
                         (session_id, run_id, offset, item["role"], item["content"]),
                     )
             conn.commit()
+
+    def create_eval_result(
+        self, *, eval_id: str, eval_version: str, run_id: str, document: dict[str, Any]
+    ) -> None:
+        """Persist one eval result document. Never overwrites an existing run (E5-S3)."""
+        gate_passed = bool((document.get("gate") or {}).get("passed", True))
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO eval_results (eval_id, eval_version, run_id, mode, gate_passed, document_json)
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+                """,
+                (eval_id, eval_version, run_id, str(document.get("mode", "offline")), gate_passed, _json(document)),
+            )
+            conn.commit()
+
+    def get_eval_result(self, eval_id: str, eval_version: str, run_id: str) -> dict[str, Any] | None:
+        """Fetch one eval result document, or ``None`` if it does not exist (E5-S3)."""
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT document_json FROM eval_results WHERE eval_id = %s AND eval_version = %s AND run_id = %s",
+                (eval_id, eval_version, run_id),
+            ).fetchone()
+        return _loads(row[0]) if row is not None else None
+
+    def list_eval_results(self, eval_id: str, eval_version: str | None = None) -> list[dict[str, Any]]:
+        """List eval result documents for an id, newest first, optionally by version (E5-S3)."""
+        with self.connect() as conn:
+            if eval_version is not None:
+                rows = conn.execute(
+                    "SELECT document_json FROM eval_results WHERE eval_id = %s AND eval_version = %s "
+                    "ORDER BY id DESC",
+                    (eval_id, eval_version),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT document_json FROM eval_results WHERE eval_id = %s ORDER BY id DESC",
+                    (eval_id,),
+                ).fetchall()
+        return [_loads(row[0]) for row in rows]
 
     def _replace_run_steps(self, conn: Any, run_id: str, steps: list[dict[str, Any]]) -> None:
         """Delete and re-insert all step rows for a run."""
