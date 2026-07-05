@@ -6,6 +6,13 @@ persist every Run/Step transition, enforce fail-closed run budgets, and emit
 ordered lifecycle events (``flow.run.started``, ``run.step.started``,
 ``run.step.completed``, ``run.step.failed``, ``flow.run.completed``,
 ``flow.run.failed``) into the durable event store.
+
+E3-S3 adds per-step checkpoints as the recovery contract (the state persisted
+after every step is the checkpoint), retry/backoff per the manifest retry
+policy, crash recovery through :meth:`FlowEngine.resume_run`
+(``flow.run.resumed``), and deterministic replay through
+:meth:`FlowEngine.replay_run` (``flow.run.replayed``) under the ADR-005
+determinism boundary.
 """
 
 from __future__ import annotations
@@ -13,24 +20,26 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
+from backend.flows.activation import NodeActivationMixin
 from backend.flows.budgets import (
     budget_cap_document,
     budget_violation,
     effective_budgets,
 )
-from backend.flows.expressions import ExpressionError, evaluate_expression, render_template
-from backend.flows.handlers import (
-    FlowBudgetExceededError,
-    FlowHandlerRegistry,
-    FlowNodeError,
-    NodeContext,
-    UnsupportedNodeError,
-    build_default_handlers,
+from backend.flows.checkpoint import (
+    FlowReplayReport,
+    build_eval_state,
+    final_output,
+    replay_decision_path,
+    select_next_node,
 )
-from backend.flows.model import FlowBudgets, FlowManifest, FlowNode
+from backend.flows.expressions import ExpressionError
+from backend.flows.handlers import FlowHandlerRegistry, FlowNodeError, build_default_handlers
+from backend.flows.manifest import validate_run_input
+from backend.flows.model import FlowBudgets
+from backend.flows.records import TERMINAL_RUN_STATUSES
 from backend.flows.registry import FlowRegistry
 from backend.flows.state import FlowRunRecord, FlowRunStore
-from backend.observability.tracing import trace_run_step
 from backend.persistence.database import get_store
 
 
@@ -38,7 +47,7 @@ class FlowRunError(RuntimeError):
     """Raised when a run cannot be started (unknown flow, invalid input)."""
 
 
-class FlowEngine:
+class FlowEngine(NodeActivationMixin):
     """Executes registered flows with durable, observable Run/Step state."""
 
     def __init__(
@@ -49,6 +58,7 @@ class FlowEngine:
         run_store: FlowRunStore | None = None,
         handlers: FlowHandlerRegistry | None = None,
         clock: Callable[[], float] | None = None,
+        sleeper: Callable[[float], None] | None = None,
         max_steps_per_run: int = 1000,
     ) -> None:
         """Initialize the engine and its collaborators.
@@ -63,6 +73,9 @@ class FlowEngine:
                 :func:`backend.flows.handlers.build_default_handlers`.
             clock: Monotonic clock used for wall-clock budget enforcement;
                 defaults to :func:`time.monotonic`.
+            sleeper: Blocking sleep used for retry backoff between node
+                attempts; defaults to :func:`time.sleep` (injectable so
+                tests do not wait).
             max_steps_per_run: Engine safety cap on node activations per run
                 (fails closed); complements, and never replaces, manifest
                 budgets.
@@ -72,6 +85,7 @@ class FlowEngine:
         self.runs = run_store or FlowRunStore(self._store)
         self.handlers = handlers or build_default_handlers(store=self._store)
         self._clock = clock or time.monotonic
+        self._sleeper = sleeper or time.sleep
         self._max_steps = max_steps_per_run
 
     # ------------------------------------------------------------------ API
@@ -115,7 +129,9 @@ class FlowEngine:
         except KeyError as exc:
             raise FlowRunError(str(exc)) from exc
         run_input = dict(input or {})
-        self._validate_input(manifest, run_input)
+        input_errors = validate_run_input(manifest, run_input)
+        if input_errors:
+            raise FlowRunError("; ".join(input_errors))
 
         entry_id = manifest.entry_node().id
         state: dict[str, Any] = {
@@ -154,9 +170,12 @@ class FlowEngine:
     ) -> FlowRunRecord:
         """Execute a run from its persisted cursor until it stops.
 
-        The budgets enforced are the element-wise minimum of the manifest
-        budgets, any cap persisted in the run state at start time, and the
-        optional ``budget_cap`` argument (ADR-006). They are checked between
+        Executing an already-terminal run is idempotent: the persisted
+        terminal record is returned unchanged, without re-executing anything
+        (documented E3-S3 decision — safe for API retries). The budgets
+        enforced are the element-wise minimum of the manifest budgets, any
+        cap persisted in the run state at start time, and the optional
+        ``budget_cap`` argument (ADR-006). They are checked between
         activations and once more before completing, so a run can never
         finish ``completed`` while over budget.
 
@@ -173,6 +192,192 @@ class FlowEngine:
         run = self.runs.get_run(run_id)
         if run is None:
             raise FlowRunError(f"unknown run {run_id!r}")
+        if run.status in TERMINAL_RUN_STATUSES:
+            return run
+        return self._run_loop(run, budget_cap=budget_cap)
+
+    def resume_run(self, run_id: str) -> FlowRunRecord:
+        """Resume an interrupted run from its last persisted checkpoint.
+
+        A run whose process died mid-execution is left ``running`` (or
+        ``pending``) with the cursor and every completed node output already
+        checkpointed in ``state_json``. Resuming emits ``flow.run.resumed``,
+        marks any step still ``running`` (orphaned by the crash) as failed,
+        and continues the graph walk from the cursor — completed steps are
+        never re-executed because their outputs are already in
+        ``state.nodes``.
+
+        Args:
+            run_id: Id of the interrupted run.
+
+        Returns:
+            The terminal (or paused) run record.
+
+        Raises:
+            FlowRunError: If the run is unknown or already terminal.
+        """
+        run = self.runs.get_run(run_id)
+        if run is None:
+            raise FlowRunError(f"unknown run {run_id!r}")
+        if run.status in TERMINAL_RUN_STATUSES:
+            raise FlowRunError(
+                f"run {run_id!r} is terminal ({run.status}) and cannot be "
+                "resumed; use replay_run for post-mortem verification"
+            )
+        for step in self.runs.list_steps(run_id):
+            if step.status == "running":
+                self.runs.complete_step(
+                    step.step_id,
+                    status="failed",
+                    error="interrupted: attempt superseded by resume",
+                )
+        run = self._reconcile_crash_window(run)
+        if run.status in TERMINAL_RUN_STATUSES:
+            return run
+        self.runs.append_event(
+            run_id=run_id,
+            name="flow.run.resumed",
+            payload={
+                "flowId": run.flow_id,
+                "flowVersion": run.flow_version,
+                "cursor": run.state.get("cursor"),
+            },
+        )
+        return self._run_loop(run)
+
+    def replay_run(self, run_id: str) -> FlowReplayReport:
+        """Verify a terminal run's decision path from persisted state alone.
+
+        Node outputs are recorded effects and are never re-executed (LLM,
+        tool, and agent calls stay recorded); replay folds them in activation
+        order and re-derives every input-binding rendering and routing
+        decision as pure functions of the rebuilt state (ADR-005), comparing
+        the derived node sequence with the recorded one. The outcome is
+        emitted as ``flow.run.replayed``.
+
+        Args:
+            run_id: Id of the terminal run to replay.
+
+        Returns:
+            A :class:`FlowReplayReport` with ``deterministic``, both node
+            sequences, and any divergence detail.
+
+        Raises:
+            FlowRunError: If the run is unknown or not terminal.
+        """
+        run = self.runs.get_run(run_id)
+        if run is None:
+            raise FlowRunError(f"unknown run {run_id!r}")
+        if run.status not in TERMINAL_RUN_STATUSES:
+            raise FlowRunError(
+                f"run {run_id!r} is not terminal (status {run.status!r}); "
+                "only terminal runs can be replayed"
+            )
+        manifest = self.registry.resolve(run.flow_id, run.flow_version)
+        steps = self.runs.list_steps(run_id)
+        report = replay_decision_path(manifest, run, steps)
+        self.runs.append_event(
+            run_id=run_id, name="flow.run.replayed", payload=report.to_document()
+        )
+        return report
+
+    def _reconcile_crash_window(self, run: FlowRunRecord) -> FlowRunRecord:
+        """Fold a committed-but-unrouted step back into the run state.
+
+        ``complete_step`` and the state checkpoint are separate commits; a
+        crash between them leaves the cursor node with a *completed* step
+        whose output never reached ``state.nodes`` and whose
+        ``run.step.completed`` event was never appended. Resuming without
+        reconciliation would re-execute that node — re-firing its side
+        effects — so the recorded output is folded in, routing is re-derived,
+        and the missing event is emitted (flagged ``reconciled``) before the
+        walk continues. Legitimate revisits of the cursor node (guarded
+        loops) are recognized by their already-appended completion event and
+        left untouched. Step metrics lost inside the window are not
+        re-charged.
+
+        Args:
+            run: The non-terminal run being resumed.
+
+        Returns:
+            The (possibly updated) run record; a terminal record when
+            re-derived routing fails closed.
+        """
+        cursor = run.state.get("cursor")
+        if not cursor:
+            return run
+        completed = [
+            step
+            for step in self.runs.list_steps(run.run_id)
+            if step.node_id == cursor and step.status == "completed"
+        ]
+        if not completed:
+            return run
+        last = completed[-1]
+        routed_step_ids = {
+            event.payload.get("stepId")
+            for event in self.runs.list_events(run.run_id)
+            if event.name == "run.step.completed"
+        }
+        if last.step_id in routed_step_ids:
+            return run
+        manifest = self.registry.resolve(run.flow_id, run.flow_version)
+        node = manifest.node(str(cursor))
+        state = dict(run.state)
+        nodes_state = dict(state.get("nodes", {}))
+        nodes_state[node.id] = {"output": last.output}
+        state["nodes"] = nodes_state
+        try:
+            next_node = select_next_node(
+                manifest, node, build_eval_state(run.input, nodes_state)
+            )
+        except ExpressionError as exc:
+            return self._fail_run(
+                run.run_id, state, "predicate_error",
+                f"routing after node {node.id!r}: {exc}",
+            )
+        except FlowNodeError as exc:
+            return self._fail_run(run.run_id, state, "no_route", str(exc))
+        state["cursor"] = next_node
+        self.runs.update_run(run.run_id, state=state)
+        self.runs.append_event(
+            run_id=run.run_id,
+            name="run.step.completed",
+            payload={
+                "nodeId": node.id,
+                "stepId": last.step_id,
+                "attempt": last.attempt,
+                "nextNodeId": next_node,
+                "reconciled": True,
+            },
+        )
+        record = self.runs.get_run(run.run_id)
+        if record is None:  # pragma: no cover - the run was just persisted
+            raise FlowRunError(f"run {run.run_id!r} vanished while reconciling")
+        return record
+
+    # ------------------------------------------------------------- internals
+
+    def _run_loop(
+        self, run: FlowRunRecord, *, budget_cap: FlowBudgets | None = None
+    ) -> FlowRunRecord:
+        """Drive a run from its persisted cursor to a stop condition.
+
+        Shared by :meth:`execute_run` and :meth:`resume_run`: both walk the
+        graph from ``state.cursor``, checkpointing state after every step.
+        A ``None`` cursor with pending completion (e.g. a crash between the
+        last checkpoint and run finalization) falls through to completion
+        without re-executing any node.
+
+        Args:
+            run: The non-terminal run to drive.
+            budget_cap: Optional additional cap on the run's budgets,
+                combined with the manifest budgets and any cap persisted in
+                the run state (ADR-006).
+
+        Returns:
+            The terminal (or paused) run record.
+        """
         manifest = self.registry.resolve(run.flow_id, run.flow_version)
         self.runs.update_run(run.run_id, status="running")
 
@@ -205,7 +410,7 @@ class FlowEngine:
         )
         if budget_error is not None:
             return self._fail_run(run.run_id, state, "budget_exhausted", budget_error)
-        output = self._final_output(manifest, state)
+        output = final_output(manifest, state)
         self.runs.update_run(
             run.run_id, status="completed", stop_reason="completed",
             state=state, output=output,
@@ -216,219 +421,9 @@ class FlowEngine:
             payload={"flowId": manifest.id, "output": output},
         )
         result = self.runs.get_run(run.run_id)
-        assert result is not None  # noqa: S101 - just persisted above
+        if result is None:  # pragma: no cover - the run was just persisted
+            raise FlowRunError(f"run {run.run_id!r} vanished after completion")
         return result
-
-    # ------------------------------------------------------------- internals
-
-    def _activate_node(
-        self,
-        run: FlowRunRecord,
-        manifest: FlowManifest,
-        node: FlowNode,
-        state: dict[str, Any],
-        *,
-        budgets: FlowBudgets,
-        deadline: float,
-    ) -> FlowRunRecord | None:
-        """Execute one node activation and advance the cursor.
-
-        Args:
-            run: The run being executed.
-            manifest: The flow definition.
-            node: The node at the cursor.
-            state: The mutable run state (updated in place and persisted).
-            budgets: Effective budgets enforced for this execution; exposed to
-                handlers so composite nodes can cap their children (ADR-006).
-            deadline: Monotonic timestamp when the wall-clock budget expires.
-
-        Returns:
-            A terminal run record when the run failed; ``None`` to continue.
-        """
-        eval_state = self._eval_state(run, state)
-        try:
-            rendered = render_template(dict(node.input_bindings), eval_state)
-        except ExpressionError as exc:
-            return self._fail_run(
-                run.run_id, state, "binding_error",
-                f"node {node.id!r}: {exc}",
-            )
-
-        step = self.runs.create_step(
-            run_id=run.run_id,
-            node_id=node.id,
-            node_type=node.type,
-            attempt=1,
-            input=rendered if isinstance(rendered, dict) else {"value": rendered},
-        )
-        self.runs.append_event(
-            run_id=run.run_id,
-            name="run.step.started",
-            payload={"nodeId": node.id, "stepId": step.step_id, "attempt": step.attempt},
-        )
-
-        ctx = NodeContext(
-            manifest=manifest,
-            node=node,
-            run_id=run.run_id,
-            tenant_id=run.tenant_id,
-            input=rendered if isinstance(rendered, dict) else {"value": rendered},
-            state=state,
-            services={
-                "engine": self,
-                "budgets": budgets,
-                "deadline": deadline,
-                "clock": self._clock,
-            },
-        )
-        try:
-            with trace_run_step(
-                run_id=run.run_id,
-                step_id=f"{node.id}#{step.attempt}",
-                agent=node.ref.id if node.ref else node.type,
-                status="running",
-            ):
-                handler = self.handlers.get(node.type)
-                outcome = handler(ctx)
-        except Exception as exc:  # noqa: BLE001 - engine isolates node failures
-            if isinstance(exc, UnsupportedNodeError):
-                reason = "unsupported_node"
-            elif isinstance(exc, FlowBudgetExceededError):
-                reason = "budget_exhausted"
-            else:
-                reason = "node_failed"
-            self.runs.complete_step(step.step_id, status="failed", error=str(exc))
-            self.runs.append_event(
-                run_id=run.run_id,
-                name="run.step.failed",
-                payload={
-                    "nodeId": node.id,
-                    "stepId": step.step_id,
-                    "attempt": step.attempt,
-                    "reason": reason,
-                    "error": str(exc),
-                },
-            )
-            return self._fail_run(run.run_id, state, reason, str(exc))
-
-        self.runs.complete_step(step.step_id, status="completed", output=outcome.output)
-        nodes_state = state["nodes"]
-        nodes_state[node.id] = {"output": outcome.output}
-        metrics = state["metrics"]
-        metrics["tokens"] = float(metrics.get("tokens", 0.0)) + float(
-            outcome.metrics.get("tokens", 0.0)
-        )
-        metrics["cost_usd"] = float(metrics.get("cost_usd", 0.0)) + float(
-            outcome.metrics.get("cost_usd", 0.0)
-        )
-
-        try:
-            next_node = self._select_next(
-                manifest, node, self._eval_state(run, state)
-            )
-        except ExpressionError as exc:
-            return self._fail_run(
-                run.run_id, state, "predicate_error",
-                f"routing after node {node.id!r}: {exc}",
-            )
-        except FlowNodeError as exc:
-            return self._fail_run(run.run_id, state, "no_route", str(exc))
-
-        state["cursor"] = next_node
-        self.runs.update_run(run.run_id, state=state)
-        self.runs.append_event(
-            run_id=run.run_id,
-            name="run.step.completed",
-            payload={
-                "nodeId": node.id,
-                "stepId": step.step_id,
-                "attempt": step.attempt,
-                "nextNodeId": next_node,
-            },
-        )
-        return None
-
-    def _select_next(
-        self,
-        manifest: FlowManifest,
-        node: FlowNode,
-        eval_state: dict[str, Any],
-    ) -> str | None:
-        """Pick the next node from the current node's outgoing edges.
-
-        ``when``-guarded edges are evaluated in declaration order and the
-        first match wins; otherwise the single unguarded edge is taken.
-        ``on``-signal edges are never taken by normal completion. When edges
-        exist but none match, the engine fails closed.
-
-        Args:
-            manifest: The flow definition.
-            node: The node whose outgoing edges to evaluate.
-            eval_state: State document predicates are evaluated against.
-
-        Returns:
-            The next node id, or ``None`` when the node is terminal.
-
-        Raises:
-            ExpressionError: If a predicate fails to evaluate.
-            FlowNodeError: If edges exist but no route matches (fails closed).
-        """
-        edges = manifest.edges_from(node.id)
-        if not edges:
-            return None
-        for edge in edges:
-            if edge.when is None:
-                continue
-            predicate = edge.when.strip()
-            if predicate.startswith("{{") and predicate.endswith("}}"):
-                predicate = predicate[2:-2]
-            if bool(evaluate_expression(predicate, eval_state)):
-                return edge.target
-        for edge in edges:
-            if not edge.guarded:
-                return edge.target
-        if all(edge.on is not None for edge in edges):
-            return None
-        raise FlowNodeError(
-            f"no outgoing edge of node {node.id!r} matched the run state"
-        )
-
-    def _eval_state(
-        self, run: FlowRunRecord, state: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Build the document expressions are evaluated against.
-
-        Args:
-            run: The run being executed.
-            state: The run's mutable state.
-
-        Returns:
-            A dict exposing ``flow.input`` and ``nodes.<id>.output``.
-        """
-        return {"flow": {"input": run.input}, "nodes": state.get("nodes", {})}
-
-    def _final_output(
-        self, manifest: FlowManifest, state: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Compute the consolidated run output.
-
-        The output of the last completed node wins; flows that need a richer
-        consolidation should end in a dedicated aggregation node.
-
-        Args:
-            manifest: The flow definition.
-            state: The run's final state.
-
-        Returns:
-            The consolidated output document.
-        """
-        nodes: dict[str, Any] = state.get("nodes", {})
-        last_output: dict[str, Any] = {}
-        for node in manifest.nodes:
-            entry = nodes.get(node.id)
-            if entry is not None and isinstance(entry.get("output"), dict):
-                last_output = entry["output"]
-        return last_output
 
     def _fail_run(
         self,
@@ -455,37 +450,9 @@ class FlowEngine:
             payload={"reason": reason, "detail": detail},
         )
         record = self.runs.get_run(run_id)
-        assert record is not None  # noqa: S101 - just persisted above
+        if record is None:  # pragma: no cover - the run was just persisted
+            raise FlowRunError(f"run {run_id!r} vanished while failing")
         return record
 
-    @staticmethod
-    def _validate_input(manifest: FlowManifest, run_input: dict[str, Any]) -> None:
-        """Validate run input against the flow's declared input schema.
 
-        Enforces the schema's ``required`` list and rejects non-declared
-        properties when the schema declares ``properties`` and sets
-        ``additionalProperties: false``.
-
-        Args:
-            manifest: The flow definition.
-            run_input: The run input payload.
-
-        Raises:
-            FlowRunError: If the input violates the declared schema.
-        """
-        if manifest.input is None:
-            return
-        schema = manifest.input.schema
-        required = schema.get("required")
-        if isinstance(required, list):
-            missing = [key for key in required if key not in run_input]
-            if missing:
-                raise FlowRunError(f"missing required input fields: {missing}")
-        properties = schema.get("properties")
-        if isinstance(properties, dict) and schema.get("additionalProperties") is False:
-            unknown = [key for key in run_input if key not in properties]
-            if unknown:
-                raise FlowRunError(f"unknown input fields: {unknown}")
-
-
-__all__ = ["FlowEngine", "FlowRunError"]
+__all__ = ["FlowEngine", "FlowReplayReport", "FlowRunError"]

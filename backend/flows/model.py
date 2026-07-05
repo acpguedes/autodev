@@ -34,12 +34,14 @@ class FlowRetryPolicy:
 
     Attributes:
         max_attempts: Total attempts allowed, including the first one.
+            Defaults to 1 — retries are opt-in, because re-firing a node
+            re-fires its side effects (agent/tool calls are not idempotent).
         backoff: Delay growth mode between attempts, ``"fixed"`` or
             ``"exponential"``.
         initial_delay_sec: Delay before the second attempt, in seconds.
     """
 
-    max_attempts: int = 3
+    max_attempts: int = 1
     backoff: str = "exponential"
     initial_delay_sec: float = 2.0
 
@@ -73,6 +75,34 @@ class FlowBudgets:
     max_cost_usd: float = 10.0
     max_wall_clock_sec: int = 3600
     max_tokens: int = 2_000_000
+
+    def violation(
+        self, metrics: dict[str, Any], elapsed_sec: float
+    ) -> str | None:
+        """Check accumulated run metrics against these budgets.
+
+        Args:
+            metrics: Run metrics carrying ``tokens`` and ``cost_usd``.
+            elapsed_sec: Wall-clock seconds of the current execution session.
+
+        Returns:
+            A human-readable violation, or ``None`` when within budget.
+        """
+        if elapsed_sec > self.max_wall_clock_sec:
+            return (
+                f"wall clock {elapsed_sec:.1f}s exceeded budget "
+                f"{self.max_wall_clock_sec}s"
+            )
+        if float(metrics.get("tokens", 0.0)) > self.max_tokens:
+            return (
+                f"tokens {metrics.get('tokens')} exceeded budget {self.max_tokens}"
+            )
+        if float(metrics.get("cost_usd", 0.0)) > self.max_cost_usd:
+            return (
+                f"cost {metrics.get('cost_usd')} exceeded budget "
+                f"{self.max_cost_usd} USD"
+            )
+        return None
 
 
 DEFAULT_FLOW_BUDGETS = FlowBudgets()

@@ -58,9 +58,15 @@ def _linear_flow(flow_id: str = "autodev/flow-linear") -> dict[str, Any]:
 
 
 def _engine(tmp_path: Path, **kwargs: Any) -> tuple[FlowEngine, CallableRegistry]:
-    """Build an engine on a temp SQLite store with a callable registry."""
+    """Build an engine on a temp SQLite store with a callable registry.
+
+    A no-op sleeper is injected by default so tests exercising node failures
+    do not wait out the real retry backoff (E3-S3); retry behavior itself is
+    covered by ``test_flows_checkpoint.py``.
+    """
     store = SQLiteStore(f"sqlite:///{tmp_path / 'flows.db'}")
     callables = CallableRegistry()
+    kwargs.setdefault("sleeper", lambda _delay: None)
     engine = FlowEngine(
         store=store,
         handlers=build_default_handlers(store=store, callables=callables),

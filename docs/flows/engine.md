@@ -1,9 +1,11 @@
 # Flow Engine — Execution, Durable State, Triggers, and Events
 
-> Delivered by **E3-S2** (graph execution with durable Run/Step state).
+> Delivered by **E3-S2** (graph execution with durable Run/Step state) and
+> **E3-S3** (checkpointing, retries, deterministic replay).
 > Manifest contract: `docs/flows/spec.md`. Implementation:
 > `backend/flows/engine.py` (executor), `backend/flows/state.py` +
 > `backend/flows/records.py` (durable Run/Step/Event store),
+> `backend/flows/checkpoint.py` (backoff, replay, shared pure derivation),
 > `backend/flows/registry.py` (versioned definitions),
 > `backend/flows/handlers.py` (node handlers),
 > `backend/flows/triggers.py` (triggers), `backend/api/routers/flows.py`
@@ -30,9 +32,11 @@ undeclared fields when `additionalProperties: false`), persists a run, emits
    output is the last completed node's output.
 
 Failures never propagate as exceptions to callers: a failing node fails its
-step, emits `run.step.failed`, and terminates the run as `failed` with a
-machine-readable `stop_reason` (`node_failed`, `unsupported_node`,
-`binding_error`, `predicate_error`, `no_route`, `budget_exhausted`).
+step, emits `run.step.failed`, is retried per the effective retry policy
+(see below), and — only when attempts are exhausted — terminates the run as
+`failed` with a machine-readable `stop_reason` (`node_failed`,
+`unsupported_node`, `binding_error`, `predicate_error`, `no_route`,
+`budget_exhausted`).
 
 ## Durable state
 
@@ -44,6 +48,58 @@ State survives process restarts; a second engine instance on the same store
 sees identical runs, steps, and events. On SQLite the store uses WAL,
 per-connection busy timeouts, and eager write transactions so ≥100 concurrent
 runs per node execute without lock failures (covered by a concurrency test).
+
+## Checkpointing, retries, and replay
+
+Delivered by **E3-S3**; determinism boundary recorded in **ADR-005**.
+
+**Checkpoints.** The state persisted after every step — cursor, every
+completed node's output, accumulated metrics — *is* the checkpoint; there is
+no separate checkpoint artifact. Node outputs are **recorded effects**:
+LLM/tool/agent calls execute at most once per successful attempt, and both
+resume and replay reuse the recorded outputs instead of re-executing nodes.
+Everything between recorded outputs (input-binding rendering, predicate
+evaluation, edge selection) is a pure function of persisted state, shared
+between live execution and replay via `backend/flows/checkpoint.py`.
+
+**Retries.** On a node handler exception the engine retries up to the node's
+effective retry policy — the node's `retries` override, else the flow's
+`defaults.retries` (default: 1 attempt, i.e. retries are opt-in — re-firing a
+node re-fires its side effects, and agent/tool calls are not idempotent).
+When a node opts in, backoff defaults to exponential with a 2 s initial
+delay; every attempt persists its own step row (`attempt` 1, 2, ...) with
+`run.step.started`/`run.step.failed` events, and between attempts the engine
+sleeps `initialDelaySec` (`fixed`) or `initialDelaySec * 2^(attempt-1)`
+(`exponential`, capped at 1 h) through an injectable sleeper. Each backoff
+sleep is budget-checked before it happens: if sleeping would breach the run's
+wall-clock budget, the run fails closed with `budget_exhausted` instead of
+sleeping past it. `unsupported_node` failures never retry (no later attempt
+can succeed in the same process), and only the final failed attempt fails
+the run.
+
+**Resume (crash recovery).** A run whose process died mid-execution is left
+`running`/`pending` with its checkpoint intact. `FlowEngine.resume_run()`
+emits `flow.run.resumed`, marks any step orphaned in `running` status as
+failed (`interrupted`), and continues the graph walk from the persisted
+cursor — completed steps are never re-executed. `execute_run()` on an
+already-terminal run is idempotent: it returns the persisted record
+unchanged. The wall-clock budget measures the current execution session, so
+a resumed run gets a fresh wall-clock window (tokens/cost budgets remain
+cumulative from the checkpointed metrics).
+
+**Replay (verification).** For a terminal run, `FlowEngine.replay_run()`
+folds the recorded step outputs in activation order, re-derives every
+binding rendering and routing decision against the rebuilt state, and
+compares the derived node sequence (and final cursor) with the recorded
+trace. It returns a `FlowReplayReport` — `deterministic`, recorded vs
+replayed sequences, divergence detail — and emits `flow.run.replayed` with
+the outcome. A divergence means the trace was corrupted or the pure side
+changed; replay reports it and never repairs or re-executes anything.
+
+**Overhead.** Checkpointing rides on the writes the engine already performs
+per step; the NFR (checkpoint overhead < 10% for real workloads) is guarded
+by a bounded per-step persistence-cost test in
+`backend/tests/test_flows_checkpoint.py`.
 
 ## Budgets (fail closed)
 
@@ -126,7 +182,8 @@ the run for auditability.
 
 Ordered, durable, per-run (`domain.entity.action`, past tense):
 `flow.run.started`, `run.step.started`, `run.step.completed`,
-`run.step.failed`, `flow.run.completed`, `flow.run.failed`. Until the Event
+`run.step.failed`, `flow.run.completed`, `flow.run.failed`,
+`flow.run.resumed`, `flow.run.replayed`. Until the Event
 Bus (E9) exists, the event store is the authoritative log — the same E1
 precedent as plugin lifecycle events — and is exposed at
 GET `/v2/flows/runs/{run_id}/events`.

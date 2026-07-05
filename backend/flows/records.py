@@ -10,6 +10,7 @@ from typing import Any
 RUN_STATUSES = frozenset(
     {"pending", "running", "waiting_human", "completed", "failed"}
 )
+TERMINAL_RUN_STATUSES = frozenset({"completed", "failed"})
 STEP_STATUSES = frozenset({"running", "completed", "failed", "waiting_human"})
 
 
@@ -260,6 +261,7 @@ __all__ = [
     "FlowStepRecord",
     "RUN_STATUSES",
     "STEP_STATUSES",
+    "TERMINAL_RUN_STATUSES",
     "decode_event",
     "decode_run",
     "decode_step",
