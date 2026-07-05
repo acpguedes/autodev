@@ -44,11 +44,13 @@ The v1 codebase remains frozen at the `v1` git tag (see `CHANGELOG.md`) as
 the baseline these epics build on and are measured against. The remaining
 **informal v1 precursors** (dynamic orchestration behind a flag for E3, the
 SQLite store abstraction for E8, the v1 skills registry for E6) are starting
-points only — they do not satisfy the v2 contracts. Remaining Alpha anchor
-work: **E3** (graph/checkpointing/human-in-the-loop), **E8-S1/E8-S2**,
-**E9-S1**, and **E12-S1**. **Next action: pick up E3 after reading
-`phases/e3_orchestration_engine.md` and `agent_guide.md` §1-4 (the branching
-and quality rules in §3-4 are mandatory from E3 onward).**
+points only — they do not satisfy the v2 contracts. E3's Alpha slice (S1-S5) is
+complete and verified (flow suite 38/38 green); its only open story, **E3-S6**
+(visual flow editor), is Beta-deferred behind **E10** (Design System, not
+started). Remaining Alpha anchor work: **E8-S1/E8-S2**, **E9-S1**, and
+**E12-S1**. **Next action: E4 — Reasoning (Beta, unblocked by E1+E2) is in
+progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
+(mandatory from E3 onward).**
 
 ## Epic status
 
@@ -57,7 +59,7 @@ and quality rules in §3-4 are mandatory from E3 onward).**
 | E0 | Foundations & Hardening | Alpha | Done | 7/7 | — | [phases/e0_foundations_hardening.md](phases/e0_foundations_hardening.md) |
 | E1 | Plugin Core & SDK | Alpha | Done | 5/5 | E0 | [phases/e1_plugin_core_sdk.md](phases/e1_plugin_core_sdk.md) |
 | E2 | Agent Framework | Alpha | Done | 5/5 | E0, E1 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
-| E3 | Orchestration Engine | Alpha/Beta | In progress | 5/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
+| E3 | Orchestration Engine | Alpha/Beta | Alpha done · S6→Beta | 5/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
 | E4 | Reasoning | Beta | Not started | 0/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
 | E5 | Routing / Selection / Evaluation | Beta | Not started | 0/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
 | E6 | Skills v2 | Beta | Not started | 0/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
@@ -122,6 +124,15 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-07-05** — **E3 Alpha slice verified complete** and closed for Alpha
+  (S1-S5 Done; flow suite 38/38 green). **E3-S6 (visual flow editor) formally
+  deferred to Beta** — it depends on **E10** (Design System, Not started) per
+  `phases/e3_orchestration_engine.md` and the Beta entry list, so no S6 work is
+  achievable until E10 lands. No code change in this entry (E3 was already
+  Alpha-complete; this reconciles the epic-table status that still read
+  "In progress"). **E4 — Reasoning started**: opened `epic/e4-reasoning` from
+  `main`; executing E4-S1..S4 per `phases/e4_reasoning.md` and reference §8.
 
 - **2026-07-05** — Planning-only, no implementation: added **E14 — Real Task
   Execution & Governed Autonomy** (Beta, 7 stories) to close the gap between
