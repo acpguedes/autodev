@@ -318,6 +318,29 @@ class TestMapReduce:
         assert "'over' must yield a list" in steps[-1].error
 
 
+    def test_map_bindings_may_compare_items(self, tmp_path: Path) -> None:
+        """Ordering comparisons on ``item`` are valid map bindings.
+
+        The engine must not pre-render map bindings (``item`` only exists
+        inside the handler's fan-out), so an expression that would fail
+        without ``item`` in scope still executes per item.
+        """
+        engine, callables = _engine(tmp_path)
+        _register_transform(callables)
+        engine.registry.register_raw(_child_flow())
+        raw = _map_parent(max_parallel=1)
+        raw["nodes"][0]["input"] = {"value": "{{ item > 2 }}"}
+        engine.registry.register_raw(raw)
+
+        run = engine.start_run("autodev/flow-map", input={"items": [1, 3]})
+
+        assert run.status == "completed"
+        assert [o["transformed"] for o in run.output["items"]] == [
+            "FALSE",
+            "TRUE",
+        ]
+
+
 class TestBudgetPropagation:
     """Parent budgets limit children and fail closed (E3-S5-T3, ADR-006)."""
 
@@ -351,6 +374,42 @@ class TestBudgetPropagation:
         assert statuses == ["completed", "completed", "failed"]
         failed = [child for child in children if child.status == "failed"]
         assert failed[0].stop_reason == "budget_exhausted"
+
+    def test_parallel_branches_cannot_jointly_overspend(
+        self, tmp_path: Path
+    ) -> None:
+        """Concurrent branches reserve budget shares up front (fail closed).
+
+        Without in-flight reservations, two parallel branches would each be
+        capped at the full remaining budget and could jointly spend twice it
+        before the post-completion check fires.
+        """
+        engine, _ = _engine(tmp_path)
+        engine.handlers.register("skill", _costly_skill_handler(0.4))
+        engine.registry.register_raw(_child_flow())
+        engine.registry.register_raw(
+            _map_parent(
+                max_parallel=2,
+                budgets={
+                    "maxCostUsd": 0.5,
+                    "maxWallClockSec": 60,
+                    "maxTokens": 1000,
+                },
+            )
+        )
+
+        run = engine.start_run("autodev/flow-map", input={"items": ["a", "b"]})
+
+        assert run.status == "failed"
+        assert run.stop_reason == "budget_exhausted"
+        children = engine.runs.list_runs(parent_run_id=run.run_id)
+        # Each branch was reserved 0.25 (0.5 / 2 slots); a 0.4 spend breaches
+        # its own cap, so neither branch can complete over budget.
+        assert children and all(
+            child.status == "failed"
+            and child.stop_reason == "budget_exhausted"
+            for child in children
+        )
 
     def test_subflow_child_capped_below_own_manifest(self, tmp_path: Path) -> None:
         """A child is capped at the parent's remainder, not its own budget."""

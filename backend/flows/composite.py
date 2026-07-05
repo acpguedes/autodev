@@ -393,6 +393,9 @@ def map_handler(ctx: NodeContext) -> NodeOutcome:
     child_run_ids: list[str | None] = [None] * len(items)
     children_tokens = 0.0
     children_cost = 0.0
+    reserved_tokens = 0.0
+    reserved_cost = 0.0
+    granted: dict[int, tuple[float, float]] = {}
 
     def breach() -> str | None:
         """Describe an aggregate budget violation, or ``None`` when within."""
@@ -433,12 +436,29 @@ def map_handler(ctx: NodeContext) -> NodeOutcome:
                 child_input = (
                     rendered if isinstance(rendered, dict) else {"value": rendered}
                 )
-                cap = _child_cap(
-                    ctx,
-                    budgets,
-                    base_tokens + children_tokens,
-                    base_cost + children_cost,
+                # In-flight reservation (ADR-006): each launching branch
+                # gets an even share of the parent's *unreserved* remaining
+                # budget, so concurrent branches can never jointly overspend
+                # what only completed-child accounting would allow.
+                remaining_tokens = max(
+                    0.0,
+                    budgets.max_tokens
+                    - (base_tokens + children_tokens + reserved_tokens),
                 )
+                remaining_cost = max(
+                    0.0,
+                    budgets.max_cost_usd
+                    - (base_cost + children_cost + reserved_cost),
+                )
+                divisor = float(max(1, min(workers, len(items) - index)))
+                cap = FlowBudgets(
+                    max_cost_usd=remaining_cost / divisor,
+                    max_wall_clock_sec=_wall_clock_remaining(ctx, budgets),
+                    max_tokens=int(remaining_tokens / divisor),
+                )
+                granted[index] = (float(cap.max_tokens), cap.max_cost_usd)
+                reserved_tokens += float(cap.max_tokens)
+                reserved_cost += cap.max_cost_usd
                 future = pool.submit(
                     _start_child,
                     engine,
@@ -463,6 +483,9 @@ def map_handler(ctx: NodeContext) -> NodeOutcome:
                 child = future.result()
                 child_run_ids[index] = child.run_id
                 tokens, cost = _child_metrics(child)
+                grant_tokens, grant_cost = granted.pop(index)
+                reserved_tokens -= grant_tokens
+                reserved_cost -= grant_cost
                 children_tokens += tokens
                 children_cost += cost
                 if child.status != "completed":

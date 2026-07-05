@@ -97,3 +97,12 @@ Persisted `budget_cap` state documents are ignored by older engines.
 - ADR-004; `docs/flows/spec.md`; `docs/flows/engine.md` (composite nodes
   section); `docs/architecture/v2_platform_reference.md` §3, Principle 2.5;
   `backend/flows/composite.py`, `backend/flows/budgets.py`.
+
+## Amendment (E3 close-out)
+
+Map branches now take an **in-flight reservation**: at launch each branch is
+capped at an even share of the parent's *unreserved* remaining budget across
+the branches that can run concurrently (released on completion, replaced by
+actual spend). This closes the window where `maxParallel > 1` branches, each
+capped at the full remainder, could jointly overspend the parent before the
+post-completion aggregate check fired.

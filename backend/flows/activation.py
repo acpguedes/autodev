@@ -105,15 +105,23 @@ class NodeActivationMixin:
         Returns:
             A terminal run record when the run failed; ``None`` to continue.
         """
-        eval_state = build_eval_state(run.input, state.get("nodes", {}))
-        try:
-            rendered = render_template(dict(node.input_bindings), eval_state)
-        except ExpressionError as exc:
-            return self._fail_run(
-                run.run_id, state, "binding_error",
-                f"node {node.id!r}: {exc}",
+        if node.type == "map":
+            # Map bindings reference the per-item ``item`` root, which only
+            # exists inside the handler's fan-out — pre-rendering here would
+            # fail closed on expressions that are valid per item.
+            step_input: dict[str, Any] = {}
+        else:
+            eval_state = build_eval_state(run.input, state.get("nodes", {}))
+            try:
+                rendered = render_template(dict(node.input_bindings), eval_state)
+            except ExpressionError as exc:
+                return self._fail_run(
+                    run.run_id, state, "binding_error",
+                    f"node {node.id!r}: {exc}",
+                )
+            step_input = (
+                rendered if isinstance(rendered, dict) else {"value": rendered}
             )
-        step_input = rendered if isinstance(rendered, dict) else {"value": rendered}
         policy = node.retries or manifest.defaults.retries
 
         step = None

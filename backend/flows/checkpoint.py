@@ -270,18 +270,23 @@ def replay_decision_path(
             )
             break
         node = manifest.node(step.node_id)
-        eval_doc = build_eval_state(run.input, nodes_state)
-        try:
-            rendered = render_template(dict(node.input_bindings), eval_doc)
-        except ExpressionError as exc:
-            divergences.append(
-                f"position {index}: bindings of node {node.id!r} failed to "
-                f"render on replay: {exc}"
+        if node.type == "map":
+            # Mirrors live activation: map bindings render per item inside
+            # the handler, so the recorded step input is always empty.
+            rendered_input: dict[str, Any] = {}
+        else:
+            eval_doc = build_eval_state(run.input, nodes_state)
+            try:
+                rendered = render_template(dict(node.input_bindings), eval_doc)
+            except ExpressionError as exc:
+                divergences.append(
+                    f"position {index}: bindings of node {node.id!r} failed to "
+                    f"render on replay: {exc}"
+                )
+                break
+            rendered_input = (
+                rendered if isinstance(rendered, dict) else {"value": rendered}
             )
-            break
-        rendered_input = (
-            rendered if isinstance(rendered, dict) else {"value": rendered}
-        )
         if rendered_input != step.input:
             divergences.append(
                 f"position {index}: replayed input of node {node.id!r} "

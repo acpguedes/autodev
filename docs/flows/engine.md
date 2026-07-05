@@ -193,11 +193,14 @@ documents record `{type: subflow|map, parentRunId, nodeId}`).
   mode so far) aggregates ordered outputs — input order, not completion
   order — into `{"items": [...], "count": N, "childRunIds": [...]}`. Any
   branch failure skips the remaining branches and fails the step closed.
-- **Budget propagation (ADR-006):** each child runs under a budget cap equal
-  to the parent's remaining budget at spawn (`min` with the child's own
-  manifest budgets; wall clock inherits the parent's remaining time). Map
-  re-checks aggregate consumption before every launch and after every
-  completion, failing the step with `budget_exhausted` on breach. See
+- **Budget propagation (ADR-006):** each child runs under a budget cap
+  derived from the parent's remaining budget at spawn (`min` with the child's
+  own manifest budgets; wall clock inherits the parent's remaining time). Map
+  branches additionally take an **in-flight reservation** — an even share of
+  the unreserved remainder across concurrently launchable branches — so
+  parallel children can never jointly overspend the parent. Aggregate
+  consumption is re-checked before every launch and after every completion,
+  failing the step with `budget_exhausted` on breach. See
   `docs/v2_platform/decisions/ADR-006-budget-propagation.md`.
 - **Depth cap:** composite nesting is bounded at 16
   (`MAX_COMPOSITE_DEPTH`); exceeding it — e.g. a recursive sub-flow — fails
