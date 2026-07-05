@@ -5,12 +5,15 @@ bindings against run state, execute the node through its registered handler,
 persist every Run/Step transition, enforce fail-closed run budgets, and emit
 ordered lifecycle events (``flow.run.started``, ``run.step.started``,
 ``run.step.completed``, ``run.step.failed``, ``flow.run.completed``,
-``flow.run.failed``) into the durable event store.
+``flow.run.failed``) into the durable event store. E3-S4 adds human-in-the-
+loop pauses: a ``human`` node stops the loop as ``waiting_human`` (with
+``flow.run.paused``) until :mod:`backend.flows.human` resumes the run.
 """
 
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from backend.flows.expressions import ExpressionError, evaluate_expression, render_template
@@ -22,6 +25,7 @@ from backend.flows.handlers import (
     build_default_handlers,
 )
 from backend.flows.model import FlowManifest, FlowNode
+from backend.flows.pause import pause_run
 from backend.flows.registry import FlowRegistry
 from backend.flows.state import FlowRunRecord, FlowRunStore
 from backend.observability.tracing import trace_run_step
@@ -43,6 +47,7 @@ class FlowEngine:
         run_store: FlowRunStore | None = None,
         handlers: FlowHandlerRegistry | None = None,
         clock: Callable[[], float] | None = None,
+        now: Callable[[], datetime] | None = None,
         max_steps_per_run: int = 1000,
     ) -> None:
         """Initialize the engine and its collaborators.
@@ -57,6 +62,8 @@ class FlowEngine:
                 :func:`backend.flows.handlers.build_default_handlers`.
             clock: Monotonic clock used for wall-clock budget enforcement;
                 defaults to :func:`time.monotonic`.
+            now: Wall-clock source used for human-wait expiry timestamps
+                (E3-S4); defaults to timezone-aware ``datetime.now(utc)``.
             max_steps_per_run: Engine safety cap on node activations per run
                 (fails closed); complements, and never replaces, manifest
                 budgets.
@@ -66,6 +73,9 @@ class FlowEngine:
         self.runs = run_store or FlowRunStore(self._store)
         self.handlers = handlers or build_default_handlers(store=self._store)
         self._clock = clock or time.monotonic
+        self.now: Callable[[], datetime] = now or (
+            lambda: datetime.now(timezone.utc)
+        )
         self._max_steps = max_steps_per_run
 
     # ------------------------------------------------------------------ API
@@ -203,7 +213,8 @@ class FlowEngine:
             state: The mutable run state (updated in place and persisted).
 
         Returns:
-            A terminal run record when the run failed; ``None`` to continue.
+            A run record when the run stopped (failed, or paused at a human
+            node); ``None`` to continue the loop.
         """
         eval_state = self._eval_state(run, state)
         try:
@@ -264,6 +275,9 @@ class FlowEngine:
                 },
             )
             return self._fail_run(run.run_id, state, reason, str(exc))
+
+        if outcome.status == "waiting_human":
+            return pause_run(self.runs, run, node, step, state, outcome)
 
         self.runs.complete_step(step.step_id, status="completed", output=outcome.output)
         nodes_state = state["nodes"]

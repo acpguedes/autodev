@@ -13,6 +13,12 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.flows.engine import FlowEngine, FlowRunError
+from backend.flows.human import (
+    FlowHumanDecisionError,
+    FlowHumanError,
+    FlowHumanService,
+    FlowHumanStateError,
+)
 from backend.flows.manifest import validate_flow_manifest
 from backend.flows.triggers import TriggerError, due_cron_triggers, normalize_trigger
 
@@ -26,6 +32,20 @@ def get_flow_engine() -> FlowEngine:
         A new :class:`FlowEngine` bound to the default durable store.
     """
     return FlowEngine()
+
+
+def get_human_service(
+    engine: FlowEngine = Depends(get_flow_engine),
+) -> FlowHumanService:
+    """Build the human-in-the-loop service dependency for request handlers.
+
+    Args:
+        engine: Flow engine dependency (shared so test overrides propagate).
+
+    Returns:
+        A :class:`FlowHumanService` bound to the request's engine.
+    """
+    return FlowHumanService(engine=engine)
 
 
 @router.post("", status_code=201)
@@ -169,6 +189,108 @@ def get_run_events(
     }
 
 
+@router.get("/runs/{run_id}/pending-human")
+def get_pending_human(
+    run_id: str, service: FlowHumanService = Depends(get_human_service)
+) -> dict[str, Any]:
+    """Fetch the pending human request of a paused run (E3-S4).
+
+    Args:
+        run_id: Id of the run.
+        service: Human-in-the-loop service dependency.
+
+    Returns:
+        The pending request document (node id, prompt, form, expiry).
+
+    Raises:
+        HTTPException: 404 when the run is unknown; 409 when the run is not
+            waiting for a human decision.
+    """
+    try:
+        pending = service.pending(run_id)
+    except FlowHumanError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if pending is None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"run {run_id!r} is not waiting for a human decision",
+        )
+    return pending.to_document()
+
+
+@router.post("/runs/{run_id}/human-decision")
+def post_human_decision(
+    run_id: str,
+    body: dict[str, Any],
+    engine: FlowEngine = Depends(get_flow_engine),
+    service: FlowHumanService = Depends(get_human_service),
+) -> dict[str, Any]:
+    """Record a human decision and resume the paused run (E3-S4).
+
+    Args:
+        run_id: Id of the paused run.
+        body: ``{"decision": {...}, "actor": "..."}``; ``actor`` defaults to
+            ``"anonymous"`` and is recorded on the decision event.
+        engine: Flow engine dependency (used to render the run's steps).
+        service: Human-in-the-loop service dependency.
+
+    Returns:
+        The resulting run document including its ordered steps.
+
+    Raises:
+        HTTPException: 404 for unknown runs, 409 when the run is not waiting,
+            422 for invalid decisions or expired waits (the timeout route is
+            taken before the 422 is returned — fail closed on the SLA).
+    """
+    decision = body.get("decision")
+    if not isinstance(decision, dict):
+        raise HTTPException(
+            status_code=422, detail="body must carry a 'decision' object"
+        )
+    actor = str(body.get("actor") or "anonymous")
+    try:
+        run = service.decide(run_id, decision, actor=actor)
+    except FlowHumanStateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except FlowHumanDecisionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except FlowHumanError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    document = run.to_document()
+    document["steps"] = [
+        step.to_document() for step in engine.runs.list_steps(run.run_id)
+    ]
+    return document
+
+
+@router.post("/human/expire")
+def expire_human_waits(
+    body: dict[str, Any] | None = None,
+    service: FlowHumanService = Depends(get_human_service),
+) -> dict[str, Any]:
+    """Expire every due human wait (operator/cron surface, E3-S4).
+
+    Args:
+        body: Optional ``{"at": "<ISO-8601>"}`` override of the expiry moment
+            (used by tests and backfills).
+        service: Human-in-the-loop service dependency.
+
+    Returns:
+        The ids of the runs routed through their timeout edges.
+
+    Raises:
+        HTTPException: 422 when the ``at`` override is not a valid timestamp.
+    """
+    at_text = (body or {}).get("at")
+    at: datetime | None = None
+    if at_text is not None:
+        try:
+            at = datetime.fromisoformat(str(at_text))
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"schemaVersion": "1", "expired": service.expire_due(at)}
+
+
 @router.get("/{namespace}/{name}")
 def get_flow_versions(
     namespace: str,
@@ -294,4 +416,4 @@ def trigger_run(
     return run.to_document()
 
 
-__all__ = ["get_flow_engine", "router"]
+__all__ = ["get_flow_engine", "get_human_service", "router"]

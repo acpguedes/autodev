@@ -159,15 +159,15 @@ class TestGraphExecution:
         assert "run.step.failed" in names
 
     def test_unsupported_node_type_fails_closed(self, tmp_path: Path) -> None:
-        """Node types without a handler (human until S4) fail the run."""
+        """Node types without a handler (subflow/map until S5) fail the run."""
         engine, callables = _engine(tmp_path)
         _register_linear_callables(callables)
         raw = _linear_flow()
         raw["nodes"].append(
             {
                 "id": "review",
-                "type": "human",
-                "prompt": "Approve?",
+                "type": "subflow",
+                "ref": "autodev/sub-review",
             }
         )
         raw["edges"].append({"from": "finish", "to": "review"})

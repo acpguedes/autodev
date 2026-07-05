@@ -16,6 +16,13 @@ from backend.flows.handlers import (
     NodeOutcome,
     build_default_handlers,
 )
+from backend.flows.human import (
+    FlowHumanDecisionError,
+    FlowHumanError,
+    FlowHumanService,
+    FlowHumanStateError,
+    PendingHumanRequest,
+)
 from backend.flows.manifest import (
     DEFAULT_FLOW_BUDGETS,
     DEFAULT_FLOW_RETRIES,
@@ -43,11 +50,16 @@ __all__ = [
     "DEFAULT_FLOW_BUDGETS",
     "FlowEngine",
     "FlowHandlerRegistry",
+    "FlowHumanDecisionError",
+    "FlowHumanError",
+    "FlowHumanService",
+    "FlowHumanStateError",
     "FlowRegistry",
     "FlowRunError",
     "FlowRunStore",
     "NodeContext",
     "NodeOutcome",
+    "PendingHumanRequest",
     "build_default_handlers",
     "DEFAULT_FLOW_RETRIES",
     "ExpressionError",
