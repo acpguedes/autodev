@@ -7,7 +7,7 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-05 (E3 Alpha closed; E4-S1 Reasoning contract + Engine complete on `epic/e4-reasoning`)
+**Last updated:** 2026-07-05 (E3 Alpha closed; E4-S1 + E4-S2 complete on `epic/e4-reasoning` — contract, Engine, and 3 reference strategies)
 
 ## How to update this file
 
@@ -60,7 +60,7 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 | E1 | Plugin Core & SDK | Alpha | Done | 5/5 | E0 | [phases/e1_plugin_core_sdk.md](phases/e1_plugin_core_sdk.md) |
 | E2 | Agent Framework | Alpha | Done | 5/5 | E0, E1 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
 | E3 | Orchestration Engine | Alpha/Beta | Alpha done · S6→Beta | 5/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
-| E4 | Reasoning | Beta | In progress | 1/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
+| E4 | Reasoning | Beta | In progress | 2/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
 | E5 | Routing / Selection / Evaluation | Beta | Not started | 0/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
 | E6 | Skills v2 | Beta | Not started | 0/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
 | E7 | Context & RAG | Beta | Not started | 0/4 | E1, E2, E8, E5 | [phases/e7_context_rag.md](phases/e7_context_rag.md) |
@@ -72,7 +72,7 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 
-Total: **18/71 stories complete** across 15 epics.
+Total: **19/71 stories complete** across 15 epics.
 
 ## Wave exit gates (§18.9 of the reference doc)
 
@@ -125,6 +125,16 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-07-05** — **E4-S2 complete** (reference reasoning strategies). Added
+  `backend/reasoning/strategies/`: **ReAct** (`autodev/reasoning-react` —
+  Thought→Action→Observation with mediated tool calls), **Plan-and-Execute**
+  (`autodev/reasoning-plan-execute`), and **native tool-calling**
+  (`autodev/reasoning-native-tools`) — three of the five reference strategies in
+  §8.9 — plus `register_builtin_strategies`. All run through the Engine on the
+  offline stub provider, are swappable without caller changes, and honor
+  fail-closed budgets (verified by a never-terminating ReAct loop). 5 tests
+  (`test_reasoning_strategies.py`); `docs/reasoning/contract.md` updated.
+  Reflection + Debate/Tree-of-Thought are E4-S3.
 - **2026-07-05** — **E4-S1 complete** (Reasoning Strategy contract + Reasoning
   Engine). Added `backend/reasoning/`: the typed, SemVer-versioned contract
   (`contract.py` — `ReasoningInput`/`ReasoningOutput`, the `ReasoningContext`
