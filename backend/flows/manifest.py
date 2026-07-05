@@ -363,6 +363,39 @@ def load_flow_manifest(path: Path | str) -> FlowManifest:
     return result.manifest
 
 
+def validate_run_input(
+    manifest: FlowManifest, run_input: dict[str, Any]
+) -> list[str]:
+    """Validate a run input payload against the flow's declared input schema.
+
+    Enforces the schema's ``required`` list and rejects non-declared
+    properties when the schema declares ``properties`` and sets
+    ``additionalProperties: false``.
+
+    Args:
+        manifest: The flow definition.
+        run_input: The run input payload.
+
+    Returns:
+        Validation error messages; empty when the input is valid.
+    """
+    if manifest.input is None:
+        return []
+    errors: list[str] = []
+    schema = manifest.input.schema
+    required = schema.get("required")
+    if isinstance(required, list):
+        missing = [key for key in required if key not in run_input]
+        if missing:
+            errors.append(f"missing required input fields: {missing}")
+    properties = schema.get("properties")
+    if isinstance(properties, dict) and schema.get("additionalProperties") is False:
+        unknown = [key for key in run_input if key not in properties]
+        if unknown:
+            errors.append(f"unknown input fields: {unknown}")
+    return errors
+
+
 __all__ = [
     "BACKOFF_MODES",
     "DEFAULT_FLOW_BUDGETS",
@@ -383,5 +416,6 @@ __all__ = [
     "TRIGGER_TYPES",
     "load_flow_manifest",
     "validate_flow_manifest",
+    "validate_run_input",
     "version_in_range",
 ]
