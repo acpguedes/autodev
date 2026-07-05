@@ -35,6 +35,8 @@ BUILTIN_IDS = {
     "autodev/reasoning-react",
     "autodev/reasoning-plan-execute",
     "autodev/reasoning-native-tools",
+    "autodev/reasoning-reflection",
+    "autodev/reasoning-tot",
 }
 
 

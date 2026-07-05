@@ -134,6 +134,8 @@ any provider, including the offline stub:
 | ReAct | `autodev/reasoning-react` | Thought → `ACTION <tool> <args>` / `FINAL <answer>`, budget-bounded |
 | Plan-and-Execute | `autodev/reasoning-plan-execute` | Plan (one step per line) → execute each step |
 | Native tool-calling | `autodev/reasoning-native-tools` | Single mediated call; the provider drives tools |
+| Reflection | `autodev/reasoning-reflection` | Draft → self-critique → revise, bounded by `max_revisions` |
+| Tree-of-Thought | `autodev/reasoning-tot` | Expand `branches`, score, keep top `beam`; budget-bounded fan-out |
 
 ```python
 from backend.reasoning import ReasoningStrategyRegistry
@@ -144,5 +146,6 @@ register_builtin_strategies(registry)
 strategy = registry.resolve("autodev/reasoning-react")
 ```
 
-Reflection and Debate/Tree-of-Thought (`autodev/reasoning-reflection`,
-`autodev/reasoning-tot`) land in E4-S3.
+All five run on the offline stub. Tree-of-Thought fan-out is bounded by the
+Engine budget (fail-closed) as well as its `branches`/`depth`/`beam` config.
+Policy-driven, context-aware strategy selection is E4-S4.
