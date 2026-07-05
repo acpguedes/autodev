@@ -9,6 +9,22 @@ The v2.0 platform rewrite is underway on `main`. Per-story detail lives in
 [`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) (Changelog section);
 epic summaries:
 
+### E3 — Orchestration Engine (Alpha slice S1–S5, 2026-07-05)
+
+- Declarative `flow.yaml` manifests (7 canonical node types, guarded edges, SemVer +
+  `hostApi` ranges, published JSON schema, SDK contract) with graph validation
+  (RFC-002, ADR-004; `docs/flows/spec.md`).
+- Durable graph execution: Run/Step/Event store (SQLite/PostgreSQL), fail-closed
+  budgets, triggers (api/message/webhook/event/cron), `/v2/flows` API, ≥100
+  concurrent runs per worker (`docs/flows/engine.md`).
+- Checkpointing, opt-in retries with budget-checked backoff, crash recovery with
+  crash-window reconciliation, deterministic replay (ADR-005).
+- Human-in-the-loop: durable pause, decision/edit API with recorded actor, timeout
+  routing.
+- Composite nodes: sub-flows and parallel map/reduce with hierarchical budget
+  propagation and in-flight reservations (ADR-006).
+- E3-S6 (visual flow editor) deferred to Beta alongside E10.
+
 ### E0 — Foundations & Hardening (complete, 2026-07-04, PRs #51–#52)
 
 - Containerized backend dev/test runtime with Makefile `container-*` targets.

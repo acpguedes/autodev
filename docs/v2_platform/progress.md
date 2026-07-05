@@ -7,7 +7,7 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-05 (E3 S1-S2+S5 complete, S3-S4 in progress)
+**Last updated:** 2026-07-05 (E3 Alpha slice S1-S5 complete; S6 deferred to Beta with E10)
 
 ## How to update this file
 
@@ -57,7 +57,7 @@ and quality rules in §3-4 are mandatory from E3 onward).**
 | E0 | Foundations & Hardening | Alpha | Done | 7/7 | — | [phases/e0_foundations_hardening.md](phases/e0_foundations_hardening.md) |
 | E1 | Plugin Core & SDK | Alpha | Done | 5/5 | E0 | [phases/e1_plugin_core_sdk.md](phases/e1_plugin_core_sdk.md) |
 | E2 | Agent Framework | Alpha | Done | 5/5 | E0, E1 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
-| E3 | Orchestration Engine | Alpha/Beta | In progress | 3/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
+| E3 | Orchestration Engine | Alpha/Beta | In progress | 5/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
 | E4 | Reasoning | Beta | Not started | 0/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
 | E5 | Routing / Selection / Evaluation | Beta | Not started | 0/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
 | E6 | Skills v2 | Beta | Not started | 0/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
@@ -120,6 +120,22 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-07-05** — **E3-S3 complete**: per-step checkpoints (state persisted after
+  every step), opt-in retry/backoff (default 1 attempt, exponential capped at 1 h,
+  backoff sleeps budget-checked), crash recovery via `resume_run` (incl.
+  complete-step/checkpoint crash-window reconciliation), and deterministic replay
+  via `replay_run` under the ADR-005 determinism boundary (JSON-canonical node
+  outputs; divergences reported, never raised). `backend/flows/checkpoint.py` +
+  `activation.py`; ADR-005.
+- **2026-07-05** — **E3-S4 complete**: human-in-the-loop — durable `waiting_human`
+  pause (`flow.run.paused`), decision API (`pending-human`, `human-decision`,
+  `human/expire`) with actor recorded on `flow.human.decision.recorded`, operator
+  edits merged into run state, timeout routing through `on: timeout` edges, 401
+  when a bearer token is configured. `backend/flows/human.py` + `pause.py`.
+- **2026-07-05** — **E3-S5 hardening** (post-merge review fixes): map-node input
+  bindings are no longer pre-rendered by the engine (the `item` root only exists
+  per branch), and parallel map branches take in-flight budget reservations so
+  they cannot jointly overspend the parent (ADR-006 amendment).
 - **2026-07-02** — Created `docs/v2_platform/` (this tracker, per-epic phase docs,
   process/manifest templates, agent guide, decisions log, documentation-rebuild
   playbook). No implementation work started. Baseline captured from
