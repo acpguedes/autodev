@@ -3087,7 +3087,87 @@ correspondente, o que dá rastreabilidade fim-a-fim e habilita **replay** e
 auditoria (E8/E11). Metadados leves e ponteiros ficam no **State Store**
 (PostgreSQL); o conteúdo pesado vive no MinIO.
 
-### 12.7 Critérios de aceite
+### 12.7 Real Execution of Plans and Tasks (Real Task Executor)
+
+*(New content, authored in English — see E14 in §18.7.8 and
+`docs/v2_platform/phases/e14_real_execution_governance.md`.)*
+
+Today, `execute_plan` (`backend/orchestrator/service.py`) is a **simulation**: it
+iterates over the derived `ExecutionTask`s and marks each `RunStep` as
+`COMPLETED` without performing any real action — no file is created or edited,
+no patch is applied, no command is run. **E14** replaces this with a real,
+policy-governed **Task Executor**:
+
+- **`ExecutionAction`** — the unit of real work: `create_file`, `edit_file`,
+  `apply_patch`, `run_command`, or `run_validation`.
+- **`ExecutionResult`** — the outcome: `stdout`, `stderr`, `exit_code`, `diff`,
+  and any produced `artifacts`.
+- The executor maps a Flow/plan step (an `ExecutionTask` or a dedicated
+  `execute` Flow node, §7) to one or more `ExecutionAction`s and dispatches each
+  to the runner appropriate for its category (§12.9's Sandbox-Backed Runners).
+- Every result is persisted linked to `run_id`/`step_id`/`task_id` and emitted as
+  `execution.action.started` / `.completed` / `.failed` events (naming
+  convention, §7), giving the same observability/replay guarantees as any other
+  Flow step.
+
+This is additive to the Orchestration Engine (§7/E3): the executor is invoked
+*from* a Flow node, not a parallel pipeline.
+
+### 12.8 Permission and Policy Engine — Execution Modes (Approval / Auto / Hybrid)
+
+*(New content, authored in English.)*
+
+Every `ExecutionAction` is mediated by an explicit **permission/policy layer**
+before dispatch, covering shell commands, filesystem writes, patch application,
+network access, secrets reads, and validation runs. Default is **deny**
+(least privilege, fail-closed, per Principle 2.5): with no matching policy
+entry, an action is denied. Policies are allow/deny lists scoped to
+project/repository/session.
+
+Three execution modes govern how the policy result is applied:
+
+- **Approval** — every sensitive action pauses for an explicit human decision,
+  reusing the human-in-the-loop pause node (§7/E3-S4).
+- **Auto** — actions already permitted by the active policy run automatically;
+  anything not covered is denied (fail-closed), never silently allowed.
+- **Hybrid** — permitted actions run automatically; for anything not covered,
+  the operator is asked with three options: **(1)** run once only, **(2)** run
+  and persist a dynamic permission for similar actions (e.g. a command-pattern
+  rule), **(3)** deny. Example prompt: *"Run the command `sqlite -c "CREATE
+  ..."`? 1) Yes, just this once. 2) Yes, and don't ask again for commands like
+  `sqlite *`. 3) No."*
+
+Dynamic permissions granted via option (2) are **persisted, independently
+reviewable, and revocable** (Control Plane API and Web UX, §12.9/E14-S5), and
+every decision — allowed, denied, or pending, with actor, timestamp, and reason
+— is written to an audit trail.
+
+### 12.9 `autodev` CLI and Governed Interactive Shell
+
+*(New content, authored in English.)*
+
+Per Principle 2.13 (API-first), the CLI is a client of the Control Plane API
+`/v2` — it never touches the State Store, Redis, or MinIO directly, exactly
+like the Web UI.
+
+- `autodev` is installed as a packaged console-script entry point. With no
+  arguments it starts the local web experience and opens a browser when
+  possible.
+- Flags: `--shell` (interactive REPL — an alternative surface to the Web UI,
+  not a replacement), `--command "<text>"` (one-shot, non-interactive
+  execution of a described task), `--mode approval|auto|hybrid` (selects the
+  execution mode from §12.8), and a subcommand to configure/list/revoke
+  persisted dynamic permissions.
+- The interactive shell runs a conversational loop that executes actions under
+  the active mode, streams logs (stdout/stderr/exit code) as they happen, shows
+  condensed diffs/results, and prompts for approval identically to the Web
+  UX — same policy engine, same API, same audit trail.
+- Installation stays self-hosted-first: no mandatory paid-service dependency,
+  per Principle 2.9 (OSS-first).
+
+---
+
+### 12.10 Critérios de aceite
 
 **Funcionais**
 
@@ -3123,6 +3203,27 @@ na allowlist executam código arbitrário (o isolamento é a fronteira real);
 imagens de container usam tags mutáveis (`python:3.11-slim`) — considerar fixar
 por digest; dependências sem lockfile — considerar pinagem para builds
 auditáveis.
+
+**New in E14 (functional)**
+
+- An `ExecutionAction` of type file/patch/command produces a real, observable
+  result (file written, patch applied, command run with captured `exit_code`);
+  an interrupted execution preserves partial state.
+- An action outside the active policy is denied by default; under hybrid mode,
+  choosing "always for this pattern" persists a reusable dynamic permission
+  with no re-prompt for equivalent future actions.
+- `autodev --shell` and `autodev --command` exercise the same policy engine and
+  produce the same audit trail as the Web UX.
+
+**New in E14 (non-functional and security)**
+
+- Every `ExecutionAction` is audited (actor, action, decision, result) — no
+  silent action outside the trace.
+- Command and patch runners route exclusively through the hardened Execution
+  Sandbox (§12.3); the patch runner never falls back to arbitrary command
+  execution.
+- The CLI and interactive shell make zero direct calls to Postgres/Redis/MinIO
+  — API-first (§2.13) applies to this surface too.
 
 
 ---
@@ -4619,7 +4720,7 @@ Três marcos de maturidade. O sequenciamento detalhado (quais histórias em cada
 | Marco | Objetivo do marco | Épicos-âncora | Portão de saída do marco | Estabilidade dos contratos |
 | --- | --- | --- | --- | --- |
 | **Alpha** | Fundação plugável utilizável internamente; núcleo pequeno e observável | E0, E1, E2, E3 | Plugin Host carrega/isola plugins; um Flow declarativo executa um Agent-como-plugin com trace; PostgreSQL padrão | Contratos `experimental`; podem quebrar entre minors |
-| **Beta** | Plataforma completa em capacidade, endurecida, aberta a early adopters | E4, E5, E6, E7, E8, E9 | Reasoning + Router/Selector + Evals fechando o loop; Skills v2; RAG; API `/v2` + MCP estáveis | Contratos `stable` sob SemVer; deprecations anunciadas |
+| **Beta** | Plataforma completa em capacidade, endurecida, aberta a early adopters | E4, E5, E6, E7, E8, E9, **E14** | Reasoning + Router/Selector + Evals fechando o loop; Skills v2; RAG; API `/v2` + MCP estáveis; real task execution governed by policy/approval modes (E14, new — see §12.7-§12.10, §18.7.8) | Contratos `stable` sob SemVer; deprecations anunciadas |
 | **GA** | Produção multi-tenant, segura, com Marketplace | E10, E11, E12, E13 | UI/Design System WCAG 2.2 AA; RBAC/tenants/quotas; quality gates de CI; publicação/verificação de plugins | Contratos `stable` com garantia de compatibilidade dentro do major |
 
 Critérios não-funcionais mínimos por marco:
@@ -5579,6 +5680,117 @@ seguem o brief canônico (§3–§7).
 
 ---
 
+#### 18.7.8 E14 — Real Task Execution & Governed Autonomy
+
+*(New epic, authored in English — see §12.7-§12.10 for the architecture
+narrative and `docs/v2_platform/phases/e14_real_execution_governance.md` for
+the full phase doc.)*
+
+| Field | Description |
+| --- | --- |
+| **Objective** | Turn agent-generated plans/`ExecutionTask`s into real, auditable actions (create/edit files, apply patches, run commands, run validations) under an explicit permission/policy layer with three execution modes (approval, auto, hybrid), wired securely to the Execution Sandbox, exposed through both the Web UI and a governed interactive shell, and installable via an `autodev` CLI command. |
+| **Key result** | `execute_plan` stops being a simulation that only marks steps completed and instead invokes a real, policy-mediated Task Executor whose result (stdout/stderr/exit code/diffs/artifacts) is persisted and linked to the run/session/task; the operator picks the execution mode and can grant persistent dynamic permissions. |
+
+##### Story E14-S1 — Real Task Executor
+
+- **E14-S1-T1**: `ExecutionAction` contract (create_file/edit_file/apply_patch/run_command/run_validation) and `ExecutionResult` contract (stdout/stderr/exit_code/diff/artifacts).
+- **E14-S1-T2**: Executor that maps an `ExecutionTask`/Flow step to one or more `ExecutionAction`s and dispatches them to the appropriate runner, replacing `execute_plan`'s simulated loop.
+- **E14-S1-T3**: Persistence of results linked to run_id/step_id/task_id and `execution.action.started`/`.completed`/`.failed` events.
+
+| Item | Content |
+| --- | --- |
+| **CF** | An `ExecutionTask` with a file/patch/command action produces a real, observable result (diff applied, command run, exit code captured); an interrupted execution preserves partial state. |
+| **CNF** | Every action is auditable (who, when, what, result); no silent action outside the trace. |
+| **DoR** | Execution flow-node contract (E3) and a base Execution Sandbox (E11-S4, or the v1 precursor `backend/validation/sandbox.py`) available. |
+| **DoD** | Test coverage per action type; `docs/execution/engine.md`; RFC+ADR if the contract is a MAJOR change (§19.3). |
+| **Dependencies** | E2-S3, E3-S2, E9-S1 |
+
+##### Story E14-S2 — Permission & Policy Engine
+
+- **E14-S2-T1**: Policy model — allow/deny list per action category (shell, fs-write, patch, network, secrets-read, validation), scoped to project/repository/session.
+- **E14-S2-T2**: Fail-closed policy evaluator — no action without an explicit policy entry is permitted.
+- **E14-S2-T3**: Audit trail — every decision (allowed/denied/pending) recorded with actor and reason.
+
+| Item | Content |
+| --- | --- |
+| **CF** | An action with no matching policy entry is denied by default; a project-scoped allow rule permits equivalent future actions; every decision is logged and auditable. |
+| **CNF** | Policy evaluation < 50 ms; no implicit permission; evaluator errors fail closed. |
+| **DoR** | Action-category taxonomy defined (from E14-S1); basic RBAC (E11-S2) or a local stub. |
+| **DoD** | Default-deny and scope tests; `docs/execution/permissions.md`. |
+| **Dependencies** | E14-S1, E11-S2 |
+
+##### Story E14-S3 — Execution Modes: Approval, Auto, Hybrid
+
+- **E14-S3-T1**: Approval mode — every sensitive action pauses for a human decision (reuses the E3-S4 human-in-the-loop node).
+- **E14-S3-T2**: Auto mode — automatically executes anything the E14-S2 policy already allows.
+- **E14-S3-T3**: Hybrid mode — auto-executes what's allowed; for anything else, offers the 3-option decision (run once / run and persist a dynamic permission for similar actions / deny) and persists the grant when option 2 is chosen.
+
+| Item | Content |
+| --- | --- |
+| **CF** | Given hybrid mode and a command not covered by policy, the system prompts with the 3 documented options and, on "always", persists a reusable dynamic rule (e.g. `sqlite *`) with no further prompt for equivalent future actions. |
+| **CNF** | A pending decision does not block unrelated independent actions; a decision timeout expires into a configurable fallback route (default: deny and stop the run), reusing E3-S4-T3. |
+| **DoR** | E14-S2 available; E3-S4 human-decision contract reviewed. |
+| **DoD** | Test of all 3 modes and all 3 response options; dynamic permissions reviewable/revocable via API; `docs/execution/modes.md`. |
+| **Dependencies** | E14-S1, E14-S2, E3-S4 |
+
+##### Story E14-S4 — Sandbox-Backed Runners
+
+- **E14-S4-T1**: Command (shell) runner via `SandboxRunner` (hardened Docker, no network by default, allowlist).
+- **E14-S4-T2**: Patch runner (apply with path guard and dry-run) — hardened, kept separate from the arbitrary-command runner.
+- **E14-S4-T3**: Validation runner — reuses the existing Validation Gates; local fallback only behind explicit `AUTODEV_SANDBOX_ALLOW_LOCAL=1`.
+
+| Item | Content |
+| --- | --- |
+| **CF** | A command-type `ExecutionAction` runs in the no-network sandbox; a patch-type action applies with path guard and never falls back to arbitrary exec; validation reuses the existing Validation Gate. |
+| **CNF** | Sandbox has no network by default; fails closed without Docker; clear separation of responsibility across the 3 runners. |
+| **DoR** | `backend/validation/sandbox.py` (E11-S4 / v1 precursor) reviewed; action taxonomy from E14-S1. |
+| **DoD** | Reused sandbox-escape test (§16); fail-closed-without-Docker test; docs. |
+| **Dependencies** | E14-S1, E11-S4 |
+
+##### Story E14-S5 — Web UX for Governed Execution
+
+- **E14-S5-T1**: Plan/action view, inline approve/deny, before/after diffs.
+- **E14-S5-T2**: Real-time logs (stdout/stderr/exit code) via the E9-S2 streaming transport.
+- **E14-S5-T3**: Dynamic permission management (list/revoke) and pause/cancel/resume of runs.
+
+| Item | Content |
+| --- | --- |
+| **CF** | An operator approves/denies an action from the Web UI and sees the result in real time; can revoke a previously saved dynamic permission; can pause/cancel/resume a running run. |
+| **CNF** | WCAG 2.2 AA; log streaming starts < 1 s (inherited from E9-S2). |
+| **DoR** | E10 (base Design System) and E9-S2 (streaming) available. |
+| **DoD** | End-to-end approve/deny UI test; a11y audit; docs. |
+| **Dependencies** | E14-S2, E14-S3, E9-S2, E10 |
+
+##### Story E14-S6 — Governed Interactive Shell (`autodev --shell`)
+
+- **E14-S6-T1**: REPL loop that consumes only the Control Plane API (`/v2`), never the State Store directly (API-first).
+- **E14-S6-T2**: Inline confirmation of sensitive actions and terminal log streaming.
+- **E14-S6-T3**: Support for all 3 modes (approval/auto/hybrid) and condensed diff/result summaries in the terminal.
+
+| Item | Content |
+| --- | --- |
+| **CF** | `autodev --shell` starts a conversational loop that executes actions with approval per the active mode, shows condensed diffs, and streams logs. |
+| **CNF** | Zero direct calls to Postgres/Redis/MinIO from the shell (API-first, §2.13); approval UX parity with the Web UI. |
+| **DoR** | E14-S3 (modes) and E9-S1 (API) available. |
+| **DoD** | Contract test "shell only calls `/v2`"; `docs/execution/shell.md`. |
+| **Dependencies** | E14-S3, E9-S1 |
+
+##### Story E14-S7 — `autodev` CLI Packaging & Install
+
+- **E14-S7-T1**: Packaged entry point (`autodev` on PATH/bin) via Python packaging (console script) or an equivalent OSS installer.
+- **E14-S7-T2**: Default behavior (`autodev`) starts the web/local experience and opens the browser when possible; flags `--shell`, `--command "<text>"`, `--mode approval|auto|hybrid`, and a permission config/persistence subcommand.
+- **E14-S7-T3**: Self-hosted installation guide (no mandatory paid-service dependency).
+
+| Item | Content |
+| --- | --- |
+| **CF** | Installing the package registers `autodev` on PATH; `autodev` with no args starts web/local and opens the browser; `autodev --shell`, `autodev --command "..."`, and `autodev --mode <mode>` behave as specified. |
+| **CNF** | 100% self-hosted install by default; no mandatory paid infrastructure dependency. |
+| **DoR** | E14-S6 (shell) and E9-S1 (API) available; packaging choice (setuptools/uv/pipx) recorded in a lightweight ADR if it changes current distribution. |
+| **DoD** | Local (container/dev) install test verifying the entry point; `docs/execution/cli-install.md`. |
+| **Dependencies** | E14-S6, E14-S1, E14-S4 |
+
+---
+
 ### 18.8 Dependências entre épicos
 
 A tabela abaixo consolida as dependências de nível de épico (predecessores diretos).
@@ -5599,6 +5811,7 @@ A tabela abaixo consolida as dependências de nível de épico (predecessores di
 | **E11 — Observabilidade, Segurança & Multi-tenant** | E0, E8, E9-S1, E4 | Governa acesso, tenants, quotas/budgets; integra backups. |
 | **E12 — Qualidade & Evals** | E0, E1–E6, E5 | Gates de CI; contract tests; agent evals. |
 | **E13 — Marketplace & GA** | E1, E12-S2, E11-S4, E0–E12 | Publicação/instalação verificada; prontidão de GA. |
+| **E14 — Real Task Execution & Governed Autonomy** *(new, English)* | E2, E3, E9-S1, E11-S4 | Anchors the Beta exit criterion (real plan→code→patch→validate→evaluate flow, §18.9); E14-S5 additionally consumes E10. |
 
 #### Diagrama de sequenciamento
 
@@ -5618,6 +5831,7 @@ graph TD
     E11[E11 Observabilidade/Seguranca/Multi-tenant]
     E12[E12 Qualidade & Evals]
     E13[E13 Marketplace & GA]
+    E14[E14 Real Execution & Governed Autonomy]
 
     E0 --> E1
     E0 --> E8
@@ -5648,6 +5862,11 @@ graph TD
     E11 --> E13
     E1 --> E13
     E13 --> GA((v2.0 GA))
+    E2 --> E14
+    E3 --> E14
+    E9 --> E14
+    E11 --> E14
+    E10 --> E14
 ```
 
 ---
@@ -5670,7 +5889,7 @@ O sequenciamento é entregue em três ondas cumulativas. Cada onda tem **conteú
 | Item | Descrição |
 | --- | --- |
 | **Objetivo** | Completar capacidades de inteligência, contexto, dados, API, UI, segurança e qualidade para operação real controlada. |
-| **Entra** | **E4** (Reasoning); **E5** (Router & Selector + Evaluation Service); **E6** (Skills v2); **E7** (Context & RAG com pgvector e recuperação híbrida); **E8-S3/E8-S4** (artefatos + backup/RPO/RTO); **E9-S2/S3/S4** (streaming, catálogo de eventos, MCP); **E10** (Design System, telas-chave, editor visual de fluxos, painéis plugáveis); **E11** (OpenTelemetry, RBAC, multi-tenant, quotas/budgets, runbooks); **E12-S2/S3/S4** (contract tests completos, agent evals, quality gates). |
+| **Entra** | **E4** (Reasoning); **E5** (Router & Selector + Evaluation Service); **E6** (Skills v2); **E7** (Context & RAG com pgvector e recuperação híbrida); **E8-S3/E8-S4** (artefatos + backup/RPO/RTO); **E9-S2/S3/S4** (streaming, catálogo de eventos, MCP); **E10** (Design System, telas-chave, editor visual de fluxos, painéis plugáveis); **E11** (OpenTelemetry, RBAC, multi-tenant, quotas/budgets, runbooks); **E12-S2/S3/S4** (contract tests completos, agent evals, quality gates); **E14** (real task execution, permission/approval policy engine with approval/auto/hybrid modes, governed sandbox runners, Web UX for approval, governed interactive shell, `autodev` CLI install — *new epic, English*). |
 | **Critérios de saída** | (1) Fluxo real planejar→codificar→aplicar patch→validar em sandbox→avaliar executa com RBAC, budgets que falham fechado e traços fim a fim; (2) recuperação híbrida atinge p95 < 300 ms e recall baseline; (3) streaming de run inicia < 1 s; (4) todos os pontos de extensão com contract test verde e quality gates bloqueando merge; (5) UI WCAG 2.2 AA nas telas-chave e editor de fluxos com round-trip; (6) backup/restore validado (RPO ≤ 5 min, RTO ≤ 30 min) em staging. |
 
 #### v2.0-GA — "disponibilidade geral"

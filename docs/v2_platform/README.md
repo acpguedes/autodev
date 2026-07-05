@@ -10,7 +10,7 @@ declarative, versioned, and OSS-first.
 
 **`docs/architecture/v2_platform_reference.md`** is the single source of truth for the
 v2.0 design: vision, guiding principles, glossary, every subsystem's architecture and
-contracts, non-functional requirements, the full delivery roadmap (epics E0-E13 with
+contracts, non-functional requirements, the full delivery roadmap (epics E0-E14 with
 stories, subtasks, and acceptance criteria), governance/versioning rules, KPIs, and
 ready-to-copy templates (plugin/agent/flow/skill/eval manifests, ADR, RFC, DoR, DoD,
 story). It is ~6,600 lines across 21 sections — this directory exists so that day-to-day
@@ -44,7 +44,7 @@ reconciled as v2 epics land.
 | [`progress.md`](progress.md) | Living tracker: which epic/story is Done/In progress/Not started, current wave (Alpha/Beta/GA), wave exit-gate checklists, changelog. **Start here** to see where the rewrite stands. |
 | [`agent_guide.md`](agent_guide.md) | How to pick up an epic/story: workflow gates (G1-G5), DoR/DoD, ADR/RFC triggers, naming/versioning conventions, and how to keep the tracking docs in sync. **Read this before starting implementation work.** |
 | [`documentation_rebuild.md`](documentation_rebuild.md) | Playbook for rebuilding the rest of the project's documentation (root README, `docs/architecture/*`, `docs/implementation/*`, etc.) as v2 epics and waves land, since this is a full architecture refactor and the old docs will otherwise drift out of sync with the new one. |
-| [`phases/`](phases/) | One file per epic (`E0` through `E13`): objective, key result, every story with its subtasks and functional/non-functional/DoR/DoD criteria, dependencies, wave assignment, and what existing v1 code (if any) is a starting point. |
+| [`phases/`](phases/) | One file per epic (`E0` through `E14`): objective, key result, every story with its subtasks and functional/non-functional/DoR/DoD criteria, dependencies, wave assignment, and what existing v1 code (if any) is a starting point. |
 | [`templates/`](templates/) | Copy-ready templates: `story_template.md`, `adr_template.md`, `rfc_template.md`, `dor_checklist.md`, `dod_checklist.md`, and worked manifest examples under `templates/manifests/` (`plugin.yaml`, `agent.yaml`, `flow.yaml`, `skill.yaml`, `eval.yaml`). |
 | [`decisions/`](decisions/) | ADR/RFC log for architecturally significant decisions made during the rewrite, with an index and the process for adding new entries. |
 
