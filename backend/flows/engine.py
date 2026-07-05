@@ -13,15 +13,21 @@ from __future__ import annotations
 import time
 from typing import Any, Callable
 
+from backend.flows.budgets import (
+    budget_cap_document,
+    budget_violation,
+    effective_budgets,
+)
 from backend.flows.expressions import ExpressionError, evaluate_expression, render_template
 from backend.flows.handlers import (
+    FlowBudgetExceededError,
     FlowHandlerRegistry,
     FlowNodeError,
     NodeContext,
     UnsupportedNodeError,
     build_default_handlers,
 )
-from backend.flows.model import FlowManifest, FlowNode
+from backend.flows.model import FlowBudgets, FlowManifest, FlowNode
 from backend.flows.registry import FlowRegistry
 from backend.flows.state import FlowRunRecord, FlowRunStore
 from backend.observability.tracing import trace_run_step
@@ -80,6 +86,7 @@ class FlowEngine:
         tenant_id: str = "default",
         parent_run_id: str | None = None,
         execute: bool = True,
+        budget_cap: FlowBudgets | None = None,
     ) -> FlowRunRecord:
         """Create a run for a registered flow and (by default) execute it.
 
@@ -92,6 +99,10 @@ class FlowEngine:
             tenant_id: Tenant the run is scoped to.
             parent_run_id: Id of the parent run for sub-flow runs.
             execute: Whether to execute the graph synchronously.
+            budget_cap: Optional cap on the run's budgets; the engine enforces
+                the element-wise minimum of the manifest budgets and this cap
+                (ADR-006 budget propagation). Persisted in the run state so
+                resumed executions keep the same limits.
 
         Returns:
             The resulting run record (terminal when ``execute`` is ``True``).
@@ -107,17 +118,20 @@ class FlowEngine:
         self._validate_input(manifest, run_input)
 
         entry_id = manifest.entry_node().id
+        state: dict[str, Any] = {
+            "cursor": entry_id,
+            "nodes": {},
+            "metrics": {"tokens": 0.0, "cost_usd": 0.0},
+        }
+        if budget_cap is not None:
+            state["budget_cap"] = budget_cap_document(budget_cap)
         run = self.runs.create_run(
             flow_id=manifest.id,
             flow_version=manifest.version,
             tenant_id=tenant_id,
             trigger=dict(trigger or {"type": "api"}),
             input=run_input,
-            state={
-                "cursor": entry_id,
-                "nodes": {},
-                "metrics": {"tokens": 0.0, "cost_usd": 0.0},
-            },
+            state=state,
             parent_run_id=parent_run_id,
         )
         self.runs.append_event(
@@ -135,11 +149,20 @@ class FlowEngine:
             return self.execute_run(run.run_id)
         return run
 
-    def execute_run(self, run_id: str) -> FlowRunRecord:
+    def execute_run(
+        self, run_id: str, *, budget_cap: FlowBudgets | None = None
+    ) -> FlowRunRecord:
         """Execute a run from its persisted cursor until it stops.
+
+        The budgets enforced are the element-wise minimum of the manifest
+        budgets, any cap persisted in the run state at start time, and the
+        optional ``budget_cap`` argument (ADR-006). They are checked between
+        activations and once more before completing, so a run can never
+        finish ``completed`` while over budget.
 
         Args:
             run_id: Id of the run to execute.
+            budget_cap: Optional additional cap on the run's budgets.
 
         Returns:
             The terminal (or paused) run record.
@@ -157,20 +180,31 @@ class FlowEngine:
         state.setdefault("cursor", manifest.entry_node().id)
         state.setdefault("nodes", {})
         state.setdefault("metrics", {"tokens": 0.0, "cost_usd": 0.0})
+        budgets = effective_budgets(manifest.budgets, state, budget_cap)
         started = self._clock()
+        deadline = started + budgets.max_wall_clock_sec
         activations = 0
 
         while state.get("cursor"):
-            budget_error = self._budget_violation(manifest, state, started, activations)
+            budget_error = budget_violation(
+                budgets, state, self._clock() - started, activations, self._max_steps
+            )
             if budget_error is not None:
                 return self._fail_run(run.run_id, state, "budget_exhausted", budget_error)
 
             node = manifest.node(str(state["cursor"]))
-            outcome_record = self._activate_node(run, manifest, node, state)
+            outcome_record = self._activate_node(
+                run, manifest, node, state, budgets=budgets, deadline=deadline
+            )
             if outcome_record is not None:
                 return outcome_record
             activations += 1
 
+        budget_error = budget_violation(
+            budgets, state, self._clock() - started, 0, self._max_steps
+        )
+        if budget_error is not None:
+            return self._fail_run(run.run_id, state, "budget_exhausted", budget_error)
         output = self._final_output(manifest, state)
         self.runs.update_run(
             run.run_id, status="completed", stop_reason="completed",
@@ -193,6 +227,9 @@ class FlowEngine:
         manifest: FlowManifest,
         node: FlowNode,
         state: dict[str, Any],
+        *,
+        budgets: FlowBudgets,
+        deadline: float,
     ) -> FlowRunRecord | None:
         """Execute one node activation and advance the cursor.
 
@@ -201,6 +238,9 @@ class FlowEngine:
             manifest: The flow definition.
             node: The node at the cursor.
             state: The mutable run state (updated in place and persisted).
+            budgets: Effective budgets enforced for this execution; exposed to
+                handlers so composite nodes can cap their children (ADR-006).
+            deadline: Monotonic timestamp when the wall-clock budget expires.
 
         Returns:
             A terminal run record when the run failed; ``None`` to continue.
@@ -234,7 +274,12 @@ class FlowEngine:
             tenant_id=run.tenant_id,
             input=rendered if isinstance(rendered, dict) else {"value": rendered},
             state=state,
-            services={"engine": self},
+            services={
+                "engine": self,
+                "budgets": budgets,
+                "deadline": deadline,
+                "clock": self._clock,
+            },
         )
         try:
             with trace_run_step(
@@ -246,11 +291,12 @@ class FlowEngine:
                 handler = self.handlers.get(node.type)
                 outcome = handler(ctx)
         except Exception as exc:  # noqa: BLE001 - engine isolates node failures
-            reason = (
-                "unsupported_node"
-                if isinstance(exc, UnsupportedNodeError)
-                else "node_failed"
-            )
+            if isinstance(exc, UnsupportedNodeError):
+                reason = "unsupported_node"
+            elif isinstance(exc, FlowBudgetExceededError):
+                reason = "budget_exhausted"
+            else:
+                reason = "node_failed"
             self.runs.complete_step(step.step_id, status="failed", error=str(exc))
             self.runs.append_event(
                 run_id=run.run_id,
@@ -360,43 +406,6 @@ class FlowEngine:
             A dict exposing ``flow.input`` and ``nodes.<id>.output``.
         """
         return {"flow": {"input": run.input}, "nodes": state.get("nodes", {})}
-
-    def _budget_violation(
-        self,
-        manifest: FlowManifest,
-        state: dict[str, Any],
-        started: float,
-        activations: int,
-    ) -> str | None:
-        """Check run budgets, returning a violation description if any.
-
-        Args:
-            manifest: The flow definition (source of the budgets).
-            state: Run state carrying accumulated metrics.
-            started: Monotonic timestamp when this execution session began.
-            activations: Node activations performed in this session.
-
-        Returns:
-            A human-readable violation, or ``None`` when within budget.
-        """
-        budgets = manifest.budgets
-        elapsed = self._clock() - started
-        if elapsed > budgets.max_wall_clock_sec:
-            return (
-                f"wall clock {elapsed:.1f}s exceeded budget "
-                f"{budgets.max_wall_clock_sec}s"
-            )
-        metrics = state.get("metrics", {})
-        if float(metrics.get("tokens", 0.0)) > budgets.max_tokens:
-            return f"tokens {metrics.get('tokens')} exceeded budget {budgets.max_tokens}"
-        if float(metrics.get("cost_usd", 0.0)) > budgets.max_cost_usd:
-            return (
-                f"cost {metrics.get('cost_usd')} exceeded budget "
-                f"{budgets.max_cost_usd} USD"
-            )
-        if activations >= self._max_steps:
-            return f"engine step cap {self._max_steps} reached"
-        return None
 
     def _final_output(
         self, manifest: FlowManifest, state: dict[str, Any]

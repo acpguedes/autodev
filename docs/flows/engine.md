@@ -47,11 +47,15 @@ runs per node execute without lock failures (covered by a concurrency test).
 
 ## Budgets (fail closed)
 
-Manifest budgets are enforced between activations: wall clock, accumulated
-tokens, and accumulated cost (agent nodes report the E2 runtime's metrics).
-An engine-level step cap (default 1000 activations per run) additionally
-bounds guarded loops that never exit. Any violation stops the run with
-`stop_reason: budget_exhausted` and `flow.run.failed` — never fail open.
+Manifest budgets are enforced between activations and re-checked once more
+before a run completes: wall clock, accumulated tokens, and accumulated cost
+(agent nodes report the E2 runtime's metrics). An engine-level step cap
+(default 1000 activations per run) additionally bounds guarded loops that
+never exit. Any violation stops the run with `stop_reason: budget_exhausted`
+and `flow.run.failed` — never fail open. `start_run`/`execute_run` accept an
+optional `budget_cap` (used by composite nodes, ADR-006): the engine enforces
+the element-wise minimum of the manifest budgets and the cap, and persists the
+cap in the run state so resumed executions keep the same limits.
 
 ## Node handlers
 
@@ -64,8 +68,48 @@ Node types map to pluggable handlers (`FlowHandlerRegistry`):
 - `skill` / `tool` — resolved from an in-process `CallableRegistry` until
   Skills v2 (E6) provides a durable registry.
 - `conditional` — pure routing; produces no output.
-- `human` (E3-S4), `subflow`/`map` (E3-S5) — until those stories land, these
-  types fail closed as `unsupported_node`.
+- `subflow` / `map` — composite nodes (E3-S5), see the next section.
+- `human` (E3-S4) — until that story lands, this type fails closed as
+  `unsupported_node`.
+
+## Composite nodes: sub-flow and map/reduce
+
+Delivered by **E3-S5** (`backend/flows/composite.py`). Both node types
+reference a **flow** (`ref` resolved through the flow registry with SemVer
+ranges) and start real child runs linked to the parent via `parent_run_id`
+(queryable with `FlowRunStore.list_runs(parent_run_id=...)`; child trigger
+documents record `{type: subflow|map, parentRunId, nodeId}`).
+
+- **`subflow`** executes the referenced flow synchronously as a child run,
+  with the node's rendered input bindings as the child's run input. The node
+  output is the child's consolidated output spread at the top level plus the
+  reserved key `childRunId` (which always wins on collision), so downstream
+  bindings stay ergonomic: `{{ nodes.sub.output.<field> }}`. The child's
+  accumulated token/cost metrics charge the parent's budget ledger. A failed
+  child fails the parent step closed, preserving `budget_exhausted` when that
+  was the child's stop reason.
+- **`map`** evaluates `over` against the run state; the result must be a list
+  (anything else fails closed). It fans the referenced flow out one child run
+  per item on a thread pool bounded by `maxParallel` (default 4). Map-node
+  input bindings are rendered **per item by the handler** — the `item` root is
+  bound to the current element (e.g. `{"value": "{{ item }}"}`); the engine's
+  pre-rendered input is ignored for map nodes. `reduce: collect` (the only
+  mode so far) aggregates ordered outputs — input order, not completion
+  order — into `{"items": [...], "count": N, "childRunIds": [...]}`. Any
+  branch failure skips the remaining branches and fails the step closed.
+- **Budget propagation (ADR-006):** each child runs under a budget cap equal
+  to the parent's remaining budget at spawn (`min` with the child's own
+  manifest budgets; wall clock inherits the parent's remaining time). Map
+  re-checks aggregate consumption before every launch and after every
+  completion, failing the step with `budget_exhausted` on breach. See
+  `docs/v2_platform/decisions/ADR-006-budget-propagation.md`.
+- **Depth cap:** composite nesting is bounded at 16
+  (`MAX_COMPOSITE_DEPTH`); exceeding it — e.g. a recursive sub-flow — fails
+  closed with a clear error.
+
+Hierarchical tracing: parent step outputs carry `childRunId(s)` (persisted in
+the step record and in `nodes.<id>.output`), and every child run keeps its own
+Run/Step/Event records under its `run_id` with `parent_run_id` linkage.
 
 ## Triggers
 
