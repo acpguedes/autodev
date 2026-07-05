@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from backend.agents.manifest import AgentBudgets, AgentManifest, ValidationError, validate_agent_io
+from backend.agents.provider import LLMProvider, StubLLMProvider
+from backend.agents.tools import AgentToolBroker
 from backend.observability.tracing import trace_run_step
 
 
@@ -87,6 +89,8 @@ class AgentRuntimeContext:
     run_id: str
     tenant_id: str
     _ledger: _BudgetLedger
+    _broker: AgentToolBroker
+    _provider: LLMProvider
     _steps: list[AgentRuntimeStep] = field(default_factory=list)
 
     def consume_budget(
@@ -112,8 +116,41 @@ class AgentRuntimeContext:
         elapsed_ms = (time.perf_counter() - started) * 1000
         self._steps.append(AgentRuntimeStep(name, status, reason, detail, elapsed_ms))
 
+    def call_tool(self, tool_id: str, **kwargs: Any) -> Any:
+        self._ledger.consume(tool_call=True)
+        return self._broker.call_tool(tool_id, **kwargs)
+
+    def call_skill(self, skill_id: str, **kwargs: Any) -> Any:
+        self._ledger.consume(tool_call=True)
+        return self._broker.call_skill(skill_id, **kwargs)
+
+    def call_llm(self, prompt: str) -> str:
+        response = self._provider.complete(
+            prompt,
+            agent_id=self.manifest.id,
+            run_id=self.run_id,
+            tenant_id=self.tenant_id,
+        )
+        self.consume_budget(
+            tokens_input=response.tokens_input,
+            tokens_output=response.tokens_output,
+            cost_usd=response.cost_usd,
+        )
+        return response.text
+
 
 class AgentRuntime:
+    def __init__(
+        self,
+        *,
+        tools: dict[str, Any] | None = None,
+        skills: dict[str, Any] | None = None,
+        provider: LLMProvider | None = None,
+    ) -> None:
+        self._tools = tools or {}
+        self._skills = skills or {}
+        self._provider = provider or StubLLMProvider()
+
     def run(
         self,
         manifest: AgentManifest,
@@ -127,7 +164,8 @@ class AgentRuntime:
         active_run_id = run_id or str(uuid.uuid4())
         active_budgets = budgets or manifest.budgets
         ledger = _BudgetLedger(active_budgets)
-        ctx = AgentRuntimeContext(manifest, payload, active_run_id, tenant_id, ledger)
+        broker = AgentToolBroker(manifest, tools=self._tools, skills=self._skills)
+        ctx = AgentRuntimeContext(manifest, payload, active_run_id, tenant_id, ledger, broker, self._provider)
 
         try:
             validate_agent_io(manifest, payload, "input")
@@ -204,6 +242,7 @@ class AgentRuntime:
                 "tokens.input": ctx._ledger.tokens_input,
                 "tokens.output": ctx._ledger.tokens_output,
                 "cost.usd": ctx._ledger.cost_usd,
+                "tool.calls": ctx._ledger.tool_calls,
                 "steps": len(ctx._steps),
             },
         )

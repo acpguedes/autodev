@@ -131,5 +131,6 @@ def test_runtime_records_token_cost_metrics_per_run_and_tenant() -> None:
         "tokens.input": 12,
         "tokens.output": 5,
         "cost.usd": 0.03,
+        "tool.calls": 0,
         "steps": len(result.steps),
     }

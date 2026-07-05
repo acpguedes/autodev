@@ -1,7 +1,7 @@
 # E2 — Agent Framework
 
 **Wave:** Alpha
-**Status:** In progress · **Stories:** 3/5 complete
+**Status:** In progress · **Stories:** 4/5 complete
 **Depends on:** E0, E1
 **Enables:** E4, E5, E9-S4
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E2), §18.8, §18.9
@@ -64,7 +64,7 @@ Subtasks:
 | DoD (specific) | Budget-overrun and guardrail tests; token/cost metrics emitted |
 | Dependencies | E2-S1, E0-S3 |
 
-### E2-S4 — Tool/skill mediation and LLM provider
+### E2-S4 — Tool/skill mediation and LLM provider — Done
 
 Subtasks:
 - `E2-S4-T1`: permissioned tool broker.
