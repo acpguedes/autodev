@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autodev.dev/schemas/reasoning-policy.schema.json",
+  "title": "Reasoning Policy",
+  "description": "Declarative, versioned reasoning policy (reasoning-policy.yaml) governing strategy selection, budgets, guardrails, and tracing (reference §8.4).",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schemaVersion", "id", "version", "hostApi", "selection", "budget"],
+  "properties": {
+    "schemaVersion": {
+      "description": "Policy schema version.",
+      "type": ["string", "integer"]
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "description": "Fully qualified policy id in namespace/name kebab-case."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+      "description": "SemVer version of the policy."
+    },
+    "hostApi": {
+      "type": "string",
+      "description": "Supported host API version range, e.g. '>=2.0 <3.0'."
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["default"],
+      "properties": {
+        "default": {
+          "type": "string",
+          "description": "Strategy id used when no rule matches."
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["when", "use"],
+            "properties": {
+              "when": {
+                "type": "object",
+                "minProperties": 1,
+                "description": "Context predicate matched to select this rule."
+              },
+              "use": {
+                "type": "string",
+                "description": "Strategy id to select when 'when' matches."
+              },
+              "config": {
+                "type": "object",
+                "description": "Strategy-specific configuration to apply."
+              }
+            }
+          }
+        }
+      }
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["tokens", "cost_usd", "wall_clock_ms", "max_steps"],
+      "properties": {
+        "tokens": { "type": "integer", "exclusiveMinimum": 0 },
+        "cost_usd": { "type": "number", "exclusiveMinimum": 0 },
+        "wall_clock_ms": { "type": "integer", "exclusiveMinimum": 0 },
+        "max_steps": { "type": "integer", "exclusiveMinimum": 0 },
+        "on_exceed": {
+          "type": "string",
+          "pattern": "^(fail_closed|degrade_to:[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*)$",
+          "description": "'fail_closed' or 'degrade_to:<strategy-id>'."
+        }
+      }
+    },
+    "guardrails": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "on_violation"],
+        "properties": {
+          "id": { "type": "string" },
+          "on_violation": { "enum": ["block", "repair_once", "warn"] }
+        }
+      }
+    },
+    "tracing": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "level": { "enum": ["full", "steps", "summary"] },
+        "record_prompts": { "type": "boolean" },
+        "deterministic_replay": { "type": "boolean" }
+      }
+    }
+  }
+}

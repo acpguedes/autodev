@@ -7,7 +7,7 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-05 (E3 Alpha slice S1-S5 complete; S6 deferred to Beta with E10)
+**Last updated:** 2026-07-05 (E3 Alpha closed; **E4 — Reasoning epic complete (4/4)** on `epic/e4-reasoning` — contract, Engine, 5 reference strategies, and policy-driven selection + fallback; ready for epic→main PR)
 
 ## How to update this file
 
@@ -44,11 +44,13 @@ The v1 codebase remains frozen at the `v1` git tag (see `CHANGELOG.md`) as
 the baseline these epics build on and are measured against. The remaining
 **informal v1 precursors** (dynamic orchestration behind a flag for E3, the
 SQLite store abstraction for E8, the v1 skills registry for E6) are starting
-points only — they do not satisfy the v2 contracts. Remaining Alpha anchor
-work: **E3** (graph/checkpointing/human-in-the-loop), **E8-S1/E8-S2**,
-**E9-S1**, and **E12-S1**. **Next action: pick up E3 after reading
-`phases/e3_orchestration_engine.md` and `agent_guide.md` §1-4 (the branching
-and quality rules in §3-4 are mandatory from E3 onward).**
+points only — they do not satisfy the v2 contracts. E3's Alpha slice (S1-S5) is
+complete and verified (flow suite 38/38 green); its only open story, **E3-S6**
+(visual flow editor), is Beta-deferred behind **E10** (Design System, not
+started). Remaining Alpha anchor work: **E8-S1/E8-S2**, **E9-S1**, and
+**E12-S1**. **Next action: E4 — Reasoning (Beta, unblocked by E1+E2) is in
+progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
+(mandatory from E3 onward).**
 
 ## Epic status
 
@@ -57,8 +59,8 @@ and quality rules in §3-4 are mandatory from E3 onward).**
 | E0 | Foundations & Hardening | Alpha | Done | 7/7 | — | [phases/e0_foundations_hardening.md](phases/e0_foundations_hardening.md) |
 | E1 | Plugin Core & SDK | Alpha | Done | 5/5 | E0 | [phases/e1_plugin_core_sdk.md](phases/e1_plugin_core_sdk.md) |
 | E2 | Agent Framework | Alpha | Done | 5/5 | E0, E1 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
-| E3 | Orchestration Engine | Alpha/Beta | In progress | 5/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
-| E4 | Reasoning | Beta | Not started | 0/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
+| E3 | Orchestration Engine | Alpha/Beta | Alpha done · S6→Beta | 5/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
+| E4 | Reasoning | Beta | Done | 4/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
 | E5 | Routing / Selection / Evaluation | Beta | Not started | 0/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
 | E6 | Skills v2 | Beta | Not started | 0/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
 | E7 | Context & RAG | Beta | Not started | 0/4 | E1, E2, E8, E5 | [phases/e7_context_rag.md](phases/e7_context_rag.md) |
@@ -70,7 +72,7 @@ and quality rules in §3-4 are mandatory from E3 onward).**
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 
-Total: **17/71 stories complete** across 15 epics.
+Total: **21/71 stories complete** across 15 epics.
 
 ## Wave exit gates (§18.9 of the reference doc)
 
@@ -122,6 +124,67 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-07-05** — **E4-S4 complete; E4 — Reasoning epic done (4/4)**. Added
+  policy-driven strategy **selection** (`selection.py`: precedence
+  default→policy-rule→manifest→flow-node→selector per §8.7, with operator-aware
+  `when` predicates including ordinal levels), the **`ReasoningService`**
+  (`service.py`: resolve → run → `degrade_to` fallback on `budget_exhausted`,
+  with the selection/degrade decisions traced), the **Agent Runtime binding**
+  (`agent_binding.py`: `AgentBudgets`→`Budget` mapping + `ReasoningInput` builder
+  — the E2 seam, deliberately kept out of the already-oversized `runtime.py`), an
+  `on_exceed` option on `default_reasoning_policy`, and `docs/reasoning/
+  policies.md`. 6 tests (`test_reasoning_selection.py`). **E4 now delivers the
+  five reference strategies, fail-closed budgets, guardrails, traced replayable
+  runs, and policy-driven selection** — the Beta "Reasoning" entry item. Deep
+  adoption in the default agent execution cycle (replacing the single-call step)
+  is progressive (E5/E14). Ready for the epic→`main` PR.
+- **2026-07-05** — **E4-S3 complete** (advanced reasoning strategies). Added
+  **Reflection** (`autodev/reasoning-reflection` — draft→self-critique→revise,
+  bounded by `max_revisions`, early-exit on approval) and **Debate/Tree-of-
+  Thought** (`autodev/reasoning-tot` — expand `branches`, score, keep top
+  `beam`) to `backend/reasoning/strategies/`, completing the five reference
+  strategies of §8.9. Fan-out is **budget-bounded / fail-closed** (a wide ToT
+  search stops at the step ceiling, verified). `builtin_strategies()` now
+  returns all five. 4 tests (`test_reasoning_advanced.py`);
+  `docs/reasoning/contract.md` updated.
+- **2026-07-05** — **E4-S2 complete** (reference reasoning strategies). Added
+  `backend/reasoning/strategies/`: **ReAct** (`autodev/reasoning-react` —
+  Thought→Action→Observation with mediated tool calls), **Plan-and-Execute**
+  (`autodev/reasoning-plan-execute`), and **native tool-calling**
+  (`autodev/reasoning-native-tools`) — three of the five reference strategies in
+  §8.9 — plus `register_builtin_strategies`. All run through the Engine on the
+  offline stub provider, are swappable without caller changes, and honor
+  fail-closed budgets (verified by a never-terminating ReAct loop). 5 tests
+  (`test_reasoning_strategies.py`); `docs/reasoning/contract.md` updated.
+  Reflection + Debate/Tree-of-Thought are E4-S3.
+- **2026-07-05** — **E4-S1 complete** (Reasoning Strategy contract + Reasoning
+  Engine). Added `backend/reasoning/`: the typed, SemVer-versioned contract
+  (`contract.py` — `ReasoningInput`/`ReasoningOutput`, the `ReasoningContext`
+  mediator, `ReasoningStrategy`, immutable `Usage`, `Budget`, `TraceEvent`,
+  guardrail/exception types, and the `reasoning-strategy.yaml` manifest); the
+  fail-closed **Reasoning Engine** (`engine.py` — mediates every LLM/tool call,
+  debits the budget, emits an ordered trace via an `on_event` Event Bus hook,
+  enforces guardrail `block`/`warn`/`repair_once`, and terminates with the
+  correct `stop_reason`); the SemVer strategy registry (`registry.py`); and the
+  declarative `reasoning-policy.yaml` model (`policy.py`). Published schemas
+  (`reasoning-strategy.schema.json`, `reasoning-policy.schema.json`); SDK
+  contract export bumped to `1.2.0`; RFC-003 + ADR-007 (async contract / sync
+  host; engine-owned fail-closed budgets; single-`tokens` budget model);
+  `docs/reasoning/contract.md`; and 12 contract tests
+  (`test_reasoning_contract.py`, incl. the fail-closed no-effect-past-ceiling
+  case). The `reasoning.strategy` extension point was already present in the
+  plugin catalog. Process note: implementation was to be handed to Codex per the
+  user's request, but the Codex CLI workspace was out of credits; with the
+  user's approval E4-S1 was implemented directly in Claude instead.
+- **2026-07-05** — **E3 Alpha slice verified complete** and closed for Alpha
+  (S1-S5 Done; flow suite 38/38 green). **E3-S6 (visual flow editor) formally
+  deferred to Beta** — it depends on **E10** (Design System, Not started) per
+  `phases/e3_orchestration_engine.md` and the Beta entry list, so no S6 work is
+  achievable until E10 lands. No code change in this entry (E3 was already
+  Alpha-complete; this reconciles the epic-table status that still read
+  "In progress"). **E4 — Reasoning started**: opened `epic/e4-reasoning` from
+  `main`; executing E4-S1..S4 per `phases/e4_reasoning.md` and reference §8.
 
 - **2026-07-05** — Planning-only, no implementation: added **E14 — Real Task
   Execution & Governed Autonomy** (Beta, 7 stories) to close the gap between

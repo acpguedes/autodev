@@ -10,8 +10,16 @@ from backend.agents.manifest import AgentManifest
 from backend.flows.manifest import FlowManifest
 from backend.plugins.catalog import ExtensionPointKind
 from backend.plugins.manifest import PluginManifest
+from backend.reasoning.contract import (
+    REASONING_CONTRACT_HOST_API,
+    ReasoningContext,
+    ReasoningInput,
+    ReasoningOutput,
+    ReasoningStrategy,
+    ReasoningStrategyManifest,
+)
 
-SDK_CONTRACT_VERSION = "1.1.0"
+SDK_CONTRACT_VERSION = "1.2.0"
 
 
 @dataclass(frozen=True)
@@ -104,5 +112,11 @@ __all__ = [
     "HostApi",
     "PluginManifest",
     "PluginRegister",
+    "REASONING_CONTRACT_HOST_API",
+    "ReasoningContext",
+    "ReasoningInput",
+    "ReasoningOutput",
+    "ReasoningStrategy",
+    "ReasoningStrategyManifest",
     "SDK_CONTRACT_VERSION",
 ]

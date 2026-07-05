@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autodev.dev/schemas/reasoning-strategy.schema.json",
+  "title": "Reasoning Strategy Manifest",
+  "description": "Manifest (reasoning-strategy.yaml) packaging a reasoning strategy as a plugin extension at the reasoning.strategy extension point (E4-S1).",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schemaVersion", "kind", "id", "version", "hostApi", "entrypoint"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "description": "Manifest schema version."
+    },
+    "kind": {
+      "const": "ReasoningStrategy",
+      "description": "Manifest kind discriminator; always 'ReasoningStrategy'."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "description": "Fully qualified strategy id in namespace/name kebab-case."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$",
+      "description": "SemVer version of the strategy implementation."
+    },
+    "hostApi": {
+      "type": "string",
+      "description": "Supported host API version range, e.g. '>=2.0 <3.0'."
+    },
+    "entrypoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runtime", "ref"],
+      "properties": {
+        "runtime": {
+          "const": "python",
+          "description": "Runtime that executes the entrypoint."
+        },
+        "ref": {
+          "type": "string",
+          "pattern": "^[A-Za-z_][\\w.]*:[A-Za-z_][\\w.]*$",
+          "description": "module:callable reference to the strategy implementation."
+        }
+      }
+    },
+    "displayName": {
+      "type": "string",
+      "description": "Optional human-readable name."
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional human-readable description."
+    }
+  }
+}
