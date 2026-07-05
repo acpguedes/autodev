@@ -1,7 +1,7 @@
 # E5 — Routing / Selection / Evaluation
 
 **Wave:** Beta
-**Status:** Not started · **Stories:** 0/4 complete
+**Status:** In progress · **Stories:** 2/4 complete (S1, S3 done; S2 depends on S1, S4 depends on S2+S3)
 **Depends on:** E2, E4
 **Enables:** E7-S3 (retrieval eval), E12-S3
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E5), §18.8, §18.9
@@ -18,7 +18,7 @@ measure quality and feed back into routing.
 
 ## Stories
 
-### E5-S1 — Router (intent/task classification)
+### E5-S1 — Router (intent/task classification) — Done
 
 Subtasks:
 - `E5-S1-T1`: pluggable classifier.
@@ -48,7 +48,7 @@ Subtasks:
 | DoD (specific) | Deterministic-selection test; decision trace |
 | Dependencies | E5-S1, E2-S2 |
 
-### E5-S3 — Evaluation Service (offline/online evals)
+### E5-S3 — Evaluation Service (offline/online evals) — Done
 
 Subtasks:
 - `E5-S3-T1`: `eval.yaml` spec (dataset+rubric+metrics).
