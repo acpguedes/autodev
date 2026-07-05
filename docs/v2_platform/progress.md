@@ -26,21 +26,29 @@
 
 ## Current wave: Alpha (in progress)
 
-E0 is complete with all seven foundation stories done. The repository also
-contains several **informal precursors** to Alpha-wave capabilities
-(auto-discovered plugin seams, an agent/skill registry, dynamic orchestration
-behind a flag, a SQLite store abstraction with migrations) — see
-`docs/feature_matrix.md` for their exact status and each `phases/E<n>_*.md`
-file's "v1 precursor / starting point" section for how they map onto the v2
-epics. None of them satisfy the v2 contracts (manifests, `hostApi` versioning,
-permissions, contract tests) as written, so they are starting points, not
-completed epic work.
+The first three Alpha epics are complete. **E0** delivered the foundations
+(containerized backend runtime, typed declarative settings, PostgreSQL state
+store, OpenTelemetry traces + Prometheus counters, the security baseline, and
+Redis queue/cache/locks + local/MinIO artifact stores). **E1** delivered the
+Plugin Core & SDK (`plugin.yaml` manifests + published schema, Plugin Host
+discovery/lifecycle, default-deny permissions with brokered Host API access,
+the Python SDK with scaffold CLI and contract-test harness, and the
+active-plugin registry behind `/v2/plugins/active`). **E2** delivered the Agent
+Framework (`agent.yaml` manifests, the durable Agent Registry with SemVer
+resolution and `/v2/agents/catalog`, the Agent Runtime with fail-closed
+budgets and output guardrails, permissioned tool/skill mediation with the
+provider abstraction, and `autodev/agent-coder` packaged as a reference agent
+plugin).
 
-The v1 codebase is now frozen at the `v1.0.0` git tag (see `CHANGELOG.md`) as the
-baseline these epics build on and are measured against. E0 now provides the
-local-first and production-like foundation for the remaining Alpha work. **Next
-action: pick up E1 after reading `phases/e1_plugin_core_sdk.md` and
-`agent_guide.md` §1-2.**
+The v1 codebase remains frozen at the `v1.0.0` git tag (see `CHANGELOG.md`) as
+the baseline these epics build on and are measured against. The remaining
+**informal v1 precursors** (dynamic orchestration behind a flag for E3, the
+SQLite store abstraction for E8, the v1 skills registry for E6) are starting
+points only — they do not satisfy the v2 contracts. Remaining Alpha anchor
+work: **E3** (graph/checkpointing/human-in-the-loop), **E8-S1/E8-S2**,
+**E9-S1**, and **E12-S1**. **Next action: pick up E3 after reading
+`phases/e3_orchestration_engine.md` and `agent_guide.md` §1-4 (the branching
+and quality rules in §3-4 are mandatory from E3 onward).**
 
 ## Epic status
 
@@ -187,3 +195,16 @@ Add a dated entry every time a story/epic/wave status changes.
   baseline, added runtime parity coverage, registered the plugin through the Plugin
   Host and Agent Registry, included the SDK example, and marked the E2 exit checklist
   complete.
+- **2026-07-04** — Documentation alignment + governance pass (out-of-band, per the
+  E1/E2 per-epic triggers in `documentation_rebuild.md`; not a wave-gate rebuild —
+  Alpha has not exited): refreshed root docs (`README`, `DESCRIPTION`, `CHANGELOG`
+  Unreleased section, `AGENTS.md`, `AGENT.md`), corrected
+  `docs/feature_matrix.md` (PostgreSQL no longer a stub; new Plugin System and
+  Agent Framework v2 sections), annotated superseded `docs/roadmap.md` releases,
+  added historical/status banners to superseded architecture and implementation
+  docs, and documented E1-S3 permission isolation in `docs/security.md`. Also
+  introduced repo governance: `CONTRIBUTING.md` (epic/story branching model,
+  docstring + type-hint standards, story-scoped vs full-suite testing policy),
+  `agent_guide.md` §3–§4 (mandatory from E3 onward), PR/issue templates,
+  Apache-2.0 `LICENSE` + `NOTICE` + `CITATION.cff`, and opt-in parallel testing
+  (`make test-backend-parallel`, suite validated 285/285 at ~2× speed).

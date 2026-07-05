@@ -1,6 +1,6 @@
 # AutoDev Architect – Initial Architecture Decisions
 
-> Historical note: this document captures the initial MVP direction. The current target architecture and production direction now live in `docs/architecture/target_architecture.md` and `docs/implementation/implementation_strategy.md`.
+> Historical note (updated 2026-07-04): this document captures the initial MVP direction. The current design authority is the v2 platform reference (`docs/architecture/v2_platform_reference.md`), with live epic-by-epic status in `docs/v2_platform/progress.md`. The earlier `docs/architecture/target_architecture.md` and `docs/implementation/implementation_strategy.md` are themselves superseded (see their status banners).
 
 This document consolidates the early agreements for the AutoDev Architect platform. The goal is to give every contributor a shared mental model before iterating on features.
 

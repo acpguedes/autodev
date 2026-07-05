@@ -1,5 +1,11 @@
 # Agent Specification
 
+> **Historical (v1 agent spec) — 2026-07-04:** Superseded by E2's `agent.yaml` manifest contract
+> and Agent Runtime. See [`docs/agents/manifest.md`](../agents/manifest.md) (typed IO + budgets),
+> [`docs/agents/runtime.md`](../agents/runtime.md) (fail-closed execution, tool broker, provider
+> abstraction), and [`docs/agents/registry.md`](../agents/registry.md). Retained as the v1
+> behavioral record.
+
 This document defines the target behavior, responsibilities, and structured outputs for AutoDev Architect agents.
 
 ---

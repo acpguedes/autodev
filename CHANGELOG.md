@@ -3,6 +3,60 @@
 All notable changes to AutoDev Architect are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); dates are `YYYY-MM-DD`.
 
+## [Unreleased] — v2.0 Alpha (in progress)
+
+The v2.0 platform rewrite is underway on `main`. Per-story detail lives in
+[`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) (Changelog section);
+epic summaries:
+
+### E0 — Foundations & Hardening (complete, 2026-07-04, PRs #51–#52)
+
+- Containerized backend dev/test runtime with Makefile `container-*` targets.
+- Typed declarative settings with local/prod profiles, JSON+env precedence, and a
+  fail-fast `autodev config validate` CLI (`docs/config.md`).
+- PostgreSQL-backed sessions/runs/messages/plans selected via `DATABASE_URL`
+  (ADR-001), with a backup/restore runbook (`docs/ops/backup_restore.md`).
+- OpenTelemetry request and run-step spans, Prometheus 5xx counters
+  (`docs/ops/observability.md`).
+- Default HTTP security headers, opt-in HSTS, dependency-free secret scanning, and a
+  backend CI secret/SCA gate (`docs/security/baseline.md`).
+- Redis queue/cache/locks and local/MinIO artifact stores wired into the
+  production-like Compose profile (`docs/ops/storage.md`).
+
+### E1 — Plugin Core & SDK (complete, 2026-07-04, PR #53)
+
+- `plugin.yaml` manifest schema, typed extension-point catalog, published JSON schema
+  (RFC-001, ADR-002, `docs/plugins/manifest.md`).
+- Plugin Host discovery (directories + entry points) with durable
+  install/enable/disable/uninstall lifecycle and `hostApi` compatibility rejection.
+- Default-deny fs/net/exec/secrets permission model with brokered Host API access and
+  `plugin.permission.denied` audit events (`docs/plugins/permissions.md`).
+- SemVer-versioned Python SDK, `sdk new plugin` scaffolding, contract-test harness,
+  runnable example plugin (`docs/sdk/write-your-first-plugin.md`).
+- Active-plugin registry with `GET /v2/plugins/active` (`docs/plugins/registry.md`).
+
+### E2 — Agent Framework (complete, 2026-07-04, PR #54)
+
+- Versioned `agent.yaml` manifest validator with strict typed IO and safe default
+  budgets (ADR-003, `docs/agents/manifest.md`).
+- Durable Agent Registry with SemVer resolution, capability search, deprecation
+  signaling, and `GET /v2/agents/catalog` (`docs/agents/registry.md`).
+- Agent Runtime with fail-closed token/cost/step/tool-call budgets, output
+  guardrails, per-step traces, and token/cost metrics (`docs/agents/runtime.md`).
+- Permissioned tool/skill mediation, default network denial, provider protocol with
+  an offline stub LLM provider, and per-run/tenant metering.
+- `autodev/agent-coder` packaged as an installable reference agent plugin with v1
+  behavior-parity coverage.
+
+### Governance (2026-07-04)
+
+- Apache-2.0 `LICENSE`, `NOTICE` attribution, and `CITATION.cff` added; backend
+  package metadata aligned from MIT to Apache-2.0 (closes the "no LICENSE file"
+  limitation flagged in v1.0.0).
+- `CONTRIBUTING.md`: epic/story branching model, docstring/type-hint standards, and
+  story-scoped vs full-suite testing policy; PR and issue templates under `.github/`.
+- Optional parallel test execution via `make test-backend-parallel` (pytest-xdist).
+
 ## [v1.0.0] — 2026-07-02 — v1 architecture baseline (pre-v2 rewrite)
 
 This tag freezes the current **v1 linear-pipeline architecture** as a stable, versioned
@@ -88,7 +142,8 @@ breakdown. Highlights relevant to anyone picking up this baseline:
 ### What's next
 
 The v2.0 platform rewrite is tracked under [`docs/v2_platform/`](docs/v2_platform/README.md).
-Start at [`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) for current status; the
-next story to pick up is **E0-S1 — declarative, typed configuration layer** (see
-[`docs/v2_platform/phases/e0_foundations_hardening.md`](docs/v2_platform/phases/e0_foundations_hardening.md)
+Start at [`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) for current status.
+E0–E2 have since completed (see the Unreleased section above); the next epic is
+**E3 — Orchestration Engine** (see
+[`docs/v2_platform/phases/e3_orchestration_engine.md`](docs/v2_platform/phases/e3_orchestration_engine.md)
 and [`docs/v2_platform/agent_guide.md`](docs/v2_platform/agent_guide.md) before starting).

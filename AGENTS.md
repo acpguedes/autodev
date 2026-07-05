@@ -27,18 +27,18 @@ Default priorities for new work:
 
 ## Stack direction
 
-Preferred stack choices for this repository:
+Preferred stack choices for this repository (status as of E0–E2 completion, 2026-07-04):
 
-- FastAPI for backend services.
-- PostgreSQL as system of record.
-- pgvector for semantic memory.
-- Redis for queues/cache/locks.
-- MinIO for artifacts.
-- tree-sitter for code intelligence.
-- Next.js for web UI.
-- Docker for sandbox execution.
-- Kubernetes for production deployment.
-- OpenTelemetry + Prometheus + Grafana + Loki for observability.
+- FastAPI for backend services — **in place**.
+- PostgreSQL as system of record — **landed (E0-S3)**, selected via `DATABASE_URL`.
+- pgvector for semantic memory — planned.
+- Redis for queues/cache/locks — **landed (E0-S6)**, optional backend.
+- MinIO for artifacts — **landed (E0-S6)**, local store by default.
+- tree-sitter for code intelligence — still a stub (see `docs/feature_matrix.md`).
+- Next.js for web UI — **in place**.
+- Docker for sandbox execution — flag-gated v1 sandbox; hardening tracked in E11.
+- Kubernetes for production deployment — planned.
+- OpenTelemetry + Prometheus — **landed (E0-S4)**; Grafana + Loki — planned.
 
 Avoid introducing new infrastructure dependencies unless there is a clear architectural justification.
 
@@ -87,10 +87,12 @@ When behavior, architecture, stack choices, or workflow semantics change, update
 
 ## v2 platform refactor
 
-The v2.0 platform rewrite — inverting the current fixed pipeline into a plugin core
+The v2.0 platform rewrite — inverting the fixed v1 pipeline into a plugin core
 with agents/flows/reasoning/routing/skills/context as typed extension points — is
 specified in `docs/architecture/v2_platform_reference.md` and tracked epic-by-epic in
-`docs/v2_platform/` (see `docs/v2_platform/README.md` for an index). Before starting
+`docs/v2_platform/` (see `docs/v2_platform/README.md` for an index). **Status: E0
+(foundations), E1 (plugin core & SDK), and E2 (agent framework) are complete; E3+
+have not started** — `docs/v2_platform/progress.md` is authoritative. Before starting
 work on any `E<n>-S<m>` story, read `docs/v2_platform/agent_guide.md`. When a wave
 (Alpha/Beta/GA) exits, follow `docs/v2_platform/documentation_rebuild.md` to bring the
 rest of this documentation tree back in sync, rather than patching individual files

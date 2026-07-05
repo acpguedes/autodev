@@ -53,3 +53,11 @@ The API adds these headers by default:
 - `X-Frame-Options`
 
 `Strict-Transport-Security` is emitted only when `AUTODEV_ENABLE_HSTS=true`.
+
+## Plugin Permission Isolation
+
+Plugins run under a default-deny permission model (v2 E1-S3): no filesystem,
+network, subprocess, or secrets access unless declared in `plugin.yaml` and
+granted by the host, all Host API access is brokered, and denials raise
+`plugin.permission.denied` audit events. See
+[`docs/plugins/permissions.md`](../plugins/permissions.md) for the full model.
