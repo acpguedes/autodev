@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from backend.agents.manifest import AgentManifest
 from backend.plugins.catalog import ExtensionPointKind
 from backend.plugins.manifest import PluginManifest
 
@@ -49,9 +50,17 @@ class PluginRegister(Protocol):
     def __call__(self, host: HostApi) -> None: ...
 
 
+class AgentHandler(Protocol):
+    manifest: AgentManifest
+
+    def run(self, request: dict[str, Any]) -> dict[str, Any]: ...
+
+
 __all__ = [
     "ContractTestResult",
     "ExtensionRegistration",
+    "AgentHandler",
+    "AgentManifest",
     "HostApi",
     "PluginManifest",
     "PluginRegister",

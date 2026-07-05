@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autodev/coder-io/1.0.0/output",
+  "title": "CoderOutput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "status", "codingTasks", "testUpdates", "touchedComponents"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "status": { "enum": ["ok", "error"] },
+    "codingTasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["component", "task"],
+        "properties": {
+          "component": { "type": "string" },
+          "task": { "type": "string" }
+        }
+      }
+    },
+    "testUpdates": { "type": "array", "items": { "type": "string" } },
+    "touchedComponents": { "type": "array", "items": { "type": "string" } },
+    "diagnostics": { "type": "array", "items": { "type": "object", "additionalProperties": true } }
+  }
+}

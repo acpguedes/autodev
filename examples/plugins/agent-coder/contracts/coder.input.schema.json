@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "autodev/coder-io/1.0.0/input",
+  "title": "CoderInput",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "task"],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["goal"],
+      "properties": {
+        "goal": { "type": "string", "minLength": 1 },
+        "userRequest": { "type": "string" },
+        "plan": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "context": { "type": "object", "additionalProperties": true }
+  }
+}
