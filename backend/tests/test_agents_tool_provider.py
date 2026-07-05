@@ -1,14 +1,17 @@
+"""Tests for the agent tool broker and LLM provider integration in the runtime."""
+
 from __future__ import annotations
 
 import pytest
 
-from backend.agents.manifest import validate_agent_manifest
+from backend.agents.manifest import AgentManifest, validate_agent_manifest
 from backend.agents.provider import LLMProviderResponse, StubLLMProvider
 from backend.agents.runtime import AgentRuntime, AgentRuntimeContext
 from backend.agents.tools import AgentToolBroker, ToolAccessDenied
 
 
-def _manifest_with_tool(tool_id: str = "fs.read"):
+def _manifest_with_tool(tool_id: str = "fs.read") -> AgentManifest:
+    """Build a valid agent manifest granting access to a single named tool."""
     raw = {
         "schemaVersion": "2.0",
         "kind": "Agent",
@@ -45,6 +48,7 @@ def _manifest_with_tool(tool_id: str = "fs.read"):
 
 
 def test_tool_broker_denies_undeclared_tools_and_network_by_default() -> None:
+    """The tool broker allows the granted tool but denies undeclared tools and network."""
     manifest = _manifest_with_tool()
     broker = AgentToolBroker(manifest, tools={"fs.read": lambda path: f"read:{path}"})
 
@@ -56,10 +60,12 @@ def test_tool_broker_denies_undeclared_tools_and_network_by_default() -> None:
 
 
 def test_runtime_injects_only_granted_tools_into_agent_context() -> None:
+    """The runtime context exposes only the tools granted to the agent's manifest."""
     manifest = _manifest_with_tool()
     runtime = AgentRuntime(tools={"fs.read": lambda path: f"read:{path}"})
 
     def handler(ctx: AgentRuntimeContext) -> dict[str, str]:
+        """Call the granted tool and echo its result as the run output."""
         return {
             "schemaVersion": "1.0.0",
             "status": "ok",
@@ -75,10 +81,12 @@ def test_runtime_injects_only_granted_tools_into_agent_context() -> None:
 
 
 def test_stub_provider_runs_offline_and_meters_tokens_and_cost() -> None:
+    """The stub LLM provider runs offline and reports its configured token/cost usage."""
     manifest = _manifest_with_tool()
     runtime = AgentRuntime(provider=StubLLMProvider(text="stubbed", tokens_input=3, tokens_output=2, cost_usd=0.01))
 
     def handler(ctx: AgentRuntimeContext) -> dict[str, str]:
+        """Call the LLM and echo its completion as the run output."""
         text = ctx.call_llm("draft patch")
         return {"schemaVersion": "1.0.0", "status": "ok", "result": text}
 
@@ -94,8 +102,13 @@ def test_stub_provider_runs_offline_and_meters_tokens_and_cost() -> None:
 
 
 def test_mocked_real_provider_uses_same_agent_code_as_stub() -> None:
+    """A non-stub provider plugs into the same agent code path as the stub provider."""
+
     class MockRealProvider:
+        """A minimal :class:`LLMProvider` implementation used to test provider swapping."""
+
         def complete(self, prompt: str, *, agent_id: str, run_id: str, tenant_id: str) -> LLMProviderResponse:
+            """Assert the expected prompt/agent id and return a deterministic response."""
             assert prompt == "draft patch"
             assert agent_id == "acme/tool-agent"
             return LLMProviderResponse(text=f"real:{run_id}:{tenant_id}", tokens_input=7, tokens_output=4, cost_usd=0.05)
@@ -104,6 +117,7 @@ def test_mocked_real_provider_uses_same_agent_code_as_stub() -> None:
     runtime = AgentRuntime(provider=MockRealProvider())
 
     def handler(ctx: AgentRuntimeContext) -> dict[str, str]:
+        """Call the LLM and echo its completion as the run output."""
         text = ctx.call_llm("draft patch")
         return {"schemaVersion": "1.0.0", "status": "ok", "result": text}
 

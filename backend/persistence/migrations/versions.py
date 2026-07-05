@@ -15,6 +15,11 @@ import sqlite3
 # ---------------------------------------------------------------------------
 
 def _m1_create_core_tables(conn: sqlite3.Connection) -> None:
+    """Create the sessions, runs, run_steps, and messages tables and their indexes.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS sessions (
@@ -71,6 +76,11 @@ def _m1_create_core_tables(conn: sqlite3.Connection) -> None:
 
 
 def _m2_runs_add_run_type(conn: sqlite3.Connection) -> None:
+    """Add the ``run_type`` column to ``runs`` if it does not already exist.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
     existing = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
     if "run_type" not in existing:
         conn.execute(
@@ -79,6 +89,11 @@ def _m2_runs_add_run_type(conn: sqlite3.Connection) -> None:
 
 
 def _m3_runs_add_current_state(conn: sqlite3.Connection) -> None:
+    """Add the ``current_state`` column to ``runs`` if it does not already exist.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
     existing = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
     if "current_state" not in existing:
         conn.execute(
@@ -87,6 +102,11 @@ def _m3_runs_add_current_state(conn: sqlite3.Connection) -> None:
 
 
 def _m4_create_plugin_tables(conn: sqlite3.Connection) -> None:
+    """Create the plugins and plugin_events tables and their indexes.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS plugins (
@@ -126,6 +146,11 @@ STORE_MIGRATIONS = [
 # ---------------------------------------------------------------------------
 
 def _p1_create_plan_tables(conn: sqlite3.Connection) -> None:
+    """Create the plan_documents and plan_approvals tables.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
     conn.executescript(
         """
         CREATE TABLE IF NOT EXISTS plan_documents (

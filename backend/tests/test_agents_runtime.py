@@ -1,10 +1,13 @@
+"""Tests for the v2 agent runtime: budgets, guardrails, tools, and metrics."""
+
 from __future__ import annotations
 
-from backend.agents.manifest import DEFAULT_AGENT_BUDGETS, validate_agent_manifest
+from backend.agents.manifest import DEFAULT_AGENT_BUDGETS, AgentManifest, validate_agent_manifest
 from backend.agents.runtime import AgentRuntime, AgentRuntimeContext
 
 
-def _runtime_manifest(*, policy: dict | None = None, max_steps: int | None = None):
+def _runtime_manifest(*, policy: dict | None = None, max_steps: int | None = None) -> AgentManifest:
+    """Build a valid agent manifest for runtime tests, with optional policy/budget overrides."""
     budgets = {}
     if max_steps is not None:
         budgets = {"maxSteps": max_steps}
@@ -49,10 +52,12 @@ def _runtime_manifest(*, policy: dict | None = None, max_steps: int | None = Non
 
 
 def _payload() -> dict[str, str]:
+    """Build a minimal valid input payload matching the test manifest's input schema."""
     return {"schemaVersion": "1.0.0", "task": "implement"}
 
 
 def test_runtime_uses_safe_default_budgets_when_manifest_omits_them() -> None:
+    """A manifest without explicit budgets falls back to the safe defaults."""
     manifest = _runtime_manifest()
     runtime = AgentRuntime()
 
@@ -65,10 +70,12 @@ def test_runtime_uses_safe_default_budgets_when_manifest_omits_them() -> None:
 
 
 def test_runtime_interrupts_and_flags_budget_overrun() -> None:
+    """Exceeding the max-steps budget interrupts the run and flags it for review."""
     manifest = _runtime_manifest(max_steps=2)
     runtime = AgentRuntime()
 
     def noisy_handler(ctx: AgentRuntimeContext) -> dict[str, str]:
+        """Record more steps than the manifest's budget allows."""
         ctx.record_step("plan", status="completed")
         ctx.record_step("act", status="completed")
         ctx.record_step("extra", status="completed")
@@ -84,6 +91,7 @@ def test_runtime_interrupts_and_flags_budget_overrun() -> None:
 
 
 def test_runtime_blocks_guardrail_violation_and_records_failed_step() -> None:
+    """A denylist guardrail match blocks the run and records a failed step."""
     manifest = _runtime_manifest(policy={"guardrails": [{"type": "denylist", "terms": ["SECRET"], "onViolation": "block"}]})
     runtime = AgentRuntime()
 
@@ -101,6 +109,7 @@ def test_runtime_blocks_guardrail_violation_and_records_failed_step() -> None:
 
 
 def test_runtime_rejects_output_outside_schema() -> None:
+    """Output with an undeclared property fails validation and fails the run."""
     manifest = _runtime_manifest()
     runtime = AgentRuntime()
 
@@ -116,10 +125,12 @@ def test_runtime_rejects_output_outside_schema() -> None:
 
 
 def test_runtime_records_token_cost_metrics_per_run_and_tenant() -> None:
+    """Manually consumed budget is reflected in the run's metrics, run id, and tenant id."""
     manifest = _runtime_manifest()
     runtime = AgentRuntime()
 
     def metered_handler(ctx: AgentRuntimeContext) -> dict[str, str]:
+        """Consume a fixed amount of token/cost budget and return a valid output."""
         ctx.consume_budget(tokens_input=12, tokens_output=5, cost_usd=0.03)
         return {"schemaVersion": "1.0.0", "status": "ok", "result": "done"}
 

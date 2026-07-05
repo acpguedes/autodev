@@ -7,6 +7,8 @@ from enum import StrEnum
 
 
 class ExtensionPointKind(StrEnum):
+    """Canonical kinds of extension points plugins can inhabit."""
+
     AGENT = "agent"
     SKILL = "skill"
     TOOL = "tool"
@@ -23,6 +25,16 @@ class ExtensionPointKind(StrEnum):
 
 @dataclass(frozen=True)
 class ExtensionPoint:
+    """Canonical description of a single extension-point kind.
+
+    Attributes:
+        kind: The extension-point kind being described.
+        host_subsystem: Platform subsystem that hosts this extension point.
+        provides: Human-readable summary of what plugins provide here.
+        related_epic: Roadmap epic that introduces this extension point.
+        contract_version: SemVer version of the extension point's contract.
+    """
+
     kind: ExtensionPointKind
     host_subsystem: str
     provides: str
@@ -109,6 +121,17 @@ EXTENSION_POINT_KINDS = tuple(point.value for point in ExtensionPointKind)
 
 
 def get_extension_point(kind: ExtensionPointKind | str) -> ExtensionPoint:
+    """Look up the canonical extension-point description for a kind.
+
+    Args:
+        kind: Extension-point kind, as an enum member or its string value.
+
+    Returns:
+        The matching :class:`ExtensionPoint`.
+
+    Raises:
+        ValueError: If ``kind`` is not a valid extension-point kind.
+    """
     normalized = ExtensionPointKind(kind)
     return EXTENSION_POINTS[normalized]
 

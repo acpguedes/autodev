@@ -13,7 +13,18 @@ from backend.plans.models import ApprovalRecord, PlanDocument, PlanStatus
 _DEFAULT_DATABASE_URL = "postgresql://autodev:autodev@postgres:5432/autodev"
 
 
-def _connect(database_url: str):
+def _connect(database_url: str) -> Any:
+    """Open a new psycopg connection to the given PostgreSQL URL.
+
+    Args:
+        database_url: PostgreSQL connection URL.
+
+    Returns:
+        A new database connection.
+
+    Raises:
+        RuntimeError: If the ``psycopg`` package is not installed.
+    """
     try:
         import psycopg  # type: ignore[import-untyped]
     except ImportError as exc:  # pragma: no cover - exercised when optional dep missing
@@ -23,14 +34,17 @@ def _connect(database_url: str):
     return psycopg.connect(database_url)
 
 def _json(value: Any) -> str:
+    """Serialize a value to a JSON string."""
     return json.dumps(value)
 
 def _loads(value: Any) -> Any:
+    """Deserialize a JSON string, passing non-string values through unchanged."""
     if isinstance(value, str):
         return json.loads(value)
     return value
 
 def _run_sql(conn: Any, statements: Iterable[str]) -> None:
+    """Execute and commit a sequence of SQL statements on one connection."""
     with conn.cursor() as cur:
         for statement in statements:
             cur.execute(statement)
@@ -40,14 +54,21 @@ class PostgresStore:
     """Postgres-backed store implementing sessions, runs, and messages."""
 
     def __init__(self, database_url: str = _DEFAULT_DATABASE_URL) -> None:
+        """Initialize the store and apply its migrations.
+
+        Args:
+            database_url: PostgreSQL connection URL.
+        """
         self.database_url = database_url
         with self.connect() as conn:
             self._run_migrations(conn)
 
-    def connect(self):
+    def connect(self) -> Any:
+        """Open a new connection to this store's database."""
         return _connect(self.database_url)
 
     def _run_migrations(self, conn: Any) -> None:
+        """Create the store's tables, indexes, and record the schema version."""
         _run_sql(
             conn,
             [
@@ -144,6 +165,7 @@ class PostgresStore:
         plan: list[str],
         artifacts: dict[str, Any],
     ) -> None:
+        """Insert a new session row."""
         with self.connect() as conn:
             conn.execute(
                 "INSERT INTO sessions (id, goal, plan_json, artifacts_json) VALUES (%s, %s, %s::jsonb, %s::jsonb)",
@@ -152,6 +174,7 @@ class PostgresStore:
             conn.commit()
 
     def get_session(self, session_id: str) -> dict[str, Any] | None:
+        """Fetch a session by id, or ``None`` if it does not exist."""
         with self.connect() as conn:
             row = conn.execute(
                 "SELECT id, goal, plan_json, artifacts_json, created_at, updated_at FROM sessions WHERE id = %s",
@@ -169,6 +192,7 @@ class PostgresStore:
         }
 
     def list_sessions(self) -> list[dict[str, Any]]:
+        """List all sessions, most recently created first."""
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT id, goal, plan_json, artifacts_json, created_at, updated_at FROM sessions ORDER BY created_at DESC"
@@ -186,6 +210,7 @@ class PostgresStore:
         ]
 
     def update_session_artifacts(self, session_id: str, artifacts: dict[str, Any]) -> None:
+        """Replace a session's stored artifacts."""
         with self.connect() as conn:
             conn.execute(
                 "UPDATE sessions SET artifacts_json = %s::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
@@ -205,6 +230,7 @@ class PostgresStore:
         results: list[dict[str, Any]],
         steps: list[dict[str, Any]],
     ) -> None:
+        """Insert a new run row along with its steps."""
         with self.connect() as conn:
             conn.execute(
                 """
@@ -225,6 +251,7 @@ class PostgresStore:
         results: list[dict[str, Any]],
         steps: list[dict[str, Any]],
     ) -> None:
+        """Update a run's status, state, results, and steps."""
         with self.connect() as conn:
             conn.execute(
                 """
@@ -238,6 +265,7 @@ class PostgresStore:
             conn.commit()
 
     def list_runs(self, session_id: str) -> list[dict[str, Any]]:
+        """List all runs for a session, most recently created first."""
         with self.connect() as conn:
             rows = conn.execute(
                 """
@@ -264,6 +292,7 @@ class PostgresStore:
         ]
 
     def list_run_steps(self, run_id: str) -> list[dict[str, Any]]:
+        """List all steps recorded for a run, in execution order."""
         with self.connect() as conn:
             rows = conn.execute(
                 """
@@ -285,6 +314,7 @@ class PostgresStore:
         ]
 
     def list_messages(self, session_id: str) -> list[dict[str, Any]]:
+        """List all messages for a session, in sequence order."""
         with self.connect() as conn:
             rows = conn.execute(
                 """
@@ -312,6 +342,7 @@ class PostgresStore:
         run_id: str,
         history: Iterable[dict[str, str]],
     ) -> None:
+        """Append only the messages in ``history`` beyond what is already stored."""
         existing = self.list_messages(session_id)
         start = len(existing)
         new_messages = list(history)[start:]
@@ -330,6 +361,7 @@ class PostgresStore:
             conn.commit()
 
     def _replace_run_steps(self, conn: Any, run_id: str, steps: list[dict[str, Any]]) -> None:
+        """Delete and re-insert all step rows for a run."""
         conn.execute("DELETE FROM run_steps WHERE run_id = %s", (run_id,))
         with conn.cursor() as cur:
             for step in steps:
@@ -354,15 +386,25 @@ class PostgresPlanStore:
     """Postgres-backed plan store."""
 
     def __init__(self, db_path: Optional[Path] = None, database_url: str = "") -> None:
+        """Initialize the store and apply its migrations.
+
+        Args:
+            db_path: Unused; accepted for constructor-signature parity with
+                the SQLite plan store.
+            database_url: PostgreSQL connection URL; falls back to the
+                ``DATABASE_URL`` env var.
+        """
         del db_path
         self.database_url = database_url or os.environ.get("DATABASE_URL", _DEFAULT_DATABASE_URL)
         with self.connect() as conn:
             self._run_migrations(conn)
 
-    def connect(self):
+    def connect(self) -> Any:
+        """Open a new connection to this store's database."""
         return _connect(self.database_url)
 
     def _run_migrations(self, conn: Any) -> None:
+        """Create the plan store's tables and record the schema version."""
         _run_sql(
             conn,
             [
@@ -399,6 +441,7 @@ class PostgresPlanStore:
         )
 
     def upsert_plan(self, session_id: str, steps: list[str]) -> None:
+        """Create or replace a session's plan document, resetting its status to draft."""
         now = self._now()
         with self.connect() as conn:
             conn.execute(
@@ -415,6 +458,7 @@ class PostgresPlanStore:
             conn.commit()
 
     def get_plan(self, session_id: str) -> Optional[PlanDocument]:
+        """Fetch a session's plan document, or ``None`` if it does not exist."""
         with self.connect() as conn:
             row = conn.execute(
                 "SELECT session_id, steps_json, status, updated_at FROM plan_documents WHERE session_id = %s",
@@ -430,6 +474,7 @@ class PostgresPlanStore:
         )
 
     def set_status(self, session_id: str, status: str) -> None:
+        """Update a session's plan status."""
         now = self._now()
         with self.connect() as conn:
             conn.execute(
@@ -439,14 +484,17 @@ class PostgresPlanStore:
             conn.commit()
 
     def approve(self, session_id: str, actor: str, note: str = "") -> None:
+        """Mark a session's plan as approved and record the approval."""
         self.set_status(session_id, PlanStatus.APPROVED)
         self._append_approval(session_id, decision=PlanStatus.APPROVED, actor=actor, note=note)
 
     def reject(self, session_id: str, actor: str, note: str = "") -> None:
+        """Mark a session's plan as rejected and record the rejection."""
         self.set_status(session_id, PlanStatus.REJECTED)
         self._append_approval(session_id, decision=PlanStatus.REJECTED, actor=actor, note=note)
 
     def list_plans(self) -> list[PlanDocument]:
+        """List all plan documents, most recently updated first."""
         with self.connect() as conn:
             rows = conn.execute(
                 "SELECT session_id, steps_json, status, updated_at FROM plan_documents ORDER BY updated_at DESC"
@@ -462,6 +510,7 @@ class PostgresPlanStore:
         ]
 
     def list_approvals(self, session_id: str) -> list[ApprovalRecord]:
+        """List all approval decisions for a session's plan, oldest first."""
         with self.connect() as conn:
             rows = conn.execute(
                 """
@@ -482,6 +531,7 @@ class PostgresPlanStore:
         ]
 
     def _append_approval(self, session_id: str, decision: str, actor: str, note: str) -> None:
+        """Insert an approval decision record for a session."""
         now = self._now()
         with self.connect() as conn:
             conn.execute(
@@ -495,6 +545,7 @@ class PostgresPlanStore:
 
     @staticmethod
     def _now() -> str:
+        """Return the current UTC timestamp in ISO 8601 format."""
         return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 __all__ = ["PostgresPlanStore", "PostgresStore"]

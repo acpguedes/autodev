@@ -1,3 +1,5 @@
+"""Tests for the plugin permission broker: filesystem, network, exec, and secret grants."""
+
 from __future__ import annotations
 
 import textwrap
@@ -16,6 +18,7 @@ def _manifest(
     entrypoint: str = "safe_plugin:register",
     permissions: str = "{}",
 ) -> str:
+    """Render a minimal ``plugin.yaml`` document with a given permissions block."""
     permissions_yaml = textwrap.indent(permissions, "  ") if permissions != "{}" else "  {}"
     return "\n".join(
         [
@@ -37,6 +40,7 @@ def _manifest(
 
 
 def _write_plugin(tmp_path: Path, plugin_id: str, module: str, manifest: str) -> Path:
+    """Write a plugin project with a given module body and manifest content."""
     plugin_dir = tmp_path / plugin_id.split("/", 1)[1]
     plugin_dir.mkdir()
     (plugin_dir / "safe_plugin.py").write_text(module, encoding="utf-8")
@@ -45,6 +49,7 @@ def _write_plugin(tmp_path: Path, plugin_id: str, module: str, manifest: str) ->
 
 
 def test_permission_broker_default_denies_all_capabilities(tmp_path: Path) -> None:
+    """With no grants declared, every capability is denied and audited."""
     plugin_dir = _write_plugin(
         tmp_path,
         "acme/default-deny",
@@ -74,6 +79,7 @@ def test_permission_broker_default_denies_all_capabilities(tmp_path: Path) -> No
 
 
 def test_permission_broker_allows_declared_filesystem_paths(tmp_path: Path) -> None:
+    """Read/write within a declared filesystem grant succeeds; outside it is denied."""
     allowed = tmp_path / "allowed"
     denied = tmp_path / "denied"
     allowed.mkdir()
@@ -108,6 +114,7 @@ filesystem:
 
 
 def test_declared_network_exec_and_secret_grants_are_available(tmp_path: Path) -> None:
+    """Declared network, exec, and secret grants are usable through the broker."""
     plugin_dir = _write_plugin(
         tmp_path,
         "acme/capability-plugin",
@@ -142,6 +149,7 @@ secrets:
 
 
 def test_import_sandbox_blocks_undeclared_network_import_and_audits(tmp_path: Path) -> None:
+    """Importing a network module without a declared egress grant quarantines the plugin."""
     plugin_dir = _write_plugin(
         tmp_path,
         "acme/unsafe-plugin",

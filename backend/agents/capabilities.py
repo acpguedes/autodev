@@ -7,6 +7,14 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class CapabilityDefinition:
+    """A single versioned capability entry in the agent manifest vocabulary.
+
+    Attributes:
+        id: Dotted capability identifier, e.g. ``"code.implementation"``.
+        version: SemVer version of the capability definition.
+        description: Human-readable summary of what the capability covers.
+    """
+
     id: str
     version: str
     description: str

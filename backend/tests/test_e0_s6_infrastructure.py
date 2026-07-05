@@ -6,6 +6,7 @@ from pathlib import Path
 
 
 def test_prod_like_compose_profile_includes_redis_minio_and_backend_wiring() -> None:
+    """The prod-like compose profile wires Redis and MinIO with the expected env vars."""
     compose = Path("infrastructure/docker-compose.yml").read_text()
 
     assert "redis:" in compose

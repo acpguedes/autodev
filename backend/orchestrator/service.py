@@ -46,6 +46,7 @@ class HistoryItem:
     content: str
 
     def to_dict(self) -> Dict[str, str]:
+        """Render this history item as a plain dict."""
         return {"role": self.role, "content": self.content}
 
 
@@ -95,6 +96,7 @@ class RunStep:
     attempt: int = 1
 
     def to_dict(self) -> Dict[str, Any]:
+        """Render this run step as a plain dict."""
         return {
             "step_key": self.step_key,
             "agent": self.agent,
@@ -117,6 +119,7 @@ class ExecutionTask:
     status: str = "pending"
 
     def to_dict(self) -> Dict[str, str]:
+        """Render this execution task as a plain dict."""
         return {
             "task_id": self.task_id,
             "title": self.title,
@@ -152,6 +155,7 @@ class OrchestratorRun:
     steps: List[RunStep]
 
     def to_dict(self) -> Dict[str, Any]:
+        """Render this run as a plain dict for the API layer."""
         return {
             "run_id": self.run_id,
             "session_id": self.session_id,
@@ -177,6 +181,7 @@ class PlanSession:
     status: str = RunStatus.AWAITING_INPUT
 
     def to_dict(self) -> Dict[str, Any]:
+        """Render this plan session as a plain dict."""
         return {
             "session_id": self.session_id,
             "goal": self.goal,
@@ -246,6 +251,14 @@ class OrchestratorService:
         store: DurableStore | None = None,
         project_root: Path | None = None,
     ) -> None:
+        """Initialize the service, wiring default agents and the durable store.
+
+        Args:
+            config: Orchestrator configuration; defaults to :class:`OrchestratorConfig`.
+            agents: Additional or overriding agents, merged over the defaults.
+            store: Durable store to use; defaults to :func:`backend.persistence.get_store`.
+            project_root: Repository root passed to agents that need filesystem access.
+        """
         self._config = config or OrchestratorConfig()
         self._project_root = project_root
         self._agents = self._build_default_agents()
@@ -263,6 +276,14 @@ class OrchestratorService:
         }
 
     def create_plan(self, goal: str) -> PlanSession:
+        """Create a new session and generate its initial plan via the planner agent.
+
+        Args:
+            goal: High-level goal driving the session.
+
+        Returns:
+            The newly created planning session.
+        """
         planner: PlannerAgent = self._require_agent("planner")  # type: ignore[assignment]
         session_id = str(uuid4())
         context = AgentContext(session_id=session_id, goal=goal, user_request=goal)
@@ -280,6 +301,18 @@ class OrchestratorService:
         return PlanSession(session_id=session_id, goal=goal, plan=plan_steps, status=status)
 
     def handle_message(self, session_id: str, message: str) -> OrchestratorRun:
+        """Run the agent graph for a new message in an existing session.
+
+        Args:
+            session_id: Identifier of the session to continue.
+            message: User message to process.
+
+        Returns:
+            The completed orchestration run.
+
+        Raises:
+            KeyError: If ``session_id`` does not exist.
+        """
         session_record = self._store.get_session(session_id)
         if session_record is None:
             raise KeyError(f"Unknown session_id: {session_id}")
@@ -359,6 +392,17 @@ class OrchestratorService:
         )
 
     def get_plan(self, session_id: str) -> PlanSession:
+        """Fetch a session's plan.
+
+        Args:
+            session_id: Identifier of the session.
+
+        Returns:
+            The session's plan.
+
+        Raises:
+            KeyError: If ``session_id`` does not exist.
+        """
         state = self._store.get_session(session_id)
         if state is None:
             raise KeyError(f"Unknown session_id: {session_id}")
@@ -370,21 +414,37 @@ class OrchestratorService:
         )
 
     def list_sessions(self) -> List[SessionSummary]:
+        """List all known sessions."""
         return [self._build_session_summary(record) for record in self._store.list_sessions()]
 
     def get_session(self, session_id: str) -> SessionSummary:
+        """Fetch a single session by id.
+
+        Raises:
+            KeyError: If ``session_id`` does not exist.
+        """
         record = self._store.get_session(session_id)
         if record is None:
             raise KeyError(f"Unknown session_id: {session_id}")
         return self._build_session_summary(record)
 
     def list_runs(self, session_id: str) -> List[RunSummary]:
+        """List all historical runs for a session.
+
+        Raises:
+            KeyError: If ``session_id`` does not exist.
+        """
         session_record = self._store.get_session(session_id)
         if session_record is None:
             raise KeyError(f"Unknown session_id: {session_id}")
         return [self._build_run_summary(record) for record in self._store.list_runs(session_id)]
 
     def build_execution_plan(self, session_id: str) -> ExecutionPlan:
+        """Derive an execution plan from a session's accumulated agent artifacts.
+
+        Raises:
+            KeyError: If ``session_id`` does not exist.
+        """
         session_record = self._store.get_session(session_id)
         if session_record is None:
             raise KeyError(f"Unknown session_id: {session_id}")
@@ -413,6 +473,12 @@ class OrchestratorService:
         )
 
     def execute_plan(self, session_id: str) -> OrchestratorRun:
+        """Execute a session's derived execution plan and record the run.
+
+        Raises:
+            KeyError: If ``session_id`` does not exist.
+            ValueError: If the session has no executable tasks.
+        """
         execution_plan = self.build_execution_plan(session_id)
         if not execution_plan.tasks:
             raise ValueError("No executable tasks are available for the requested session.")
@@ -509,6 +575,7 @@ class OrchestratorService:
         )
 
     def _build_session_summary(self, record: dict[str, Any]) -> SessionSummary:
+        """Build a :class:`SessionSummary` from a raw store session record."""
         history = [
             HistoryItem(role=item["role"], content=item["content"])
             for item in self._store.list_messages(record["id"])
@@ -522,6 +589,7 @@ class OrchestratorService:
         )
 
     def _build_run_summary(self, record: dict[str, Any]) -> RunSummary:
+        """Build a :class:`RunSummary` from a raw store run record."""
         results = [
             AgentExecution(
                 agent=item.get("agent", "unknown"),
@@ -558,6 +626,7 @@ class OrchestratorService:
         plan_steps: List[str],
         artifacts: Mapping[str, Any],
     ) -> List[ExecutionTask]:
+        """Derive execution tasks from the plan steps and each agent's stored artifacts."""
         tasks: List[ExecutionTask] = []
 
         analyzer = artifacts.get("analyzer", {})
@@ -650,6 +719,7 @@ class OrchestratorService:
         return tasks
 
     def _extract_plan_steps(self, plan_result: AgentResult) -> List[str]:
+        """Extract plan steps from planner metadata, falling back to parsing bullet lines."""
         plan_steps = list(plan_result.metadata.get("steps", []))
         if plan_steps:
             return plan_steps
@@ -665,11 +735,17 @@ class OrchestratorService:
         return extracted_steps
 
     def _require_agent(self, name: str) -> Agent:
+        """Fetch a registered agent by name.
+
+        Raises:
+            KeyError: If no agent named ``name`` is registered.
+        """
         if name not in self._agents:
             raise KeyError(f"Agent '{name}' has not been registered")
         return self._agents[name]
 
     def _build_default_agents(self) -> Dict[str, Agent]:
+        """Build the built-in agent set, merged with any discovered plugin agents."""
         agents: Dict[str, Agent] = {
             "planner": PlannerAgent(),
             "navigator": NavigatorAgent(project_root=self._project_root),
@@ -689,6 +765,7 @@ class OrchestratorService:
         return agents
 
     def _compile_graph(self) -> Any:
+        """Compile the LangGraph workflow from the configured agent order."""
         workflow = StateGraph(AgentGraphState)
         order = list(self._config.agent_order)
         for agent_name in order:
@@ -703,8 +780,11 @@ class OrchestratorService:
         workflow.add_edge(order[-1], END)
         return workflow.compile()
 
-    def _make_agent_node(self, agent_name: str):
+    def _make_agent_node(self, agent_name: str) -> Any:
+        """Build a LangGraph node function that runs the named agent."""
+
         def node(state: AgentGraphState) -> AgentGraphState:
+            """Run the wrapped agent once and append its result to the graph state."""
             agent = self._require_agent(agent_name)
             context = state["context"]
             started_at = self._timestamp()
@@ -746,9 +826,11 @@ class OrchestratorService:
         return node
 
     def _clone_artifacts(self, artifacts: Mapping[str, Mapping[str, Any]]) -> Dict[str, Dict[str, Any]]:
+        """Deep-copy one level of an artifacts mapping so callers can mutate it safely."""
         return {name: dict(meta) for name, meta in artifacts.items()}
 
     def _infer_run_type(self, *, goal: str, message: str) -> RunType:
+        """Infer the run type from keyword heuristics over the goal and message."""
         combined = f"{goal} {message}".lower()
         if any(keyword in combined for keyword in ("doc", "readme", "documentation")):
             return RunType.DOCUMENTATION_UPDATE
@@ -761,6 +843,7 @@ class OrchestratorService:
         return RunType.EXISTING_REPO_CHANGE
 
     def _normalize_execution_history(self, history: List[HistoryItem]) -> List[HistoryItem]:
+        """Reorder history so non-executor entries precede executor progress entries."""
         if not history:
             return []
 
@@ -769,4 +852,5 @@ class OrchestratorService:
         return ordered
 
     def _timestamp(self) -> str:
+        """Return the current UTC timestamp, second precision, in ``Z``-suffixed ISO 8601."""
         return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")

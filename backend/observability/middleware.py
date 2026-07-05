@@ -31,6 +31,14 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class _RouteMetrics:
+    """Aggregate request counters for a single ``(method, path)`` route.
+
+    Attributes:
+        count: Total number of recorded requests.
+        latency_sum: Cumulative request latency, in seconds.
+        errors: Number of recorded requests with a 5xx status code.
+    """
+
     count: int = 0
     latency_sum: float = 0.0
     errors: int = 0
@@ -40,6 +48,7 @@ class MetricsRegistry:
     """Thread-tolerant in-process counter/latency store."""
 
     def __init__(self) -> None:
+        """Initialize an empty metrics registry."""
         self._data: dict[tuple[str, str], _RouteMetrics] = defaultdict(_RouteMetrics)
 
     def record(
@@ -49,6 +58,14 @@ class MetricsRegistry:
         latency_seconds: float,
         status_code: int = 200,
     ) -> None:
+        """Record a single completed request against its route's metrics.
+
+        Args:
+            method: HTTP method of the request.
+            path: URL path of the request.
+            latency_seconds: Observed request latency, in seconds.
+            status_code: HTTP status code returned for the request.
+        """
         key = (method.upper(), path)
         entry = self._data[key]
         entry.count += 1
@@ -57,6 +74,11 @@ class MetricsRegistry:
             entry.errors += 1
 
     def snapshot(self) -> dict[tuple[str, str], _RouteMetrics]:
+        """Return a shallow copy of the current per-route metrics.
+
+        Returns:
+            A mapping of ``(method, path)`` to its accumulated metrics.
+        """
         return dict(self._data)
 
     def prometheus_text(self) -> str:
@@ -94,9 +116,21 @@ class RequestTracingMiddleware:
     """ASGI middleware that traces requests and records metrics."""
 
     def __init__(self, app: Callable) -> None:
+        """Wrap an ASGI application with request tracing and metrics recording.
+
+        Args:
+            app: The wrapped ASGI application callable.
+        """
         self._app = app
 
     async def __call__(self, scope: dict, receive: Callable, send: Callable) -> None:
+        """Invoke the wrapped ASGI app, tracing and recording metrics for HTTP requests.
+
+        Args:
+            scope: ASGI connection scope.
+            receive: ASGI receive channel.
+            send: ASGI send channel.
+        """
         if scope["type"] != "http":
             await self._app(scope, receive, send)
             return
@@ -110,6 +144,7 @@ class RequestTracingMiddleware:
         status_code: list[int] = [0]
 
         async def send_with_header(message: dict) -> None:
+            """Inject the ``X-Request-ID`` header into the response-start ASGI message."""
             if message["type"] == "http.response.start":
                 headers = list(message.get("headers", []))
                 headers.append((b"x-request-id", request_id.encode()))

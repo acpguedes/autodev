@@ -12,6 +12,14 @@ class PluginStore:
     """Persist plugin records and lifecycle events through the E0 store."""
 
     def __init__(self, store: Any) -> None:
+        """Initialize the store over a durable backing store.
+
+        Args:
+            store: Durable store exposing ``connect()``.
+
+        Raises:
+            TypeError: If ``store`` does not expose a ``connect()`` method.
+        """
         if not hasattr(store, "connect"):
             raise TypeError("PluginStore requires a durable store with connect()")
         self._store = store
@@ -26,6 +34,16 @@ class PluginStore:
         manifest_json: dict[str, Any],
         reason: str = "",
     ) -> None:
+        """Insert or update a plugin's registration record.
+
+        Args:
+            plugin_id: Identifier of the plugin.
+            version: SemVer version of the registration.
+            state: Lifecycle state value to store.
+            manifest_path: Path to the plugin's ``plugin.yaml``.
+            manifest_json: Parsed manifest document.
+            reason: Human-readable reason for the current state, if any.
+        """
         if self._is_postgres:
             sql = """
                 INSERT INTO plugins (id, version, state, manifest_path, manifest_json, reason, updated_at)
@@ -57,6 +75,7 @@ class PluginStore:
             conn.commit()
 
     def get_plugin(self, plugin_id: str) -> dict[str, Any] | None:
+        """Fetch a plugin's registration record, or ``None`` if not registered."""
         placeholder = "%s" if self._is_postgres else "?"
         with self._store.connect() as conn:
             row = conn.execute(
@@ -66,6 +85,7 @@ class PluginStore:
         return self._decode_plugin(row)
 
     def list_plugins(self) -> list[dict[str, Any]]:
+        """List all registered plugins, ordered by id."""
         with self._store.connect() as conn:
             rows = conn.execute("SELECT * FROM plugins ORDER BY id ASC").fetchall()
         plugins: list[dict[str, Any]] = []
@@ -76,12 +96,14 @@ class PluginStore:
         return plugins
 
     def delete_plugin(self, plugin_id: str) -> None:
+        """Delete a plugin's registration record."""
         placeholder = "%s" if self._is_postgres else "?"
         with self._store.connect() as conn:
             conn.execute(f"DELETE FROM plugins WHERE id = {placeholder}", (plugin_id,))
             conn.commit()
 
     def append_event(self, event: PluginEvent) -> None:
+        """Persist a plugin lifecycle event."""
         if self._is_postgres:
             sql = """
                 INSERT INTO plugin_events (event_name, plugin_id, payload_json)
@@ -97,6 +119,7 @@ class PluginStore:
             conn.commit()
 
     def list_events(self) -> list[PluginEvent]:
+        """List all recorded plugin lifecycle events, in insertion order."""
         with self._store.connect() as conn:
             rows = conn.execute(
                 "SELECT event_name, plugin_id, payload_json, created_at FROM plugin_events ORDER BY id ASC"
@@ -105,9 +128,11 @@ class PluginStore:
 
     @property
     def _is_postgres(self) -> bool:
+        """Whether the backing store is a PostgreSQL database."""
         return str(getattr(self._store, "database_url", "")).startswith(("postgresql://", "postgres://"))
 
     def _decode_plugin(self, row: Any) -> dict[str, Any] | None:
+        """Decode a database row into a plugin record dict, or ``None`` if ``row`` is ``None``."""
         if row is None:
             return None
         if isinstance(row, dict):
@@ -132,6 +157,7 @@ class PluginStore:
         }
 
     def _decode_event(self, row: Any) -> PluginEvent:
+        """Decode a database row into a :class:`PluginEvent`."""
         if hasattr(row, "keys"):
             name = row["event_name"]
             plugin_id = row["plugin_id"]

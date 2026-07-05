@@ -13,12 +13,29 @@ from typing import Iterable, Sequence
 
 @dataclass(frozen=True)
 class SecretFinding:
+    """A single potential secret detected in a scanned file.
+
+    Attributes:
+        path: Absolute path of the file the match was found in.
+        line: 1-based line number of the match.
+        kind: Identifier of the pattern that matched (e.g. ``"openai_api_key"``).
+        match: The matched text.
+    """
+
     path: Path
     line: int
     kind: str
     match: str
 
     def render(self, root: Path) -> str:
+        """Render this finding as a human-readable line, with the match masked.
+
+        Args:
+            root: Root directory to display the path relative to, if possible.
+
+        Returns:
+            A ``"<path>:<line>: <kind> (<masked match>)"`` formatted string.
+        """
         rel = self.path.relative_to(root) if self.path.is_relative_to(root) else self.path
         return f"{rel}:{self.line}: {self.kind} ({_mask(self.match)})"
 
@@ -47,6 +64,14 @@ EXCLUDED_DIRS = {
 
 
 def scan_path(root: Path | str) -> list[SecretFinding]:
+    """Scan a file or directory tree for high-confidence secret patterns.
+
+    Args:
+        root: File or directory to scan.
+
+    Returns:
+        All findings across the scanned files.
+    """
     root_path = Path(root).resolve()
     findings: list[SecretFinding] = []
     for path in _iter_files(root_path):
@@ -58,6 +83,14 @@ def scan_path(root: Path | str) -> list[SecretFinding]:
 
 
 def _iter_files(root: Path) -> Iterable[Path]:
+    """Iterate scannable files under a root, preferring git-tracked files when available.
+
+    Args:
+        root: File or directory to iterate.
+
+    Yields:
+        Paths of files to scan.
+    """
     if root.is_file():
         yield root
         return
@@ -74,6 +107,15 @@ def _iter_files(root: Path) -> Iterable[Path]:
 
 
 def _git_tracked_files(root: Path) -> list[Path] | None:
+    """List git-tracked files under a repository root, excluding noisy directories.
+
+    Args:
+        root: Candidate repository root.
+
+    Returns:
+        Tracked file paths, or ``None`` if ``root`` is not a git repository or
+        ``git`` is unavailable.
+    """
     if not (root / ".git").exists():
         return None
     try:
@@ -98,6 +140,14 @@ def _git_tracked_files(root: Path) -> list[Path] | None:
 
 
 def _read_text(path: Path) -> str | None:
+    """Read a file as UTF-8 text, treating binary or unreadable files as absent.
+
+    Args:
+        path: File to read.
+
+    Returns:
+        The decoded text, or ``None`` if the file is binary or unreadable.
+    """
     try:
         raw = path.read_bytes()
     except OSError:
@@ -111,6 +161,15 @@ def _read_text(path: Path) -> str | None:
 
 
 def _scan_text(path: Path, text: str) -> list[SecretFinding]:
+    """Scan a file's text content, line by line, against all secret patterns.
+
+    Args:
+        path: Path the text was read from, recorded on findings.
+        text: File content to scan.
+
+    Returns:
+        All findings in the file.
+    """
     findings: list[SecretFinding] = []
     for line_no, line in enumerate(text.splitlines(), start=1):
         for kind, pattern in PATTERNS:
@@ -127,12 +186,28 @@ def _scan_text(path: Path, text: str) -> list[SecretFinding]:
 
 
 def _mask(value: str) -> str:
+    """Mask a matched secret for safe display, keeping only its first/last 4 characters.
+
+    Args:
+        value: Matched secret text.
+
+    Returns:
+        The masked value.
+    """
     if len(value) <= 8:
         return "***"
     return f"{value[:4]}...{value[-4:]}"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Run the secret scanner CLI over a given path.
+
+    Args:
+        argv: Argument vector to parse; defaults to ``sys.argv[1:]``.
+
+    Returns:
+        ``0`` if no secrets were found, ``1`` if any were found.
+    """
     parser = argparse.ArgumentParser(description="Scan repository files for high-confidence secrets.")
     parser.add_argument("path", nargs="?", default=".", help="Path to scan.")
     args = parser.parse_args(argv)

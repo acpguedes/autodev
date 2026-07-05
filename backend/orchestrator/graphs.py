@@ -26,13 +26,27 @@ from backend.orchestrator.service import (
 
 
 def _now() -> str:
+    """Return the current UTC timestamp in ISO 8601 format.
+
+    Returns:
+        The current UTC time as an ISO 8601 string.
+    """
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
-def _make_node(agent_name: str, agent: Agent):
-    """Build a LangGraph node function for *agent*."""
+def _make_node(agent_name: str, agent: Agent) -> Any:
+    """Build a LangGraph node function for *agent*.
+
+    Args:
+        agent_name: Name to record as this node's step key and state.
+        agent: Agent instance the node runs.
+
+    Returns:
+        A LangGraph node callable that runs ``agent`` against the graph state.
+    """
 
     def node(state: AgentGraphState) -> AgentGraphState:
+        """Run the wrapped agent once and append its result to the graph state."""
         context: AgentContext = state["context"]
         started_at = _now()
         agent_result: AgentResult = agent.run(context)
@@ -76,17 +90,17 @@ def build_conditional_graph(
     Mirrors ``OrchestratorService._compile_graph`` but is parameterised so
     callers can supply any subset of agents and any order.
 
-    Parameters
-    ----------
-    agents:
-        Mapping of agent name -> Agent instance.  Only names in *order* need
-        to be present.
-    order:
-        Ordered list of agent names to include in the graph.
+    Args:
+        agents: Mapping of agent name to ``Agent`` instance. Only names in
+            ``order`` need to be present.
+        order: Ordered list of agent names to include in the graph.
 
-    Returns
-    -------
-    A compiled LangGraph invokeable with an ``AgentGraphState`` dict.
+    Returns:
+        A compiled LangGraph invokeable with an ``AgentGraphState`` dict.
+
+    Raises:
+        ValueError: If ``order`` is empty.
+        KeyError: If a name in ``order`` is missing from ``agents``.
     """
     if not order:
         raise ValueError("order must contain at least one agent name")
@@ -120,6 +134,18 @@ def build_graph_for_run_type(
 
     Agents not present in *agents* but listed in the router order are silently
     skipped so the graph degrades gracefully.
+
+    Args:
+        agents: Mapping of agent name to ``Agent`` instance.
+        run_type: Run type used to resolve the agent order.
+        router: Router to resolve the order from; defaults to a new
+            :class:`RunTypeRouter`.
+
+    Returns:
+        A compiled LangGraph invokeable with an ``AgentGraphState`` dict.
+
+    Raises:
+        ValueError: If none of the router's requested agents are available.
     """
     effective_router = router if router is not None else RunTypeRouter()
     requested_order = effective_router.order_for(run_type)

@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -49,10 +50,12 @@ from backend.repository import RepositoryContext, RepositoryIntelligenceService
 
 
 class PlanRequest(BaseModel):
+    """Request body for ``POST /plan``."""
     goal: str = Field(..., description="High level goal provided by the user")
 
 
 class PlanResponse(BaseModel):
+    """Response body describing a newly created planning session."""
     session_id: str
     goal: str
     plan: List[str]
@@ -60,17 +63,20 @@ class PlanResponse(BaseModel):
 
 
 class ChatRequest(BaseModel):
+    """Request body for ``POST /chat``."""
     session_id: str
     message: str
 
 
 class AgentExecutionModel(BaseModel):
+    """API representation of a single agent execution result."""
     agent: str
     content: str
     metadata: Dict[str, object]
 
 
 class RunStepModel(BaseModel):
+    """API representation of a single orchestration run step."""
     step_key: str
     agent: str
     status: str
@@ -80,17 +86,20 @@ class RunStepModel(BaseModel):
 
 
 class HistoryItemModel(BaseModel):
+    """API representation of a single conversation history entry."""
     role: str
     content: str
 
 
 class RepositoryFileMatchModel(BaseModel):
+    """API representation of a single repository search match."""
     path: str
     score: int
     reasons: List[str]
 
 
 class RepositoryContextResponse(BaseModel):
+    """Response body for ``GET /repository/context``."""
     query: str
     root: str
     total_files: int
@@ -101,6 +110,7 @@ class RepositoryContextResponse(BaseModel):
 
 
 class ChatResponse(BaseModel):
+    """Response body for endpoints returning a completed orchestration run."""
     run_id: str
     session_id: str
     status: str
@@ -112,6 +122,7 @@ class ChatResponse(BaseModel):
 
 
 class SessionResponse(BaseModel):
+    """Response body describing a single orchestration session."""
     session_id: str
     goal: str
     plan: List[str]
@@ -120,6 +131,7 @@ class SessionResponse(BaseModel):
 
 
 class RunResponse(BaseModel):
+    """Response body describing a single historical orchestration run."""
     run_id: str
     session_id: str
     status: str
@@ -132,19 +144,23 @@ class RunResponse(BaseModel):
 
 
 class RuntimeConfigResponse(BaseModel):
+    """Response body for ``GET``/``PUT /config``."""
     config: RuntimeConfig
     instructions: RuntimeInstructions
 
 
 class RuntimeConfigUpdateRequest(BaseModel):
+    """Request body for ``PUT /config``."""
     config: RuntimeConfig
 
 
 class AgentContractsResponse(BaseModel):
+    """Response body for ``GET /agents/contracts``."""
     contracts: Dict[str, Dict[str, Any]]
 
 
 class ExecutionTaskModel(BaseModel):
+    """API representation of a single execution-plan task."""
     task_id: str
     title: str
     description: str
@@ -154,6 +170,7 @@ class ExecutionTaskModel(BaseModel):
 
 
 class ExecutionPlanResponse(BaseModel):
+    """Response body for ``GET /sessions/{session_id}/execution-plan``."""
     session_id: str
     summary: str
     analysis_summary: str
@@ -163,6 +180,7 @@ class ExecutionPlanResponse(BaseModel):
 
 @lru_cache(maxsize=1)
 def get_orchestrator() -> OrchestratorService:
+    """Build and cache the process-wide :class:`OrchestratorService` instance."""
     config_service = get_runtime_config_service()
     runtime_config = config_service.apply_to_environment()
     get_chat_model.cache_clear()
@@ -174,13 +192,15 @@ def get_orchestrator() -> OrchestratorService:
 
 @lru_cache(maxsize=1)
 def get_repository_intelligence() -> RepositoryIntelligenceService:
+    """Build and cache the process-wide :class:`RepositoryIntelligenceService` instance."""
     config_service = get_runtime_config_service()
     runtime_config = config_service.apply_to_environment()
     return RepositoryIntelligenceService(project_root=Path(runtime_config.repository.project_root))
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI):
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    """Initialize infrastructure clients and the orchestrator on app startup."""
     settings = get_settings()
     configure_tracing(settings)
     if settings.autodev_profile == "prod":
@@ -229,6 +249,7 @@ except Exception:
 
 @app.get("/health", tags=["meta"])
 def healthcheck() -> Dict[str, str]:
+    """Report basic liveness of the API process."""
     return {"status": "ok"}
 
 
@@ -236,6 +257,7 @@ def healthcheck() -> Dict[str, str]:
 def get_runtime_config(
     config_service: RuntimeConfigService = Depends(get_runtime_config_service),
 ) -> RuntimeConfigResponse:
+    """Return the current runtime configuration with secrets redacted."""
     document = config_service.load_document(redact_secrets=True)
     return RuntimeConfigResponse(config=document.config, instructions=document.instructions)
 
@@ -245,6 +267,7 @@ def update_runtime_config(
     request: RuntimeConfigUpdateRequest,
     config_service: RuntimeConfigService = Depends(get_runtime_config_service),
 ) -> RuntimeConfigResponse:
+    """Persist a new runtime configuration and apply it to the process."""
     saved_config = config_service.update(request.config)
     config_service.apply_to_environment(saved_config)
     get_chat_model.cache_clear()
@@ -258,17 +281,20 @@ def update_runtime_config(
 def get_agent_contracts(
     orchestrator: OrchestratorService = Depends(get_orchestrator),
 ) -> AgentContractsResponse:
+    """Describe the IO contracts declared by registered agents."""
     return AgentContractsResponse(contracts=orchestrator.describe_agent_contracts())
 
 
 @app.post("/plan", response_model=PlanResponse, tags=["planning"])
 def create_plan(request: PlanRequest, orchestrator: OrchestratorService = Depends(get_orchestrator)) -> PlanResponse:
+    """Create a new planning session for a user-provided goal."""
     plan_session: PlanSession = orchestrator.create_plan(request.goal)
     return PlanResponse(**plan_session.to_dict())
 
 
 @app.get("/sessions", response_model=List[SessionResponse], tags=["sessions"])
 def list_sessions(orchestrator: OrchestratorService = Depends(get_orchestrator)) -> List[SessionResponse]:
+    """List all known orchestration sessions."""
     sessions = orchestrator.list_sessions()
     return [
         SessionResponse(
@@ -287,6 +313,7 @@ def get_session(
     session_id: str,
     orchestrator: OrchestratorService = Depends(get_orchestrator),
 ) -> SessionResponse:
+    """Fetch a single orchestration session by id. Raises HTTPException(404) if missing."""
     try:
         session: SessionSummary = orchestrator.get_session(session_id)
     except KeyError as exc:
@@ -306,6 +333,7 @@ def list_runs(
     session_id: str,
     orchestrator: OrchestratorService = Depends(get_orchestrator),
 ) -> List[RunResponse]:
+    """List the historical orchestration runs for a session. Raises HTTPException(404) if missing."""
     try:
         runs = orchestrator.list_runs(session_id)
     except KeyError as exc:
@@ -323,6 +351,10 @@ def get_execution_plan(
     session_id: str,
     orchestrator: OrchestratorService = Depends(get_orchestrator),
 ) -> ExecutionPlanResponse:
+    """Build the execution plan derived from a session's conversation so far.
+
+    Raises HTTPException(404) if missing.
+    """
     try:
         execution_plan: ExecutionPlan = orchestrator.build_execution_plan(session_id)
     except KeyError as exc:
@@ -346,6 +378,10 @@ def execute_execution_plan(
     session_id: str,
     orchestrator: OrchestratorService = Depends(get_orchestrator),
 ) -> ChatResponse:
+    """Execute a session's derived execution plan.
+
+    Raises HTTPException(404) if missing, or (400) if there is no executable plan.
+    """
     try:
         run: OrchestratorRun = orchestrator.execute_plan(session_id)
     except KeyError as exc:
@@ -371,6 +407,7 @@ def get_repository_context(
     limit: int = 8,
     repository_intelligence: RepositoryIntelligenceService = Depends(get_repository_intelligence),
 ) -> RepositoryContextResponse:
+    """Search the repository for files relevant to a free-text query. ``limit`` is clamped to 1-25."""
     repository_context: RepositoryContext = repository_intelligence.build_context(query=query, limit=max(1, min(limit, 25)))
     return RepositoryContextResponse(
         query=repository_context.query,
@@ -391,6 +428,10 @@ def chat(
     request: ChatRequest,
     orchestrator: OrchestratorService = Depends(get_orchestrator),
 ) -> ChatResponse:
+    """Send a chat message into an existing session and run the orchestrator.
+
+    Raises HTTPException(404) if missing.
+    """
     try:
         run: OrchestratorRun = orchestrator.handle_message(request.session_id, request.message)
     except KeyError as exc:  # pragma: no cover - exercised via tests
@@ -409,6 +450,7 @@ def chat(
 
 
 def _to_run_response(run: RunSummary) -> RunResponse:
+    """Convert an orchestrator run summary into its API response model."""
     return RunResponse(
         run_id=run.run_id,
         session_id=run.session_id,
@@ -423,10 +465,12 @@ def _to_run_response(run: RunSummary) -> RunResponse:
 
 
 def _to_agent_execution_model(result: AgentExecution) -> AgentExecutionModel:
+    """Convert an agent execution result into its API response model."""
     return AgentExecutionModel(agent=result.agent, content=result.content, metadata=dict(result.metadata))
 
 
 def _to_run_step_model(step: RunStep) -> RunStepModel:
+    """Convert an orchestration run step into its API response model."""
     return RunStepModel(
         step_key=step.step_key,
         agent=step.agent,
@@ -438,6 +482,7 @@ def _to_run_step_model(step: RunStep) -> RunStepModel:
 
 
 def _to_execution_task_model(task: ExecutionTask) -> ExecutionTaskModel:
+    """Convert an execution-plan task into its API response model."""
     return ExecutionTaskModel(
         task_id=task.task_id,
         title=task.title,

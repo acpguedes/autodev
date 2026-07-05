@@ -208,3 +208,22 @@ Add a dated entry every time a story/epic/wave status changes.
   `agent_guide.md` §3–§4 (mandatory from E3 onward), PR/issue templates,
   Apache-2.0 `LICENSE` + `NOTICE` + `CITATION.cff`, and opt-in parallel testing
   (`make test-backend-parallel`, suite validated 285/285 at ~2× speed).
+- **2026-07-04** — API-first made an explicit principle (out-of-band, docs-only):
+  added principle 2.13 "API-first" to `v2_platform_reference.md` §2 (the Control
+  Plane API is the single point of entry; Web UI/CLI/MCP are clients, never touch
+  internals directly), renumbered the verification table to §2.14 with a matching
+  row, and cross-referenced it from `agent_guide.md` §6, root `CLAUDE.md`, and
+  `CONTRIBUTING.md` §3. The platform was already built this way; this made the rule
+  explicit and verifiable rather than implicit.
+- **2026-07-04** — E0-E2 docstring/type-hint compliance audit (out-of-band, not a
+  new story): reviewed all 63 files added/changed for E0-E2 (per
+  `git diff v1..HEAD -- backend/`) against `CONTRIBUTING.md` §3. Added missing
+  Google-style docstrings and/or type hints to 58 files; 5 pure re-export
+  `__init__.py` files were already compliant. Verified `lint-backend` (ruff),
+  `typecheck-backend` (mypy), and `test-backend` all green (285/285 tests,
+  matching the prior baseline — no regressions). Flagged, not fixed here (would
+  require a real refactor, out of scope for a docstring/type-hint pass):
+  `backend/orchestrator/service.py` (856 lines) and
+  `backend/persistence/postgres_adapter.py` (551 lines) exceed the 500-line file
+  limit — both were already over/at the cap before this pass and grew slightly
+  from added docstrings. Follow-up: split each into smaller modules.

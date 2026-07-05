@@ -24,24 +24,28 @@ from backend.orchestrator.service import AgentGraphState, RunType
 
 
 def test_route_documentation_update() -> None:
+    """``DOCUMENTATION_UPDATE`` routes through navigator, analyzer, and responder."""
     router = RunTypeRouter()
     order = router.order_for(RunType.DOCUMENTATION_UPDATE)
     assert order == ["navigator", "analyzer", "responder"]
 
 
 def test_route_validation_only() -> None:
+    """``VALIDATION_ONLY`` routes through navigator, validator, and responder."""
     router = RunTypeRouter()
     order = router.order_for(RunType.VALIDATION_ONLY)
     assert order == ["navigator", "validator", "responder"]
 
 
 def test_route_devops_change() -> None:
+    """``DEVOPS_CHANGE`` routes through navigator, analyzer, devops, and responder."""
     router = RunTypeRouter()
     order = router.order_for(RunType.DEVOPS_CHANGE)
     assert order == ["navigator", "analyzer", "devops", "responder"]
 
 
 def test_route_existing_repo_change_is_full_order() -> None:
+    """``EXISTING_REPO_CHANGE`` routes through the full default agent order."""
     router = RunTypeRouter()
     full = ["navigator", "analyzer", "architect", "coder", "devops", "validator", "responder"]
     assert router.order_for(RunType.EXISTING_REPO_CHANGE) == full
@@ -56,6 +60,7 @@ def test_route_unknown_type_falls_back_to_full_order() -> None:
 
 
 def test_all_routes_returns_dict() -> None:
+    """``all_routes()`` returns a dict keyed by run type, including ``VALIDATION_ONLY``."""
     router = RunTypeRouter()
     routes = router.all_routes()
     assert isinstance(routes, dict)
@@ -85,6 +90,7 @@ def test_supervisor_policy_advances() -> None:
 
 
 def test_supervisor_policy_reset() -> None:
+    """Resetting the policy restarts its cursor from the beginning of the order."""
     dummy_state: AgentGraphState = {
         "context": None,  # type: ignore[typeddict-item]
         "results": [],
@@ -105,6 +111,7 @@ def test_supervisor_policy_reset() -> None:
 
 
 def test_build_conditional_graph_raises_on_empty_order() -> None:
+    """Building a graph with an empty agent order raises ``ValueError``."""
     from backend.orchestrator.graphs import build_conditional_graph
 
     with pytest.raises(ValueError, match="at least one"):
@@ -112,6 +119,7 @@ def test_build_conditional_graph_raises_on_empty_order() -> None:
 
 
 def test_build_conditional_graph_raises_on_missing_agent() -> None:
+    """Building a graph with an order referencing an unregistered agent raises ``KeyError``."""
     from backend.orchestrator.graphs import build_conditional_graph
 
     with pytest.raises(KeyError, match="navigator"):

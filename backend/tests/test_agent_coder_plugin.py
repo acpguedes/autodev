@@ -1,3 +1,5 @@
+"""Tests for the reference agent-coder plugin: files, lifecycle, and v1 parity."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -16,6 +18,7 @@ PLUGIN_DIR = Path("examples/plugins/agent-coder")
 
 
 def _v1_coder_baseline() -> dict[str, object]:
+    """Run the legacy v1 ``CoderAgent`` fallback to capture its baseline output."""
     context = AgentContext(
         session_id="baseline",
         goal="Expose agent contracts",
@@ -30,6 +33,7 @@ def _v1_coder_baseline() -> dict[str, object]:
 
 
 def test_reference_agent_coder_plugin_files_and_baseline_are_captured() -> None:
+    """The reference plugin's manifests, contracts, and baseline docs are present."""
     assert (PLUGIN_DIR / "plugin.yaml").is_file()
     assert (PLUGIN_DIR / "agent.yaml").is_file()
     assert (PLUGIN_DIR / "contracts" / "coder.input.schema.json").is_file()
@@ -39,6 +43,7 @@ def test_reference_agent_coder_plugin_files_and_baseline_are_captured() -> None:
 
 
 def test_agent_coder_plugin_installs_enables_registers_and_uninstalls(tmp_path: Path) -> None:
+    """The plugin installs, enables, registers with the agent registry, and uninstalls cleanly."""
     store = DurableStore(f"sqlite:///{tmp_path / 'agent-coder.db'}")
     host = PluginHost(store=store)
 
@@ -56,6 +61,7 @@ def test_agent_coder_plugin_installs_enables_registers_and_uninstalls(tmp_path: 
 
 
 def test_agent_coder_plugin_runtime_output_matches_v1_fallback_baseline() -> None:
+    """Running the v2 agent through the runtime matches the legacy v1 fallback output."""
     manifest = load_agent_manifest(PLUGIN_DIR / "agent.yaml")
     runtime = AgentRuntime()
     handler = runtime.load_handler(manifest, PLUGIN_DIR)

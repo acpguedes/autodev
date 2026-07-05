@@ -11,12 +11,14 @@ Assertions:
 
 from __future__ import annotations
 
-from typing import Any
+from pathlib import Path
 
 import pytest
 
 from backend.plans.models import ApprovalRecord, PlanDocument, PlanStatus
 from backend.plans.store import PlanStore
+from backend.persistence.postgres_adapter import PostgresPlanStore
+from backend.persistence.sqlite_adapter import SQLitePlanStore
 
 
 # ---------------------------------------------------------------------------
@@ -25,7 +27,7 @@ from backend.plans.store import PlanStore
 
 
 @pytest.fixture()
-def store(tmp_path):
+def store(tmp_path: Path) -> PostgresPlanStore | SQLitePlanStore:
     """A fresh PlanStore backed by a temp sqlite file."""
     db_path = tmp_path / "test_plans.db"
     return PlanStore(db_path=db_path)
@@ -36,7 +38,8 @@ def store(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_upsert_and_get_round_trip(store: Any) -> None:
+def test_upsert_and_get_round_trip(store: PostgresPlanStore | SQLitePlanStore) -> None:
+    """Upserting a plan and fetching it round-trips the steps and draft status."""
     steps = ["Step 1: analyse", "Step 2: implement", "Step 3: test"]
     store.upsert_plan("session-1", steps)
 
@@ -48,7 +51,8 @@ def test_upsert_and_get_round_trip(store: Any) -> None:
     assert plan.status == PlanStatus.DRAFT
 
 
-def test_upsert_overwrites_existing_plan(store: Any) -> None:
+def test_upsert_overwrites_existing_plan(store: PostgresPlanStore | SQLitePlanStore) -> None:
+    """Upserting an existing session replaces its steps and resets status to draft."""
     store.upsert_plan("session-2", ["old step"])
     store.upsert_plan("session-2", ["new step A", "new step B"])
 
@@ -59,7 +63,8 @@ def test_upsert_overwrites_existing_plan(store: Any) -> None:
     assert plan.status == PlanStatus.DRAFT
 
 
-def test_get_plan_unknown_session_returns_none(store: Any) -> None:
+def test_get_plan_unknown_session_returns_none(store: PostgresPlanStore | SQLitePlanStore) -> None:
+    """Fetching a plan for an unknown session returns ``None``."""
     result = store.get_plan("does-not-exist")
     assert result is None
 
@@ -69,7 +74,8 @@ def test_get_plan_unknown_session_returns_none(store: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_approve_updates_status(store: Any) -> None:
+def test_approve_updates_status(store: PostgresPlanStore | SQLitePlanStore) -> None:
+    """Approving a plan transitions its status to approved."""
     store.upsert_plan("session-3", ["do something"])
     store.approve("session-3", actor="alice", note="Looks good")
 
@@ -78,7 +84,8 @@ def test_approve_updates_status(store: Any) -> None:
     assert plan.status == PlanStatus.APPROVED
 
 
-def test_approve_appends_approval_record(store: Any) -> None:
+def test_approve_appends_approval_record(store: PostgresPlanStore | SQLitePlanStore) -> None:
+    """Approving a plan appends an approval record with the actor and note."""
     store.upsert_plan("session-4", ["step"])
     store.approve("session-4", actor="bob", note="LGTM")
 
@@ -92,7 +99,8 @@ def test_approve_appends_approval_record(store: Any) -> None:
     assert rec.note == "LGTM"
 
 
-def test_reject_updates_status(store: Any) -> None:
+def test_reject_updates_status(store: PostgresPlanStore | SQLitePlanStore) -> None:
+    """Rejecting a plan transitions its status to rejected."""
     store.upsert_plan("session-5", ["step"])
     store.reject("session-5", actor="carol", note="Needs revision")
 
@@ -101,7 +109,8 @@ def test_reject_updates_status(store: Any) -> None:
     assert plan.status == PlanStatus.REJECTED
 
 
-def test_reject_appends_approval_record(store: Any) -> None:
+def test_reject_appends_approval_record(store: PostgresPlanStore | SQLitePlanStore) -> None:
+    """Rejecting a plan appends an approval record with the rejection decision."""
     store.upsert_plan("session-6", ["step"])
     store.reject("session-6", actor="dave", note="Not ready")
 
@@ -112,7 +121,7 @@ def test_reject_appends_approval_record(store: Any) -> None:
     assert rec.actor == "dave"
 
 
-def test_multiple_approvals_accumulate(store: Any) -> None:
+def test_multiple_approvals_accumulate(store: PostgresPlanStore | SQLitePlanStore) -> None:
     """Approve then reject appends two records and final status is rejected."""
     store.upsert_plan("session-7", ["step"])
     store.approve("session-7", actor="alice")
@@ -133,7 +142,8 @@ def test_multiple_approvals_accumulate(store: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_list_plans_returns_all(store: Any) -> None:
+def test_list_plans_returns_all(store: PostgresPlanStore | SQLitePlanStore) -> None:
+    """Listing plans returns every session that has had a plan upserted."""
     store.upsert_plan("s-a", ["step a"])
     store.upsert_plan("s-b", ["step b"])
     store.upsert_plan("s-c", ["step c"])
@@ -143,7 +153,8 @@ def test_list_plans_returns_all(store: Any) -> None:
     assert {"s-a", "s-b", "s-c"}.issubset(session_ids)
 
 
-def test_list_plans_empty_on_fresh_store(store: Any) -> None:
+def test_list_plans_empty_on_fresh_store(store: PostgresPlanStore | SQLitePlanStore) -> None:
+    """A freshly created store has no plans."""
     assert store.list_plans() == []
 
 
@@ -152,7 +163,7 @@ def test_list_plans_empty_on_fresh_store(store: Any) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_table_creation_is_idempotent(tmp_path) -> None:
+def test_table_creation_is_idempotent(tmp_path: Path) -> None:
     """Constructing PlanStore twice on the same path must not raise."""
     db_path = tmp_path / "idempotent.db"
     s1 = PlanStore(db_path=db_path)

@@ -8,9 +8,13 @@ working without change.
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 from backend.config.settings import get_settings
 from backend.persistence.sqlite_adapter import SQLiteStore
+
+if TYPE_CHECKING:
+    from backend.persistence.postgres_adapter import PostgresStore
 
 
 DEFAULT_DATABASE_URL = "sqlite:///./autodev.db"
@@ -20,10 +24,14 @@ DurableStore = SQLiteStore
 
 
 @lru_cache(maxsize=1)
-def get_store():
+def get_store() -> "SQLiteStore | PostgresStore":
     """Return a cached store keyed off DATABASE_URL.
 
     Returns SQLite for local-first URLs and PostgreSQL for production URLs.
+
+    Returns:
+        A :class:`SQLiteStore` or ``PostgresStore`` instance, depending on
+        ``DATABASE_URL``.
     """
     url = get_settings().database_url
     if url.startswith("postgresql://") or url.startswith("postgres://"):
