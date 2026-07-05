@@ -52,12 +52,14 @@ epic summaries:
 
 - Apache-2.0 `LICENSE`, `NOTICE` attribution, and `CITATION.cff` added; backend
   package metadata aligned from MIT to Apache-2.0 (closes the "no LICENSE file"
-  limitation flagged in v1.0.0).
+  limitation flagged in the v1 release).
 - `CONTRIBUTING.md`: epic/story branching model, docstring/type-hint standards, and
   story-scoped vs full-suite testing policy; PR and issue templates under `.github/`.
 - Optional parallel test execution via `make test-backend-parallel` (pytest-xdist).
 
-## [v1.0.0] — 2026-07-02 — v1 architecture baseline (pre-v2 rewrite)
+## [v1] — 2026-07-02 — v1 architecture baseline (pre-v2 rewrite)
+
+Published as the [autodev v1 release](https://github.com/acpguedes/autodev/releases/tag/v1) (tag `v1`).
 
 This tag freezes the current **v1 linear-pipeline architecture** as a stable, versioned
 checkpoint immediately before the **v2.0 platform rewrite** begins (plugin core, agent

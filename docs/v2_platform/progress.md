@@ -40,7 +40,7 @@ budgets and output guardrails, permissioned tool/skill mediation with the
 provider abstraction, and `autodev/agent-coder` packaged as a reference agent
 plugin).
 
-The v1 codebase remains frozen at the `v1.0.0` git tag (see `CHANGELOG.md`) as
+The v1 codebase remains frozen at the `v1` git tag (see `CHANGELOG.md`) as
 the baseline these epics build on and are measured against. The remaining
 **informal v1 precursors** (dynamic orchestration behind a flag for E3, the
 SQLite store abstraction for E8, the v1 skills registry for E6) are starting
@@ -124,7 +124,7 @@ Add a dated entry every time a story/epic/wave status changes.
   process/manifest templates, agent guide, decisions log, documentation-rebuild
   playbook). No implementation work started. Baseline captured from
   `docs/architecture/v2_platform_reference.md` and `docs/feature_matrix.md`.
-- **2026-07-02** — Packaged and tagged the v1 architecture as `v1.0.0` (see
+- **2026-07-02** — Packaged and tagged the v1 architecture as `v1` (published GitHub release) (see
   `CHANGELOG.md`) immediately before starting Alpha-wave work: validated `make check`
   end-to-end, fixed two mypy failures uncovered by that pass, refreshed
   `docs/feature_matrix.md` (several rows had gone stale — typed settings module,

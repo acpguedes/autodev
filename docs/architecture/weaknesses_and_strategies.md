@@ -16,7 +16,7 @@
 > (`--cov-fail-under=60`) and a smoke e2e health-check job in addition to basic backend/frontend
 > pipelines; infra/docs validation is still planned. Weakness 12 (docs) is being addressed by the
 > addition of [`docs/feature_matrix.md`](../feature_matrix.md), kept current as part of the
-> v1.0.0 baseline packaging pass. The remediation strategies listed below are targets, not
+> v1-release baseline packaging pass. The remediation strategies listed below are targets, not
 > completed work, unless noted otherwise above or in the roadmap.
 
 This document maps the current weaknesses of the repository to concrete strategies for evolving AutoDev Architect into a strong production-grade OSS platform.

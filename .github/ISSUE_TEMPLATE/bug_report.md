@@ -21,7 +21,7 @@ assignees: []
 ## Environment
 
 - Deployment mode: <!-- local-first (SQLite) / production-like (Postgres+Redis+MinIO) / container -->
-- Version / commit: <!-- e.g. v1.0.0 tag or main @ <sha> -->
+- Version / commit: <!-- e.g. the `v1` release tag or main @ <sha> -->
 - OS / Python version:
 
 ## Evidence

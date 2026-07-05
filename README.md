@@ -11,7 +11,7 @@ AutoDev Architect is an open source alternative for teams that want a transparen
 - **observability and reproducibility**;
 - **support for existing repositories and greenfield projects**.
 
-The **v1 architecture** (linear agent pipeline) is frozen at the `v1.0.0` git tag. The **v2.0 platform rewrite** — a small core surrounded by typed extension points (plugins, agents, flows, reasoning, routing, skills) — is underway: the Alpha-wave epics **E0 (foundations), E1 (plugin core & SDK), and E2 (agent framework) are complete**; see [`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) for live status.
+The **v1 architecture** (linear agent pipeline) is frozen at the published [`v1` release](https://github.com/acpguedes/autodev/releases/tag/v1). The **v2.0 platform rewrite** — a small core surrounded by typed extension points (plugins, agents, flows, reasoning, routing, skills) — is underway: the Alpha-wave epics **E0 (foundations), E1 (plugin core & SDK), and E2 (agent framework) are complete**; see [`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) for live status.
 
 ---
 
@@ -52,7 +52,7 @@ This makes the project suitable for:
 ## Current repository status
 
 The repository holds two architecture generations: the frozen **v1 baseline**
-(`v1.0.0` tag) and the in-progress **v2 platform** (Alpha wave). See
+(the `v1` release tag) and the in-progress **v2 platform** (Alpha wave). See
 [`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) for the epic-by-epic tracker.
 
 ### v2 platform (Alpha, in progress — E0–E2 complete)
@@ -73,7 +73,7 @@ The repository holds two architecture generations: the frozen **v1 baseline**
   tool/skill mediation and a provider abstraction (offline stub included);
   `autodev/agent-coder` packaged as an installable reference agent plugin.
 
-### v1 baseline (frozen at `v1.0.0`)
+### v1 baseline (frozen at the `v1` release tag)
 
 The v1 codebase provides a functional early platform slice with:
 
@@ -227,7 +227,7 @@ For rationale, read [`docs/architecture/stack_decisions.md`](docs/architecture/s
 
 ### Implementation status
 - [`docs/feature_matrix.md`](docs/feature_matrix.md): per-feature status (`default / optional / stub / planned`) covering persistence, LLM providers, agents, patches, validation, and more.
-- [`CHANGELOG.md`](CHANGELOG.md): tagged releases, starting with `v1.0.0` — the v1 architecture baseline cut immediately before the v2.0 platform rewrite.
+- [`CHANGELOG.md`](CHANGELOG.md): tagged releases, starting with the `v1` release — the v1 architecture baseline cut immediately before the v2.0 platform rewrite.
 
 ### Developer workflow
 - [`Makefile`](Makefile): install, test, lint, build, run, and clean targets.
