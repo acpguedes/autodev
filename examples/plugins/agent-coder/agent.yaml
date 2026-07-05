@@ -1,0 +1,36 @@
+schemaVersion: "2.0"
+kind: Agent
+id: autodev/agent-coder
+version: 1.0.0
+hostApi: ">=2.0 <3.0"
+displayName: "AutoDev Agent Coder"
+description: "Reference coder agent packaged as a v2 plugin."
+capabilities:
+  - id: code.implementation
+    version: 1.0.0
+    level: primary
+  - id: code.refactor
+    version: 1.0.0
+    level: secondary
+io:
+  contract: autodev/coder-io
+  contractVersion: 1.0.0
+  input:
+    $ref: "./contracts/coder.input.schema.json"
+  output:
+    $ref: "./contracts/coder.output.schema.json"
+  onInvalidOutput: fail
+permissions:
+  network: none
+  tools: []
+  skills: []
+budgets:
+  tokens: { input: 120000, output: 16000 }
+  costUsd: 0.75
+  wallClockSeconds: 180
+  maxSteps: 24
+  maxToolCalls: 40
+  onExceeded: fail-closed
+entrypoint:
+  runtime: python
+  ref: "autodev_agent_coder:AgentCoder"

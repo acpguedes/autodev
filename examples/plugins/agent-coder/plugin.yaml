@@ -1,0 +1,14 @@
+schemaVersion: "1"
+id: "autodev/agent-coder"
+name: "AutoDev Agent Coder"
+version: "1.0.0"
+hostApi: ">=2.0 <3.0"
+runtime:
+  loader: "in-process"
+  entrypoint: "autodev_agent_coder:register"
+permissions: {}
+extensionPoints:
+  - kind: "agent"
+    id: "autodev/agent-coder.agent"
+    contract: "^1.0"
+    manifest: "./agent.yaml"

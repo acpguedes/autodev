@@ -7,7 +7,7 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-04 (E2-S4 complete)
+**Last updated:** 2026-07-04 (E2 complete)
 
 ## How to update this file
 
@@ -48,7 +48,7 @@ action: pick up E1 after reading `phases/e1_plugin_core_sdk.md` and
 | --- | --- | --- | --- | --- | --- | --- |
 | E0 | Foundations & Hardening | Alpha | Done | 7/7 | — | [phases/e0_foundations_hardening.md](phases/e0_foundations_hardening.md) |
 | E1 | Plugin Core & SDK | Alpha | Done | 5/5 | E0 | [phases/e1_plugin_core_sdk.md](phases/e1_plugin_core_sdk.md) |
-| E2 | Agent Framework | Alpha | In progress | 4/5 | E0, E1 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
+| E2 | Agent Framework | Alpha | Done | 5/5 | E0, E1 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
 | E3 | Orchestration Engine | Alpha/Beta | Not started | 0/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
 | E4 | Reasoning | Beta | Not started | 0/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
 | E5 | Routing / Selection / Evaluation | Beta | Not started | 0/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
@@ -61,7 +61,7 @@ action: pick up E1 after reading `phases/e1_plugin_core_sdk.md` and
 | E12 | Quality & Evals | Alpha/Beta | Not started | 0/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 
-Total: **16/64 stories complete** across 14 epics.
+Total: **17/64 stories complete** across 14 epics.
 
 ## Wave exit gates (§18.9 of the reference doc)
 
@@ -182,3 +182,8 @@ Add a dated entry every time a story/epic/wave status changes.
   Agent Runtime context, default network denial, the offline stub LLM provider and
   provider protocol, per-call token/cost/tool metering by run and tenant, mocked real
   provider coverage, and `docs/agents/runtime.md`.
+- **2026-07-04** — Completed E2-S5 and closed E2: packaged
+  `autodev/agent-coder` as an installable agent plugin, captured the v1 fallback
+  baseline, added runtime parity coverage, registered the plugin through the Plugin
+  Host and Agent Registry, included the SDK example, and marked the E2 exit checklist
+  complete.

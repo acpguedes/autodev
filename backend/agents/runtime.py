@@ -4,7 +4,11 @@ from __future__ import annotations
 
 import time
 import uuid
+import importlib
+import importlib.util
+import sys
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Protocol
 
 from backend.agents.manifest import AgentBudgets, AgentManifest, ValidationError, validate_agent_io
@@ -246,6 +250,31 @@ class AgentRuntime:
                 "steps": len(ctx._steps),
             },
         )
+
+    def load_handler(self, manifest: AgentManifest, base_dir: Path | str) -> Any:
+        module_name, object_name = manifest.entrypoint.ref.split(":", 1)
+        module = self._load_module(module_name, Path(base_dir))
+        handler = getattr(module, object_name)
+        if isinstance(handler, type):
+            return handler()
+        return handler
+
+    def _load_module(self, module_name: str, base_dir: Path) -> Any:
+        module_file = base_dir / f"{module_name.rsplit('.', 1)[-1]}.py"
+        if module_file.exists():
+            spec = importlib.util.spec_from_file_location(f"_autodev_agent_{module_name}", module_file)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"Cannot import {module_name} from {module_file}")
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            return module
+        sys.path.insert(0, str(base_dir))
+        try:
+            return importlib.import_module(module_name)
+        finally:
+            if sys.path and sys.path[0] == str(base_dir):
+                sys.path.pop(0)
 
 
 __all__ = [

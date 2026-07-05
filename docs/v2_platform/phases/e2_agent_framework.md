@@ -1,7 +1,7 @@
 # E2 — Agent Framework
 
 **Wave:** Alpha
-**Status:** In progress · **Stories:** 4/5 complete
+**Status:** Done · **Stories:** 5/5 complete
 **Depends on:** E0, E1
 **Enables:** E4, E5, E9-S4
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E2), §18.8, §18.9
@@ -79,7 +79,7 @@ Subtasks:
 | DoD (specific) | Test with stub and with a mocked real provider; `docs/agents/runtime.md` |
 | Dependencies | E2-S3, E1-S3 |
 
-### E2-S5 — Reference agent `autodev/agent-coder` as a plugin
+### E2-S5 — Reference agent `autodev/agent-coder` as a plugin — Done
 
 Subtasks:
 - `E2-S5-T1`: package the existing v1 agent as a plugin.
@@ -111,8 +111,8 @@ Subtasks:
 
 ## Epic exit checklist
 
-- [ ] All 5 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
+- [x] All 5 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
       story-specific DoD above.
-- [ ] Contract tests green for the agent IO/capability extension points.
-- [ ] `docs/v2_platform/progress.md` updated.
-- [ ] Alpha wave exit criteria this epic contributes to (§18.9) satisfied.
+- [x] Contract tests green for the agent IO/capability extension points.
+- [x] `docs/v2_platform/progress.md` updated.
+- [x] Alpha wave exit criteria this epic contributes to (§18.9) satisfied.
