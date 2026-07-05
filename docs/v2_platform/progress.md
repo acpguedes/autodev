@@ -7,7 +7,7 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-05 (E3 S1-S2 complete, S3-S5 in progress)
+**Last updated:** 2026-07-05 (E3 S1-S2+S5 complete, S3-S4 in progress)
 
 ## How to update this file
 
@@ -57,7 +57,7 @@ and quality rules in §3-4 are mandatory from E3 onward).**
 | E0 | Foundations & Hardening | Alpha | Done | 7/7 | — | [phases/e0_foundations_hardening.md](phases/e0_foundations_hardening.md) |
 | E1 | Plugin Core & SDK | Alpha | Done | 5/5 | E0 | [phases/e1_plugin_core_sdk.md](phases/e1_plugin_core_sdk.md) |
 | E2 | Agent Framework | Alpha | Done | 5/5 | E0, E1 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
-| E3 | Orchestration Engine | Alpha/Beta | In progress | 2/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
+| E3 | Orchestration Engine | Alpha/Beta | In progress | 3/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
 | E4 | Reasoning | Beta | Not started | 0/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
 | E5 | Routing / Selection / Evaluation | Beta | Not started | 0/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
 | E6 | Skills v2 | Beta | Not started | 0/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
@@ -224,6 +224,15 @@ Add a dated entry every time a story/epic/wave status changes.
   lifecycle events, the `/v2/flows` API, per-step OTel spans,
   `docs/flows/engine.md`, and an end-to-end test running the
   `autodev/agent-coder` plugin from a declarative flow.
+- **2026-07-05** — Completed E3-S5: added composite nodes — `subflow` handler
+  (child run of a registry-resolved flow with `parent_run_id` linkage and
+  `childRunId` in the parent step output) and `map` handler (bounded parallel
+  fan-out with per-item `item` bindings, input-ordered `collect` reduce) in
+  `backend/flows/composite.py`; budget propagation per ADR-006 (child budget =
+  min(child manifest, parent remaining), aggregate fail-closed with branch
+  cancellation, `budget_cap` on `start_run`), shared budget arithmetic in
+  `backend/flows/budgets.py`, a composite-depth guard, hierarchical run
+  queries (`list_runs(parent_run_id=...)`), and 10 new tests.
 - **2026-07-04** — API-first made an explicit principle (out-of-band, docs-only):
   added principle 2.13 "API-first" to `v2_platform_reference.md` §2 (the Control
   Plane API is the single point of entry; Web UI/CLI/MCP are clients, never touch
