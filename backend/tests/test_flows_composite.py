@@ -335,6 +335,7 @@ class TestMapReduce:
         run = engine.start_run("autodev/flow-map", input={"items": [1, 3]})
 
         assert run.status == "completed"
+        assert run.output is not None
         assert [o["transformed"] for o in run.output["items"]] == [
             "FALSE",
             "TRUE",
