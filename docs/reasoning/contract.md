@@ -123,3 +123,26 @@ whose `host_api` is incompatible with the platform (`2.0`).
 budgets, guardrails, and tracing (reference §8.4). E4-S1 ships the parser and a
 minimal `select_strategy` (exact-match rules, default fallback); operator-aware,
 Router/Selector-integrated selection is E4-S4.
+
+## Built-in reference strategies (E4-S2)
+
+Three first-party strategies ship in `backend/reasoning/strategies/` and run on
+any provider, including the offline stub:
+
+| Strategy | id | Loop |
+| --- | --- | --- |
+| ReAct | `autodev/reasoning-react` | Thought → `ACTION <tool> <args>` / `FINAL <answer>`, budget-bounded |
+| Plan-and-Execute | `autodev/reasoning-plan-execute` | Plan (one step per line) → execute each step |
+| Native tool-calling | `autodev/reasoning-native-tools` | Single mediated call; the provider drives tools |
+
+```python
+from backend.reasoning import ReasoningStrategyRegistry
+from backend.reasoning.strategies import register_builtin_strategies
+
+registry = ReasoningStrategyRegistry()
+register_builtin_strategies(registry)
+strategy = registry.resolve("autodev/reasoning-react")
+```
+
+Reflection and Debate/Tree-of-Thought (`autodev/reasoning-reflection`,
+`autodev/reasoning-tot`) land in E4-S3.
