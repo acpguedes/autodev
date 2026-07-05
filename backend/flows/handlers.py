@@ -26,6 +26,15 @@ class UnsupportedNodeError(FlowNodeError):
     """Raised when no handler supports the node's type (fails closed)."""
 
 
+class FlowBudgetExceededError(FlowNodeError):
+    """Raised when a node breaches the run's remaining budget (fails closed).
+
+    The engine maps this to the ``budget_exhausted`` stop reason; composite
+    handlers (E3-S5) raise it when aggregate child consumption exceeds the
+    parent's remaining budget or a capped child stops on budget exhaustion.
+    """
+
+
 @dataclass
 class NodeContext:
     """Everything a node handler needs to execute one activation.
@@ -311,9 +320,10 @@ def build_default_handlers(
 ) -> FlowHandlerRegistry:
     """Build the default handler registry for the engine.
 
-    ``agent``, ``skill``, ``tool``, and ``conditional`` are supported here;
-    ``human`` arrives with E3-S4 and ``subflow``/``map`` with E3-S5 — until
-    then those node types fail closed via :class:`UnsupportedNodeError`.
+    ``agent``, ``skill``, ``tool``, ``conditional``, and the composite
+    ``subflow``/``map`` types (E3-S5) are supported here; ``human`` arrives
+    with E3-S4 — until then that node type fails closed via
+    :class:`UnsupportedNodeError`.
 
     Args:
         store: Durable store shared with the engine.
@@ -323,6 +333,11 @@ def build_default_handlers(
     Returns:
         The populated :class:`FlowHandlerRegistry`.
     """
+    from backend.flows.composite import (  # deferred: avoid module cycle
+        map_handler,
+        subflow_handler,
+    )
+
     registry = FlowHandlerRegistry()
     callable_registry = callables or CallableRegistry()
     callable_handler = make_callable_handler(callable_registry)
@@ -330,12 +345,15 @@ def build_default_handlers(
     registry.register("tool", callable_handler)
     registry.register("conditional", conditional_handler)
     registry.register("agent", agent_handler or AgentNodeHandler(store=store))
+    registry.register("subflow", subflow_handler)
+    registry.register("map", map_handler)
     return registry
 
 
 __all__ = [
     "AgentNodeHandler",
     "CallableRegistry",
+    "FlowBudgetExceededError",
     "FlowHandlerRegistry",
     "FlowNodeError",
     "NodeContext",

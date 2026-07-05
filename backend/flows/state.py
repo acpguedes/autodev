@@ -209,13 +209,19 @@ class FlowRunStore:
         return decode_run(row) if row is not None else None
 
     def list_runs(
-        self, *, flow_id: str | None = None, status: str | None = None
+        self,
+        *,
+        flow_id: str | None = None,
+        status: str | None = None,
+        parent_run_id: str | None = None,
     ) -> list[FlowRunRecord]:
-        """List runs, optionally filtered by flow id and/or status.
+        """List runs, optionally filtered by flow id, status, and/or parent.
 
         Args:
             flow_id: Restrict to runs of this flow.
             status: Restrict to runs in this status.
+            parent_run_id: Restrict to child runs of this parent run
+                (hierarchical trace of composite nodes, E3-S5).
 
         Returns:
             Matching runs, most recent first.
@@ -228,6 +234,9 @@ class FlowRunStore:
         if status is not None:
             clauses.append("status = {p}")
             params.append(status)
+        if parent_run_id is not None:
+            clauses.append("parent_run_id = {p}")
+            params.append(parent_run_id)
         where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
         sql = self._sql(
             f"SELECT * FROM flow_runs{where} ORDER BY created_at DESC, run_id"
