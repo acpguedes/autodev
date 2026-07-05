@@ -68,8 +68,9 @@ and quality rules in §3-4 are mandatory from E3 onward).**
 | E11 | Observability, Security & Multi-tenant | Beta | Not started | 0/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
 | E12 | Quality & Evals | Alpha/Beta | Not started | 0/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
+| E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 
-Total: **17/64 stories complete** across 14 epics.
+Total: **17/71 stories complete** across 15 epics.
 
 ## Wave exit gates (§18.9 of the reference doc)
 
@@ -91,7 +92,9 @@ human-in-the-loop stories; visual editor can stay minimal), **E8-S1/E8-S2**,
 
 Goal: complete intelligence, context, data, API, UI, security, and quality
 capabilities for real, controlled operation. Anchor epics: **E4**, **E5**, **E6**,
-**E7**, **E8-S3/E8-S4**, **E9-S2/S3/S4**, **E10**, **E11**, **E12-S2/S3/S4**.
+**E7**, **E8-S3/E8-S4**, **E9-S2/S3/S4**, **E10**, **E11**, **E12-S2/S3/S4**,
+**E14** (real task execution, permission/approval policy, governed sandbox
+runners, Web UX + interactive shell for approval, `autodev` CLI install).
 
 - [ ] The real plan -> code -> apply patch -> validate in sandbox -> evaluate flow runs
       with RBAC, fail-closed budgets, and end-to-end traces.
@@ -120,6 +123,24 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-07-05** — Planning-only, no implementation: added **E14 — Real Task
+  Execution & Governed Autonomy** (Beta, 7 stories) to close the gap between
+  generated plans and real action — today `execute_plan`
+  (`backend/orchestrator/service.py`) only marks steps completed without
+  creating files, applying patches, or running commands. E14 covers: a real
+  Task Executor (`ExecutionAction`/`ExecutionResult`, E14-S1); a fail-closed
+  permission/policy engine (E14-S2); three execution modes — approval, auto,
+  hybrid with the 3-option dynamic-grant prompt (E14-S3); sandbox-backed
+  command/patch/validation runners built on the existing
+  `backend/validation/sandbox.py::SandboxRunner` (E14-S4); governed Web UX
+  (E14-S5); a governed interactive shell, `autodev --shell` (E14-S6); and
+  `autodev` CLI packaging/install (E14-S7). Extends
+  `docs/architecture/v2_platform_reference.md` (new §12.7-§12.9, renumbered
+  §12.7 Acceptance Criteria to §12.10 with added bullets, new §18.7.8, and
+  updates to §18.5/§18.8/§18.9) and adds
+  `phases/e14_real_execution_governance.md`. An RFC + ADR are required before
+  E14-S1 implementation starts (new public contracts, per `agent_guide.md`
+  §5).
 - **2026-07-05** — **E3-S3 complete**: per-step checkpoints (state persisted after
   every step), opt-in retry/backoff (default 1 attempt, exponential capped at 1 h,
   backoff sleeps budget-checked), crash recovery via `resume_run` (incl.
