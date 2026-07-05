@@ -1,13 +1,15 @@
 # Flow Engine — Execution, Durable State, Triggers, and Events
 
 > Delivered by **E3-S2** (graph execution with durable Run/Step state) and
-> **E3-S3** (checkpointing, retries, deterministic replay).
+> **E3-S3** (checkpointing, retries, deterministic replay),
+> **E3-S4** (human-in-the-loop), and **E3-S5** (composite nodes).
 > Manifest contract: `docs/flows/spec.md`. Implementation:
 > `backend/flows/engine.py` (executor), `backend/flows/state.py` +
 > `backend/flows/records.py` (durable Run/Step/Event store),
 > `backend/flows/checkpoint.py` (backoff, replay, shared pure derivation),
 > `backend/flows/registry.py` (versioned definitions),
 > `backend/flows/handlers.py` (node handlers),
+> `backend/flows/human.py` + `backend/flows/pause.py` (human-in-the-loop),
 > `backend/flows/triggers.py` (triggers), `backend/api/routers/flows.py`
 > (`/v2/flows` API).
 
@@ -124,9 +126,47 @@ Node types map to pluggable handlers (`FlowHandlerRegistry`):
 - `skill` / `tool` — resolved from an in-process `CallableRegistry` until
   Skills v2 (E6) provides a durable registry.
 - `conditional` — pure routing; produces no output.
-- `subflow` / `map` — composite nodes (E3-S5), see the next section.
-- `human` (E3-S4) — until that story lands, this type fails closed as
-  `unsupported_node`.
+- `human` (E3-S4) — pauses the run for an operator decision (next section).
+- `subflow` / `map` — composite nodes (E3-S5), see below.
+
+## Human-in-the-loop (E3-S4)
+
+A `human` node **pauses the run durably**: the step is persisted as
+`waiting_human`, the run status becomes `waiting_human`, the cursor stays on
+the node, the rendered prompt/form and optional expiry are stored as pause
+metadata in the run state, and `flow.run.paused` is emitted. Because the
+pause lives entirely in the store, it survives process restarts — any engine
+instance on the same store can resume the run.
+
+The decision cycle is API-first:
+
+1. `GET /v2/flows/runs/{run_id}/pending-human` returns the pending request
+   (node id, prompt, `form` schema, `expiresAt`) — 409 when the run is not
+   waiting.
+2. `POST /v2/flows/runs/{run_id}/human-decision` with
+   `{"decision": {...}, "actor": "..."}` validates the decision against the
+   node's `form` schema (422 on mismatch), records it as the human node's
+   output, and resumes execution. The **actor** is recorded on the
+   `flow.human.decision.recorded` event for auditability; it defaults to
+   `"anonymous"` when omitted.
+
+Human **edits alter run state**: a decision may carry
+`edits: {<nodeId>: {...}}`; each patch merges into that node's recorded
+output (`state.nodes.<id>.output`) before routing resumes, so downstream
+predicates and bindings see the edited values. The human node itself is not
+editable.
+
+**Timeouts fail closed on the SLA**: when the node declares `timeoutSec`, the
+pause records `expiresAt`. A late decision is rejected and the run is routed
+through the node's `on: timeout` edge (the `onTimeout` route) instead of
+resuming with the decision. `POST /v2/flows/human/expire` sweeps every due
+wait (operator/cron surface — same no-daemon stance as cron triggers) and
+returns the run ids routed through their timeout edges.
+
+Authorization follows the platform's opt-in bearer token: when
+`AUTODEV_API_TOKEN` is configured, unauthenticated decision calls are
+rejected with 401. Full RBAC arrives with E11; the recorded actor is the
+forward-compatible hook.
 
 ## Composite nodes: sub-flow and map/reduce
 
@@ -182,8 +222,9 @@ the run for auditability.
 
 Ordered, durable, per-run (`domain.entity.action`, past tense):
 `flow.run.started`, `run.step.started`, `run.step.completed`,
-`run.step.failed`, `flow.run.completed`, `flow.run.failed`,
-`flow.run.resumed`, `flow.run.replayed`. Until the Event
+`run.step.failed`, `flow.run.paused`, `flow.human.decision.recorded`,
+`flow.run.completed`, `flow.run.failed`, `flow.run.resumed`,
+`flow.run.replayed`. Until the Event
 Bus (E9) exists, the event store is the authoritative log — the same E1
 precedent as plugin lifecycle events — and is exposed at
 GET `/v2/flows/runs/{run_id}/events`.
@@ -201,6 +242,9 @@ GET `/v2/flows/runs/{run_id}/events`.
 | `POST /v2/flows/cron/tick` | Start every due cron run (optional `at` override) |
 | `GET /v2/flows/runs/{run_id}` | Run document + ordered steps |
 | `GET /v2/flows/runs/{run_id}/events` | The run's ordered event store |
+| `GET /v2/flows/runs/{run_id}/pending-human` | Pending human request of a paused run (409 when not waiting) |
+| `POST /v2/flows/runs/{run_id}/human-decision` | Record a decision/edits and resume (404/409/422 semantics) |
+| `POST /v2/flows/human/expire` | Expire every due human wait through its timeout route |
 
 Every payload carries `schemaVersion`. Authentication follows the platform's
 opt-in bearer token (`AUTODEV_API_TOKEN`, `backend/api/security.py`).

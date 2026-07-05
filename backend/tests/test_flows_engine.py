@@ -165,19 +165,12 @@ class TestGraphExecution:
         assert "run.step.failed" in names
 
     def test_unsupported_node_type_fails_closed(self, tmp_path: Path) -> None:
-        """Node types without a handler (human until S4) fail the run."""
-        engine, callables = _engine(tmp_path)
-        _register_linear_callables(callables)
-        raw = _linear_flow()
-        raw["nodes"].append(
-            {
-                "id": "review",
-                "type": "human",
-                "prompt": "Approve?",
-            }
-        )
-        raw["edges"].append({"from": "finish", "to": "review"})
-        engine.registry.register_raw(raw)
+        """Node types without a registered handler fail the run closed."""
+        from backend.flows.handlers import FlowHandlerRegistry
+
+        engine, _ = _engine(tmp_path)
+        engine.handlers = FlowHandlerRegistry()  # no handler for any type
+        engine.registry.register_raw(_linear_flow())
 
         run = engine.start_run("autodev/flow-linear", input={"task": "ship"})
 

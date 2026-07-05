@@ -13,11 +13,16 @@ policy, crash recovery through :meth:`FlowEngine.resume_run`
 (``flow.run.resumed``), and deterministic replay through
 :meth:`FlowEngine.replay_run` (``flow.run.replayed``) under the ADR-005
 determinism boundary.
+
+E3-S4 adds human-in-the-loop pauses: a ``human`` node stops the loop as
+``waiting_human`` (with ``flow.run.paused``) until :mod:`backend.flows.human`
+resumes the run.
 """
 
 from __future__ import annotations
 
 import time
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from backend.flows.activation import NodeActivationMixin
@@ -59,6 +64,7 @@ class FlowEngine(NodeActivationMixin):
         handlers: FlowHandlerRegistry | None = None,
         clock: Callable[[], float] | None = None,
         sleeper: Callable[[float], None] | None = None,
+        now: Callable[[], datetime] | None = None,
         max_steps_per_run: int = 1000,
     ) -> None:
         """Initialize the engine and its collaborators.
@@ -76,6 +82,8 @@ class FlowEngine(NodeActivationMixin):
             sleeper: Blocking sleep used for retry backoff between node
                 attempts; defaults to :func:`time.sleep` (injectable so
                 tests do not wait).
+            now: Wall-clock source used for human-wait expiry timestamps
+                (E3-S4); defaults to timezone-aware ``datetime.now(utc)``.
             max_steps_per_run: Engine safety cap on node activations per run
                 (fails closed); complements, and never replaces, manifest
                 budgets.
@@ -86,6 +94,9 @@ class FlowEngine(NodeActivationMixin):
         self.handlers = handlers or build_default_handlers(store=self._store)
         self._clock = clock or time.monotonic
         self._sleeper = sleeper or time.sleep
+        self.now: Callable[[], datetime] = now or (
+            lambda: datetime.now(timezone.utc)
+        )
         self._max_steps = max_steps_per_run
 
     # ------------------------------------------------------------------ API

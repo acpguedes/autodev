@@ -29,6 +29,7 @@ from backend.flows.handlers import (
     UnsupportedNodeError,
 )
 from backend.flows.model import FlowBudgets, FlowManifest, FlowNode
+from backend.flows.pause import pause_run
 from backend.flows.state import FlowRunRecord, FlowRunStore
 from backend.observability.tracing import trace_run_step
 
@@ -197,6 +198,9 @@ class NodeActivationMixin:
             from backend.flows.engine import FlowRunError
 
             raise FlowRunError(f"node {node.id!r} produced no attempt")
+
+        if outcome.status == "waiting_human":
+            return pause_run(self.runs, run, node, step, state, outcome)
 
         try:
             output = canonical_output(outcome.output)

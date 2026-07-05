@@ -9,6 +9,7 @@ without modifying the engine loop.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Protocol
 
@@ -168,6 +169,34 @@ def conditional_handler(ctx: NodeContext) -> NodeOutcome:
     return NodeOutcome(output={})
 
 
+def human_handler(ctx: NodeContext) -> NodeOutcome:
+    """Handle ``human`` nodes: pause the run until a decision arrives (E3-S4).
+
+    The ``waiting_human`` status tells the engine loop to persist the pause
+    instead of completing the step. The output carries the request shown to
+    operators: the node's ``prompt``, its decision ``form`` schema, and the
+    computed ``expiresAt`` (ISO-8601, from ``timeoutSec`` and the engine's
+    injectable wall clock) when the wait has an SLA.
+
+    Args:
+        ctx: Activation context.
+
+    Returns:
+        A pausing outcome with the pending-request document as output.
+    """
+    node = ctx.node
+    expires_at: str | None = None
+    if node.timeout_sec is not None:
+        engine = ctx.services.get("engine")
+        now_fn = getattr(engine, "now", None)
+        current = now_fn() if callable(now_fn) else datetime.now(timezone.utc)
+        expires_at = (current + timedelta(seconds=node.timeout_sec)).isoformat()
+    return NodeOutcome(
+        output={"prompt": node.prompt, "form": node.form, "expiresAt": expires_at},
+        status="waiting_human",
+    )
+
+
 class AgentNodeHandler:
     """Executes ``agent`` nodes through the E2 Agent Registry and Runtime."""
 
@@ -320,9 +349,9 @@ def build_default_handlers(
 ) -> FlowHandlerRegistry:
     """Build the default handler registry for the engine.
 
-    ``agent``, ``skill``, ``tool``, ``conditional``, and the composite
-    ``subflow``/``map`` types (E3-S5) are supported here; ``human`` arrives
-    with E3-S4 — until then that node type fails closed via
+    All seven canonical node types are supported here: ``agent``, ``skill``,
+    ``tool``, ``conditional``, ``human`` (E3-S4), and the composite
+    ``subflow``/``map`` types (E3-S5). Unknown types fail closed via
     :class:`UnsupportedNodeError`.
 
     Args:
@@ -344,6 +373,7 @@ def build_default_handlers(
     registry.register("skill", callable_handler)
     registry.register("tool", callable_handler)
     registry.register("conditional", conditional_handler)
+    registry.register("human", human_handler)
     registry.register("agent", agent_handler or AgentNodeHandler(store=store))
     registry.register("subflow", subflow_handler)
     registry.register("map", map_handler)
@@ -362,5 +392,6 @@ __all__ = [
     "UnsupportedNodeError",
     "build_default_handlers",
     "conditional_handler",
+    "human_handler",
     "make_callable_handler",
 ]
