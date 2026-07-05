@@ -7,6 +7,15 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from backend.agents.manifest import AgentManifest
+from backend.evals.contract import (
+    EVAL_CONTRACT_HOST_API,
+    EvalCase,
+    EvalCaseScore,
+    EvalSpec,
+    Evaluator,
+    EvaluatorSpec,
+)
+from backend.evals.results import EvalResult
 from backend.flows.manifest import FlowManifest
 from backend.plugins.catalog import ExtensionPointKind
 from backend.plugins.manifest import PluginManifest
@@ -25,6 +34,10 @@ from backend.routing.contract import (
     RouterPlugin,
 )
 
+#: Bumped from 1.2.0 (E5-S1 + E5-S3): re-exports the Router contract
+#: (`RouteRequest`/`RouteDecision`/`RouterPlugin`, RFC-004) and the Evaluation
+#: Service contract (`EvalSpec`/`EvalResult`/`Evaluator`, RFC-005) — MINOR,
+#: additive changes to the public SDK surface (no existing export changed shape).
 SDK_CONTRACT_VERSION = "1.3.0"
 
 
@@ -111,6 +124,13 @@ class AgentHandler(Protocol):
 
 __all__ = [
     "ContractTestResult",
+    "EVAL_CONTRACT_HOST_API",
+    "EvalCase",
+    "EvalCaseScore",
+    "EvalResult",
+    "EvalSpec",
+    "Evaluator",
+    "EvaluatorSpec",
     "ExtensionRegistration",
     "AgentHandler",
     "AgentManifest",

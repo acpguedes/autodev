@@ -178,6 +178,51 @@ class SQLiteStore:
             conn.commit()
 
     # ------------------------------------------------------------------
+    # EvalResultRepository (E5-S3)
+    # ------------------------------------------------------------------
+
+    def create_eval_result(
+        self, *, eval_id: str, eval_version: str, run_id: str, document: dict[str, Any]
+    ) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO eval_results (eval_id, eval_version, run_id, mode, gate_passed, document_json) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    eval_id,
+                    eval_version,
+                    run_id,
+                    str(document.get("mode", "offline")),
+                    1 if (document.get("gate") or {}).get("passed", True) else 0,
+                    json.dumps(document),
+                ),
+            )
+            conn.commit()
+
+    def get_eval_result(self, eval_id: str, eval_version: str, run_id: str) -> dict[str, Any] | None:
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT document_json FROM eval_results WHERE eval_id = ? AND eval_version = ? AND run_id = ?",
+                (eval_id, eval_version, run_id),
+            ).fetchone()
+        return json.loads(row["document_json"]) if row is not None else None
+
+    def list_eval_results(self, eval_id: str, eval_version: str | None = None) -> list[dict[str, Any]]:
+        with self.connect() as conn:
+            if eval_version is not None:
+                rows = conn.execute(
+                    "SELECT document_json FROM eval_results WHERE eval_id = ? AND eval_version = ? "
+                    "ORDER BY id DESC",
+                    (eval_id, eval_version),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT document_json FROM eval_results WHERE eval_id = ? ORDER BY id DESC",
+                    (eval_id,),
+                ).fetchall()
+        return [json.loads(row["document_json"]) for row in rows]
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
