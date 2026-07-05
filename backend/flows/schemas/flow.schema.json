@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autodev.local/schemas/v2/flow.schema.json",
+  "title": "AutoDev Flow Manifest",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["schemaVersion", "id", "version", "hostApi", "nodes", "edges"],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$" },
+    "hostApi": { "type": "string" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "triggers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": { "enum": ["message", "webhook", "cron", "event"] },
+          "on": { "type": "string" },
+          "schedule": { "type": "string" }
+        },
+        "allOf": [
+          {
+            "if": { "properties": { "type": { "const": "event" } } },
+            "then": { "required": ["on"] }
+          },
+          {
+            "if": { "properties": { "type": { "const": "cron" } } },
+            "then": { "required": ["schedule"] }
+          }
+        ]
+      }
+    },
+    "input": { "type": "object" },
+    "output": { "type": "object" },
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "retries": { "$ref": "#/$defs/retryPolicy" },
+        "timeoutSec": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "type"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+          "type": { "enum": ["agent", "skill", "tool", "conditional", "human", "subflow", "map"] },
+          "ref": { "type": "string" },
+          "input": { "type": "object" },
+          "prompt": { "type": "string" },
+          "form": { "type": "object" },
+          "timeoutSec": { "type": "integer", "minimum": 1 },
+          "onTimeout": { "type": "string" },
+          "retries": { "$ref": "#/$defs/retryPolicy" },
+          "over": { "type": "string" },
+          "reduce": { "enum": ["collect"] },
+          "maxParallel": { "type": "integer", "minimum": 1 }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "type": { "enum": ["agent", "skill", "tool", "subflow", "map"] }
+              }
+            },
+            "then": { "required": ["ref"] }
+          },
+          {
+            "if": { "properties": { "type": { "const": "human" } } },
+            "then": { "required": ["prompt"] }
+          },
+          {
+            "if": { "properties": { "type": { "const": "map" } } },
+            "then": { "required": ["over"] }
+          }
+        ]
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to"],
+        "properties": {
+          "from": { "type": "string" },
+          "to": { "type": "string" },
+          "when": { "type": "string" },
+          "on": { "enum": ["timeout"] }
+        },
+        "not": { "required": ["when", "on"] }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "properties": {
+        "maxCostUsd": { "type": "number", "exclusiveMinimum": 0 },
+        "maxWallClockSec": { "type": "integer", "minimum": 1 },
+        "maxTokens": { "type": "integer", "minimum": 1 }
+      }
+    }
+  },
+  "$defs": {
+    "retryPolicy": {
+      "type": "object",
+      "properties": {
+        "maxAttempts": { "type": "integer", "minimum": 1 },
+        "backoff": { "enum": ["fixed", "exponential"] },
+        "initialDelaySec": { "type": "number", "minimum": 0 }
+      }
+    }
+  }
+}
