@@ -7,10 +7,11 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from backend.agents.manifest import AgentManifest
+from backend.flows.manifest import FlowManifest
 from backend.plugins.catalog import ExtensionPointKind
 from backend.plugins.manifest import PluginManifest
 
-SDK_CONTRACT_VERSION = "1.0.0"
+SDK_CONTRACT_VERSION = "1.1.0"
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,7 @@ __all__ = [
     "ExtensionRegistration",
     "AgentHandler",
     "AgentManifest",
+    "FlowManifest",
     "HostApi",
     "PluginManifest",
     "PluginRegister",

@@ -40,6 +40,10 @@ neither.
 | RFC-001 | Plugin Extension-Point Catalog | Accepted | E1-S1 | 2026-07-04 |
 | ADR-002 | Plugin Manifest and Extension Catalog | Accepted | E1 | 2026-07-04 |
 | ADR-003 | Agent Manifest and Initial Capability Vocabulary | Accepted | E2-S1 | 2026-07-04 |
+| RFC-002 | Flow Manifest Specification (`flow.yaml`) | Accepted | E3-S1 | 2026-07-05 |
+| ADR-004 | Flow Manifest and Node-Type Vocabulary | Accepted | E3-S1 | 2026-07-05 |
+| ADR-005 | Determinism Boundary for Flow Replay | Accepted | E3-S3 | 2026-07-05 |
+| ADR-006 | Budget Propagation for Composite Nodes | Accepted | E3-S5 | 2026-07-05 |
 
 > Update this table whenever an ADR or RFC is added or changes status. This index,
 > together with `docs/v2_platform/progress.md`, is the fastest way to see which

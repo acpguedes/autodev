@@ -3,7 +3,7 @@
 **Wave:** Split — graph/checkpointing/human-in-the-loop stories target Alpha (visual
 editor, E3-S6, may stay minimal until Beta); full completion including E3-S6 is a
 Beta entry item alongside E10.
-**Status:** Not started · **Stories:** 0/6 complete
+**Status:** Alpha slice complete · **Stories:** 5/6 complete (S1-S5 done; S6 deferred to Beta with E10)
 **Depends on:** E0, E2
 **Enables:** E10-S3; consumes E8-S2 (checkpointing/events)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E3), §18.8, §18.9
