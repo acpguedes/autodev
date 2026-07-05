@@ -13,6 +13,7 @@ Coverage:
 from __future__ import annotations
 
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -40,6 +41,7 @@ def _make_app() -> FastAPI:
 
     @_app.get("/ping")
     def ping() -> dict:
+        """Return a trivial payload used to exercise the tracing middleware."""
         return {"pong": True}
 
     return _app
@@ -51,12 +53,14 @@ def _make_app() -> FastAPI:
 
 
 def test_response_has_x_request_id_header() -> None:
+    """Every response carries an ``X-Request-ID`` header."""
     client = TestClient(_make_app())
     resp = client.get("/ping")
     assert "x-request-id" in resp.headers
 
 
 def test_x_request_id_is_valid_uuid() -> None:
+    """The ``X-Request-ID`` header value is a valid UUID."""
     client = TestClient(_make_app())
     resp = client.get("/ping")
     rid = resp.headers["x-request-id"]
@@ -66,6 +70,7 @@ def test_x_request_id_is_valid_uuid() -> None:
 
 
 def test_each_request_gets_distinct_request_id() -> None:
+    """Successive requests receive distinct ``X-Request-ID`` values."""
     client = TestClient(_make_app())
     r1 = client.get("/ping")
     r2 = client.get("/ping")
@@ -78,6 +83,7 @@ def test_each_request_gets_distinct_request_id() -> None:
 
 
 def test_counter_increments_after_request() -> None:
+    """The request counter for a route increments after a matching request."""
     # Use an isolated registry to avoid cross-test interference.
     registry = MetricsRegistry()
 
@@ -93,6 +99,7 @@ def test_counter_increments_after_request() -> None:
 
         @_app.get("/count-me")
         def count_me() -> dict:
+            """Return an empty payload used to trigger a counted request."""
             return {}
 
         client = TestClient(_app)
@@ -105,6 +112,7 @@ def test_counter_increments_after_request() -> None:
 
 
 def test_error_counter_increments_for_500_response() -> None:
+    """The error counter reflects a recorded 500 response in the Prometheus output."""
     registry = MetricsRegistry()
     registry.record("GET", "/boom", 0.01, status_code=500)
 
@@ -114,6 +122,7 @@ def test_error_counter_increments_for_500_response() -> None:
 
 
 def test_step_span_attributes_exclude_content() -> None:
+    """Step span attributes carry only run/step/agent/status metadata, no content."""
     attrs = step_span_attributes(
         run_id="run-1",
         step_id="navigator",
@@ -129,7 +138,8 @@ def test_step_span_attributes_exclude_content() -> None:
     }
 
 
-def test_orchestrator_agent_step_emits_correlated_span(tmp_path) -> None:
+def test_orchestrator_agent_step_emits_correlated_span(tmp_path: Path) -> None:
+    """An orchestrator run emits step spans correlated with the run id."""
     exporter = InMemorySpanExporter()
     configure_tracing(span_exporter=exporter, service_name="autodev-test")
     store = SQLiteStore(f"sqlite:///{tmp_path / 'trace.db'}")
@@ -159,11 +169,13 @@ _main_client = TestClient(main_app)
 
 
 def test_metrics_endpoint_returns_200() -> None:
+    """``GET /metrics`` on the real app returns 200."""
     resp = _main_client.get("/metrics")
     assert resp.status_code == 200
 
 
 def test_metrics_endpoint_content_type_is_text_plain() -> None:
+    """``GET /metrics`` responds with a ``text/plain`` content type."""
     resp = _main_client.get("/metrics")
     assert "text/plain" in resp.headers["content-type"]
 
@@ -177,6 +189,7 @@ def test_metrics_endpoint_returns_200_with_empty_registry() -> None:
 
 
 def test_metrics_output_contains_prometheus_comment() -> None:
+    """The ``/metrics`` body includes at least one Prometheus comment line."""
     resp = _main_client.get("/metrics")
     # After at least the /metrics request itself, the body must mention HELP or no-requests comment.
     text = resp.text

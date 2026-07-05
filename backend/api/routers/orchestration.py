@@ -35,11 +35,31 @@ router = APIRouter(tags=["orchestration"])
 
 
 class DynamicChatRequest(BaseModel):
+    """Request body for ``POST /chat/dynamic``.
+
+    Attributes:
+        session_id: Identifier of the existing orchestration session.
+        message: User message to route through the orchestrator.
+    """
+
     session_id: str
     message: str
 
 
 class DynamicChatResponse(BaseModel):
+    """Response body for ``POST /chat/dynamic``.
+
+    Attributes:
+        run_id: Identifier assigned to this run.
+        session_id: Identifier of the session the run belongs to.
+        status: Terminal run status.
+        run_type: Inferred orchestration run type.
+        current_state: Final graph state name.
+        mode: Execution path taken, ``"dynamic"`` or ``"fallback"``.
+        results: Agent results produced during the run.
+        steps: Steps recorded during the run.
+    """
+
     run_id: str
     session_id: str
     status: str
@@ -56,6 +76,14 @@ class DynamicChatResponse(BaseModel):
 
 
 def _get_orchestrator() -> Any:
+    """FastAPI dependency resolving the shared, lru_cache'd orchestrator instance.
+
+    Returns:
+        The process-wide orchestrator service instance.
+
+    Raises:
+        HTTPException: With status 503 if the orchestrator cannot be resolved.
+    """
     try:
         from backend.api.main import get_orchestrator  # noqa: PLC0415
         return get_orchestrator()
@@ -69,7 +97,20 @@ def _get_orchestrator() -> Any:
 
 
 def _run_dynamic(orchestrator: Any, session_id: str, message: str) -> DynamicChatResponse:
-    """Build a run-type-routed LangGraph and invoke it for *session_id*."""
+    """Build a run-type-routed LangGraph and invoke it for *session_id*.
+
+    Args:
+        orchestrator: Shared orchestrator service providing session/agent state.
+        session_id: Identifier of the existing orchestration session.
+        message: User message to route through the graph.
+
+    Returns:
+        The response describing the dynamic run's outcome.
+
+    Raises:
+        HTTPException: With status 404 if the session does not exist.
+        RuntimeError: If the run-type-routed graph fails to build.
+    """
     from backend.orchestrator.routing import RunTypeRouter  # noqa: PLC0415
     from backend.orchestrator.graphs import build_graph_for_run_type  # noqa: PLC0415
     from backend.orchestrator.service import (  # noqa: PLC0415
@@ -145,7 +186,19 @@ def _run_dynamic(orchestrator: Any, session_id: str, message: str) -> DynamicCha
 
 
 def _run_fallback(orchestrator: Any, session_id: str, message: str) -> DynamicChatResponse:
-    """Delegate to the standard ``OrchestratorService.handle_message``."""
+    """Delegate to the standard ``OrchestratorService.handle_message``.
+
+    Args:
+        orchestrator: Shared orchestrator service.
+        session_id: Identifier of the existing orchestration session.
+        message: User message to handle.
+
+    Returns:
+        The response describing the fallback run's outcome.
+
+    Raises:
+        HTTPException: With status 404 if the session does not exist.
+    """
     try:
         run = orchestrator.handle_message(session_id, message)
     except KeyError as exc:
@@ -181,6 +234,13 @@ def dynamic_chat(
     built by ``backend.orchestrator.graphs.build_graph_for_run_type``.
     Otherwise (or on any import/build failure) falls back to the standard
     ``OrchestratorService.handle_message``.
+
+    Args:
+        body: Parsed request body with the session id and message.
+        orchestrator: Shared orchestrator service dependency.
+
+    Returns:
+        The response describing the run's outcome, dynamic or fallback.
     """
     dynamic_enabled = os.environ.get("AUTODEV_DYNAMIC_ORCH", "").strip() == "1"
 

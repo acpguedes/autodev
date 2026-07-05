@@ -18,6 +18,11 @@ from backend.repository import RepositoryIntelligenceService
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the ``autodev`` CLI argument parser with all subcommands.
+
+    Returns:
+        The configured top-level argument parser.
+    """
     parser = argparse.ArgumentParser(
         prog="autodev",
         description="CLI estruturada para configurar e operar o AutoDev Architect localmente.",
@@ -105,12 +110,25 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Parse CLI arguments and dispatch to the selected subcommand handler.
+
+    Args:
+        argv: Argument vector to parse; defaults to ``sys.argv[1:]``.
+
+    Returns:
+        The process exit code returned by the dispatched handler.
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
     return int(args.handler(args))
 
 
 def _build_runtime_services() -> tuple[RuntimeConfigService, OrchestratorService, RepositoryIntelligenceService]:
+    """Build the runtime config, orchestrator, and repository services for a CLI invocation.
+
+    Returns:
+        A tuple of ``(config_service, orchestrator, repository_service)``.
+    """
     config_service = RuntimeConfigService()
     runtime_config = config_service.apply_to_environment()
     get_chat_model.cache_clear()
@@ -122,6 +140,14 @@ def _build_runtime_services() -> tuple[RuntimeConfigService, OrchestratorService
 
 
 def _handle_config_show(args: argparse.Namespace) -> int:
+    """Handle ``autodev config show``: print the active runtime configuration.
+
+    Args:
+        args: Parsed CLI arguments, including ``format``.
+
+    Returns:
+        Process exit code, always ``0``.
+    """
     config_service, _, _ = _build_runtime_services()
     document = config_service.load_document()
     if args.format == "env":
@@ -142,6 +168,14 @@ def _handle_config_show(args: argparse.Namespace) -> int:
 
 
 def _handle_sdk_new_plugin(args: argparse.Namespace) -> int:
+    """Handle ``autodev sdk new plugin``: scaffold a new plugin project.
+
+    Args:
+        args: Parsed CLI arguments, including ``plugin_id`` and ``output``.
+
+    Returns:
+        Process exit code, always ``0``.
+    """
     from backend.sdk.scaffold import scaffold_plugin
     path = scaffold_plugin(args.plugin_id, Path(args.output))
     print(json.dumps({"status": "ok", "path": str(path)}, ensure_ascii=False))
@@ -149,6 +183,14 @@ def _handle_sdk_new_plugin(args: argparse.Namespace) -> int:
 
 
 def _handle_config_set(args: argparse.Namespace) -> int:
+    """Handle ``autodev config set``: update and persist runtime configuration fields.
+
+    Args:
+        args: Parsed CLI arguments with the optional fields to update.
+
+    Returns:
+        Process exit code, always ``0``.
+    """
     config_service, _, _ = _build_runtime_services()
     config = config_service.load()
 
@@ -177,6 +219,14 @@ def _handle_config_set(args: argparse.Namespace) -> int:
 
 
 def _handle_config_validate(args: argparse.Namespace) -> int:
+    """Handle ``autodev config validate``: validate settings under a temporary profile/file override.
+
+    Args:
+        args: Parsed CLI arguments, including optional ``profile`` and ``settings_file``.
+
+    Returns:
+        Process exit code: ``0`` on success, ``1`` if settings fail to load.
+    """
     old_profile = os.environ.get("AUTODEV_PROFILE")
     old_settings_file = os.environ.get("AUTODEV_SETTINGS_FILE")
     try:
@@ -220,6 +270,11 @@ def _handle_config_validate(args: argparse.Namespace) -> int:
 
 
 def _handle_sessions_list(_: argparse.Namespace) -> int:
+    """Handle ``autodev sessions list``: print all persisted sessions.
+
+    Returns:
+        Process exit code, always ``0``.
+    """
     _config, orchestrator, _repo = _build_runtime_services()
     sessions = orchestrator.list_sessions()
     print(
@@ -242,6 +297,14 @@ def _handle_sessions_list(_: argparse.Namespace) -> int:
 
 
 def _handle_plan_create(args: argparse.Namespace) -> int:
+    """Handle ``autodev plan``: create a new planning session for a goal.
+
+    Args:
+        args: Parsed CLI arguments, including ``goal``.
+
+    Returns:
+        Process exit code, always ``0``.
+    """
     _, orchestrator, _ = _build_runtime_services()
     session = orchestrator.create_plan(args.goal)
     print(json.dumps(session.to_dict(), indent=2, ensure_ascii=False))
@@ -249,6 +312,14 @@ def _handle_plan_create(args: argparse.Namespace) -> int:
 
 
 def _handle_run_message(args: argparse.Namespace) -> int:
+    """Handle ``autodev run message``: send a message through the orchestrator.
+
+    Args:
+        args: Parsed CLI arguments, including ``session_id`` and ``message``.
+
+    Returns:
+        Process exit code, always ``0``.
+    """
     _, orchestrator, _ = _build_runtime_services()
     run = orchestrator.handle_message(args.session_id, args.message)
     print(json.dumps(run.to_dict(), indent=2, ensure_ascii=False))
@@ -256,6 +327,14 @@ def _handle_run_message(args: argparse.Namespace) -> int:
 
 
 def _handle_execute_plan(args: argparse.Namespace) -> int:
+    """Handle ``autodev run execute-plan``: execute a session's derived plan.
+
+    Args:
+        args: Parsed CLI arguments, including ``session_id``.
+
+    Returns:
+        Process exit code, always ``0``.
+    """
     _, orchestrator, _ = _build_runtime_services()
     run = orchestrator.execute_plan(args.session_id)
     print(json.dumps(run.to_dict(), indent=2, ensure_ascii=False))
@@ -263,6 +342,14 @@ def _handle_execute_plan(args: argparse.Namespace) -> int:
 
 
 def _handle_repository_context(args: argparse.Namespace) -> int:
+    """Handle ``autodev repository context``: print ranked repository search results.
+
+    Args:
+        args: Parsed CLI arguments, including ``query`` and ``limit``.
+
+    Returns:
+        Process exit code, always ``0``.
+    """
     _, _, repository_service = _build_runtime_services()
     context = repository_service.build_context(
         query=args.query,

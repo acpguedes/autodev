@@ -61,6 +61,7 @@ def register_handler(job_type: str) -> Callable[[_JobHandler], _JobHandler]:
     """Decorator: register a callable as the handler for *job_type*."""
 
     def _decorator(fn: _JobHandler) -> _JobHandler:
+        """Register the wrapped callable as the handler for the enclosing ``job_type``."""
         _HANDLERS[job_type] = fn
         return fn
 
@@ -87,6 +88,11 @@ class InProcessJobQueue(AbstractJobQueue):
     """Thread-pool-backed in-process job queue."""
 
     def __init__(self, max_workers: int = 4) -> None:
+        """Initialize the queue with a bounded thread pool.
+
+        Args:
+            max_workers: Maximum number of jobs to run concurrently.
+        """
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._store: dict[str, dict] = {}
         self._lock = threading.Lock()
@@ -96,6 +102,15 @@ class InProcessJobQueue(AbstractJobQueue):
     # ------------------------------------------------------------------
 
     def enqueue(self, job_type: str, payload: dict) -> str:
+        """Submit a job to the thread pool for asynchronous execution.
+
+        Args:
+            job_type: Registered job type identifying the handler to run.
+            payload: Arguments passed to the handler.
+
+        Returns:
+            The generated job id.
+        """
         job_id = str(uuid.uuid4())
         record: dict = {
             "job_id": job_id,
@@ -111,6 +126,14 @@ class InProcessJobQueue(AbstractJobQueue):
         return job_id
 
     def get(self, job_id: str) -> dict:
+        """Return the current state of a submitted job.
+
+        Args:
+            job_id: Identifier returned by :meth:`enqueue`.
+
+        Returns:
+            The job's status record; an error record if ``job_id`` is unknown.
+        """
         with self._lock:
             record = self._store.get(job_id)
         if record is None:
@@ -128,6 +151,13 @@ class InProcessJobQueue(AbstractJobQueue):
     # ------------------------------------------------------------------
 
     def _run(self, job_id: str, job_type: str, payload: dict) -> None:
+        """Execute a job's handler in the worker thread and record its outcome.
+
+        Args:
+            job_id: Identifier of the job being run.
+            job_type: Registered job type identifying the handler to run.
+            payload: Arguments passed to the handler.
+        """
         with self._lock:
             self._store[job_id]["status"] = _STATUS_RUNNING
 
@@ -167,6 +197,19 @@ class RedisJobQueue(AbstractJobQueue):
         start_worker: bool = True,
         poll_interval: float = 0.1,
     ) -> None:
+        """Initialize the queue, connecting to Redis and optionally starting a worker.
+
+        Args:
+            client: Pre-built Redis client to reuse; a new one is built if omitted.
+            url: Redis connection URL, used when ``client`` is omitted; falls
+                back to ``AUTODEV_REDIS_URL``.
+            start_worker: Whether to start a background thread processing jobs.
+            poll_interval: Seconds to sleep between empty queue polls.
+
+        Raises:
+            RuntimeError: If the ``redis`` package is not installed, or if no
+                Redis URL is configured.
+        """
         if client is None:
             try:
                 import redis as _redis  # type: ignore[import-untyped]
@@ -186,6 +229,15 @@ class RedisJobQueue(AbstractJobQueue):
             thread.start()
 
     def enqueue(self, job_type: str, payload: dict) -> str:
+        """Submit a job by writing its record to Redis and queuing its id.
+
+        Args:
+            job_type: Registered job type identifying the handler to run.
+            payload: Arguments passed to the handler.
+
+        Returns:
+            The generated job id.
+        """
         job_id = str(uuid.uuid4())
         self._client.hset(
             self._job_key(job_id),
@@ -202,6 +254,14 @@ class RedisJobQueue(AbstractJobQueue):
         return job_id
 
     def get(self, job_id: str) -> dict:
+        """Return the current state of a submitted job from Redis.
+
+        Args:
+            job_id: Identifier returned by :meth:`enqueue`.
+
+        Returns:
+            The job's status record; an error record if ``job_id`` is unknown.
+        """
         record = _decode_hash(self._client.hgetall(self._job_key(job_id)))
         if not record:
             return {
@@ -220,6 +280,11 @@ class RedisJobQueue(AbstractJobQueue):
         }
 
     def run_pending_once(self) -> bool:
+        """Pop and run a single pending job, if any.
+
+        Returns:
+            ``True`` if a job was popped and run, ``False`` if the queue was empty.
+        """
         raw_job_id = self._client.lpop(self._pending_key)
         if raw_job_id is None:
             return False
@@ -228,12 +293,18 @@ class RedisJobQueue(AbstractJobQueue):
         return True
 
     def _worker_loop(self) -> None:
+        """Continuously run pending jobs, sleeping between empty polls."""
         while True:
             ran_job = self.run_pending_once()
             if not ran_job:
                 time.sleep(self._poll_interval)
 
     def _run_redis_job(self, job_id: str) -> None:
+        """Execute a job's handler and persist its outcome back to Redis.
+
+        Args:
+            job_id: Identifier of the job to run.
+        """
         key = self._job_key(job_id)
         record = _decode_hash(self._client.hgetall(key))
         if not record:
@@ -272,16 +343,40 @@ class RedisJobQueue(AbstractJobQueue):
             )
 
     def _job_key(self, job_id: str) -> str:
+        """Build the Redis hash key storing a job's record.
+
+        Args:
+            job_id: Identifier of the job.
+
+        Returns:
+            The fully qualified Redis key.
+        """
         return f"autodev:jobs:{job_id}"
 
 
 def _decode_value(value: Any) -> str:
+    """Decode a Redis response value to a ``str``.
+
+    Args:
+        value: Raw value returned by the Redis client, bytes or otherwise.
+
+    Returns:
+        The decoded string.
+    """
     if isinstance(value, bytes):
         return value.decode()
     return str(value)
 
 
 def _decode_hash(record: dict[Any, Any]) -> dict[str, str]:
+    """Decode a Redis hash response into a plain ``str``-keyed/valued dict.
+
+    Args:
+        record: Raw hash mapping returned by the Redis client.
+
+    Returns:
+        The decoded mapping.
+    """
     return {_decode_value(key): _decode_value(value) for key, value in record.items()}
 
 

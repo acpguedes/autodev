@@ -1,3 +1,5 @@
+"""Tests for the plugin host: discovery, lifecycle state machine, and isolation."""
+
 from __future__ import annotations
 
 import textwrap
@@ -17,6 +19,7 @@ def _write_plugin(
     host_api: str = ">=2.0 <3.0",
     entrypoint: str | None = None,
 ) -> Path:
+    """Write a minimal plugin project (module + manifest) under ``root``."""
     plugin_dir = root / name
     plugin_dir.mkdir()
     module_name = name.replace("-", "_")
@@ -49,11 +52,13 @@ def _write_plugin(
 
 @pytest.fixture
 def host(tmp_path: Path) -> PluginHost:
+    """A fresh :class:`PluginHost` backed by a temp sqlite store and plugin directory."""
     store = DurableStore(f"sqlite:///{tmp_path / 'plugins.db'}")
     return PluginHost(store=store, plugin_dirs=[tmp_path / "plugins"])
 
 
 def test_directory_discovery_finds_plugin_manifests(host: PluginHost, tmp_path: Path) -> None:
+    """Directory discovery finds a plugin's manifest and parses its id."""
     plugin_root = tmp_path / "plugins"
     plugin_root.mkdir()
     plugin_dir = _write_plugin(plugin_root, "example-plugin")
@@ -65,6 +70,7 @@ def test_directory_discovery_finds_plugin_manifests(host: PluginHost, tmp_path: 
 
 
 def test_lifecycle_state_machine_emits_events(host: PluginHost, tmp_path: Path) -> None:
+    """Install, enable, disable, and uninstall each transition state and emit an event."""
     plugin_root = tmp_path / "plugins"
     plugin_root.mkdir()
     plugin_dir = _write_plugin(plugin_root, "stateful-plugin")
@@ -86,6 +92,7 @@ def test_lifecycle_state_machine_emits_events(host: PluginHost, tmp_path: Path) 
 
 
 def test_incompatible_host_api_is_rejected_with_reason(host: PluginHost, tmp_path: Path) -> None:
+    """A plugin declaring an incompatible host API range is installed as rejected."""
     plugin_root = tmp_path / "plugins"
     plugin_root.mkdir()
     plugin_dir = _write_plugin(plugin_root, "future-plugin", host_api=">=3.0 <4.0")
@@ -98,6 +105,7 @@ def test_incompatible_host_api_is_rejected_with_reason(host: PluginHost, tmp_pat
 
 
 def test_broken_plugin_does_not_prevent_enabling_another(host: PluginHost, tmp_path: Path) -> None:
+    """A plugin whose entrypoint fails to load is quarantined without blocking other plugins."""
     plugin_root = tmp_path / "plugins"
     plugin_root.mkdir()
     broken_dir = _write_plugin(plugin_root, "broken-plugin", entrypoint="missing_module:register")
@@ -115,6 +123,7 @@ def test_broken_plugin_does_not_prevent_enabling_another(host: PluginHost, tmp_p
 
 
 def test_discovering_50_plugins_stays_under_one_second(host: PluginHost, tmp_path: Path) -> None:
+    """Discovery scales to 50 plugins while staying under a one-second budget."""
     plugin_root = tmp_path / "plugins"
     plugin_root.mkdir()
     for index in range(50):

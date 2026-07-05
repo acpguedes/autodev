@@ -12,6 +12,14 @@ from backend.sdk.contracts import ContractTestResult
 
 
 def run_contract_tests(plugin_dir: Path | str) -> ContractTestResult:
+    """Install and enable a plugin in an ephemeral host to verify it satisfies the SDK contract.
+
+    Args:
+        plugin_dir: Directory containing the plugin's ``plugin.yaml``.
+
+    Returns:
+        The contract test outcome: passed, or failed with error messages.
+    """
     plugin_path = Path(plugin_dir)
     try:
         manifest = load_manifest(plugin_path / "plugin.yaml")

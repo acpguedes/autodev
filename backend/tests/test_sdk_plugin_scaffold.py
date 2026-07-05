@@ -1,3 +1,5 @@
+"""Tests for the SDK plugin scaffolder and its generated contract test harness."""
+
 from __future__ import annotations
 
 import subprocess
@@ -9,6 +11,7 @@ from backend.sdk.testing import run_contract_tests
 
 
 def test_sdk_new_plugin_scaffolds_project_that_passes_contract_tests(tmp_path: Path) -> None:
+    """A scaffolded plugin project has its expected files and passes contract tests."""
     output = tmp_path / "hello-plugin"
 
     exit_code = sdk_main(["new", "plugin", "acme/hello-plugin", "--output", str(output)])
@@ -21,6 +24,7 @@ def test_sdk_new_plugin_scaffolds_project_that_passes_contract_tests(tmp_path: P
 
 
 def test_scaffolded_contract_test_is_runnable_with_pytest(tmp_path: Path) -> None:
+    """The scaffolded ``test_contract.py`` runs and passes under pytest."""
     output = tmp_path / "hello-plugin"
     sdk_main(["new", "plugin", "acme/hello-plugin", "--output", str(output)])
 
@@ -36,6 +40,7 @@ def test_scaffolded_contract_test_is_runnable_with_pytest(tmp_path: Path) -> Non
 
 
 def test_contract_harness_reports_manifest_failures(tmp_path: Path) -> None:
+    """The contract test harness reports the specific manifest validation failure."""
     plugin_dir = tmp_path / "bad-plugin"
     plugin_dir.mkdir()
     (plugin_dir / "plugin.yaml").write_text("id: nope\n", encoding="utf-8")
@@ -47,6 +52,7 @@ def test_contract_harness_reports_manifest_failures(tmp_path: Path) -> None:
 
 
 def test_typescript_contract_stub_is_published() -> None:
+    """The published TypeScript contract stub declares the ``PluginManifest`` interface."""
     contract_stub = Path("sdk/typescript/contracts.ts")
 
     assert contract_stub.exists()

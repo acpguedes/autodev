@@ -1,6 +1,9 @@
+"""Tests for agent.yaml manifest parsing, validation, and IO schema checks."""
+
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import pytest
 
@@ -15,6 +18,7 @@ from backend.agents.manifest import (
 
 
 def _input_schema() -> dict[str, object]:
+    """Build a sample JSON Schema for agent input used across manifest tests."""
     return {
         "type": "object",
         "additionalProperties": False,
@@ -28,6 +32,7 @@ def _input_schema() -> dict[str, object]:
 
 
 def _output_schema() -> dict[str, object]:
+    """Build a sample JSON Schema for agent output used across manifest tests."""
     return {
         "type": "object",
         "additionalProperties": False,
@@ -41,6 +46,7 @@ def _output_schema() -> dict[str, object]:
 
 
 def _valid_agent_manifest() -> dict[str, object]:
+    """Build a fully valid raw agent manifest document for use as a test baseline."""
     return {
         "schemaVersion": "2.0",
         "kind": "Agent",
@@ -67,6 +73,7 @@ def _valid_agent_manifest() -> dict[str, object]:
 
 
 def test_valid_agent_manifest_is_typed_and_inherits_safe_budgets() -> None:
+    """A valid manifest parses successfully and inherits the default safe budgets."""
     result = validate_agent_manifest(_valid_agent_manifest())
 
     assert result.valid is True
@@ -78,6 +85,7 @@ def test_valid_agent_manifest_is_typed_and_inherits_safe_budgets() -> None:
 
 
 def test_agent_manifest_rejects_invalid_identity_version_and_unknown_capability() -> None:
+    """Validation rejects a bad id, non-SemVer version, and unknown capability together."""
     raw = _valid_agent_manifest()
     raw["id"] = "Bad/Agent"
     raw["version"] = "latest"
@@ -92,6 +100,7 @@ def test_agent_manifest_rejects_invalid_identity_version_and_unknown_capability(
 
 
 def test_agent_io_rejects_unknown_input_and_output_fields() -> None:
+    """IO validation rejects payloads with properties outside the declared schema."""
     manifest = validate_agent_manifest(_valid_agent_manifest()).manifest
     assert manifest is not None
 
@@ -110,6 +119,7 @@ def test_agent_io_rejects_unknown_input_and_output_fields() -> None:
 
 
 def test_agent_io_validation_stays_under_20ms() -> None:
+    """IO schema validation stays fast enough for the runtime's per-step budget."""
     manifest = validate_agent_manifest(_valid_agent_manifest()).manifest
     assert manifest is not None
     payload = {"schemaVersion": "1.0.0", "task": "build"}
@@ -122,7 +132,8 @@ def test_agent_io_validation_stays_under_20ms() -> None:
     assert average_ms < 20
 
 
-def test_load_agent_manifest_resolves_local_schema_refs(tmp_path) -> None:
+def test_load_agent_manifest_resolves_local_schema_refs(tmp_path: Path) -> None:
+    """Loading a manifest inlines local ``$ref`` schema files under the plugin directory."""
     plugin_dir = tmp_path / "plugin"
     contracts = plugin_dir / "contracts"
     contracts.mkdir(parents=True)

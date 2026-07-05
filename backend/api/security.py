@@ -29,6 +29,11 @@ _BEARER_PREFIX = "bearer "
 
 
 def _configured_token() -> str:
+    """Read and normalize the configured API token from settings.
+
+    Returns:
+        The trimmed token, or an empty string when authentication is disabled.
+    """
     return Settings().autodev_api_token.strip()
 
 
@@ -37,6 +42,12 @@ def require_api_token(request: Request) -> None:
 
     No-op when ``AUTODEV_API_TOKEN`` is unset/empty. Raises ``401`` when a token
     is configured but the request lacks a valid ``Authorization`` header.
+
+    Args:
+        request: Incoming request to authenticate.
+
+    Raises:
+        HTTPException: With status 401 if the token is missing or invalid.
     """
 
     token = _configured_token()

@@ -9,7 +9,7 @@ from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor, SpanExporter
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from backend.config.settings import Settings, get_settings
@@ -21,13 +21,19 @@ _provider: TracerProvider | None = None
 def configure_tracing(
     settings: Settings | None = None,
     *,
-    span_exporter=None,
+    span_exporter: SpanExporter | None = None,
     service_name: str | None = None,
 ) -> None:
     """Configure OpenTelemetry tracing once for the process.
 
     Tests can pass ``span_exporter`` to force an in-memory exporter before app
     startup configures the default provider.
+
+    Args:
+        settings: Settings override; falls back to :func:`get_settings`.
+        span_exporter: Exporter to attach directly, bypassing OTLP configuration.
+        service_name: Service name to record on the tracer's resource; falls
+            back to ``settings.otel_service_name``.
     """
 
     global _configured, _provider
@@ -56,7 +62,12 @@ def configure_tracing(
     _configured = True
 
 
-def get_tracer():
+def get_tracer() -> trace.Tracer:
+    """Return the process tracer, configuring tracing on first use.
+
+    Returns:
+        The ``"backend.observability"`` tracer.
+    """
     configure_tracing()
     return trace.get_tracer("backend.observability")
 
@@ -68,7 +79,17 @@ def step_span_attributes(
     agent: str,
     status: str,
 ) -> dict[str, str]:
-    """Return non-PII span attributes for a run step."""
+    """Return non-PII span attributes for a run step.
+
+    Args:
+        run_id: Identifier of the run.
+        step_id: Identifier of the step.
+        agent: Identifier of the agent executing the step.
+        status: Step outcome status.
+
+    Returns:
+        The span attributes as a flat string-keyed dict.
+    """
 
     return {
         "autodev.run_id": run_id,
@@ -86,6 +107,17 @@ def trace_run_step(
     agent: str,
     status: str,
 ) -> Iterator[None]:
+    """Trace a single agent run step as an OpenTelemetry span.
+
+    Args:
+        run_id: Identifier of the run.
+        step_id: Identifier of the step.
+        agent: Identifier of the agent executing the step.
+        status: Step outcome status.
+
+    Yields:
+        Control to the traced block.
+    """
     attrs = step_span_attributes(
         run_id=run_id,
         step_id=step_id,

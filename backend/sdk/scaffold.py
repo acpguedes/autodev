@@ -9,6 +9,19 @@ from backend.plugins.manifest import PLUGIN_ID_RE
 
 
 def scaffold_plugin(plugin_id: str, output: Path | str) -> Path:
+    """Scaffold a minimal Python plugin project with a manifest, entrypoint, and tests.
+
+    Args:
+        plugin_id: Plugin id in ``namespace/name`` kebab-case format.
+        output: Directory to create the project in; must not already exist.
+
+    Returns:
+        The created project directory.
+
+    Raises:
+        ValueError: If ``plugin_id`` is not in the required format.
+        FileExistsError: If ``output`` already exists.
+    """
     if not PLUGIN_ID_RE.match(plugin_id):
         raise ValueError("plugin id must use namespace/name kebab-case format")
     output_path = Path(output)
@@ -92,10 +105,12 @@ python -m pytest tests -q
 
 
 def _module_name(name: str) -> str:
+    """Derive a valid Python module name from a plugin's kebab-case name segment."""
     return re.sub(r"[^a-z0-9_]", "_", name.replace("-", "_"))
 
 
 def _write(path: Path, content: str) -> None:
+    """Write UTF-8 text content to a file."""
     path.write_text(content, encoding="utf-8")
 
 

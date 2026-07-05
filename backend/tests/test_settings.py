@@ -13,6 +13,7 @@ from backend.config.settings import Settings, reset_settings_cache
 
 @pytest.fixture(autouse=True)
 def clean_settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Clear settings-related env vars and reset the settings cache before each test."""
     for name in (
         "AUTODEV_PROFILE",
         "AUTODEV_SETTINGS_FILE",
@@ -31,6 +32,7 @@ def clean_settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_local_profile_defaults_to_sqlite_and_stub_provider() -> None:
+    """The local profile defaults to SQLite, the stub LLM, and local storage."""
     settings = Settings()
 
     assert settings.autodev_profile == "local"
@@ -40,6 +42,7 @@ def test_local_profile_defaults_to_sqlite_and_stub_provider() -> None:
 
 
 def test_prod_profile_requires_postgres_redis_and_minio() -> None:
+    """The prod profile rejects defaults, reporting every missing requirement."""
     with pytest.raises(ValidationError) as excinfo:
         Settings(autodev_profile="prod")
 
@@ -52,6 +55,7 @@ def test_prod_profile_requires_postgres_redis_and_minio() -> None:
 
 
 def test_prod_profile_accepts_explicit_postgres_redis_and_s3() -> None:
+    """The prod profile accepts a fully configured Postgres/Redis/S3 setup."""
     settings = Settings(
         autodev_profile="prod",
         database_url="postgresql://autodev:autodev@postgres:5432/autodev",
@@ -68,6 +72,7 @@ def test_prod_profile_accepts_explicit_postgres_redis_and_s3() -> None:
 
 
 def test_prod_profile_rejects_invalid_redis_url() -> None:
+    """The prod profile rejects a Redis URL with an unsupported scheme."""
     with pytest.raises(ValidationError) as excinfo:
         Settings(
             autodev_profile="prod",
@@ -87,6 +92,7 @@ def test_settings_file_loads_below_environment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Settings-file values fill gaps left by env vars, which still take priority."""
     settings_file = tmp_path / "settings.json"
     settings_file.write_text(
         json.dumps(
@@ -109,6 +115,7 @@ def test_settings_file_loads_below_environment(
 
 
 def test_redacted_dump_never_exposes_secret_values() -> None:
+    """The redacted settings dump masks every configured secret field."""
     settings = Settings(
         openai_api_key="sk-test",
         autodev_api_token="token-test",

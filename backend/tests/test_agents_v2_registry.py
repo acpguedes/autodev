@@ -1,3 +1,5 @@
+"""Tests for the durable v2 agent registry: versioning, ranking, and sync."""
+
 from __future__ import annotations
 
 import textwrap
@@ -6,7 +8,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from backend.agents.manifest import validate_agent_manifest
+from backend.agents.manifest import AgentManifest, validate_agent_manifest
 from backend.agents.registry_v2 import AGENT_REGISTRY_SCHEMA_VERSION, AgentRegistry
 from backend.persistence.database import DurableStore
 from backend.plugins.host import PluginHost
@@ -19,6 +21,7 @@ def _agent_manifest(
     capability: str = "code.implementation",
     level: str = "primary",
 ) -> dict[str, object]:
+    """Build a raw agent manifest document with overridable id, version, and capability."""
     return {
         "schemaVersion": "2.0",
         "kind": "Agent",
@@ -36,7 +39,8 @@ def _agent_manifest(
     }
 
 
-def _validated_manifest(**kwargs):
+def _validated_manifest(**kwargs: str) -> AgentManifest:
+    """Build and validate an agent manifest, forwarding overrides to :func:`_agent_manifest`."""
     result = validate_agent_manifest(_agent_manifest(**kwargs))
     assert result.valid, result.errors
     assert result.manifest is not None
@@ -44,6 +48,7 @@ def _validated_manifest(**kwargs):
 
 
 def test_registry_persists_multiple_versions_and_resolves_semver_ranges(tmp_path: Path) -> None:
+    """Multiple registered versions persist and SemVer ranges resolve to the right one."""
     store = DurableStore(f"sqlite:///{tmp_path / 'agents.db'}")
     registry = AgentRegistry(store)
     registry.register(_validated_manifest(version="1.0.0"), plugin_id="acme/plugin")
@@ -58,6 +63,7 @@ def test_registry_persists_multiple_versions_and_resolves_semver_ranges(tmp_path
 
 
 def test_capability_search_returns_rankable_candidates_under_100ms(tmp_path: Path) -> None:
+    """Capability search ranks primary-level agents above secondary and stays fast at scale."""
     store = DurableStore(f"sqlite:///{tmp_path / 'agents.db'}")
     registry = AgentRegistry(store)
     for index in range(120):
@@ -81,6 +87,7 @@ def test_capability_search_returns_rankable_candidates_under_100ms(tmp_path: Pat
 
 
 def test_deprecate_marks_version_and_signals_reason(tmp_path: Path) -> None:
+    """Deprecating a version marks it deprecated and records the given reason."""
     store = DurableStore(f"sqlite:///{tmp_path / 'agents.db'}")
     registry = AgentRegistry(store)
     registry.register(_validated_manifest(version="1.0.0"), plugin_id="acme/plugin")
@@ -93,6 +100,7 @@ def test_deprecate_marks_version_and_signals_reason(tmp_path: Path) -> None:
 
 
 def test_registry_syncs_agent_manifests_from_enabled_plugin_host(tmp_path: Path) -> None:
+    """Syncing the registry registers agents declared by enabled plugins in the host."""
     store = DurableStore(f"sqlite:///{tmp_path / 'agents.db'}")
     plugin_dir = tmp_path / "agent-plugin"
     plugin_dir.mkdir()
@@ -155,6 +163,7 @@ def test_registry_syncs_agent_manifests_from_enabled_plugin_host(tmp_path: Path)
 
 
 def test_v2_agent_catalog_endpoint_returns_schema_version(tmp_path: Path) -> None:
+    """The ``/v2/agents/catalog`` endpoint returns the schema version and ranked agents."""
     store = DurableStore(f"sqlite:///{tmp_path / 'agents.db'}")
     registry = AgentRegistry(store)
     registry.register(_validated_manifest(version="1.0.0"), plugin_id="acme/plugin")

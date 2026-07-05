@@ -1,3 +1,5 @@
+"""Tests for the active plugin registry projection and its ``/v2/plugins/active`` API."""
+
 from __future__ import annotations
 
 import textwrap
@@ -14,6 +16,7 @@ from backend.plugins.registry import ActivePluginRegistry
 
 
 def _write_plugin(root: Path, *, version: str = "0.1.0", body: str | None = None) -> Path:
+    """Write (or overwrite) the ``registry-plugin`` project with an optional custom module body."""
     plugin_dir = root / "registry-plugin"
     plugin_dir.mkdir(exist_ok=True)
     (plugin_dir / "registry_plugin.py").write_text(
@@ -45,6 +48,7 @@ def _write_plugin(root: Path, *, version: str = "0.1.0", body: str | None = None
 
 @pytest.fixture()
 def isolated_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[Path, None, None]:
+    """Point the process-wide store at an isolated temp database for the test's duration."""
     database_path = tmp_path / "plugins.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path}")
     reset_settings_cache()
@@ -55,6 +59,7 @@ def isolated_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator
 
 
 def test_active_registry_is_consistent_after_enable_disable(tmp_path: Path) -> None:
+    """The active-plugin snapshot reflects enable and disable transitions."""
     store = DurableStore(f"sqlite:///{tmp_path / 'plugins.db'}")
     plugin_dir = _write_plugin(tmp_path)
     host = PluginHost(store=store)
@@ -80,6 +85,7 @@ def test_v2_active_plugins_api_returns_schema_version(
     isolated_store: Path,
     tmp_path: Path,
 ) -> None:
+    """The ``/v2/plugins/active`` endpoint returns the schema version and active plugins."""
     store = DurableStore(f"sqlite:///{isolated_store}")
     plugin_dir = _write_plugin(tmp_path)
     host = PluginHost(store=store)
@@ -103,6 +109,7 @@ def test_v2_active_plugins_api_returns_schema_version(
 
 
 def test_dev_hot_reload_rolls_back_when_new_plugin_fails(tmp_path: Path) -> None:
+    """A hot-reload whose new entrypoint raises rolls back to the previous version."""
     store = DurableStore(f"sqlite:///{tmp_path / 'plugins.db'}")
     plugin_dir = _write_plugin(tmp_path)
     host = PluginHost(store=store)

@@ -13,10 +13,23 @@ REGISTRY_SCHEMA_VERSION = "1"
 
 
 class ActivePluginRegistry:
+    """Read-only projection of currently enabled plugins and their extension points."""
+
     def __init__(self, store: Any | None = None) -> None:
+        """Initialize the registry over a plugin store.
+
+        Args:
+            store: Durable store to use; defaults to :func:`get_store`.
+        """
         self._store = PluginStore(store or get_store())
 
     def snapshot(self) -> dict[str, Any]:
+        """Build a snapshot of enabled plugins and which extension points they inhabit.
+
+        Returns:
+            A dict with ``schemaVersion``, ``activePlugins``, and
+            ``inhabitedExtensionPoints``.
+        """
         active_plugins: list[dict[str, Any]] = []
         inhabited: dict[str, list[str]] = defaultdict(list)
         for row in self._store.list_plugins():

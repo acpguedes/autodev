@@ -28,6 +28,18 @@ class ValidationError(ValueError):
 
 @dataclass(frozen=True)
 class AgentBudgets:
+    """Resource limits enforced on a single agent run.
+
+    Attributes:
+        tokens_input: Maximum number of input tokens allowed.
+        tokens_output: Maximum number of output tokens allowed.
+        cost_usd: Maximum cost in US dollars allowed.
+        wall_clock_seconds: Maximum wall-clock duration allowed, in seconds.
+        max_steps: Maximum number of reasoning/execution steps allowed.
+        max_tool_calls: Maximum number of tool invocations allowed.
+        on_exceeded: Action to take when a budget is exceeded.
+    """
+
     tokens_input: int
     tokens_output: int
     cost_usd: float
@@ -49,6 +61,15 @@ DEFAULT_AGENT_BUDGETS = AgentBudgets(
 
 @dataclass(frozen=True)
 class AgentCapability:
+    """A capability claimed by an agent manifest.
+
+    Attributes:
+        id: Dotted capability identifier declared in the manifest.
+        version: SemVer version of the capability implementation.
+        level: Whether this is the agent's ``"primary"`` or ``"secondary"`` capability.
+        metadata: Additional capability-specific configuration.
+    """
+
     id: str
     version: str
     level: str = "primary"
@@ -57,6 +78,16 @@ class AgentCapability:
 
 @dataclass(frozen=True)
 class AgentIOContract:
+    """Declared input/output contract for an agent.
+
+    Attributes:
+        contract: Contract identifier in ``namespace/name`` format.
+        contract_version: SemVer version of the contract.
+        input_schema: JSON Schema describing valid agent input.
+        output_schema: JSON Schema describing valid agent output.
+        on_invalid_output: Action to take when produced output fails validation.
+    """
+
     contract: str
     contract_version: str
     input_schema: dict[str, Any]
@@ -66,18 +97,40 @@ class AgentIOContract:
 
 @dataclass(frozen=True)
 class AgentToolPermission:
+    """Grant of access to a single tool.
+
+    Attributes:
+        id: Identifier of the granted tool.
+        constraints: Additional constraints scoping the grant.
+    """
+
     id: str
     constraints: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
 class AgentSkillPermission:
+    """Grant of access to a single skill.
+
+    Attributes:
+        id: Identifier of the granted skill.
+        version_range: SemVer range of skill versions covered by the grant.
+    """
+
     id: str
     version_range: str = "*"
 
 
 @dataclass(frozen=True)
 class AgentPermissionSpec:
+    """Aggregate permission grants for an agent.
+
+    Attributes:
+        tools: Tools the agent is granted access to.
+        skills: Skills the agent is granted access to.
+        network: Network access scope, e.g. ``"none"``.
+    """
+
     tools: tuple[AgentToolPermission, ...] = ()
     skills: tuple[AgentSkillPermission, ...] = ()
     network: str = "none"
@@ -85,12 +138,38 @@ class AgentPermissionSpec:
 
 @dataclass(frozen=True)
 class AgentEntrypoint:
+    """Reference to the callable that implements an agent.
+
+    Attributes:
+        runtime: Runtime used to execute the entrypoint, e.g. ``"python"``.
+        ref: Module and callable reference, e.g. ``"pkg.module:callable"``.
+    """
+
     runtime: str
     ref: str
 
 
 @dataclass(frozen=True)
 class AgentManifest:
+    """Fully parsed and validated ``agent.yaml`` manifest.
+
+    Attributes:
+        schema_version: Manifest schema version.
+        kind: Manifest kind, always ``"Agent"``.
+        id: Fully qualified agent id in ``namespace/name`` format.
+        version: SemVer version of the agent.
+        host_api: Supported host API version range.
+        capabilities: Capabilities declared by the agent.
+        io: Input/output contract declared by the agent.
+        entrypoint: Reference to the agent's implementation.
+        permissions: Tool, skill, and network grants for the agent.
+        budgets: Resource limits enforced on the agent's runs.
+        policy: Free-form policy configuration.
+        display_name: Optional human-readable name.
+        description: Optional human-readable description.
+        raw: Original parsed manifest document.
+    """
+
     schema_version: str
     kind: str
     id: str
@@ -109,12 +188,29 @@ class AgentManifest:
 
 @dataclass(frozen=True)
 class AgentManifestValidationResult:
+    """Outcome of validating a raw manifest document.
+
+    Attributes:
+        valid: Whether the manifest passed validation.
+        errors: Validation error messages, empty when ``valid`` is ``True``.
+        manifest: The parsed manifest, present only when ``valid`` is ``True``.
+    """
+
     valid: bool
     errors: list[str]
     manifest: AgentManifest | None = None
 
 
 def validate_agent_manifest(raw: dict[str, Any]) -> AgentManifestValidationResult:
+    """Validate a raw manifest document and parse it into an :class:`AgentManifest`.
+
+    Args:
+        raw: Parsed ``agent.yaml`` document, keyed by camelCase field names.
+
+    Returns:
+        A result indicating whether the manifest is valid; on success it carries
+        the parsed :class:`AgentManifest`, on failure the list of error messages.
+    """
     errors: list[str] = []
     for key in ("schemaVersion", "kind", "id", "version", "hostApi", "capabilities", "io", "entrypoint"):
         if key not in raw:
@@ -171,6 +267,17 @@ def validate_agent_manifest(raw: dict[str, Any]) -> AgentManifestValidationResul
 
 
 def load_agent_manifest(path: Path | str) -> AgentManifest:
+    """Load, resolve, and validate an ``agent.yaml`` manifest from disk.
+
+    Args:
+        path: Path to the ``agent.yaml`` file.
+
+    Returns:
+        The parsed and validated :class:`AgentManifest`.
+
+    Raises:
+        ValueError: If the document is not a mapping or fails validation.
+    """
     manifest_path = Path(path)
     raw = yaml.safe_load(manifest_path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
@@ -187,12 +294,34 @@ def validate_agent_io(
     payload: dict[str, Any],
     direction: Literal["input", "output"],
 ) -> dict[str, Any]:
+    """Validate a payload against an agent's declared input or output schema.
+
+    Args:
+        manifest: Agent manifest declaring the schema to validate against.
+        payload: Payload to validate.
+        direction: Whether to validate against the ``"input"`` or ``"output"`` schema.
+
+    Returns:
+        The payload, unchanged, if it satisfies the schema.
+
+    Raises:
+        ValidationError: If the payload violates the schema.
+    """
     schema = manifest.io.input_schema if direction == "input" else manifest.io.output_schema
     _validate_schema(schema, payload, path="$")
     return payload
 
 
 def _parse_capabilities(raw: Any, errors: list[str]) -> list[AgentCapability]:
+    """Parse and validate the ``capabilities`` section of a raw manifest.
+
+    Args:
+        raw: Raw value of the ``capabilities`` field.
+        errors: Error list to append validation failures to.
+
+    Returns:
+        Parsed capabilities; empty if ``raw`` is not a non-empty list.
+    """
     if not isinstance(raw, list) or not raw:
         errors.append("capabilities must contain at least one item")
         return []
@@ -217,6 +346,15 @@ def _parse_capabilities(raw: Any, errors: list[str]) -> list[AgentCapability]:
 
 
 def _parse_io(raw: Any, errors: list[str]) -> AgentIOContract:
+    """Parse and validate the ``io`` section of a raw manifest.
+
+    Args:
+        raw: Raw value of the ``io`` field.
+        errors: Error list to append validation failures to.
+
+    Returns:
+        Parsed IO contract; empty schemas if ``raw`` is not an object.
+    """
     if not isinstance(raw, dict):
         errors.append("io must be an object")
         return AgentIOContract("", "", {}, {})
@@ -241,6 +379,15 @@ def _parse_io(raw: Any, errors: list[str]) -> AgentIOContract:
 
 
 def _parse_permissions(raw: Any, errors: list[str]) -> AgentPermissionSpec:
+    """Parse and validate the ``permissions`` section of a raw manifest.
+
+    Args:
+        raw: Raw value of the ``permissions`` field, or ``None``.
+        errors: Error list to append validation failures to.
+
+    Returns:
+        Parsed permission spec; defaults if ``raw`` is ``None`` or not an object.
+    """
     if raw is None:
         return AgentPermissionSpec()
     if not isinstance(raw, dict):
@@ -271,6 +418,15 @@ def _parse_permissions(raw: Any, errors: list[str]) -> AgentPermissionSpec:
 
 
 def _parse_budgets(raw: Any, errors: list[str]) -> AgentBudgets:
+    """Parse and validate the ``budgets`` section of a raw manifest.
+
+    Args:
+        raw: Raw value of the ``budgets`` field.
+        errors: Error list to append validation failures to.
+
+    Returns:
+        Parsed budgets; :data:`DEFAULT_AGENT_BUDGETS` if ``raw`` is empty or not an object.
+    """
     if raw in (None, {}):
         return DEFAULT_AGENT_BUDGETS
     if not isinstance(raw, dict):
@@ -296,6 +452,15 @@ def _parse_budgets(raw: Any, errors: list[str]) -> AgentBudgets:
 
 
 def _parse_entrypoint(raw: Any, errors: list[str]) -> AgentEntrypoint:
+    """Parse and validate the ``entrypoint`` section of a raw manifest.
+
+    Args:
+        raw: Raw value of the ``entrypoint`` field.
+        errors: Error list to append validation failures to.
+
+    Returns:
+        Parsed entrypoint; empty fields if ``raw`` is not an object.
+    """
     if not isinstance(raw, dict):
         errors.append("entrypoint must be an object")
         return AgentEntrypoint("", "")
@@ -309,6 +474,16 @@ def _parse_entrypoint(raw: Any, errors: list[str]) -> AgentEntrypoint:
 
 
 def _validate_schema(schema: dict[str, Any], value: Any, *, path: str) -> None:
+    """Recursively validate a value against a (subset of) JSON Schema.
+
+    Args:
+        schema: JSON Schema fragment to validate against.
+        value: Value to validate.
+        path: Human-readable path to ``value``, used in error messages.
+
+    Raises:
+        ValidationError: If ``value`` violates ``schema``.
+    """
     if "const" in schema and value != schema["const"]:
         raise ValidationError(f"{path} must equal {schema['const']!r}")
     if "enum" in schema and value not in schema["enum"]:
@@ -352,6 +527,18 @@ def _validate_schema(schema: dict[str, Any], value: Any, *, path: str) -> None:
 
 
 def _resolve_schema_refs(raw: dict[str, Any], base_dir: Path) -> dict[str, Any]:
+    """Resolve local ``$ref`` schema references in the ``io`` section.
+
+    Args:
+        raw: Raw manifest document.
+        base_dir: Directory the manifest was loaded from, used to resolve relative refs.
+
+    Returns:
+        A copy of ``raw`` with any ``io.input``/``io.output`` ``$ref`` inlined.
+
+    Raises:
+        ValueError: If a ``$ref`` is not a local relative path inside ``base_dir``.
+    """
     resolved = dict(raw)
     io = resolved.get("io")
     if not isinstance(io, dict):
@@ -372,6 +559,14 @@ def _resolve_schema_refs(raw: dict[str, Any], base_dir: Path) -> dict[str, Any]:
 
 
 def _is_semver(value: str) -> bool:
+    """Check whether a string is a valid ``MAJOR.MINOR.PATCH`` SemVer version.
+
+    Args:
+        value: Candidate version string.
+
+    Returns:
+        ``True`` if ``value`` is a valid SemVer version, ``False`` otherwise.
+    """
     if not SEMVER_RE.match(value):
         return False
     try:
@@ -382,6 +577,14 @@ def _is_semver(value: str) -> bool:
 
 
 def _is_supported_range(value: str) -> bool:
+    """Check whether a string is a valid version range expression.
+
+    Args:
+        value: Candidate range expression, or ``"*"`` for any version.
+
+    Returns:
+        ``True`` if ``value`` is ``"*"`` or a valid, non-empty specifier set.
+    """
     if value == "*":
         return True
     try:
@@ -392,6 +595,17 @@ def _is_supported_range(value: str) -> bool:
 
 
 def _positive_int(value: Any, default: int, field_name: str, errors: list[str]) -> int:
+    """Coerce and validate a manifest field as a positive integer.
+
+    Args:
+        value: Raw field value, or ``None`` to use ``default``.
+        default: Value to return when ``value`` is ``None`` or invalid.
+        field_name: Dotted field name, used in error messages.
+        errors: Error list to append validation failures to.
+
+    Returns:
+        ``value`` if it is a positive integer, otherwise ``default``.
+    """
     if value is None:
         return default
     if not isinstance(value, int) or value <= 0:
@@ -401,6 +615,17 @@ def _positive_int(value: Any, default: int, field_name: str, errors: list[str]) 
 
 
 def _positive_float(value: Any, default: float, field_name: str, errors: list[str]) -> float:
+    """Coerce and validate a manifest field as a positive number.
+
+    Args:
+        value: Raw field value, or ``None`` to use ``default``.
+        default: Value to return when ``value`` is ``None`` or invalid.
+        field_name: Dotted field name, used in error messages.
+        errors: Error list to append validation failures to.
+
+    Returns:
+        ``value`` as a ``float`` if it is a positive number, otherwise ``default``.
+    """
     if value is None:
         return default
     if not isinstance(value, (int, float)) or value <= 0:
@@ -410,10 +635,27 @@ def _positive_float(value: Any, default: float, field_name: str, errors: list[st
 
 
 def _string(value: Any) -> str:
+    """Coerce a value to a string, defaulting to empty when not a string.
+
+    Args:
+        value: Value to coerce.
+
+    Returns:
+        ``value`` if it is already a ``str``, otherwise an empty string.
+    """
     return value if isinstance(value, str) else ""
 
 
 def _is_relative_to(path: Path, root: Path) -> bool:
+    """Check whether a path is contained within a root directory.
+
+    Args:
+        path: Path to check.
+        root: Candidate root directory.
+
+    Returns:
+        ``True`` if ``path`` is ``root`` or a descendant of it.
+    """
     try:
         path.relative_to(root)
     except ValueError:

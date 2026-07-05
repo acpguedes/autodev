@@ -12,6 +12,11 @@ from backend.sdk.scaffold import scaffold_plugin
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the ``sdk`` CLI argument parser with all subcommands.
+
+    Returns:
+        The configured top-level argument parser.
+    """
     parser = argparse.ArgumentParser(prog="sdk", description="AutoDev plugin SDK tools")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -25,6 +30,14 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    """Parse CLI arguments and dispatch to the selected subcommand handler.
+
+    Args:
+        argv: Argument vector to parse; defaults to ``sys.argv[1:]``.
+
+    Returns:
+        The process exit code: the handler's result, or ``1`` on error.
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
@@ -35,6 +48,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _handle_new_plugin(args: argparse.Namespace) -> int:
+    """Handle ``sdk new plugin``: scaffold a new plugin project.
+
+    Args:
+        args: Parsed CLI arguments, including ``plugin_id`` and ``output``.
+
+    Returns:
+        Process exit code, always ``0``.
+    """
     path = scaffold_plugin(args.plugin_id, args.output)
     print(json.dumps({"status": "ok", "path": str(path)}))
     return 0

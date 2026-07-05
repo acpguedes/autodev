@@ -1,6 +1,9 @@
+"""Tests for plugin.yaml manifest parsing, validation, and the extension-point catalog."""
+
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 import pytest
 
@@ -9,6 +12,7 @@ from backend.plugins.manifest import PluginManifest, load_manifest, validate_man
 
 
 def _valid_manifest() -> dict[str, object]:
+    """Build a fully valid raw plugin manifest document for use as a test baseline."""
     return {
         "schemaVersion": "1",
         "id": "acme/coder-plus",
@@ -39,6 +43,7 @@ def _valid_manifest() -> dict[str, object]:
 
 
 def test_extension_catalog_contains_canonical_kinds() -> None:
+    """The extension-point catalog exposes all canonical kinds and their descriptions."""
     assert set(EXTENSION_POINT_KINDS) == {
         "agent",
         "skill",
@@ -59,6 +64,7 @@ def test_extension_catalog_contains_canonical_kinds() -> None:
 
 
 def test_valid_manifest_is_accepted() -> None:
+    """A fully valid manifest parses successfully into a :class:`PluginManifest`."""
     result = validate_manifest(_valid_manifest())
 
     assert result.valid is True
@@ -69,6 +75,7 @@ def test_valid_manifest_is_accepted() -> None:
 
 
 def test_invalid_manifest_reports_actionable_reasons() -> None:
+    """An invalid id, version, and hostApi are all reported as separate errors."""
     raw = _valid_manifest()
     raw["id"] = "Bad Namespace/Coder"
     raw["version"] = "latest"
@@ -84,6 +91,7 @@ def test_invalid_manifest_reports_actionable_reasons() -> None:
 
 
 def test_unknown_extension_point_is_rejected() -> None:
+    """An extension point with an unrecognized kind fails validation."""
     raw = _valid_manifest()
     raw["extensionPoints"] = [
         {
@@ -101,6 +109,7 @@ def test_unknown_extension_point_is_rejected() -> None:
 
 
 def test_manifest_validation_stays_under_50ms() -> None:
+    """Manifest validation stays fast enough for interactive plugin installs."""
     start = time.perf_counter()
 
     for _ in range(100):
@@ -111,7 +120,8 @@ def test_manifest_validation_stays_under_50ms() -> None:
     assert average_ms < 50
 
 
-def test_load_manifest_reads_plugin_yaml(tmp_path) -> None:
+def test_load_manifest_reads_plugin_yaml(tmp_path: Path) -> None:
+    """Loading a manifest from disk parses its id and extension points."""
     plugin_dir = tmp_path / "plugin"
     plugin_dir.mkdir()
     (plugin_dir / "plugin.yaml").write_text(
@@ -139,7 +149,8 @@ extensionPoints:
     assert manifest.extension_points[0].kind is ExtensionPointKind.SKILL
 
 
-def test_load_manifest_raises_with_reasons_for_invalid_yaml(tmp_path) -> None:
+def test_load_manifest_raises_with_reasons_for_invalid_yaml(tmp_path: Path) -> None:
+    """Loading an incomplete manifest raises with the specific missing-field reason."""
     manifest_path = tmp_path / "plugin.yaml"
     manifest_path.write_text("id: nope\n", encoding="utf-8")
 

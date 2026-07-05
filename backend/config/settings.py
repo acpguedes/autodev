@@ -26,6 +26,8 @@ _SECRET_FIELDS = {
 
 
 class Settings(BaseSettings):
+    """Application settings sourced from environment variables and an optional JSON file."""
+
     model_config = SettingsConfigDict(env_ignore_empty=False, extra="ignore")
 
     # --- profile / settings source ---
@@ -94,6 +96,18 @@ class Settings(BaseSettings):
         dotenv_settings: Any,
         file_secret_settings: Any,
     ) -> tuple[Any, ...]:
+        """Order settings sources so an ``AUTODEV_SETTINGS_FILE`` JSON file fills gaps left by env vars.
+
+        Args:
+            settings_cls: The settings class being configured.
+            init_settings: Source providing values passed to ``__init__``.
+            env_settings: Source providing values from environment variables.
+            dotenv_settings: Source providing values from a ``.env`` file.
+            file_secret_settings: Source providing values from Docker/K8s secret files.
+
+        Returns:
+            The ordered tuple of settings sources, highest priority first.
+        """
         return (
             init_settings,
             env_settings,
@@ -104,6 +118,15 @@ class Settings(BaseSettings):
 
     @staticmethod
     def _json_settings_source() -> dict[str, Any]:
+        """Load settings overrides from the file named by ``AUTODEV_SETTINGS_FILE``.
+
+        Returns:
+            The parsed settings mapping, or an empty dict if unset.
+
+        Raises:
+            ValueError: If the file does not exist or is not a JSON object
+                (optionally nested under a ``"settings"`` key).
+        """
         raw_path = os.getenv("AUTODEV_SETTINGS_FILE", "").strip()
         if not raw_path:
             return {}
@@ -122,6 +145,14 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_profile(self) -> "Settings":
+        """Validate cross-field constraints implied by ``autodev_profile``.
+
+        Returns:
+            This settings instance, unchanged aside from normalizing ``llm_provider``.
+
+        Raises:
+            ValueError: If the LLM provider or any profile-specific requirement is invalid.
+        """
         errors: list[str] = []
         provider = self.llm_provider.strip().lower()
         if provider not in {"stub", "openai", "ollama"}:
@@ -161,6 +192,11 @@ class Settings(BaseSettings):
         return self
 
     def cors_origins(self) -> list[str]:
+        """Parse the comma-separated ``autodev_cors_origins`` field into a list.
+
+        Returns:
+            The configured CORS origins, with blanks removed.
+        """
         return [
             origin.strip()
             for origin in self.autodev_cors_origins.split(",")
@@ -168,6 +204,11 @@ class Settings(BaseSettings):
         ]
 
     def redacted_model_dump(self) -> dict[str, Any]:
+        """Dump settings to a dict with secret fields masked.
+
+        Returns:
+            The settings as a dict, with values in :data:`_SECRET_FIELDS` replaced by ``"***"``.
+        """
         data = self.model_dump()
         for key in _SECRET_FIELDS:
             if data.get(key):
@@ -177,6 +218,11 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
+    """Build and cache the process-wide :class:`Settings` singleton.
+
+    Returns:
+        The cached settings instance.
+    """
     return Settings()
 
 
