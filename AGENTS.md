@@ -60,6 +60,21 @@ Avoid introducing new infrastructure dependencies unless there is a clear archit
 - Do not implement broad rewrite behavior where patch-based changes are feasible.
 - Keep local-model compatibility in mind when adding provider integrations.
 
+## Development workflow (binding)
+
+`CONTRIBUTING.md` is the canonical workflow definition. Key rules:
+
+- One branch per epic (`epic/e<N>-<slug>`, cut from `main`, pushed to origin); one
+  branch per story (`story/e<N>-s<M>-<slug>`, cut from the epic branch).
+- Story done: merge into the epic branch, push it, delete the story branch.
+  Epic done: merge to `main` **via pull request only**, then delete the epic branch.
+- Docstrings (English, Google style — description, args, returns, raises) and complete
+  type hints on every package, class, method, and function. All annotations and
+  documentation in English.
+- Story branches run only story-scoped tests (plus dependent areas when a shared
+  contract is touched); the epic → `main` PR requires the full suite green
+  (`make check` / `make container-check`). Do not add unnecessary tests.
+
 ## Documentation rules
 
 When behavior, architecture, stack choices, or workflow semantics change, update the relevant docs:

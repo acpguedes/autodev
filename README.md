@@ -419,8 +419,21 @@ This boots:
 If you are contributing, start with:
 
 1. `README.md`
-2. `docs/testing.md` (install, test, build, and CI-parity workflow)
-3. `DESCRIPTION.md`
-4. `docs/architecture/target_architecture.md`
-5. `docs/implementation/implementation_strategy.md`
+2. `CONTRIBUTING.md` (branching model, coding standards, testing policy)
+3. `docs/testing.md` (install, test, build, and CI-parity workflow)
+4. `docs/v2_platform/progress.md` (where the v2 platform rewrite stands)
+5. `docs/v2_platform/agent_guide.md` (story workflow for the v2 epics)
 6. `AGENTS.md`
+
+---
+
+## License and citation
+
+AutoDev Architect is released under the **Apache License 2.0** — see
+[`LICENSE`](LICENSE). Redistribution, including commercial products and
+services built on this project, must retain the attribution in
+[`NOTICE`](NOTICE), as required by Section 4 of the license.
+
+If you use this project in academic or published work, please cite it using
+the metadata in [`CITATION.cff`](CITATION.cff) (GitHub's "Cite this
+repository" button is backed by that file).

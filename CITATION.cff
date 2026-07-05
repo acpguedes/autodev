@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: >-
+  If you use AutoDev Architect in your work — including research, derived
+  software, or commercial products — please cite it using the metadata below.
+title: "AutoDev Architect"
+abstract: >-
+  An open source, self-hostable AI software engineering platform: a small,
+  stable core surrounded by typed extension points (plugins, agents, flows,
+  reasoning strategies, routing, skills, context providers) with durable
+  state, patch-based workflows, and sandboxed validation.
+type: software
+authors:
+  - family-names: "Guedes"
+    given-names: "Aureliano"
+    email: "guedes.aureliano@gmail.com"
+repository-code: "https://github.com/acpguedes/autodev"
+url: "https://github.com/acpguedes/autodev"
+license: Apache-2.0
+version: "2.0.0-alpha"
+date-released: "2026-07-04"
+keywords:
+  - ai-software-engineering
+  - agents
+  - plugins
+  - orchestration
+  - self-hosted
+  - open-source

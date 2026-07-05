@@ -48,6 +48,19 @@ When proposing changes, optimize for:
   the user explicitly asks for a Codex handoff.
 - Keep `AGENTS.md` aligned with this file so any handoff is consistent.
 
+## Development workflow (binding)
+`CONTRIBUTING.md` defines the mandatory workflow; in short:
+
+- One branch per epic (`epic/e<N>-<slug>`, from `main`, pushed to origin) and one
+  branch per story (`story/e<N>-s<M>-<slug>`, from the epic branch).
+- On story completion: merge the story branch into the epic branch, push the epic
+  branch, delete the story branch. On epic completion: merge to `main` **via PR only**.
+- Every package, class, method, and function: English docstring (description, args,
+  returns, raises) and complete type hints. All annotations and docs in English.
+- Tests: story branches run only story-scoped tests (plus dependent areas when shared
+  contracts are touched); the full suite (`make check`) gates the epic → `main` PR.
+  Avoid unnecessary tests.
+
 ## Documentation expectation
 For any meaningful architecture or behavior change, update documentation in the corresponding files under `docs/` and the project root.
 

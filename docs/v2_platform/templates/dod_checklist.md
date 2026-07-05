@@ -35,11 +35,18 @@ be checked.
 - [ ] Manifests (plugin/agent/skill/flow/eval) validate against their schema.
 
 ## Quality
-- [ ] Unit and integration tests added/updated.
+- [ ] Unit and integration tests added/updated (story-scoped; no unnecessary tests).
 - [ ] Contract tests for extension points passing (mandatory).
 - [ ] Core coverage >= 85% of lines maintained.
 - [ ] Relevant evals executed and thresholds met.
 - [ ] Lint, type-check, and CI quality gates green.
+- [ ] English docstrings (description/args/returns/raises) and complete type hints
+      on every new or changed package, class, method, and function (CONTRIBUTING.md §3).
+
+## Branch hygiene (CONTRIBUTING.md §2)
+- [ ] Story branch merged into the epic branch (`--no-ff`), epic branch pushed.
+- [ ] Story branch deleted (local and remote).
+- [ ] If this closes the epic: full suite green and PR opened from the epic branch to `main`.
 
 ## Security, observability, and data
 - [ ] Minimal permissions reviewed; no hardcoded secrets; sandbox with no network by default.
