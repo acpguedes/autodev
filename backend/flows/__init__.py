@@ -7,6 +7,15 @@ from backend.flows.expressions import (
     evaluate_expression,
     render_template,
 )
+from backend.flows.engine import FlowEngine, FlowRunError
+from backend.flows.handlers import (
+    AgentNodeHandler,
+    CallableRegistry,
+    FlowHandlerRegistry,
+    NodeContext,
+    NodeOutcome,
+    build_default_handlers,
+)
 from backend.flows.manifest import (
     DEFAULT_FLOW_BUDGETS,
     DEFAULT_FLOW_RETRIES,
@@ -24,10 +33,22 @@ from backend.flows.manifest import (
     load_flow_manifest,
     validate_flow_manifest,
 )
+from backend.flows.registry import FlowRegistry
+from backend.flows.state import FlowRunStore
 
 __all__ = [
+    "AgentNodeHandler",
+    "CallableRegistry",
     "CompiledExpression",
     "DEFAULT_FLOW_BUDGETS",
+    "FlowEngine",
+    "FlowHandlerRegistry",
+    "FlowRegistry",
+    "FlowRunError",
+    "FlowRunStore",
+    "NodeContext",
+    "NodeOutcome",
+    "build_default_handlers",
     "DEFAULT_FLOW_RETRIES",
     "ExpressionError",
     "FLOW_NODE_TYPES",
