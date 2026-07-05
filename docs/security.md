@@ -53,6 +53,21 @@ When exposing the API beyond loopback, **always** set a strong token.
   `relative_to(root)` guard and is dry-run by default
   (`AUTODEV_ENABLE_PATCH_APPLY=1` to enable writes).
 
+## Plugin permission isolation
+
+Plugins (v2 Plugin Host, E1-S3) run under a **default-deny** permission model:
+
+- A plugin gets no filesystem, network, subprocess, or secrets access unless its
+  `plugin.yaml` manifest declares the corresponding permission and the host
+  grants it.
+- Host API access is **brokered** — plugins call the host through a mediated
+  surface rather than reaching capabilities directly — with in-process import
+  sandbox checks.
+- Denied access raises a `plugin.permission.denied` audit event so attempts are
+  observable.
+
+See [`docs/plugins/permissions.md`](plugins/permissions.md) for the full model.
+
 ## Validation sandbox
 
 Command execution is disabled unless `AUTODEV_ENABLE_SANDBOX` is set. When

@@ -1,10 +1,12 @@
 # Stack Decisions
 
-> **Current status (2026-06-22):** This document records the *recommended target stack*. The
-> current implementation uses FastAPI, SQLite (not PostgreSQL), an in-process thread queue (not
-> Redis/Celery/ARQ), Next.js, and Docker Compose for local dev. LangGraph, pgvector, MinIO,
-> Kubernetes, and the full observability stack (Grafana, Loki) are **planned, not yet wired**.
-> See [`docs/feature_matrix.md`](../feature_matrix.md) for the accurate per-feature status.
+> **Current status (2026-07-04):** This document records the *recommended target stack*. As of
+> E0, PostgreSQL (selected via `DATABASE_URL`), Redis (queue/cache/locks), MinIO/S3 artifact
+> storage, and OpenTelemetry + Prometheus are **now wired** in the production-like Compose
+> profile; local mode stays FastAPI + SQLite + an in-process thread queue for dependency-free
+> operation. Still **planned, not yet wired**: LangGraph, pgvector, Kubernetes, Grafana, and Loki.
+> See [`docs/feature_matrix.md`](../feature_matrix.md), [`docs/ops/storage.md`](../ops/storage.md),
+> and [`docs/ops/observability.md`](../ops/observability.md) for the accurate per-feature status.
 
 This document records the recommended stack for AutoDev Architect and the rationale behind each choice.
 

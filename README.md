@@ -11,7 +11,7 @@ AutoDev Architect is an open source alternative for teams that want a transparen
 - **observability and reproducibility**;
 - **support for existing repositories and greenfield projects**.
 
-The project currently contains an MVP skeleton. This repository now documents the **target architecture**, **recommended implementation strategy**, **chosen open source stack**, and **operational direction** required to evolve it into a solid production-grade platform.
+The **v1 architecture** (linear agent pipeline) is frozen at the published [`v1` release](https://github.com/acpguedes/autodev/releases/tag/v1). The **v2.0 platform rewrite** — a small core surrounded by typed extension points (plugins, agents, flows, reasoning, routing, skills) — is underway: the Alpha-wave epics **E0 (foundations), E1 (plugin core & SDK), and E2 (agent framework) are complete**; see [`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) for live status.
 
 ---
 
@@ -51,10 +51,34 @@ This makes the project suitable for:
 
 ## Current repository status
 
-The current codebase provides a functional early platform slice with:
+The repository holds two architecture generations: the frozen **v1 baseline**
+(the `v1` release tag) and the in-progress **v2 platform** (Alpha wave). See
+[`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) for the epic-by-epic tracker.
+
+### v2 platform (Alpha, in progress — E0–E2 complete)
+
+- **E0 — Foundations**: containerized backend dev/test runtime; typed declarative
+  settings with local/prod profiles and fail-fast validation; PostgreSQL-backed
+  sessions/runs/messages/plans selected via `DATABASE_URL`; OpenTelemetry request and
+  run-step spans + Prometheus counters; default HTTP security headers and a CI
+  secret-scan/SCA gate; Redis queue/cache/locks and local/MinIO artifact stores.
+- **E1 — Plugin Core & SDK**: `plugin.yaml` manifest schema + extension-point catalog;
+  Plugin Host discovery and durable install/enable/disable lifecycle; default-deny
+  fs/net/exec/secrets permissions with brokered Host API access; Python SDK with
+  `sdk new plugin` scaffolding and a contract-test harness; active-plugin registry
+  behind `GET /v2/plugins/active`.
+- **E2 — Agent Framework**: versioned `agent.yaml` manifests with typed IO; durable
+  Agent Registry with SemVer resolution and `GET /v2/agents/catalog`; Agent Runtime
+  with fail-closed token/cost/step/tool budgets and output guardrails; permissioned
+  tool/skill mediation and a provider abstraction (offline stub included);
+  `autodev/agent-coder` packaged as an installable reference agent plugin.
+
+### v1 baseline (frozen at the `v1` release tag)
+
+The v1 codebase provides a functional early platform slice with:
 
 - FastAPI backend orchestrator;
-- durable session, run, and message persistence backed by a SQLite store (Repository pattern + adapters landed; PostgreSQL adapter is a scaffold stub);
+- durable session, run, and message persistence via the Repository pattern (SQLite by default; PostgreSQL adapter implemented in E0 and selected via `DATABASE_URL`);
 - explicit run typing plus persisted workflow-step history for each execution;
 - agent abstraction layer with typed metadata contracts published via the API;
 - stub/fallback LLM integration (OpenAI and Ollama supported; Anthropic not yet implemented);
@@ -74,7 +98,14 @@ The documentation in this repository defines the path from prototype to a comple
 
 ## Platform subsystems (multi-agent, skills, plans)
 
-The platform now ships an extensible, **plugin-seam** architecture: new endpoints, agents, and
+> **Note:** the subsystems below are the **v1** generation. The v1 plugin-seam
+> auto-discovery mechanism is the informal precursor to the contracted v2 Plugin Host
+> (`plugin.yaml` manifests, default-deny permissions, `/v2/plugins/active`) delivered by
+> E1, and the v1 agents are the precursor to the E2 Agent Framework
+> (`agent.yaml`, Agent Registry, budgeted Agent Runtime). See
+> [`docs/plugins/`](docs/plugins/) and [`docs/agents/`](docs/agents/) for the v2 docs.
+
+The v1 platform ships an extensible, **plugin-seam** architecture: new endpoints, agents, and
 CLI subcommands attach as self-contained modules via auto-discovery, without editing the core
 files. See [`docs/architecture/plugin_seams.md`](docs/architecture/plugin_seams.md) for the
 seams and the reserved-namespace table. Subsystems built on it:
@@ -196,7 +227,7 @@ For rationale, read [`docs/architecture/stack_decisions.md`](docs/architecture/s
 
 ### Implementation status
 - [`docs/feature_matrix.md`](docs/feature_matrix.md): per-feature status (`default / optional / stub / planned`) covering persistence, LLM providers, agents, patches, validation, and more.
-- [`CHANGELOG.md`](CHANGELOG.md): tagged releases, starting with `v1.0.0` — the v1 architecture baseline cut immediately before the v2.0 platform rewrite.
+- [`CHANGELOG.md`](CHANGELOG.md): tagged releases, starting with the `v1` release — the v1 architecture baseline cut immediately before the v2.0 platform rewrite.
 
 ### Developer workflow
 - [`Makefile`](Makefile): install, test, lint, build, run, and clean targets.
@@ -280,7 +311,11 @@ A production-ready AutoDev Architect release should include:
 
 ## Development status
 
-This repository is still in the transition from prototype to platform. The new documentation establishes the canonical direction for that transition.
+The v2 platform rewrite is in the **Alpha wave**: epics E0–E2 (foundations, plugin
+core & SDK, agent framework) are complete; E3 (orchestration engine) is next and
+E4+ are not started. [`docs/v2_platform/progress.md`](docs/v2_platform/progress.md)
+is the authoritative tracker; [`CONTRIBUTING.md`](CONTRIBUTING.md) defines the
+branching and quality workflow for new work.
 
 ## Running the first durable stage
 
@@ -419,8 +454,21 @@ This boots:
 If you are contributing, start with:
 
 1. `README.md`
-2. `docs/testing.md` (install, test, build, and CI-parity workflow)
-3. `DESCRIPTION.md`
-4. `docs/architecture/target_architecture.md`
-5. `docs/implementation/implementation_strategy.md`
+2. `CONTRIBUTING.md` (branching model, coding standards, testing policy)
+3. `docs/testing.md` (install, test, build, and CI-parity workflow)
+4. `docs/v2_platform/progress.md` (where the v2 platform rewrite stands)
+5. `docs/v2_platform/agent_guide.md` (story workflow for the v2 epics)
 6. `AGENTS.md`
+
+---
+
+## License and citation
+
+AutoDev Architect is released under the **Apache License 2.0** — see
+[`LICENSE`](LICENSE). Redistribution, including commercial products and
+services built on this project, must retain the attribution in
+[`NOTICE`](NOTICE), as required by Section 4 of the license.
+
+If you use this project in academic or published work, please cite it using
+the metadata in [`CITATION.cff`](CITATION.cff) (GitHub's "Cite this
+repository" button is backed by that file).

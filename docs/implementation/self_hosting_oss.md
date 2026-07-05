@@ -104,20 +104,29 @@ Current characteristics:
 - frontend points to the local backend API;
 - persistent backend data is stored in the `autodev_data` volume.
 
-This keeps the default Compose story aligned with the OSS-first requirement, even before PostgreSQL/Redis/MinIO are wired into the production path.
+This keeps the default Compose story aligned with the OSS-first requirement. As of E0, a
+production-like Compose profile additionally wires PostgreSQL, Redis, and MinIO/S3 into the
+platform path (see [`docs/ops/storage.md`](../ops/storage.md)); the dependency-free stub +
+SQLite default above is preserved for local/CI use.
 
 ---
 
 ## Known gaps before production-grade self-hosting
 
-The current 0.6 slice is intentionally incomplete. The next release wave should add:
+As of E0, several previously-listed gaps are now delivered in the production-like Compose profile:
 
-- PostgreSQL as the primary durable store;
-- Redis-backed async execution;
-- MinIO-backed artifact storage;
+- PostgreSQL as the primary durable store — **landed (E0-S3)**, selected via `DATABASE_URL`;
+- Redis-backed async execution — **landed (E0-S6)**;
+- MinIO-backed artifact storage — **landed (E0-S6)**;
+- OpenTelemetry and Prometheus integration — **landed (E0-S4)**
+  (see [`docs/ops/observability.md`](../ops/observability.md)).
+
+Still open for production-grade self-hosting:
+
 - persisted multi-repository policies;
 - Docker sandbox validation;
-- OpenTelemetry, Prometheus, Grafana, and Loki integration;
+- Grafana and Loki integration;
+- pgvector-backed semantic retrieval;
 - stronger CI coverage for backend, frontend, docs, and infrastructure.
 
 These items are tracked in [`docs/roadmap.md`](../roadmap.md).

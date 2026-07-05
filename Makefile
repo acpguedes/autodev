@@ -68,19 +68,22 @@ install-backend: venv ## Install backend runtime + test dependencies into .venv
 install-frontend: ## Install frontend node dependencies
 	cd $(FRONTEND_DIR) && $(NPM) install
 
-install-dev: venv ## Install optional dev tools (black, ruff, mypy, pytest-cov)
-	$(PIP) install black ruff mypy pytest-cov
+install-dev: venv ## Install optional dev tools (black, ruff, mypy, pytest-cov, pytest-xdist)
+	$(PIP) install black ruff mypy pytest-cov pytest-xdist
 
 # --------------------------------------------------------------------------
 # Test
 # --------------------------------------------------------------------------
-.PHONY: test test-backend test-frontend coverage
+.PHONY: test test-backend test-backend-parallel test-frontend coverage
 
 test: test-backend test-frontend ## Run the full backend + frontend test suites
 
 test-backend: ## Run the backend pytest suite with coverage gate (>=60%)
 	$(PY) -m pytest $(PYTEST_PATHS) -q \
 		--cov=backend --cov-report=term-missing --cov-fail-under=60
+
+test-backend-parallel: ## Backend suite via pytest-xdist (needs `make install-dev`); serial run is authoritative on disagreement
+	$(PY) -m pytest $(PYTEST_PATHS) -q -n auto
 
 test-frontend: ## Run the frontend vitest suite
 	cd $(FRONTEND_DIR) && $(NPM) test

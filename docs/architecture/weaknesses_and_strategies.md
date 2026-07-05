@@ -1,15 +1,23 @@
 # Current Weaknesses and Remediation Strategies
 
-> **Current status (2026-07-02):** This document is an accurate debt log. Weaknesses 1–7 and
-> 10–11 remain open. Weakness 8 (frontend) is partially addressed (six pages exist and a
-> Tailwind/shadcn foundation landed as Unit 11, but no page has adopted it yet; approval UI,
-> diff viewer, run history, and streaming remain planned — see `docs/feature_matrix.md`).
-> Weakness 9 (CI) now has coverage gates (`--cov-fail-under=60`) and a smoke e2e health-check
-> job in addition to basic backend/frontend pipelines; infra/docs validation is still planned.
-> Weakness 12 (docs) is being addressed by the addition of
-> [`docs/feature_matrix.md`](../feature_matrix.md), kept current as part of the v1.0.0 baseline
-> packaging pass. The remediation strategies listed below are targets, not completed work,
-> unless noted otherwise in the roadmap.
+> **Current status (2026-07-04):** This document is an accurate debt log. Weaknesses 2–6 remain
+> open. **Weakness 1 (in-memory state) is remediated** by E0-S3 (PostgreSQL-backed
+> sessions/runs/messages/plans selected via `DATABASE_URL`) and E0-S6 (Redis for ephemeral
+> coordination). **Weakness 11 (model provider abstraction) is remediated** by E2-S4 (provider
+> protocol, offline stub provider, adapters separated from agent logic, per-call token/cost
+> metering). **Weakness 10 (observability/governance) is partially remediated** by E0-S4 (OTel
+> request/run-step spans, Prometheus 5xx counters) and E1-S3 audit events
+> (`plugin.permission.denied`); policies, approvals, and dashboards remain partial. **Weakness 7
+> (isolated execution) remains open**: E0-S0/S1 added a containerized backend dev/test runtime,
+> which is not the per-run Docker sandbox workspace runner this item is about. Weakness 8
+> (frontend) is partially addressed (six pages exist and a Tailwind/shadcn foundation landed as
+> Unit 11, but no page has adopted it yet; approval UI, diff viewer, run history, and streaming
+> remain planned — see `docs/feature_matrix.md`). Weakness 9 (CI) now has coverage gates
+> (`--cov-fail-under=60`) and a smoke e2e health-check job in addition to basic backend/frontend
+> pipelines; infra/docs validation is still planned. Weakness 12 (docs) is being addressed by the
+> addition of [`docs/feature_matrix.md`](../feature_matrix.md), kept current as part of the
+> v1-release baseline packaging pass. The remediation strategies listed below are targets, not
+> completed work, unless noted otherwise above or in the roadmap.
 
 This document maps the current weaknesses of the repository to concrete strategies for evolving AutoDev Architect into a strong production-grade OSS platform.
 

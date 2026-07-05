@@ -40,11 +40,19 @@ Build toward:
 - unreviewable broad rewrites;
 - adding infrastructure complexity without roadmap justification.
 
+### v2 platform work
+The v2.0 platform rewrite (plugin core, agent framework, flow engine — epics E0–E13)
+is the active development track; E0–E2 are complete. Before picking up any
+`E<n>-S<m>` story, read `docs/v2_platform/agent_guide.md` and check
+`docs/v2_platform/progress.md`. The branching, docstring/type-hint, and testing
+rules in `CONTRIBUTING.md` are mandatory.
+
 ### If architecture is unclear
 Use these docs as source of truth:
-1. `README.md`
-2. `DESCRIPTION.md`
-3. `docs/architecture/target_architecture.md`
-4. `docs/implementation/implementation_strategy.md`
-5. `docs/architecture/stack_decisions.md`
+1. `docs/architecture/v2_platform_reference.md` (canonical v2 design)
+2. `docs/v2_platform/progress.md` (what has actually landed)
+3. `README.md`
+4. `DESCRIPTION.md`
+5. `docs/architecture/target_architecture.md` (historical v1 target)
+6. `docs/architecture/stack_decisions.md`
 

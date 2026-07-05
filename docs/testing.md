@@ -110,7 +110,7 @@ make test-backend
 .venv/bin/python -m pytest tests backend/tests -q
 ```
 
-The suite spans **205+ tests** across two locations:
+The suite spans **285+ tests** across two locations:
 
 - `tests/backend/` — API, CLI, orchestrator, LLM factory, config.
 - `backend/tests/` — agents, plans, patches, validation, skills, repository
@@ -130,6 +130,42 @@ pytest -k "orchestrator" -q                # filter by keyword
 pytest -x -q                               # stop at first failure
 pytest -vv                                 # verbose, show each test
 ```
+
+### Story-scoped test runs (v2 workflow policy)
+
+Per `CONTRIBUTING.md` §4, story branches run **only the tests covering the
+story's code** — plus dependent areas when the story touches a shared contract
+(manifest schemas, persistence, the plugin host). Examples:
+
+```bash
+pytest backend/tests/agents -q            # story touched the agent framework
+pytest backend/tests -k "registry" -q     # selection by keyword
+```
+
+The **full suite** (`make check` / `make container-check`) is mandatory only at
+the epic → `main` PR gate. Do not add tests that duplicate existing coverage —
+every new test must protect a behavior delivered by the story.
+
+### Parallel execution (pytest-xdist)
+
+The backend suite is parallel-safe. Measured on this repository
+(2026-07-04, `pytest -n auto`): **285/285 tests pass, wall time drops from
+~1m52s (serial) to ~57s (parallel)**.
+
+```bash
+make install-dev                          # installs pytest-xdist
+.venv/bin/python -m pytest tests backend/tests -q -n auto
+# or:
+make test-backend-parallel
+```
+
+Caveats:
+
+- The serial result is authoritative: if a test fails only under `-n auto`
+  (most likely the timing-sensitive `test_sandbox_runner.py` cases — see
+  Troubleshooting), re-run serially before treating it as a real failure.
+- The coverage gate (`--cov`) also works under xdist, but keep CI on the
+  serial path until parallel runs have been flake-free for a while.
 
 ### Frontend tests (vitest)
 

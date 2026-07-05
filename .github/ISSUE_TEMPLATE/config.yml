@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: v2 platform roadmap & progress
+    url: https://github.com/acpguedes/autodev/blob/main/docs/v2_platform/progress.md
+    about: Check the epic/story tracker before filing roadmap-related issues.

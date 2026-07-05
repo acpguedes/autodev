@@ -44,7 +44,44 @@ Use `docs/v2_platform/templates/dor_checklist.md` before starting a story and
 subtask (YAML form for structured backlog data, Markdown form for the human-facing
 ticket/PR description).
 
-## 3. When you need an ADR or RFC
+## 3. Branching and merge workflow (mandatory)
+
+Canonical definition in `CONTRIBUTING.md` §2. Summary of the rules every epic and
+story must follow (they are the concrete mechanics behind gates G2 and G5):
+
+1. **Epic branch.** At epic start, create `epic/e<N>-<slug>` from the latest
+   `main` and push it to `origin`.
+2. **Story branch.** At story start (G2), create `story/e<N>-s<M>-<slug>` from
+   the **epic branch**, never from `main`.
+3. **Story Done (G5).** Merge the story branch into the epic branch
+   (`--no-ff`), push the epic branch to the remote, then delete the story
+   branch (local, and remote if it was pushed).
+4. **Epic complete.** Open a PR from the epic branch to `main` — the full test
+   suite must be green (see §4). Epic work reaches `main` **only via PR**.
+   Delete the epic branch after the merge.
+5. Branches created before this convention used `feat/…` names; do not rename
+   them — the scheme applies from E3 onward.
+
+## 4. Quality and testing rules (per story)
+
+Canonical definition in `CONTRIBUTING.md` §3–§4. Non-negotiable points:
+
+- **Docstrings:** every package, class, method, and function ships with an
+  English docstring covering description, args, returns, and raised errors
+  (Google style).
+- **Type hints:** complete annotations on all signatures; `make typecheck`
+  (mypy) and `make lint` must pass before G3 (In Review).
+- **English only** for all code annotations, comments, and documentation.
+- **Test scope per story:** run only the tests that cover the story's code,
+  plus dependent areas when the story touches a shared contract. Do not add
+  tests that duplicate existing coverage.
+- **Full-suite gate:** the epic → `main` PR requires the entire suite green
+  (`make check` or `make container-check`); story branches do not.
+- **Parallel execution:** the backend suite can be parallelized with
+  `pytest-xdist` (see `docs/testing.md`); a serial run remains authoritative
+  on disagreement.
+
+## 5. When you need an ADR or RFC
 
 Per §19.3 of the reference doc: any change that would cause a **MAJOR** version bump
 of a platform artifact (core, plugin, agent, skill, flow, eval, API, or event — see the
@@ -54,7 +91,7 @@ still warrants a lightweight ADR. Use `docs/v2_platform/templates/rfc_template.m
 `docs/v2_platform/templates/adr_template.md`, and file the result under
 `docs/v2_platform/decisions/`, updating that directory's index table.
 
-## 4. Naming, versioning, and contract conventions (cheat sheet)
+## 6. Naming, versioning, and contract conventions (cheat sheet)
 
 - **IDs:** `namespace/name` in kebab-case for every plugin, agent, skill, and flow
   (e.g. `autodev/agent-coder`).
@@ -71,7 +108,7 @@ still warrants a lightweight ADR. Use `docs/v2_platform/templates/rfc_template.m
   (deny/stop) rather than fail open, per the reference doc's Principle 5 (§2.5) and the
   DoD checklist.
 
-## 5. Use existing code as a starting point, not as the target shape
+## 7. Use existing code as a starting point, not as the target shape
 
 Several v2 epics have an informal precursor already in the codebase (documented per
 epic in each phase doc's "v1 precursor" section, and summarized in
@@ -83,7 +120,7 @@ parity") but **do not satisfy the v2 contracts as-is** — no manifest, no `host
 versioning, no declared permissions, no contract tests. Treat them as inputs to
 migrate, not as epics you can mark Done because "the feature already exists."
 
-## 6. Keep the tracking docs in sync
+## 8. Keep the tracking docs in sync
 
 After a story or epic changes state:
 
@@ -99,7 +136,7 @@ After a story or epic changes state:
    don't let `README.md`, `docs/feature_matrix.md`, or `docs/roadmap.md` drift out of
    sync with what actually shipped.
 
-## 7. Execution environment reminder
+## 9. Execution environment reminder
 
 E0 and later v2 platform work should prefer the containerized backend runtime introduced
 by E0-S0. Run backend tests, CLI commands, migrations, and validation through the

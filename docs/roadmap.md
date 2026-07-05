@@ -39,8 +39,10 @@ Subsystem docs: [`skills_subsystem.md`](implementation/skills_subsystem.md),
 [`patches_and_validation.md`](implementation/patches_and_validation.md).
 
 **Still deferred** (require shared-state/infra, intentionally out of this additive wave):
-SQLite→PostgreSQL + pgvector migration, MinIO artifacts, Kubernetes, full Grafana/Loki
-dashboards, and promoting dynamic orchestration to the default `/chat` path.
+pgvector semantic memory, Kubernetes, full Grafana/Loki dashboards, and promoting
+dynamic orchestration to the default `/chat` path. (PostgreSQL persistence and MinIO
+artifacts have since landed in the v2 E0 foundations — see
+[`docs/v2_platform/progress.md`](v2_platform/progress.md), E0-S3 and E0-S6.)
 
 ---
 
@@ -58,6 +60,11 @@ Status:
 ---
 
 ## Release 0.2 - Durable platform core
+
+> **Partly superseded by the v2 platform.** PostgreSQL persistence and
+> Redis-backed execution below are now delivered by the v2 E0 foundations
+> (E0-S3 PostgreSQL state store, E0-S6 Redis queue/cache/locks). See
+> [`docs/v2_platform/progress.md`](v2_platform/progress.md) for authoritative status.
 
 Goals:
 - PostgreSQL persistence
@@ -191,6 +198,12 @@ Success criteria:
 
 ## Release 0.9 - Observability and operations
 
+> **Partly superseded by the v2 platform.** OpenTelemetry instrumentation and
+> Prometheus metrics below are now delivered by the v2 E0 foundations (E0-S4:
+> request and run-step spans, Prometheus 5xx counters — see
+> [`docs/ops/observability.md`](ops/observability.md)). Grafana/Loki dashboards
+> remain open. See [`docs/v2_platform/progress.md`](v2_platform/progress.md).
+
 Goals:
 - OpenTelemetry instrumentation
 - Prometheus metrics for runs, agents, and validation outcomes
@@ -205,6 +218,11 @@ Success criteria:
 ---
 
 ## Release 1.0 - Team-ready OSS platform
+
+> **Partly superseded by the v2 platform.** The "PostgreSQL + Redis production
+> path replacing bootstrap-only storage" goal below is now delivered by the v2 E0
+> foundations (E0-S3 PostgreSQL, E0-S6 Redis/MinIO, wired into the production-like
+> Compose profile). See [`docs/v2_platform/progress.md`](v2_platform/progress.md).
 
 Goals:
 - PostgreSQL + Redis production path replacing bootstrap-only storage assumptions

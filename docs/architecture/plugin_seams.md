@@ -1,5 +1,12 @@
 # Plugin seams (auto-discovery architecture)
 
+> **Historical (v1 seams) — 2026-07-04:** Superseded by E1's Plugin Host and
+> `plugin.yaml` manifests. For the current extension model see
+> [`docs/plugins/manifest.md`](../plugins/manifest.md),
+> [`docs/plugins/permissions.md`](../plugins/permissions.md), and
+> [`docs/plugins/registry.md`](../plugins/registry.md). The v1 seams described below
+> still exist in code but are no longer the primary extension mechanism.
+
 The platform's multi-agent, skills, plans, patches, and validation capabilities are
 added as **self-contained modules** that attach to the running app through three
 additive "seams" installed once in the three otherwise-hot files

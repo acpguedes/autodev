@@ -1,5 +1,13 @@
 # Implementation Strategy
 
+> **Current status (2026-07-04):** The live status of record is now
+> [`docs/v2_platform/progress.md`](../v2_platform/progress.md). The "Current functional slice"
+> call-outs below predate the v2 rewrite and E0–E2: PostgreSQL/Redis/MinIO (E0), the plugin core
+> (E1), and the agent framework (E2) have since landed, so those slice notes describe an earlier
+> state. This document is retained as the general prototype-to-platform path; per
+> [`docs/v2_platform/documentation_rebuild.md`](../v2_platform/documentation_rebuild.md) it retires
+> to a historical pointer at Alpha exit.
+
 This document defines the recommended implementation path for evolving AutoDev Architect from prototype to robust platform.
 
 ---

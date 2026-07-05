@@ -1,10 +1,16 @@
 # AutoDev Architect Target Architecture
 
-> **Current status (2026-06-22):** This document describes the *target* production architecture.
-> Most of what follows is **planned, not yet implemented**. The current codebase uses SQLite
-> (not PostgreSQL), an in-process job queue (not Redis), no MinIO, no pgvector, no LangGraph
-> orchestration, and a basic lexical repository provider (not tree-sitter by default). For an
-> accurate per-feature status breakdown see [`docs/feature_matrix.md`](../feature_matrix.md).
+> **Current status (2026-07-04):** The storage layer (PostgreSQL, Redis, MinIO) and observability
+> layer (OpenTelemetry, Prometheus) described below are now implemented via E0 (production-like
+> Compose profile; local mode stays SQLite + in-process queue). Still not implemented: pgvector,
+> LangGraph orchestration, and tree-sitter-by-default repository intelligence. More importantly,
+> this document still describes the earlier **linear-pipeline** target; the current design is the
+> plugin/agent-framework model in
+> [`docs/architecture/v2_platform_reference.md`](v2_platform_reference.md) (see also
+> [`docs/plugins/`](../plugins/) and [`docs/agents/`](../agents/)). Fold/retire per
+> [`docs/v2_platform/documentation_rebuild.md`](../v2_platform/documentation_rebuild.md) as E3/E8
+> land. For an accurate per-feature status breakdown see
+> [`docs/feature_matrix.md`](../feature_matrix.md).
 
 This document defines the target architecture for evolving AutoDev Architect from a prototype into a robust open source AI software engineering platform.
 
