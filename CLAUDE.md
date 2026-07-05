@@ -8,6 +8,10 @@ Help evolve AutoDev Architect into a strong open source, self-hostable AI softwa
 ## Repository priorities
 When proposing changes, optimize for:
 
+- API-first: every capability is exposed through the versioned Control Plane
+  API (`/v2`) before or alongside any other surface. Web UI, CLI, and MCP are
+  clients of that API and never touch the State Store or other internals
+  directly (see `docs/architecture/v2_platform_reference.md` §2.13);
 - explicit architecture;
 - durable state;
 - agent interoperability;

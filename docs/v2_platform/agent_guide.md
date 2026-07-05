@@ -100,6 +100,10 @@ still warrants a lightweight ADR. Use `docs/v2_platform/templates/rfc_template.m
 - **Events:** `domain.entity.action`, past tense (e.g. `run.step.completed`,
   `plugin.installed`).
 - **API:** everything new lives under `/v2`, with a `schemaVersion` on every payload.
+  This is not just a naming convention: per the reference doc's **API-first**
+  principle (§2.13), the Control Plane API is the single point of entry for every
+  capability — Web UI, CLI, and MCP are clients of that same API and never touch
+  the State Store or other internals directly.
 - **Manifests:** `plugin.yaml`, `agent.yaml`, `flow.yaml`, `skill.yaml`, `eval.yaml` —
   worked examples for each are in `docs/v2_platform/templates/manifests/`.
 - **Least privilege by default:** no permission entry in a manifest means denied. Never

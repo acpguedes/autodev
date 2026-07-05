@@ -128,6 +128,12 @@ main ─────────────────────────
    `ruff`, `mypy` (`make lint typecheck`), files under 500 lines, input
    validation at system boundaries, no secrets in code or diffs.
 
+5. **API-first.** New capabilities land as a versioned `/v2` API contract
+   before or alongside any UI/CLI surface that exposes them. Web UI and CLI
+   must consume the public API — never access the State Store or other
+   internals directly. See the reference doc's API-first principle
+   (`docs/architecture/v2_platform_reference.md` §2.13).
+
 ## 4. Testing policy
 
 The goal is fast story iteration with a strict gate at `main`.
