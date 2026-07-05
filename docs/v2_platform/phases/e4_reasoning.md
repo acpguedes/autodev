@@ -1,7 +1,7 @@
 # E4 — Reasoning
 
 **Wave:** Beta
-**Status:** Not started · **Stories:** 0/4 complete
+**Status:** In progress · **Stories:** 1/4 complete (E4-S1 done; contract + Engine + registry + policy, RFC-003/ADR-007)
 **Depends on:** E1, E2
 **Enables:** E5; consumed by E11-S3 (budgets)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E4), §18.8, §18.9
