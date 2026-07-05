@@ -182,7 +182,7 @@ projeto** (o que ele obriga a construir) e **trade-offs** (o que custa). Ao fina
 a tabela "Princípio → Como será verificado" fixa um mecanismo concreto e auditável
 para cada um — nenhum princípio é aceito como aspiração; todos têm um teste.
 
-Os 12 princípios não são independentes: eles se tensionam entre si. A extensibilidade
+Os 13 princípios não são independentes: eles se tensionam entre si. A extensibilidade
 (1) pressiona a estabilidade de contratos (3); o isolamento (5) custa latência que
 disputa com as metas de usabilidade (10); o determinismo (7) restringe a liberdade
 das Reasoning Strategies (parte de 1). A regra de desempate geral é a Visão da §1:
@@ -465,7 +465,31 @@ exigem manutenção; overfitting ao dataset é risco real.
 
 ---
 
-### 2.13. Tabela de verificação — Princípio → Como será verificado
+### 2.13. API-first
+
+**Racional.** A **Control Plane API** (`/v2`) é o único ponto de entrada para toda
+capacidade da plataforma. **Web UI**, **CLI** e integrações (**MCP**, automações,
+Marketplace) são *clientes* dessa mesma API — nunca acessam o **State Store** ou
+qualquer estado interno diretamente. Nenhuma feature nasce "só na UI" ou "só na CLI":
+toda capacidade nova é, antes de tudo, um contrato de API.
+
+**Implicações de projeto.**
+
+| Área | Implicação |
+|---|---|
+| Nova capacidade | Publica ou estende um contrato sob `/v2` antes de, ou junto com, qualquer superfície de UI/CLI que a exponha. |
+| Web UI e CLI | Consomem exclusivamente a API pública (HTTP/streaming); nenhum acesso direto a Postgres/Redis/MinIO/internals a partir desses clientes. |
+| Contratos | API segue **SemVer** e `schemaVersion` por recurso, como qualquer outro Ponto de Extensão (liga com 2.3). |
+| MCP e automações | Expostos como *fachadas* da mesma API `/v2`, não como caminhos paralelos com regras próprias. |
+
+**Trade-offs.** Operações puramente locais/CLI pagam a indireção de passar pela API
+(latência, serialização) mesmo quando um atalho interno seria mais simples. Exige
+disciplina de superfície: toda nova rota é uma extensão do contrato público, o que
+tensiona com o núcleo pequeno (2.4) e exige a mesma rigidez de versionamento de 2.3.
+
+---
+
+### 2.14. Tabela de verificação — Princípio → Como será verificado
 
 Cada princípio tem um mecanismo concreto e auditável. "Verificado" significa que
 existe um artefato (teste, gate, métrica ou relatório) que **falha** quando o princípio
@@ -485,6 +509,7 @@ existe um artefato (teste, gate, métrica ou relatório) que **falha** quando o 
 | 10 | Usabilidade e acessibilidade | Testes automatizados de a11y (axe) em todas as telas contra WCAG 2.2 AA; teste de navegação 100% por teclado; medição de latência p95 < 300 ms e início de streaming < 1 s como gate de performance. |
 | 11 | Segurança e custo governados | Teste de RBAC (acesso não autorizado é negado); teste de budget que falha fechado ao estourar teto; teste de quota por tenant; medição de tokens/custo por run/tenant reportada e verificada. |
 | 12 | Avaliação contínua | **Quality gate** de CI: regressão em agent evals bloqueia merge; verificação de que resultados de eval alimentam o Selector (teste do loop de feedback); evals versionadas (`eval.yaml`) e executáveis offline/online. |
+| 13 | API-first | Teste de contrato/integração: Web UI e CLI só chamam endpoints públicos sob `/v2`, nunca acessam persistence/internals diretamente; auditoria de arquitetura de PR que introduz feature de domínio verifica que existe (ou é adicionado) um contrato de API correspondente. |
 
 
 ---
