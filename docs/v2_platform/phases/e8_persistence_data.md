@@ -2,7 +2,12 @@
 
 **Wave:** Split — E8-S1/E8-S2 (multi-tenant schema + event store) target Alpha;
 E8-S3/E8-S4 (artifacts + backup/RPO/RTO) target Beta.
-**Status:** Not started · **Stories:** 0/4 complete
+**Status:** Not started · **Stories:** 1/4 complete* (matches
+`../progress.md`'s epic table). \* A scoped E8-S1 slice — tenant_id + RLS on
+new/core tables, reversible up/down migrations — landed as an E7 prerequisite
+(`decisions/ADR-010-e8s1-scoped-tenancy.md`); it is **not** a fully-DoD'd
+E8-S1 story (see the note under E8-S1 below), so the epic Status stays "Not
+started" rather than "In progress".
 **Depends on:** E0
 **Enables:** durable base for E3, E9, E11; integrates with E11 (backup)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.7.2 (E8), §18.8, §18.9
@@ -22,6 +27,28 @@ metadata.
 ## Stories
 
 ### E8-S1 — Multi-tenant data model and migrations
+
+**Partial progress (2026-07-06):** a scoped slice of `E8-S1-T1` and
+`E8-S1-T2` landed as an E7 prerequisite —
+`decisions/ADR-010-e8s1-scoped-tenancy.md` records exactly what shipped and
+what was deferred. Summary against the subtasks below:
+
+- `E8-S1-T1` (**partial**): `tenant_id` + RLS added to the *new* E7 tables
+  (`code_chunks`, `code_embeddings`) from creation, plus a retrofit onto six
+  core tables (sessions/runs/messages/plugins/eval_results/score_snapshots).
+  Not done: `run_steps`/`plugin_events`/`score_snapshot_promotions` and any
+  other entities/steps tables.
+- `E8-S1-T2` (**done** for the migrations this slice touched): `MigrationRunner`
+  now supports real `up`/`down` pairs, `rollback_to`/`run_down`, verified by
+  an up→down→up round trip against a real temp SQLite file
+  (`backend/tests/test_tenancy_migrations.py`); `PostgresStore` moved from ad
+  hoc `CREATE TABLE IF NOT EXISTS` to the same versioned runner.
+- `E8-S1-T3` (**not done**): no repository call site was changed to require
+  a tenant argument; every existing method keeps its current signature and
+  implicitly operates on the `'default'` tenant. This is the largest
+  remaining piece of E8-S1.
+- `E8-S1-T4` (**not done** beyond what already existed): no new SQLite
+  parity work beyond the `tenant_id` column retrofit above.
 
 Subtasks:
 - `E8-S1-T1`: sessions/runs/steps/entities schema with `tenant_id` and Row-Level Security (RLS).
