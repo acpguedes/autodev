@@ -1,7 +1,7 @@
 # E5 — Routing / Selection / Evaluation
 
 **Wave:** Beta
-**Status:** In progress · **Stories:** 3/4 complete (S1, S2, S3 done; S4 depends on S2+S3)
+**Status:** Done · **Stories:** 4/4 complete
 **Depends on:** E2, E4
 **Enables:** E7-S3 (retrieval eval), E12-S3
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E5), §18.8, §18.9
@@ -63,7 +63,7 @@ Subtasks:
 | DoD (specific) | Evaluator contract tests; `docs/evals/spec.md` |
 | Dependencies | E2-S2, E0-S2 |
 
-### E5-S4 — Eval -> routing feedback loop
+### E5-S4 — Eval -> routing feedback loop — Done
 
 Subtasks:
 - `E5-S4-T1`: publish scores as a signal.
@@ -89,8 +89,11 @@ Subtasks:
 
 ## Epic exit checklist
 
-- [ ] All 4 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
+- [x] All 4 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
       story-specific DoD above.
-- [ ] Contract tests green for the Router, Selector, and Evaluator extension points.
-- [ ] `docs/v2_platform/progress.md` updated.
-- [ ] Beta wave entry item "Router & Selector + Evaluation Service" satisfied (§18.9).
+- [x] Contract tests green for the Router, Selector, and Evaluator extension points
+      (505/505 backend tests pass on `epic/e5-routing-selection-evaluation`; ruff/mypy
+      clean; coverage 90.64%, above the 60% gate).
+- [x] `docs/v2_platform/progress.md` updated.
+- [x] Beta wave entry item "Router & Selector + Evaluation Service" satisfied (§18.9) —
+      pending the epic -> `main` PR (not yet opened; awaiting user confirmation).

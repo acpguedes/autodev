@@ -7,7 +7,7 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-05 (E4 — Reasoning epic complete, merged to `main`; **E5 — Routing/Selection/Evaluation, S1+S2+S3 done (3/4)** on `epic/e5-routing-selection-evaluation` — Router, Selector, and the standalone Evaluation Service; only S4 (feedback loop, depends on S2+S3) remains)
+**Last updated:** 2026-07-05 (E4 — Reasoning epic complete, merged to `main`; **E5 — Routing/Selection/Evaluation epic complete (4/4)** on `epic/e5-routing-selection-evaluation` — Router, Selector, Evaluation Service, and the closed eval->routing feedback loop; full backend suite green (505/505, 90.64% coverage), ready for the epic→main PR)
 
 ## How to update this file
 
@@ -61,7 +61,7 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 | E2 | Agent Framework | Alpha | Done | 5/5 | E0, E1 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
 | E3 | Orchestration Engine | Alpha/Beta | Alpha done · S6→Beta | 5/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
 | E4 | Reasoning | Beta | Done | 4/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
-| E5 | Routing / Selection / Evaluation | Beta | In progress | 3/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
+| E5 | Routing / Selection / Evaluation | Beta | Done | 4/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
 | E6 | Skills v2 | Beta | Not started | 0/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
 | E7 | Context & RAG | Beta | Not started | 0/4 | E1, E2, E8, E5 | [phases/e7_context_rag.md](phases/e7_context_rag.md) |
 | E8 | Persistence & Data | Alpha/Beta | Not started | 0/4 | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
@@ -72,7 +72,7 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 
-Total: **24/71 stories complete** across 15 epics.
+Total: **25/71 stories complete** across 15 epics.
 
 ## Wave exit gates (§18.9 of the reference doc)
 
@@ -125,6 +125,31 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-07-05** — **E5-S4 complete; E5 — Routing/Selection/Evaluation epic done (4/4)**,
+  closing the loop described in reference §9.5. `backend/evals/service.py`:
+  `EvaluationService.publish_snapshot()` aggregates persisted `EvalResult`s (grouped
+  by agent) into a versioned, immutable `ScoreSnapshot`, emitted as
+  `eval.scores.published`. `backend/routing/selector_scoring.py`: the score-weighted
+  stage now really re-ranks candidates (min-max normalized cost/latency blended with
+  quality per configured weights) instead of the prior no-op passthrough.
+  `backend/routing/feedback.py` (new): `RoutingFeedbackService.decide_promotion`
+  applies a `min_samples` hysteresis guard plus a `promote_if` regression predicate
+  (reusing the existing safe expression evaluator from E5-S3, not a new parser),
+  tracing every decision (`selector.policy.adjusted` /
+  `selector.policy.regression_blocked`) — a rejected promotion is stored, not silently
+  dropped. New `score_snapshots`/`score_snapshot_promotions` tables (dual-backend,
+  additive). `POST /v2/evals/{ns}/{name}/publish`, `GET .../snapshots`; `/v2/select`
+  now consults the active snapshot automatically. `default_routing_policy()` gained a
+  real `score-weighted` stage so the platform default exercises the loop. ADR-008 and
+  ADR-009 amended (both boundaries are touched by this story). 118 new tests. Code
+  review (5 parallel angles) caught 8 real issues before commit, most notably a
+  multi-version score-aggregate collision in the Selector and a `promote_if`
+  field-name mismatch (`variant.cost`/`variant.latency` vs. the persisted
+  `costUsd`/`latencySeconds`) that would have silently blocked every promotion.
+  **Epic exit**: full backend suite green — **505/505 tests, ruff/mypy clean, 90.64%
+  coverage** (gate is 60%) on `epic/e5-routing-selection-evaluation`. Epic exit
+  checklist in `phases/e5_routing_selection_evaluation.md` ticked off. Ready for the
+  epic -> `main` PR (not yet opened).
 - **2026-07-05** — **E5-S2 complete (3/4)**. `backend/routing/selector.py`: the
   Selector pipeline — capability-matching (client-side intersection/union over
   `AgentRegistry.find_by_capability`, `registry_v2.py` untouched per ADR-008),
