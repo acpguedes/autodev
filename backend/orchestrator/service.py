@@ -35,6 +35,7 @@ from backend.agents import (
     ValidatorAgent,
 )
 from backend.persistence import DurableStore, get_store
+from backend.persistence.tenancy import DEFAULT_TENANT_ID
 from backend.observability.tracing import trace_run_step
 
 
@@ -296,6 +297,7 @@ class OrchestratorService:
             goal=goal,
             plan=plan_steps,
             artifacts={planner.name: dict(plan_result.metadata)},
+            tenant_id=DEFAULT_TENANT_ID,
         )
 
         return PlanSession(session_id=session_id, goal=goal, plan=plan_steps, status=status)
@@ -313,7 +315,7 @@ class OrchestratorService:
         Raises:
             KeyError: If ``session_id`` does not exist.
         """
-        session_record = self._store.get_session(session_id)
+        session_record = self._store.get_session(session_id, tenant_id=DEFAULT_TENANT_ID)
         if session_record is None:
             raise KeyError(f"Unknown session_id: {session_id}")
 
@@ -329,11 +331,12 @@ class OrchestratorService:
             trigger_message=message,
             results=[],
             steps=[],
+            tenant_id=DEFAULT_TENANT_ID,
         )
 
         history = [
             HistoryItem(role=record["role"], content=record["content"])
-            for record in self._store.list_messages(session_id)
+            for record in self._store.list_messages(session_id, tenant_id=DEFAULT_TENANT_ID)
         ]
         user_entry = HistoryItem(role="user", content=message)
         context = AgentContext(
@@ -370,6 +373,7 @@ class OrchestratorService:
                 for result in results
             ],
             steps=[step.to_dict() for step in steps],
+            tenant_id=DEFAULT_TENANT_ID,
         )
 
         next_history = [HistoryItem(**item) for item in final_context.history]
@@ -377,8 +381,11 @@ class OrchestratorService:
             session_id,
             run_id,
             [item.to_dict() for item in next_history],
+            tenant_id=DEFAULT_TENANT_ID,
         )
-        self._store.update_session_artifacts(session_id, self._clone_artifacts(final_context.artifacts))
+        self._store.update_session_artifacts(
+            session_id, self._clone_artifacts(final_context.artifacts), tenant_id=DEFAULT_TENANT_ID
+        )
 
         return OrchestratorRun(
             run_id=run_id,
@@ -403,7 +410,7 @@ class OrchestratorService:
         Raises:
             KeyError: If ``session_id`` does not exist.
         """
-        state = self._store.get_session(session_id)
+        state = self._store.get_session(session_id, tenant_id=DEFAULT_TENANT_ID)
         if state is None:
             raise KeyError(f"Unknown session_id: {session_id}")
         return PlanSession(
@@ -415,7 +422,10 @@ class OrchestratorService:
 
     def list_sessions(self) -> List[SessionSummary]:
         """List all known sessions."""
-        return [self._build_session_summary(record) for record in self._store.list_sessions()]
+        return [
+            self._build_session_summary(record)
+            for record in self._store.list_sessions(tenant_id=DEFAULT_TENANT_ID)
+        ]
 
     def get_session(self, session_id: str) -> SessionSummary:
         """Fetch a single session by id.
@@ -423,7 +433,7 @@ class OrchestratorService:
         Raises:
             KeyError: If ``session_id`` does not exist.
         """
-        record = self._store.get_session(session_id)
+        record = self._store.get_session(session_id, tenant_id=DEFAULT_TENANT_ID)
         if record is None:
             raise KeyError(f"Unknown session_id: {session_id}")
         return self._build_session_summary(record)
@@ -434,10 +444,13 @@ class OrchestratorService:
         Raises:
             KeyError: If ``session_id`` does not exist.
         """
-        session_record = self._store.get_session(session_id)
+        session_record = self._store.get_session(session_id, tenant_id=DEFAULT_TENANT_ID)
         if session_record is None:
             raise KeyError(f"Unknown session_id: {session_id}")
-        return [self._build_run_summary(record) for record in self._store.list_runs(session_id)]
+        return [
+            self._build_run_summary(record)
+            for record in self._store.list_runs(session_id, tenant_id=DEFAULT_TENANT_ID)
+        ]
 
     def build_execution_plan(self, session_id: str) -> ExecutionPlan:
         """Derive an execution plan from a session's accumulated agent artifacts.
@@ -445,7 +458,7 @@ class OrchestratorService:
         Raises:
             KeyError: If ``session_id`` does not exist.
         """
-        session_record = self._store.get_session(session_id)
+        session_record = self._store.get_session(session_id, tenant_id=DEFAULT_TENANT_ID)
         if session_record is None:
             raise KeyError(f"Unknown session_id: {session_id}")
 
@@ -493,11 +506,12 @@ class OrchestratorService:
             trigger_message="Execute derived task plan",
             results=[],
             steps=[],
+            tenant_id=DEFAULT_TENANT_ID,
         )
 
         history = [
             HistoryItem(role=record["role"], content=record["content"])
-            for record in self._store.list_messages(session_id)
+            for record in self._store.list_messages(session_id, tenant_id=DEFAULT_TENANT_ID)
         ]
         execution_entry = HistoryItem(
             role="executor",
@@ -556,11 +570,13 @@ class OrchestratorService:
                 for result in results
             ],
             steps=[step.to_dict() for step in steps],
+            tenant_id=DEFAULT_TENANT_ID,
         )
         self._store.append_messages(
             session_id,
             run_id,
             [item.to_dict() for item in ordered_history],
+            tenant_id=DEFAULT_TENANT_ID,
         )
 
         return OrchestratorRun(
@@ -578,7 +594,7 @@ class OrchestratorService:
         """Build a :class:`SessionSummary` from a raw store session record."""
         history = [
             HistoryItem(role=item["role"], content=item["content"])
-            for item in self._store.list_messages(record["id"])
+            for item in self._store.list_messages(record["id"], tenant_id=DEFAULT_TENANT_ID)
         ]
         return SessionSummary(
             session_id=record["id"],
