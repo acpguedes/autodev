@@ -1,0 +1,37 @@
+schemaVersion: "1"
+id: "autodev/skill-summarize-llm"
+version: "1.0.0"
+name: "Summarize (LLM)"
+description: "Summarizes a prompt via the configured LLM provider (stub offline by default)."
+hostApi: ">=2.0 <3.0"
+
+kind: "llm-assisted"
+entrypoint: "autodev_skill_summarize_llm:run"
+
+io:
+  input:
+    schemaVersion: "1"
+    type: object
+    required: ["prompt"]
+    properties:
+      prompt: { type: string }
+  output:
+    schemaVersion: "1"
+    type: object
+    required: ["summary"]
+    properties:
+      summary: { type: string }
+
+permissions:
+  filesystem: "none"
+  network: "none"
+  sandbox: true
+
+dependencies: []
+
+triggers:
+  - "flow.validation"
+
+budgets:
+  timeoutSec: 30
+  maxCostUsd: 0.05
