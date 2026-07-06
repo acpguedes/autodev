@@ -186,12 +186,63 @@ def _pg_m2_down_tenant_id_and_rls(conn: Any) -> None:
         conn.execute(f"ALTER TABLE {table} DROP COLUMN IF EXISTS tenant_id")
 
 
+def _pg_m3_create_code_chunks_table(conn: Any) -> None:
+    """Create the ``code_chunks`` table, its indexes, and Row-Level Security (E7-S1-T4).
+
+    Persists syntax-aware chunk metadata — file path, symbol, line span, and
+    content hash — produced by :mod:`backend.repository.chunking`. Unlike the
+    core tables (retrofitted by migration 2), this new table is tenant-scoped
+    and RLS-enabled from creation.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS code_chunks (
+            id BIGSERIAL PRIMARY KEY,
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            file_path TEXT NOT NULL,
+            symbol TEXT NOT NULL DEFAULT '',
+            start_line INTEGER NOT NULL,
+            end_line INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            indexed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(tenant_id, file_path, symbol, start_line)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_code_chunks_file_path ON code_chunks(tenant_id, file_path)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_pg_code_chunks_hash ON code_chunks(content_hash)")
+    conn.execute("ALTER TABLE code_chunks ENABLE ROW LEVEL SECURITY")
+    conn.execute("ALTER TABLE code_chunks FORCE ROW LEVEL SECURITY")
+    conn.execute("DROP POLICY IF EXISTS code_chunks_tenant_isolation ON code_chunks")
+    conn.execute(
+        "CREATE POLICY code_chunks_tenant_isolation ON code_chunks "
+        "USING (tenant_id = current_setting('app.tenant_id', true))"
+    )
+
+
+def _pg_m3_down_drop_code_chunks_table(conn: Any) -> None:
+    """Revert :func:`_pg_m3_create_code_chunks_table` by dropping the table (and its policy/indexes with it).
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute("DROP TABLE IF EXISTS code_chunks")
+
+
 POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
     _pg_m1_create_core_tables,
     Migration(
         up=_pg_m2_add_tenant_id_and_rls,
         down=_pg_m2_down_tenant_id_and_rls,
         name="add_tenant_id_and_rls",
+    ),
+    Migration(
+        up=_pg_m3_create_code_chunks_table,
+        down=_pg_m3_down_drop_code_chunks_table,
+        name="create_code_chunks_table",
     ),
 ]
 

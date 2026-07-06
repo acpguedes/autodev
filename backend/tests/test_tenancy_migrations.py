@@ -93,8 +93,21 @@ def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
 # ---------------------------------------------------------------------------
 
 
+def _migration_index(name: str) -> int:
+    """Return the 1-based position of the migration named *name* in ``STORE_MIGRATIONS``.
+
+    Looking this up by name (rather than hardcoding a step count) keeps the
+    round-trip test below correct as later stories append more migrations
+    after the tenancy one (e.g. E7-S1's ``code_chunks`` table).
+    """
+    for index, migration in enumerate(STORE_MIGRATIONS, start=1):
+        if getattr(migration, "name", "") == name:
+            return index
+    raise AssertionError(f"no migration named {name!r} in STORE_MIGRATIONS")
+
+
 def test_sqlite_migrations_up_down_up_roundtrip(tmp_path: Path) -> None:
-    """Applying, rolling back, and reapplying SQLite migrations reaches the same schema."""
+    """Applying, rolling back (through the tenancy migration), and reapplying reaches the same schema."""
     db_path = tmp_path / "roundtrip.db"
     conn = sqlite3.connect(db_path)
     try:
@@ -104,13 +117,14 @@ def test_sqlite_migrations_up_down_up_roundtrip(tmp_path: Path) -> None:
         assert "tenant_id" in _columns(conn, "runs")
         assert "tenant_id" in _columns(conn, "messages")
 
-        runner.run_down(steps=1)
+        tenant_migration_index = _migration_index("add_tenant_id_to_core_tables")
+        runner.rollback_to(tenant_migration_index - 1)
         assert "tenant_id" not in _columns(conn, "sessions")
         assert "tenant_id" not in _columns(conn, "runs")
         version = conn.execute(
             "SELECT version FROM schema_version WHERE namespace = 'store'"
         ).fetchone()[0]
-        assert version == len(STORE_MIGRATIONS) - 1
+        assert version == tenant_migration_index - 1
 
         runner.run_pending()
         assert "tenant_id" in _columns(conn, "sessions")
