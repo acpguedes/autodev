@@ -21,6 +21,7 @@ class AgentToolBroker:
         *,
         tools: dict[str, Callable[..., Any]] | None = None,
         skills: dict[str, Callable[..., Any]] | None = None,
+        skill_broker: Any | None = None,
     ) -> None:
         """Initialize the broker for a single agent manifest.
 
@@ -28,10 +29,14 @@ class AgentToolBroker:
             manifest: Manifest describing the agent's granted permissions.
             tools: Mapping of tool id to callable implementation, if any.
             skills: Mapping of skill id to callable implementation, if any.
+            skill_broker: Optional :class:`backend.skills.invoker.SkillInvocationBroker`
+                resolving skills through the durable Skill Registry. When set,
+                it takes precedence over ``skills`` for granted skill calls.
         """
         self._manifest = manifest
         self._tools = tools or {}
         self._skills = skills or {}
+        self._skill_broker = skill_broker
         self._allowed_tools = {item.id for item in manifest.permissions.tools}
         self._allowed_skills = {item.id for item in manifest.permissions.skills}
 
@@ -69,6 +74,8 @@ class AgentToolBroker:
         """
         if skill_id not in self._allowed_skills:
             raise ToolAccessDenied(f"skill {skill_id!r} is not granted to {self._manifest.id}")
+        if self._skill_broker is not None:
+            return self._skill_broker.invoke(skill_id, **kwargs)
         if skill_id not in self._skills:
             raise ToolAccessDenied(f"skill {skill_id!r} is not registered")
         return self._skills[skill_id](**kwargs)
