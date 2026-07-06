@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Optional, Protocol, runtime_checkable
 
+from backend.persistence.tenancy import DEFAULT_TENANT_ID
 from backend.plans.models import ApprovalRecord, PlanDocument
 
 
@@ -20,14 +21,20 @@ class SessionRepository(Protocol):
         goal: str,
         plan: list[str],
         artifacts: dict[str, Any],
+        tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None: ...
 
-    def get_session(self, session_id: str) -> dict[str, Any] | None: ...
+    def get_session(
+        self, session_id: str, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> dict[str, Any] | None: ...
 
-    def list_sessions(self) -> list[dict[str, Any]]: ...
+    def list_sessions(self, tenant_id: str = DEFAULT_TENANT_ID) -> list[dict[str, Any]]: ...
 
     def update_session_artifacts(
-        self, session_id: str, artifacts: dict[str, Any]
+        self,
+        session_id: str,
+        artifacts: dict[str, Any],
+        tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None: ...
 
 
@@ -44,6 +51,7 @@ class RunRepository(Protocol):
         trigger_message: str,
         results: list[dict[str, Any]],
         steps: list[dict[str, Any]],
+        tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None: ...
 
     def update_run(
@@ -54,40 +62,60 @@ class RunRepository(Protocol):
         current_state: str,
         results: list[dict[str, Any]],
         steps: list[dict[str, Any]],
+        tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None: ...
 
-    def list_runs(self, session_id: str) -> list[dict[str, Any]]: ...
+    def list_runs(
+        self, session_id: str, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> list[dict[str, Any]]: ...
 
-    def list_run_steps(self, run_id: str) -> list[dict[str, Any]]: ...
+    def list_run_steps(
+        self, run_id: str, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> list[dict[str, Any]]: ...
 
 
 @runtime_checkable
 class MessageRepository(Protocol):
-    def list_messages(self, session_id: str) -> list[dict[str, Any]]: ...
+    def list_messages(
+        self, session_id: str, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> list[dict[str, Any]]: ...
 
     def append_messages(
         self,
         session_id: str,
         run_id: str,
         history: Iterable[dict[str, str]],
+        tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None: ...
 
 
 @runtime_checkable
 class PlanRepository(Protocol):
-    def upsert_plan(self, session_id: str, steps: list[str]) -> None: ...
+    def upsert_plan(
+        self, session_id: str, steps: list[str], tenant_id: str = DEFAULT_TENANT_ID
+    ) -> None: ...
 
-    def get_plan(self, session_id: str) -> Optional[PlanDocument]: ...
+    def get_plan(
+        self, session_id: str, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> Optional[PlanDocument]: ...
 
-    def set_status(self, session_id: str, status: str) -> None: ...
+    def set_status(
+        self, session_id: str, status: str, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> None: ...
 
-    def approve(self, session_id: str, actor: str, note: str = "") -> None: ...
+    def approve(
+        self, session_id: str, actor: str, note: str = "", tenant_id: str = DEFAULT_TENANT_ID
+    ) -> None: ...
 
-    def reject(self, session_id: str, actor: str, note: str = "") -> None: ...
+    def reject(
+        self, session_id: str, actor: str, note: str = "", tenant_id: str = DEFAULT_TENANT_ID
+    ) -> None: ...
 
-    def list_plans(self) -> list[PlanDocument]: ...
+    def list_plans(self, tenant_id: str = DEFAULT_TENANT_ID) -> list[PlanDocument]: ...
 
-    def list_approvals(self, session_id: str) -> list[ApprovalRecord]: ...
+    def list_approvals(
+        self, session_id: str, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> list[ApprovalRecord]: ...
 
 
 @runtime_checkable
@@ -95,12 +123,29 @@ class EvalResultRepository(Protocol):
     """Durable storage for immutable, versioned Evaluation Service (E5-S3) results."""
 
     def create_eval_result(
-        self, *, eval_id: str, eval_version: str, run_id: str, document: dict[str, Any]
+        self,
+        *,
+        eval_id: str,
+        eval_version: str,
+        run_id: str,
+        document: dict[str, Any],
+        tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None: ...
 
-    def get_eval_result(self, eval_id: str, eval_version: str, run_id: str) -> dict[str, Any] | None: ...
+    def get_eval_result(
+        self,
+        eval_id: str,
+        eval_version: str,
+        run_id: str,
+        tenant_id: str = DEFAULT_TENANT_ID,
+    ) -> dict[str, Any] | None: ...
 
-    def list_eval_results(self, eval_id: str, eval_version: str | None = None) -> list[dict[str, Any]]: ...
+    def list_eval_results(
+        self,
+        eval_id: str,
+        eval_version: str | None = None,
+        tenant_id: str = DEFAULT_TENANT_ID,
+    ) -> list[dict[str, Any]]: ...
 
 
 @runtime_checkable
@@ -118,16 +163,25 @@ class ScoreSnapshotRepository(Protocol):
     """
 
     def create_score_snapshot(
-        self, *, snapshot_id: str, sample_count: int, document: dict[str, Any]
+        self,
+        *,
+        snapshot_id: str,
+        sample_count: int,
+        document: dict[str, Any],
+        tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None:
         """Persist one immutable, versioned score snapshot document."""
         ...
 
-    def get_score_snapshot(self, snapshot_id: str) -> dict[str, Any] | None:
+    def get_score_snapshot(
+        self, snapshot_id: str, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> dict[str, Any] | None:
         """Fetch one persisted score snapshot document, or ``None`` if it does not exist."""
         ...
 
-    def list_score_snapshots(self, limit: int = 50) -> list[dict[str, Any]]:
+    def list_score_snapshots(
+        self, limit: int = 50, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> list[dict[str, Any]]:
         """List persisted score snapshots, newest first."""
         ...
 
@@ -140,15 +194,20 @@ class ScoreSnapshotRepository(Protocol):
         promoted: bool,
         reason: str,
         decided_at: str,
+        tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None:
         """Append one promotion decision (promoted or blocked) to the audit log."""
         ...
 
-    def get_active_score_snapshot(self, policy_id: str) -> dict[str, Any] | None:
+    def get_active_score_snapshot(
+        self, policy_id: str, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> dict[str, Any] | None:
         """Fetch the currently promoted snapshot document for a policy id, or ``None``."""
         ...
 
-    def list_snapshot_promotions(self, policy_id: str) -> list[dict[str, Any]]:
+    def list_snapshot_promotions(
+        self, policy_id: str, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> list[dict[str, Any]]:
         """List every promotion decision recorded for a policy id, newest first."""
         ...
 

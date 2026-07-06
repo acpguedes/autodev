@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import timedelta
 from enum import StrEnum
 import hashlib
 from io import BytesIO
@@ -12,6 +13,9 @@ import tempfile
 from typing import Any
 
 from backend.config.settings import Settings, get_settings
+
+#: Default validity window for pre-signed artifact URLs, in seconds.
+DEFAULT_PRESIGNED_URL_EXPIRY_SECONDS = 3600
 
 
 class ArtifactKind(StrEnum):
@@ -86,6 +90,42 @@ class ArtifactStore(ABC):
             The stored payload bytes.
         """
 
+    def get_presigned_url(
+        self,
+        bucket: str,
+        object_key: str,
+        tenant_id: str,
+        *,
+        expires_in: int = DEFAULT_PRESIGNED_URL_EXPIRY_SECONDS,
+    ) -> str:
+        """Generate a time-limited URL granting temporary read access to an artifact.
+
+        This is an optional capability: not every backend can produce a
+        scoped, expiring link (a bare local filesystem has no HTTP endpoint
+        to sign a URL for). Backends that support it override this method;
+        the default implementation always raises.
+
+        Args:
+            bucket: Bucket the artifact was stored in.
+            object_key: Relative object key within the bucket. Callers must
+                pass a key already scoped to ``tenant_id`` (e.g. prefixed
+                with ``f"{tenant_id}/"``), matching the convention used when
+                the object was written via :meth:`put_artifact`.
+            tenant_id: Tenant identifier the caller is scoped to; used to
+                confirm the URL cannot resolve outside that tenant's prefix.
+            expires_in: Number of seconds the URL remains valid.
+
+        Returns:
+            A pre-signed URL for temporary, read-only access to the object.
+
+        Raises:
+            NotImplementedError: If the backend does not support pre-signed
+                URLs.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not support pre-signed URLs"
+        )
+
 
 def _bucket_for(kind: ArtifactKind) -> str:
     """Resolve the storage bucket name for an artifact kind.
@@ -97,6 +137,18 @@ def _bucket_for(kind: ArtifactKind) -> str:
         The bucket name associated with ``kind``.
     """
     return _KIND_BUCKETS[ArtifactKind(kind)]
+
+
+def all_bucket_names() -> tuple[str, ...]:
+    """List every bucket name an artifact store manages.
+
+    Returns:
+        The distinct bucket names backing all :class:`ArtifactKind` values,
+        in declaration order. Used by lifecycle tooling (see
+        :mod:`backend.artifacts.cleanup`) that must sweep every bucket
+        without depending on ``ArtifactKind`` internals.
+    """
+    return tuple(_KIND_BUCKETS.values())
 
 
 def _validate_object_key(object_key: str) -> str:
@@ -121,6 +173,25 @@ def _validate_object_key(object_key: str) -> str:
     ):
         raise ValueError("object_key must be a relative POSIX path without traversal")
     return key
+
+
+def _validate_tenant_scope(object_key: str, tenant_id: str) -> None:
+    """Ensure a validated object key is scoped under the given tenant's prefix.
+
+    Args:
+        object_key: Already-validated, relative object key.
+        tenant_id: Tenant identifier expected to prefix ``object_key``.
+
+    Raises:
+        ValueError: If ``tenant_id`` is blank or ``object_key`` does not
+            start with ``f"{tenant_id}/"``.
+    """
+    tenant = tenant_id.strip()
+    if not tenant:
+        raise ValueError("tenant_id must not be blank")
+    prefix = f"{tenant}/"
+    if not object_key.startswith(prefix):
+        raise ValueError(f"object_key must be scoped under tenant prefix '{prefix}'")
 
 
 def _digest(payload: bytes) -> str:
@@ -209,6 +280,20 @@ class LocalArtifactStore(ArtifactStore):
             raise ValueError("object_key escapes artifact bucket")
         return target.read_bytes()
 
+    def get_presigned_url(
+        self,
+        bucket: str,
+        object_key: str,
+        tenant_id: str,
+        *,
+        expires_in: int = DEFAULT_PRESIGNED_URL_EXPIRY_SECONDS,
+    ) -> str:
+        """Not supported: the local filesystem backend has no HTTP endpoint to sign a URL for."""
+        raise NotImplementedError(
+            "LocalArtifactStore has no HTTP endpoint fronting artifacts, "
+            "so pre-signed URLs are not supported; use get_artifact() directly"
+        )
+
 
 class MinioArtifactStore(ArtifactStore):
     """S3-compatible artifact store backed by MinIO."""
@@ -252,6 +337,20 @@ class MinioArtifactStore(ArtifactStore):
         self._client = client
         for bucket in _KIND_BUCKETS.values():
             self._ensure_bucket(bucket)
+
+    @property
+    def client(self) -> Any:
+        """Return the underlying MinIO client.
+
+        Exposed read-only so closely related tooling (e.g. lifecycle
+        cleanup in :mod:`backend.artifacts.cleanup`) can use native
+        listing/removal APIs without this module growing every possible
+        object-management operation.
+
+        Returns:
+            The MinIO (or MinIO-compatible test double) client instance.
+        """
+        return self._client
 
     def put_artifact(
         self,
@@ -307,6 +406,49 @@ class MinioArtifactStore(ArtifactStore):
         finally:
             response.close()
             response.release_conn()
+
+    def get_presigned_url(
+        self,
+        bucket: str,
+        object_key: str,
+        tenant_id: str,
+        *,
+        expires_in: int = DEFAULT_PRESIGNED_URL_EXPIRY_SECONDS,
+    ) -> str:
+        """Generate a pre-signed, time-limited URL for read access to an object.
+
+        Delegates to the underlying MinIO client's native
+        ``presigned_get_object``, which performs the AWS SigV4 signing; no
+        signing is hand-rolled here. The resulting URL is valid only for the
+        exact ``bucket``/``object_key`` pair given (scoped to a single
+        object, never bucket-wide), so it cannot be used to reach any object
+        outside ``object_key`` regardless of tenant.
+
+        Args:
+            bucket: Bucket the artifact was stored in.
+            object_key: Relative object key within the bucket. Must be
+                prefixed with ``f"{tenant_id}/"`` per the existing tenant
+                scoping convention (see ``put_artifact`` callers), which is
+                verified before signing.
+            tenant_id: Tenant identifier the caller is scoped to.
+            expires_in: Number of seconds the URL remains valid. Must be positive.
+
+        Returns:
+            A pre-signed URL granting temporary GET access to the object.
+
+        Raises:
+            ValueError: If ``object_key`` is invalid, is not scoped under
+                ``tenant_id``, or ``expires_in`` is not positive.
+        """
+        key = _validate_object_key(object_key)
+        _validate_tenant_scope(key, tenant_id)
+        if expires_in <= 0:
+            raise ValueError("expires_in must be a positive number of seconds")
+        return self._client.presigned_get_object(
+            bucket,
+            key,
+            expires=timedelta(seconds=expires_in),
+        )
 
     def _ensure_bucket(self, bucket: str) -> None:
         """Create a MinIO bucket if it does not already exist.

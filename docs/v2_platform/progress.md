@@ -70,7 +70,7 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 | E5 | Routing / Selection / Evaluation | Beta | Done | 4/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
 | E6 | Skills v2 | Beta | Done | 5/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
 | E7 | Context & RAG | Beta | Done | 4/4 | E1, E2, E8, E5 | [phases/e7_context_rag.md](phases/e7_context_rag.md) |
-| E8 | Persistence & Data | Alpha/Beta | Not started · E8-S1 partial (E7 prereq)* | 1/4* | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
+| E8 | Persistence & Data | Alpha/Beta | In progress · E8-S1 done, E8-S3 partial (T2 gap) | 1/4* | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
 | E9 | APIs, Events & MCP | Alpha/Beta | Not started | 0/4 | E8, E2, E6 | [phases/e9_apis_events_mcp.md](phases/e9_apis_events_mcp.md) |
 | E10 | UI/UX & Design System | Beta | Not started | 0/4 | E3, E9, E1 | [phases/e10_ui_ux_design_system.md](phases/e10_ui_ux_design_system.md) |
 | E11 | Observability, Security & Multi-tenant | Beta | Not started | 0/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
@@ -80,16 +80,33 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 
 Total: **30/71 stories complete** across 15 epics.
 
-\* E8's "1/4" reflects only the **scoped tenancy/reversible-migration slice**
-landed as an E7 prerequisite (ADR-010: `decisions/ADR-010-e8s1-scoped-tenancy.md`)
-— tenant_id + Row-Level Security on the new E7 tables and a lighter
-`tenant_id` retrofit on the core tables, plus up/down migration support in
-`MigrationRunner` and a versioned Postgres migration list. It is **not** a
-complete E8-S1 story: mandatory tenant scoping across the full repository
-call-site surface, negative-case RLS tests beyond the new/retrofitted
-tables, and E8-S2/S3/S4 (event store, Artifact Store, backup/RPO/RTO) remain
-open. E8's epic Status stays "Not started" (not "In progress") until a
-dedicated E8 story picks up the rest of E8-S1.
+\* **E8-S1 is now complete (2026-07-06)**: on top of the scoped tenancy/
+reversible-migration slice landed as an E7 prerequisite (ADR-010:
+`decisions/ADR-010-e8s1-scoped-tenancy.md`), the remaining T3/T4 work
+landed — mandatory `tenant_id` scoping threaded through every
+`SessionRepository`/`RunRepository`/`MessageRepository`/`PlanRepository`/
+`EvalResultRepository`/`ScoreSnapshotRepository` method on both
+`SQLiteStore`/`SQLitePlanStore` and `PostgresStore`/`PostgresPlanStore`
+(the latter via `set_postgres_tenant()` + RLS), a new `tenant_id` migration
+for `plan_documents`/`plan_approvals`, negative-case tenant-isolation tests,
+and caller-site threading in the two modules that called Protocol methods
+directly (`backend/orchestrator/service.py`,
+`backend/context/providers/session_memory.py`). `run_steps`,
+`plugin_events`, and `score_snapshot_promotions` intentionally keep no
+`tenant_id` column of their own — they are scoped transitively via `JOIN`
+to their parent row's tenant (documented at
+`backend/persistence/migrations/versions.py` lines 14-17); this was
+previously miscategorized in this doc as "not done" but is by design, not a
+gap. **E8-S3 (Artifact Store) is partial**: T3 (per-tenant pre-signed URLs)
+and T4 (orphan cleanup) landed in `backend/artifacts/store.py` +
+`backend/artifacts/cleanup.py`, but T2 (persisting `ArtifactPointer`
+metadata in the State Store) is confirmed **not** implemented anywhere, so
+T4's cleanup is a best-effort heuristic pending T2. E8-S2 (Event Store,
+blocked on E9's event catalog) and E8-S4 (Backup/RPO/RTO, blocked on E11)
+remain not started. Known follow-up: `backend/persistence/postgres_adapter.py`
+is now 713 lines, over this repo's 500-line-per-file guideline — a split
+into `PostgresStore`/`PostgresPlanStore` modules is reasonable future
+cleanup, out of scope for this pass.
 
 ## Wave exit gates (§18.9 of the reference doc)
 
@@ -141,6 +158,26 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-07-06** — **E8-S1 complete; E8-S3 partial** on `epic/e8-persistence-data`.
+  **E8-S1** (finishing the ADR-010 scoped slice): `backend/persistence/base.py`
+  Protocol methods gained a `tenant_id: str = DEFAULT_TENANT_ID` parameter;
+  `SQLiteStore`/`SQLitePlanStore` (`backend/persistence/sqlite_adapter.py`)
+  and `PostgresStore`/`PostgresPlanStore`
+  (`backend/persistence/postgres_adapter.py`) now enforce it — SQLite via
+  `sqlite_tenant_clause()`, Postgres via `set_postgres_tenant()` + RLS; a new
+  migration adds `tenant_id` (+ RLS on Postgres) to `plan_documents`/
+  `plan_approvals`; `run_steps`/`plugin_events`/`score_snapshot_promotions`
+  remain column-less by design, scoped transitively via `JOIN` to their
+  parent's tenant. `backend/orchestrator/service.py` and
+  `backend/context/providers/session_memory.py` now pass `tenant_id`
+  explicitly at their Protocol call sites. **E8-S3**: added per-tenant
+  pre-signed URL support and best-effort orphan cleanup
+  (`backend/artifacts/store.py`, new `backend/artifacts/cleanup.py`); T2
+  (artifact metadata persisted in the State Store) confirmed still missing.
+  Full backend+frontend suite green (`make check`) before the epic→`main`
+  PR. **Deferred**: E8-S2 (blocked on E9's event catalog), E8-S4 (blocked on
+  E11); `postgres_adapter.py` split (now 713 lines) left as follow-up.
 
 - **2026-07-06** — **E7 — Context & RAG epic complete (4/4)** on
   `epic/e7-context-rag`. **E7-S0 (prerequisite, scoped E8-S1 slice)**: added

@@ -12,6 +12,7 @@ from typing import Any
 
 from backend.context.provider import ContextItem
 from backend.persistence.database import get_store
+from backend.persistence.tenancy import DEFAULT_TENANT_ID
 
 #: Default number of most-recent messages surfaced when a caller does not
 #: configure a different limit.
@@ -53,7 +54,7 @@ class SessionMemoryContextProvider:
         if not session_id:
             return []
         store = self._store if self._store is not None else get_store()
-        messages = store.list_messages(session_id)
+        messages = store.list_messages(session_id, tenant_id=DEFAULT_TENANT_ID)
         recent = messages[-self._max_messages :]
         return [
             ContextItem(

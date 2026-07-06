@@ -318,6 +318,88 @@ def _pg_m5_down_remove_content_column_from_code_chunks(conn: Any) -> None:
     conn.execute("ALTER TABLE code_chunks DROP COLUMN IF EXISTS content")
 
 
+#: Plan store tables retrofitted with a ``tenant_id`` column (E8-S1-T3, ADR-010).
+#: Unlike :data:`~backend.persistence.migrations.versions.TENANT_SCOPED_STORE_TABLES`,
+#: these tables belong to
+#: :class:`~backend.persistence.postgres_adapter.PostgresPlanStore`, not
+#: :class:`~backend.persistence.postgres_adapter.PostgresStore`.
+PLAN_STORE_TENANT_SCOPED_TABLES = ("plan_documents", "plan_approvals")
+
+
+def add_tenant_id_and_rls_to_plan_tables(conn: Any) -> None:
+    """Add ``tenant_id`` plus Row-Level Security to the plan store's tables.
+
+    Mirrors :func:`_pg_m2_add_tenant_id_and_rls`, applied to
+    :data:`PLAN_STORE_TENANT_SCOPED_TABLES` instead of the core store
+    tables. Deliberately *not* underscore-prefixed (unlike its sibling
+    ``_pg_mN_*`` steps): it is invoked from two independent call sites —
+    once as a step in :data:`POSTGRES_STORE_MIGRATIONS` (so a fresh
+    :class:`~backend.persistence.postgres_adapter.PostgresStore` brings
+    these tables up to date too), and once directly from
+    :meth:`~backend.persistence.postgres_adapter.PostgresPlanStore._run_migrations`
+    (so a fresh :class:`~backend.persistence.postgres_adapter.PostgresPlanStore`
+    is correct even if a :class:`PostgresStore` is never constructed against
+    the same database). Because either store may bootstrap first against a
+    fresh database, this step (unlike migration 2) also guards its target
+    tables with ``CREATE TABLE IF NOT EXISTS`` — an ``ALTER TABLE`` against a
+    table that does not yet exist would otherwise fail outright.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS plan_documents (
+            session_id TEXT PRIMARY KEY,
+            steps_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+            status TEXT NOT NULL DEFAULT 'draft',
+            updated_at TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS plan_approvals (
+            id BIGSERIAL PRIMARY KEY,
+            session_id TEXT NOT NULL,
+            decision TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL
+        )
+        """
+    )
+    for table in PLAN_STORE_TENANT_SCOPED_TABLES:
+        conn.execute(
+            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'default'"
+        )
+        conn.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
+        conn.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
+        conn.execute(f"DROP POLICY IF EXISTS {table}_tenant_isolation ON {table}")
+        conn.execute(
+            f"CREATE POLICY {table}_tenant_isolation ON {table} "
+            "USING (tenant_id = current_setting('app.tenant_id', true))"
+        )
+
+
+def revert_tenant_id_and_rls_from_plan_tables(conn: Any) -> None:
+    """Revert :func:`add_tenant_id_and_rls_to_plan_tables`.
+
+    Drops the RLS policy, enforcement, and ``tenant_id`` column for each of
+    :data:`PLAN_STORE_TENANT_SCOPED_TABLES`. Mirrors
+    :func:`_pg_m2_down_tenant_id_and_rls`; the tables themselves are left in
+    place (only their retrofitted tenancy is undone).
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    for table in PLAN_STORE_TENANT_SCOPED_TABLES:
+        conn.execute(f"DROP POLICY IF EXISTS {table}_tenant_isolation ON {table}")
+        conn.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")
+        conn.execute(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY")
+        conn.execute(f"ALTER TABLE {table} DROP COLUMN IF EXISTS tenant_id")
+
+
 POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
     _pg_m1_create_core_tables,
     Migration(
@@ -339,6 +421,11 @@ POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_pg_m5_add_content_column_to_code_chunks,
         down=_pg_m5_down_remove_content_column_from_code_chunks,
         name="add_content_column_to_code_chunks",
+    ),
+    Migration(
+        up=add_tenant_id_and_rls_to_plan_tables,
+        down=revert_tenant_id_and_rls_from_plan_tables,
+        name="add_tenant_id_and_rls_to_plan_tables",
     ),
 ]
 
