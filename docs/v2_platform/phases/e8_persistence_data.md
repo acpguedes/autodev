@@ -2,12 +2,10 @@
 
 **Wave:** Split — E8-S1/E8-S2 (multi-tenant schema + event store) target Alpha;
 E8-S3/E8-S4 (artifacts + backup/RPO/RTO) target Beta.
-**Status:** Not started · **Stories:** 1/4 complete* (matches
-`../progress.md`'s epic table). \* A scoped E8-S1 slice — tenant_id + RLS on
-new/core tables, reversible up/down migrations — landed as an E7 prerequisite
-(`decisions/ADR-010-e8s1-scoped-tenancy.md`); it is **not** a fully-DoD'd
-E8-S1 story (see the note under E8-S1 below), so the epic Status stays "Not
-started" rather than "In progress".
+**Status:** In progress · **Stories:** 1/4 complete* (matches
+`../progress.md`'s epic table). \* E8-S1 is now complete (see below); E8-S3
+is partial (T3/T4 done, T2 gap remains); E8-S2/S4 are not started (blocked
+on E9/E11 respectively).
 **Depends on:** E0
 **Enables:** durable base for E3, E9, E11; integrates with E11 (backup)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.7.2 (E8), §18.8, §18.9
@@ -28,27 +26,40 @@ metadata.
 
 ### E8-S1 — Multi-tenant data model and migrations
 
-**Partial progress (2026-07-06):** a scoped slice of `E8-S1-T1` and
-`E8-S1-T2` landed as an E7 prerequisite —
-`decisions/ADR-010-e8s1-scoped-tenancy.md` records exactly what shipped and
-what was deferred. Summary against the subtasks below:
+**Complete (2026-07-06).** A scoped slice of `E8-S1-T1`/`T2` landed first as
+an E7 prerequisite (`decisions/ADR-010-e8s1-scoped-tenancy.md`); the
+remainder landed directly against this epic. Summary against the subtasks:
 
-- `E8-S1-T1` (**partial**): `tenant_id` + RLS added to the *new* E7 tables
+- `E8-S1-T1` (**done**): `tenant_id` + RLS on the *new* E7 tables
   (`code_chunks`, `code_embeddings`) from creation, plus a retrofit onto six
-  core tables (sessions/runs/messages/plugins/eval_results/score_snapshots).
-  Not done: `run_steps`/`plugin_events`/`score_snapshot_promotions` and any
-  other entities/steps tables.
-- `E8-S1-T2` (**done** for the migrations this slice touched): `MigrationRunner`
-  now supports real `up`/`down` pairs, `rollback_to`/`run_down`, verified by
-  an up→down→up round trip against a real temp SQLite file
-  (`backend/tests/test_tenancy_migrations.py`); `PostgresStore` moved from ad
-  hoc `CREATE TABLE IF NOT EXISTS` to the same versioned runner.
-- `E8-S1-T3` (**not done**): no repository call site was changed to require
-  a tenant argument; every existing method keeps its current signature and
-  implicitly operates on the `'default'` tenant. This is the largest
-  remaining piece of E8-S1.
-- `E8-S1-T4` (**not done** beyond what already existed): no new SQLite
-  parity work beyond the `tenant_id` column retrofit above.
+  core tables (sessions/runs/messages/plugins/eval_results/score_snapshots)
+  and, as of this pass, `plan_documents`/`plan_approvals`. `run_steps`,
+  `plugin_events`, and `score_snapshot_promotions` intentionally keep **no**
+  `tenant_id` column of their own — they're scoped transitively via `JOIN`
+  to their parent row's tenant_id (see the comment at
+  `backend/persistence/migrations/versions.py` lines 14-17). This is by
+  design, not a gap.
+- `E8-S1-T2` (**done**): `MigrationRunner` supports real `up`/`down` pairs,
+  `rollback_to`/`run_down`, verified by an up→down→up round trip
+  (`backend/tests/test_tenancy_migrations.py`); both SQLite and Postgres use
+  the same versioned runner, including the new plan-tables migration.
+- `E8-S1-T3` (**done**): every `SessionRepository`/`RunRepository`/
+  `MessageRepository`/`PlanRepository`/`EvalResultRepository`/
+  `ScoreSnapshotRepository` method now takes `tenant_id: str =
+  DEFAULT_TENANT_ID` (`backend/persistence/base.py`) and both
+  `SQLiteStore`/`SQLitePlanStore` and `PostgresStore`/`PostgresPlanStore`
+  enforce it (SQLite via `sqlite_tenant_clause()`, Postgres via
+  `set_postgres_tenant()` + RLS). The two call sites that invoked these
+  Protocols directly (`backend/orchestrator/service.py`,
+  `backend/context/providers/session_memory.py`) now pass `tenant_id`
+  explicitly; every other caller only touches non-Protocol stores that
+  already manage their own tenant scoping.
+- `E8-S1-T4` (**done**): SQLite now has full parity with the Postgres RLS
+  behavior for every scoped table, including the new plan tables.
+
+DoD check: negative-case tenant-isolation tests added for both adapters
+(`backend/tests/test_tenancy_migrations.py`, `test_plan_store.py`); up/down
+migrations tested; this doc updated.
 
 Subtasks:
 - `E8-S1-T1`: sessions/runs/steps/entities schema with `tenant_id` and Row-Level Security (RLS).
@@ -82,11 +93,21 @@ Subtasks:
 
 ### E8-S3 — Artifact Store (MinIO)
 
-Subtasks:
-- `E8-S3-T1`: S3-compatible client for patches, logs, outputs, and builds.
-- `E8-S3-T2`: artifact reference by metadata in the State Store (no binaries in the DB).
-- `E8-S3-T3`: pre-signed URLs scoped and expiring per tenant.
-- `E8-S3-T4`: lifecycle/cleanup of orphaned artifacts.
+**Partial progress (2026-07-06).** Summary against the subtasks:
+
+- `E8-S3-T1` (**done**, landed earlier as E0-S6): `backend/artifacts/store.py`
+  — `ArtifactKind`, `ArtifactPointer`, the `ArtifactStore` ABC,
+  `LocalArtifactStore`, `MinioArtifactStore`.
+- `E8-S3-T2` (**not done**): confirmed via audit that no `ArtifactPointer`
+  is ever persisted to a State Store table anywhere in the codebase —
+  artifacts are written/read by object key only, with no DB-backed
+  reference. This is the largest remaining piece of E8-S3.
+- `E8-S3-T3` (**done**): per-tenant, expiring pre-signed URL support added
+  to `MinioArtifactStore`/`LocalArtifactStore`.
+- `E8-S3-T4` (**partial**): `backend/artifacts/cleanup.py` adds
+  `cleanup_orphaned_artifacts()`, but since T2 doesn't exist yet it's a
+  best-effort age + allowlist heuristic, not true reference-counted garbage
+  collection — revisit once T2 lands.
 
 | Item | Content |
 | --- | --- |
