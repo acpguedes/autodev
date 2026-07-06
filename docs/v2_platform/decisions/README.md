@@ -46,6 +46,10 @@ neither.
 | ADR-006 | Budget Propagation for Composite Nodes | Accepted | E3-S5 | 2026-07-05 |
 | RFC-003 | Reasoning Strategy Contract (`reasoning.strategy`) | Accepted | E4-S1 | 2026-07-05 |
 | ADR-007 | Reasoning Engine Boundary and Enforcement Model | Accepted | E4-S1 | 2026-07-05 |
+| RFC-004 | Router & Selector Contract (`router`, `selector`) | Accepted | E5-S1 | 2026-07-05 |
+| ADR-008 | Router & Selector Boundary and Enforcement Model | Accepted | E5-S1 | 2026-07-05 |
+| RFC-005 | Evaluation Service Contract (`eval.yaml`, `Evaluator`) | Accepted | E5-S3 | 2026-07-05 |
+| ADR-009 | Evaluation Service Boundary and Scope | Accepted | E5-S3 | 2026-07-05 |
 
 > Update this table whenever an ADR or RFC is added or changes status. This index,
 > together with `docs/v2_platform/progress.md`, is the fastest way to see which

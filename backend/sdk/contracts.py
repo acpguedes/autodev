@@ -7,6 +7,15 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from backend.agents.manifest import AgentManifest
+from backend.evals.contract import (
+    EVAL_CONTRACT_HOST_API,
+    EvalCase,
+    EvalCaseScore,
+    EvalSpec,
+    Evaluator,
+    EvaluatorSpec,
+)
+from backend.evals.results import EvalResult
 from backend.flows.manifest import FlowManifest
 from backend.plugins.catalog import ExtensionPointKind
 from backend.plugins.manifest import PluginManifest
@@ -18,8 +27,28 @@ from backend.reasoning.contract import (
     ReasoningStrategy,
     ReasoningStrategyManifest,
 )
+from backend.routing.contract import (
+    ROUTING_CONTRACT_HOST_API,
+    AgentScoreAggregate,
+    RouteDecision,
+    RouteRequest,
+    RouterPlugin,
+    ScoreSnapshot,
+    SelectDecision,
+    SelectorPlugin,
+    SelectRequest,
+)
 
-SDK_CONTRACT_VERSION = "1.2.0"
+#: Bumped from 1.4.0 (E5-S4): re-exports `AgentScoreAggregate`, the fleshed-out
+#: per-agent quality/cost/latency breakdown `ScoreSnapshot.agent_scores` now
+#: carries — MINOR, additive change to the public SDK surface (`ScoreSnapshot`
+#: itself gained fields with defaults; no existing export changed shape).
+#: 1.4.0 re-exported the Selector contract
+#: (`SelectRequest`/`SelectDecision`/`SelectorPlugin`/`ScoreSnapshot`, RFC-004,
+#: E5-S2). 1.3.0 re-exported the Router contract
+#: (`RouteRequest`/`RouteDecision`/`RouterPlugin`, RFC-004, E5-S1) and the
+#: Evaluation Service contract (`EvalSpec`/`EvalResult`/`Evaluator`, RFC-005, E5-S3).
+SDK_CONTRACT_VERSION = "1.5.0"
 
 
 @dataclass(frozen=True)
@@ -104,7 +133,15 @@ class AgentHandler(Protocol):
 
 
 __all__ = [
+    "AgentScoreAggregate",
     "ContractTestResult",
+    "EVAL_CONTRACT_HOST_API",
+    "EvalCase",
+    "EvalCaseScore",
+    "EvalResult",
+    "EvalSpec",
+    "Evaluator",
+    "EvaluatorSpec",
     "ExtensionRegistration",
     "AgentHandler",
     "AgentManifest",
@@ -118,5 +155,13 @@ __all__ = [
     "ReasoningOutput",
     "ReasoningStrategy",
     "ReasoningStrategyManifest",
+    "ROUTING_CONTRACT_HOST_API",
+    "RouteDecision",
+    "RouteRequest",
+    "RouterPlugin",
     "SDK_CONTRACT_VERSION",
+    "ScoreSnapshot",
+    "SelectDecision",
+    "SelectRequest",
+    "SelectorPlugin",
 ]

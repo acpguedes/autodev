@@ -90,9 +90,74 @@ class PlanRepository(Protocol):
     def list_approvals(self, session_id: str) -> list[ApprovalRecord]: ...
 
 
+@runtime_checkable
+class EvalResultRepository(Protocol):
+    """Durable storage for immutable, versioned Evaluation Service (E5-S3) results."""
+
+    def create_eval_result(
+        self, *, eval_id: str, eval_version: str, run_id: str, document: dict[str, Any]
+    ) -> None: ...
+
+    def get_eval_result(self, eval_id: str, eval_version: str, run_id: str) -> dict[str, Any] | None: ...
+
+    def list_eval_results(self, eval_id: str, eval_version: str | None = None) -> list[dict[str, Any]]: ...
+
+
+@runtime_checkable
+class ScoreSnapshotRepository(Protocol):
+    """Durable storage for the Router/Selector closed feedback loop (E5-S4).
+
+    Two independent record kinds: an immutable, versioned
+    :class:`~backend.routing.contract.ScoreSnapshot` published by the
+    Evaluation Service (never overwritten, mirroring ``eval_results``'
+    immutability convention from ADR-009), and an append-only audit log of
+    every promotion *decision* (promoted or blocked) a
+    :class:`~backend.routing.feedback.RoutingFeedbackService` makes against a
+    routing policy id — recorded even when a snapshot is *not* promoted, so a
+    regression is auditable rather than silent (reference §9.5).
+    """
+
+    def create_score_snapshot(
+        self, *, snapshot_id: str, sample_count: int, document: dict[str, Any]
+    ) -> None:
+        """Persist one immutable, versioned score snapshot document."""
+        ...
+
+    def get_score_snapshot(self, snapshot_id: str) -> dict[str, Any] | None:
+        """Fetch one persisted score snapshot document, or ``None`` if it does not exist."""
+        ...
+
+    def list_score_snapshots(self, limit: int = 50) -> list[dict[str, Any]]:
+        """List persisted score snapshots, newest first."""
+        ...
+
+    def record_snapshot_promotion(
+        self,
+        *,
+        policy_id: str,
+        snapshot_id: str,
+        baseline_snapshot_id: str,
+        promoted: bool,
+        reason: str,
+        decided_at: str,
+    ) -> None:
+        """Append one promotion decision (promoted or blocked) to the audit log."""
+        ...
+
+    def get_active_score_snapshot(self, policy_id: str) -> dict[str, Any] | None:
+        """Fetch the currently promoted snapshot document for a policy id, or ``None``."""
+        ...
+
+    def list_snapshot_promotions(self, policy_id: str) -> list[dict[str, Any]]:
+        """List every promotion decision recorded for a policy id, newest first."""
+        ...
+
+
 __all__ = [
+    "EvalResultRepository",
     "MessageRepository",
     "PlanRepository",
     "RunRepository",
+    "ScoreSnapshotRepository",
     "SessionRepository",
 ]

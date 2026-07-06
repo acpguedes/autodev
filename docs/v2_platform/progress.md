@@ -7,7 +7,7 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-05 (E3 Alpha closed; **E4 — Reasoning epic complete (4/4)** on `epic/e4-reasoning` — contract, Engine, 5 reference strategies, and policy-driven selection + fallback; ready for epic→main PR)
+**Last updated:** 2026-07-05 (E4 — Reasoning epic complete, merged to `main`; **E5 — Routing/Selection/Evaluation epic complete (4/4)** on `epic/e5-routing-selection-evaluation` — Router, Selector, Evaluation Service, and the closed eval->routing feedback loop; full backend suite green (505/505, 90.64% coverage), ready for the epic→main PR)
 
 ## How to update this file
 
@@ -61,7 +61,7 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 | E2 | Agent Framework | Alpha | Done | 5/5 | E0, E1 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
 | E3 | Orchestration Engine | Alpha/Beta | Alpha done · S6→Beta | 5/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
 | E4 | Reasoning | Beta | Done | 4/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
-| E5 | Routing / Selection / Evaluation | Beta | Not started | 0/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
+| E5 | Routing / Selection / Evaluation | Beta | Done | 4/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
 | E6 | Skills v2 | Beta | Not started | 0/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
 | E7 | Context & RAG | Beta | Not started | 0/4 | E1, E2, E8, E5 | [phases/e7_context_rag.md](phases/e7_context_rag.md) |
 | E8 | Persistence & Data | Alpha/Beta | Not started | 0/4 | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
@@ -72,7 +72,7 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 
-Total: **21/71 stories complete** across 15 epics.
+Total: **25/71 stories complete** across 15 epics.
 
 ## Wave exit gates (§18.9 of the reference doc)
 
@@ -125,6 +125,76 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-07-05** — **E5-S4 complete; E5 — Routing/Selection/Evaluation epic done (4/4)**,
+  closing the loop described in reference §9.5. `backend/evals/service.py`:
+  `EvaluationService.publish_snapshot()` aggregates persisted `EvalResult`s (grouped
+  by agent) into a versioned, immutable `ScoreSnapshot`, emitted as
+  `eval.scores.published`. `backend/routing/selector_scoring.py`: the score-weighted
+  stage now really re-ranks candidates (min-max normalized cost/latency blended with
+  quality per configured weights) instead of the prior no-op passthrough.
+  `backend/routing/feedback.py` (new): `RoutingFeedbackService.decide_promotion`
+  applies a `min_samples` hysteresis guard plus a `promote_if` regression predicate
+  (reusing the existing safe expression evaluator from E5-S3, not a new parser),
+  tracing every decision (`selector.policy.adjusted` /
+  `selector.policy.regression_blocked`) — a rejected promotion is stored, not silently
+  dropped. New `score_snapshots`/`score_snapshot_promotions` tables (dual-backend,
+  additive). `POST /v2/evals/{ns}/{name}/publish`, `GET .../snapshots`; `/v2/select`
+  now consults the active snapshot automatically. `default_routing_policy()` gained a
+  real `score-weighted` stage so the platform default exercises the loop. ADR-008 and
+  ADR-009 amended (both boundaries are touched by this story). 118 new tests. Code
+  review (5 parallel angles) caught 8 real issues before commit, most notably a
+  multi-version score-aggregate collision in the Selector and a `promote_if`
+  field-name mismatch (`variant.cost`/`variant.latency` vs. the persisted
+  `costUsd`/`latencySeconds`) that would have silently blocked every promotion.
+  **Epic exit**: full backend suite green — **505/505 tests, ruff/mypy clean, 90.64%
+  coverage** (gate is 60%) on `epic/e5-routing-selection-evaluation`. Epic exit
+  checklist in `phases/e5_routing_selection_evaluation.md` ticked off. Ready for the
+  epic -> `main` PR (not yet opened).
+- **2026-07-05** — **E5-S2 complete (3/4)**. `backend/routing/selector.py`: the
+  Selector pipeline — capability-matching (client-side intersection/union over
+  `AgentRegistry.find_by_capability`, `registry_v2.py` untouched per ADR-008),
+  cost-aware (run-budget filter + objective ranking over `AgentBudgets`), a
+  documented score-weighted no-op passthrough (real snapshot wiring is E5-S4),
+  and a deterministic tie-break (three chained stable sorts: agent_id -> version
+  -> tie_breaker cost -> objective). `SelectRequest`/`SelectDecision`/
+  `SelectorPlugin`/`ScoreSnapshot` added to `backend/routing/contract.py` per
+  RFC-004 (already covered both Router and Selector); an ADR-008 amendment
+  records the implementation details RFC-004 left open (model/strategy
+  resolution from `AgentManifest.policy`, fail-closed `NoEligibleAgentError`,
+  3-item fallback cap). `POST /v2/select` added. SDK contract bumped `1.3.0` ->
+  `1.4.0`. 16 new tests (38/38 routing tests green, no regressions). Code review
+  caught two real bugs before commit: capability-matching wasn't narrowing an
+  already-filtered candidate pool from a prior stage, and a duplicated
+  capability in a request inflated a candidate's score — both fixed with
+  regression tests. **E5-S4 (feedback loop, depends on S2+S3) is the only story
+  left.**
+- **2026-07-05** — **E5-S1 and E5-S3 complete (2/4)**, opened `epic/e5-routing-selection-evaluation`
+  from `main`. **E5-S1 (Router)**: `backend/routing/` — typed `RouteRequest`/`RouteDecision`
+  contract and `RouterPlugin` protocol (§9.2), a declarative `routing.yaml` policy model
+  covering the full `router:`/`selector:`/`guardrails:`/`fallback:` shape (only the
+  `router.rules` pipeline stage is implemented; `embeddings`/`llm-router` are typed
+  extension-point stubs pending E7), a rules executor generalizing the v1
+  `RunTypeRouter`/`_ROUTE_MAP` into declarative `when`/`set` predicates with
+  confidence-based short-circuit, decision tracing via the same `on_event`/`TraceEvent`
+  callback style as the Reasoning Engine (not OTel spans), and `POST /v2/route`.
+  RFC-004 + ADR-008 cover both the Router and (not-yet-implemented) Selector contracts
+  since §9.2 documents them together. 22 tests (`test_routing_contract.py`,
+  `test_routing_router.py`). **E5-S3 (Evaluation Service)**: `backend/evals/` — typed
+  `eval.yaml` contract (`EvalSpec`/`EvalResult`/`Evaluator`, §9.4), a pluggable
+  `Evaluator` extension point (`deterministic` via a safe AST-whitelist expression
+  evaluator, never `eval()`; `llm-as-judge` via the existing `LLMProvider` stub),
+  `EvalRunner`/`EvaluationService` (offline execution, quality/cost/latency metrics,
+  `gate.fail_if`), a dual-backend (`SQLite`+`PostgreSQL`) `eval_results` store with a
+  `UNIQUE(eval_id, eval_version, run_id)` constraint for versioned/immutable results,
+  and `POST /v2/evals/run` + `GET /v2/evals/results/...`. Online A/B/canary is a typed
+  stub only (no traffic-splitting infra exists yet) — in scope for a later story if
+  needed. RFC-005 + ADR-009. 55 tests across 4 files. SDK contract bumped `1.2.0` ->
+  `1.3.0` (additive: Router + Eval contract re-exports). Both stories ran in parallel
+  (no shared files) and merged cleanly except two expected append-only conflicts
+  (`backend/sdk/contracts.py` version-bump comment, `decisions/README.md` index rows).
+  **E5-S2 (Selector, depends on S1)** and **E5-S4 (feedback loop, depends on S2+S3)**
+  remain — both have real code dependencies on already-merged work, so unlike S1/S3
+  they run sequentially, not in parallel.
 - **2026-07-05** — **E4-S4 complete; E4 — Reasoning epic done (4/4)**. Added
   policy-driven strategy **selection** (`selection.py`: precedence
   default→policy-rule→manifest→flow-node→selector per §8.7, with operator-aware

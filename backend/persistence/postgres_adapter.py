@@ -145,10 +145,47 @@ class PostgresStore:
                     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )
                 """,
+                """
+                CREATE TABLE IF NOT EXISTS eval_results (
+                    id BIGSERIAL PRIMARY KEY,
+                    eval_id TEXT NOT NULL,
+                    eval_version TEXT NOT NULL,
+                    run_id TEXT NOT NULL,
+                    mode TEXT NOT NULL,
+                    gate_passed BOOLEAN NOT NULL DEFAULT TRUE,
+                    document_json JSONB NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(eval_id, eval_version, run_id)
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS score_snapshots (
+                    id BIGSERIAL PRIMARY KEY,
+                    snapshot_id TEXT NOT NULL UNIQUE,
+                    sample_count INTEGER NOT NULL DEFAULT 0,
+                    document_json JSONB NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS score_snapshot_promotions (
+                    id BIGSERIAL PRIMARY KEY,
+                    policy_id TEXT NOT NULL,
+                    snapshot_id TEXT NOT NULL,
+                    baseline_snapshot_id TEXT NOT NULL DEFAULT '',
+                    promoted BOOLEAN NOT NULL,
+                    reason TEXT NOT NULL,
+                    decided_at TEXT NOT NULL
+                )
+                """,
                 "CREATE INDEX IF NOT EXISTS idx_pg_runs_session_id ON runs(session_id)",
                 "CREATE INDEX IF NOT EXISTS idx_pg_run_steps_run_id ON run_steps(run_id, id)",
                 "CREATE INDEX IF NOT EXISTS idx_pg_messages_session_id ON messages(session_id, sequence)",
                 "CREATE INDEX IF NOT EXISTS idx_pg_plugin_events_plugin_id ON plugin_events(plugin_id, id)",
+                "CREATE INDEX IF NOT EXISTS idx_pg_eval_results_eval_id ON eval_results(eval_id, eval_version, id DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_pg_score_snapshots_created ON score_snapshots(id DESC)",
+                "CREATE INDEX IF NOT EXISTS idx_pg_score_snapshot_promotions_policy_id "
+                "ON score_snapshot_promotions(policy_id, id DESC)",
                 """
                 INSERT INTO schema_version (namespace, version)
                 VALUES ('store', 1)
@@ -359,6 +396,126 @@ class PostgresStore:
                         (session_id, run_id, offset, item["role"], item["content"]),
                     )
             conn.commit()
+
+    def create_eval_result(
+        self, *, eval_id: str, eval_version: str, run_id: str, document: dict[str, Any]
+    ) -> None:
+        """Persist one eval result document. Never overwrites an existing run (E5-S3)."""
+        gate_passed = bool((document.get("gate") or {}).get("passed", True))
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO eval_results (eval_id, eval_version, run_id, mode, gate_passed, document_json)
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+                """,
+                (eval_id, eval_version, run_id, str(document.get("mode", "offline")), gate_passed, _json(document)),
+            )
+            conn.commit()
+
+    def get_eval_result(self, eval_id: str, eval_version: str, run_id: str) -> dict[str, Any] | None:
+        """Fetch one eval result document, or ``None`` if it does not exist (E5-S3)."""
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT document_json FROM eval_results WHERE eval_id = %s AND eval_version = %s AND run_id = %s",
+                (eval_id, eval_version, run_id),
+            ).fetchone()
+        return _loads(row[0]) if row is not None else None
+
+    def list_eval_results(self, eval_id: str, eval_version: str | None = None) -> list[dict[str, Any]]:
+        """List eval result documents for an id, newest first, optionally by version (E5-S3)."""
+        with self.connect() as conn:
+            if eval_version is not None:
+                rows = conn.execute(
+                    "SELECT document_json FROM eval_results WHERE eval_id = %s AND eval_version = %s "
+                    "ORDER BY id DESC",
+                    (eval_id, eval_version),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT document_json FROM eval_results WHERE eval_id = %s ORDER BY id DESC",
+                    (eval_id,),
+                ).fetchall()
+        return [_loads(row[0]) for row in rows]
+
+    def create_score_snapshot(
+        self, *, snapshot_id: str, sample_count: int, document: dict[str, Any]
+    ) -> None:
+        """Persist one immutable, versioned score snapshot document (E5-S4)."""
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO score_snapshots (snapshot_id, sample_count, document_json) "
+                "VALUES (%s, %s, %s::jsonb)",
+                (snapshot_id, sample_count, _json(document)),
+            )
+            conn.commit()
+
+    def get_score_snapshot(self, snapshot_id: str) -> dict[str, Any] | None:
+        """Fetch one persisted score snapshot document, or ``None`` (E5-S4)."""
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT document_json FROM score_snapshots WHERE snapshot_id = %s", (snapshot_id,)
+            ).fetchone()
+        return _loads(row[0]) if row is not None else None
+
+    def list_score_snapshots(self, limit: int = 50) -> list[dict[str, Any]]:
+        """List persisted score snapshots, newest first (E5-S4)."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT document_json FROM score_snapshots ORDER BY id DESC LIMIT %s", (limit,)
+            ).fetchall()
+        return [_loads(row[0]) for row in rows]
+
+    def record_snapshot_promotion(
+        self,
+        *,
+        policy_id: str,
+        snapshot_id: str,
+        baseline_snapshot_id: str,
+        promoted: bool,
+        reason: str,
+        decided_at: str,
+    ) -> None:
+        """Append one promotion decision (promoted or blocked) to the audit log (E5-S4)."""
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO score_snapshot_promotions "
+                "(policy_id, snapshot_id, baseline_snapshot_id, promoted, reason, decided_at) "
+                "VALUES (%s, %s, %s, %s, %s, %s)",
+                (policy_id, snapshot_id, baseline_snapshot_id, promoted, reason, decided_at),
+            )
+            conn.commit()
+
+    def get_active_score_snapshot(self, policy_id: str) -> dict[str, Any] | None:
+        """Fetch the currently promoted snapshot document for a policy id (E5-S4)."""
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT snapshot_id FROM score_snapshot_promotions "
+                "WHERE policy_id = %s AND promoted = TRUE ORDER BY id DESC LIMIT 1",
+                (policy_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return self.get_score_snapshot(row[0])
+
+    def list_snapshot_promotions(self, policy_id: str) -> list[dict[str, Any]]:
+        """List every promotion decision recorded for a policy id, newest first (E5-S4)."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT policy_id, snapshot_id, baseline_snapshot_id, promoted, reason, decided_at "
+                "FROM score_snapshot_promotions WHERE policy_id = %s ORDER BY id DESC",
+                (policy_id,),
+            ).fetchall()
+        return [
+            {
+                "policyId": row[0],
+                "snapshotId": row[1],
+                "baselineSnapshotId": row[2],
+                "promoted": bool(row[3]),
+                "reason": row[4],
+                "decidedAt": row[5],
+            }
+            for row in rows
+        ]
 
     def _replace_run_steps(self, conn: Any, run_id: str, steps: list[dict[str, Any]]) -> None:
         """Delete and re-insert all step rows for a run."""
