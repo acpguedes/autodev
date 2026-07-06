@@ -23,10 +23,12 @@ The ``router:`` section's ``rules`` stage is fully implemented (E5-S1). The
 executed as pluggable stubs (see :mod:`backend.routing.router`). The
 ``selector:`` section's ``capability-matching``, ``cost-aware``, and
 ``score-weighted`` stage kinds plus its ``tie_breaker`` are fully parsed and
-executed (E5-S2, see :mod:`backend.routing.selector`) — ``score-weighted`` is
-a documented no-op passthrough until E5-S4 wires in a real Evaluation Service
-score snapshot. The ``guardrails:`` and ``fallback:`` top-level sections
-remain thin placeholders, parsed but unused (future E5 stories).
+executed (E5-S2/E5-S4, see :mod:`backend.routing.selector`) —
+``score-weighted`` blends a published :class:`~backend.routing.contract.ScoreSnapshot`
+into the ranking per its configured ``weights`` once one is supplied (E5-S4;
+see :mod:`backend.routing.feedback` for how a snapshot is published and
+promoted). The ``guardrails:`` and ``fallback:`` top-level sections remain
+thin placeholders, parsed but unused (future E5 stories).
 """
 
 from __future__ import annotations
@@ -220,14 +222,20 @@ class SelectorCostAwareStageSpec:
 class SelectorScoreWeightedStageSpec:
     """A ``kind: score-weighted`` selector pipeline stage.
 
-    Not executed as a real re-ranking stage in E5-S2 — see
-    :mod:`backend.routing.selector` for the no-op passthrough handler. E5-S4
-    wires in a real :class:`~backend.routing.contract.ScoreSnapshot` and
-    applies these weights.
+    Blends a published :class:`~backend.routing.contract.ScoreSnapshot`'s
+    per-agent quality/cost/latency aggregates into the candidate ranking using
+    ``weights`` (E5-S4; see
+    :func:`backend.routing.selector_scoring.apply_score_weighted`). Remains a
+    documented no-op passthrough when no snapshot is supplied to
+    :meth:`~backend.routing.selector.Selector.select`, or when ``weights`` is
+    empty — both are valid, intentional configurations (e.g. before any eval
+    has been published for a policy).
 
     Attributes:
-        weights: Declared weight per score dimension (e.g. ``quality``,
-            ``cost``, ``latency``), parsed but unused until E5-S4.
+        weights: Declared weight per score dimension (``quality``, ``cost``,
+            ``latency``). Each dimension is min-max normalized across the
+            current candidate pool before weighting, so weights need not sum
+            to 1 (only their relative magnitude matters).
     """
 
     weights: dict[str, float] = field(default_factory=dict)
@@ -349,8 +357,10 @@ def default_routing_policy() -> RoutingPolicy:
     validation-only runs, and DevOps changes — plus the generic full-pipeline
     fallback for everything else. Also seeds a permissive default selector
     pipeline: match on any declared required capability (or all agents, if
-    none are given), respect the run's own budget, and break ties by lowest
-    cost (E5-S2).
+    none are given), respect the run's own budget, blend in a published score
+    snapshot with reference §9.3's example weights (E5-S4; a no-op until a
+    snapshot is actually promoted — see :mod:`backend.routing.feedback`), and
+    break ties by lowest cost (E5-S2).
 
     Returns:
         A ready-to-use :class:`RoutingPolicy`.
@@ -394,6 +404,7 @@ def default_routing_policy() -> RoutingPolicy:
                 stages=(
                     SelectorCapabilityMatchingStageSpec(require_all=True),
                     SelectorCostAwareStageSpec(objective="minimize_cost"),
+                    SelectorScoreWeightedStageSpec(weights={"quality": 0.6, "cost": 0.25, "latency": 0.15}),
                 ),
                 tie_breaker="lowest_cost",
             )

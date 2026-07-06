@@ -119,3 +119,93 @@ A few implementation details RFC-004 left open needed settling:
 None of the above change the `SelectRequest`/`SelectDecision`/`SelectorPlugin`
 shape RFC-004 fixed; they are implementation conventions the RFC did not
 specify.
+
+## Amendment (E5-S4)
+
+E5-S4 closes the loop reference §9.5 describes: it wires the `score-weighted`
+selector stage to a real `ScoreSnapshot` (E5-S3's Evaluation Service data) and
+adds the regression-guarded promotion mechanism deciding *whether* a
+published snapshot becomes a policy's active one. This is a MINOR, additive
+change to `ScoreSnapshot` (new fields, all defaulted) and a behavioral wiring
+of an already-declared stage kind — not a new public contract — so an ADR
+amendment, not a new RFC, is the right instrument (per `agent_guide.md` §5).
+
+1. **`ScoreSnapshot`'s final shape.** Additive to the E5-S2 placeholder: the
+   existing `scores: dict[str, float]` (bare quality scalar per agent) is kept
+   for backward compatibility; a new `agent_scores: dict[str,
+   AgentScoreAggregate]` carries the full per-agent quality/cost/latency/
+   sample-count breakdown the `score-weighted` stage and the promotion guard
+   actually compute against. `sample_count` (total contributing
+   `EvalResult` runs), `created_at`, and `source_run_ids` support the
+   `min_samples` hysteresis guard and audit trail. `AgentScoreAggregate` and
+   `ScoreSnapshot` both gained `to_document`/`from_document` for the same
+   plain-JSON persistence/API convention `EvalResult` already uses.
+2. **`score-weighted` stage: real ranking, not a new sort key.** Rather than
+   add a fourth ranking dimension to `_deterministic_order`, the stage
+   overwrites each candidate's existing `AgentRef.score` field (already
+   documented as a general-purpose "ranking score used when searching by
+   capability", and already consumed by the `maximize_quality` objective) with
+   a blended value, then forces the final sort's objective to
+   `maximize_quality`. This reuses 100% of the existing deterministic
+   tie-break machinery — no new stage-specific sort path was introduced —
+   at the cost of the stage's effect only being observable through an
+   objective override rather than its own independent ranking key. Cost and
+   latency are min-max normalized across the *current candidate pool* before
+   being inverted (`1 - normalized`) so all three weighted terms share the
+   `[0, 1]` scale despite quality being pre-normalized and cost/latency being
+   raw USD/seconds; a candidate absent from the snapshot gets a neutral `0.0`.
+   This is a no-op passthrough (unchanged E5-S2 behavior) whenever no snapshot
+   is supplied, or the stage declares no `weights` — both remain valid,
+   intentional configurations.
+3. **Promotion/regression guard lives in a new module,
+   `backend/routing/feedback.py`, not `selector.py`.** `RoutingFeedbackService`
+   is a separate concern from the Selector itself: it decides *whether* a
+   published `ScoreSnapshot` becomes a policy's active one (durable,
+   cross-request state keyed by `policy_id`), while `Selector`/`selector.py`
+   only *consumes* whatever active snapshot a caller passes in. Splitting them
+   keeps the Selector pure/stateless per call (ADR-008 point 2's tracing
+   split, mirrored here for promotion decisions).
+4. **The regression criterion reuses `backend.evals.expressions.evaluate_expression`,
+   not `backend.reasoning.selection`'s or `backend.routing.router`'s
+   `key -> literal` predicate matchers.** Those two match one flattened signal
+   against a literal/operator-expression string; `ABTestSpec.promote_if`
+   (`"variant.quality >= control.quality and variant.cost <= control.cost"`)
+   compares two *paths* joined by `and`/`or` — a shape neither matcher
+   natively supports without building new top-level clause-splitting/path-
+   resolution logic on top of them. `backend.evals.expressions` already
+   implements exactly this dotted-identifier boolean-expression grammar for
+   `gate.fail_if` (same package as `ABTestSpec`, same grammar), so it is
+   reused as-is: zero new parsing logic, not a fourth predicate parser.
+5. **Hysteresis guard is a simple sample-count floor, not a statistical
+   test.** `ab_test.min_samples` (`0` = no minimum, mirroring
+   `SelectBudget`'s "0 = unconstrained" convention) must be met by
+   `candidate.sample_count` before `promote_if` is even evaluated. This is
+   deliberately simple (no significance testing, no confidence intervals) —
+   sufficient to satisfy the story's "no unstable loop" NFR without building
+   an A/B statistics engine, which is out of scope.
+6. **Every decision — promoted or blocked — is persisted and traced,
+   never silently dropped.** `RoutingFeedbackService` records every call to
+   `decide_promotion` via `record_snapshot_promotion` (a new, append-only
+   `score_snapshot_promotions` table) and emits `selector.policy.adjusted` or
+   `selector.policy.regression_blocked`, so a regression is auditable rather
+   than an invisible no-op.
+7. **`default_routing_policy()` gains a `score-weighted` stage** (`weights:
+   {quality: 0.6, cost: 0.25, latency: 0.15}`, reference §9.3's example
+   ratios) so the platform default policy's selector pipeline actually
+   exercises the closed loop; before E5-S4 it only had `capability-matching`
+   and `cost-aware`. This is additive to the pipeline's stage list, not a
+   change to any existing stage's behavior when no snapshot is promoted yet.
+8. **`POST /v2/select` looks up the active snapshot itself**, via a new
+   `RoutingFeedbackService` dependency in `backend/api/routers/routing.py`,
+   keyed by `default_routing_policy().id` — the handler does not require a
+   caller to pass a snapshot explicitly; promotion via `POST
+   /v2/evals/{namespace}/{name}/publish` changes subsequent `/v2/select`
+   decisions transparently.
+9. **SDK contract surface** (`backend/sdk/contracts.py`) re-exports
+   `AgentScoreAggregate`; `SDK_CONTRACT_VERSION` bumped 1.4.0 → 1.5.0
+   (additive/MINOR — `ScoreSnapshot` gained fields with defaults, no existing
+   export changed shape).
+
+See ADR-009's E5-S4 amendment for the Evaluation Service side of this split:
+aggregating persisted `EvalResult`s into a `ScoreSnapshot` and durably
+publishing it (`EvaluationService.publish_snapshot`).

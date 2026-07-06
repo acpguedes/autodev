@@ -1,4 +1,4 @@
-"""v2 Router and Selector API (E5-S1, E5-S2).
+"""v2 Router and Selector API (E5-S1, E5-S2, E5-S4).
 
 Uses typed Pydantic request models (matching the majority pattern of sibling
 ``/v2`` POST endpoints — see ``backend/api/routers/patches.py``,
@@ -7,10 +7,18 @@ Uses typed Pydantic request models (matching the majority pattern of sibling
 objects) before the handler runs, so a malformed request (e.g. a ``null``
 where an object is expected) is rejected with a structured 422 by the
 framework itself, instead of requiring hand-written defensive parsing.
+
+E5-S4: ``POST /v2/select`` looks up the routing policy's currently *promoted*
+:class:`~backend.routing.contract.ScoreSnapshot` (via
+:class:`~backend.routing.feedback.RoutingFeedbackService`) and forwards it to
+the Selector, closing the feedback loop — a snapshot published and promoted
+through ``POST /v2/evals/{namespace}/{name}/publish`` changes subsequent
+``/v2/select`` decisions without any other client-visible change.
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from backend.agents.registry_v2 import AgentRegistry
 from backend.api.routers.agents_v2 import get_agent_registry
+from backend.persistence.database import get_store
 from backend.routing.contract import (
     ContextDigest,
     ContextSignals,
@@ -25,12 +34,16 @@ from backend.routing.contract import (
     RouteDecision,
     RouteInput,
     RouteRequest,
+    ScoreSnapshot,
     SelectBudget,
     SelectRequest,
 )
+from backend.routing.feedback import RoutingFeedbackService
 from backend.routing.policy import default_routing_policy
 from backend.routing.selector import NoEligibleAgentError
 from backend.routing.service import RoutingService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v2", tags=["routing"])
 
@@ -74,6 +87,18 @@ def get_routing_service() -> RoutingService:
         A new :class:`RoutingService` bound to the platform default policy.
     """
     return RoutingService(default_routing_policy())
+
+
+def get_routing_feedback_service() -> RoutingFeedbackService:
+    """Build the Routing Feedback Service dependency for request handlers (E5-S4).
+
+    Returns:
+        A new :class:`RoutingFeedbackService` bound to the default durable
+        store — the same store ``POST /v2/evals/{namespace}/{name}/publish``
+        promotes snapshots against, so a promotion is immediately visible here
+        (both share the process-wide cached store).
+    """
+    return RoutingFeedbackService(get_store())
 
 
 @router.post("/route")
@@ -180,14 +205,24 @@ def select_request(
     body: SelectRequestBody,
     service: RoutingService = Depends(get_routing_service),
     registry: AgentRegistry = Depends(get_agent_registry),
+    feedback: RoutingFeedbackService = Depends(get_routing_feedback_service),
 ) -> dict[str, Any]:
     """Select an agent/model/strategy for a routed task.
+
+    Looks up whatever :class:`~backend.routing.contract.ScoreSnapshot` is
+    currently promoted for the platform default routing policy (E5-S4) and
+    forwards it to the Selector's ``score-weighted`` stage — a snapshot
+    published and promoted via ``POST /v2/evals/{namespace}/{name}/publish``
+    changes this decision on the next call, with no other client-visible
+    change (the closed feedback loop, reference §9.5).
 
     Args:
         body: A ``SelectRequest`` document (reference §9.2).
         service: Routing service dependency.
         registry: Agent Registry dependency, synced with enabled plugins
             before matching (same convention as ``GET /v2/agents/catalog``).
+        feedback: Routing Feedback Service dependency, used to fetch the
+            active score snapshot (if any) for the default routing policy.
 
     Returns:
         A ``SelectDecision`` document as JSON.
@@ -198,8 +233,9 @@ def select_request(
     """
     registry.sync_from_plugin_store()
     req = _to_select_request(body)
+    scores = _get_active_snapshot_or_none(feedback, default_routing_policy().id)
     try:
-        decision = service.select(req, registry=registry)
+        decision = service.select(req, registry=registry, scores=scores)
     except NoEligibleAgentError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
@@ -256,6 +292,31 @@ def _to_select_request(body: SelectRequestBody) -> SelectRequest:
             time_s=body.budget.time_s,
         ),
     )
+
+
+def _get_active_snapshot_or_none(feedback: RoutingFeedbackService, policy_id: str) -> ScoreSnapshot | None:
+    """Look up the active score snapshot for a policy id, degrading to ``None`` on failure.
+
+    ``scores=None`` is already a fully valid, documented state for
+    :meth:`~backend.routing.selector.Selector.select` (the ``score-weighted``
+    stage is a no-op passthrough without one) — a snapshot-store read failure
+    or a corrupted persisted document (E5-S4) should degrade ``/v2/select``
+    back to that same no-op behavior rather than turning an otherwise-healthy
+    selection request into an unrelated 500.
+
+    Args:
+        feedback: Routing Feedback Service to query.
+        policy_id: Routing policy id whose active snapshot to fetch.
+
+    Returns:
+        The active :class:`~backend.routing.contract.ScoreSnapshot`, or
+        ``None`` if none is active or the lookup failed.
+    """
+    try:
+        return feedback.get_active_snapshot(policy_id)
+    except Exception:  # noqa: BLE001 - defensive: never let a snapshot-lookup failure break /v2/select
+        logger.warning("failed to fetch active score snapshot for policy %r; selecting without one", policy_id)
+        return None
 
 
 __all__ = ["get_routing_service", "router"]

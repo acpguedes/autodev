@@ -223,6 +223,89 @@ class SQLiteStore:
         return [json.loads(row["document_json"]) for row in rows]
 
     # ------------------------------------------------------------------
+    # ScoreSnapshotRepository (E5-S4)
+    # ------------------------------------------------------------------
+
+    def create_score_snapshot(
+        self, *, snapshot_id: str, sample_count: int, document: dict[str, Any]
+    ) -> None:
+        """Persist one immutable, versioned score snapshot document (E5-S4)."""
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO score_snapshots (snapshot_id, sample_count, document_json) VALUES (?, ?, ?)",
+                (snapshot_id, sample_count, json.dumps(document)),
+            )
+            conn.commit()
+
+    def get_score_snapshot(self, snapshot_id: str) -> dict[str, Any] | None:
+        """Fetch one persisted score snapshot document, or ``None`` if it does not exist (E5-S4)."""
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT document_json FROM score_snapshots WHERE snapshot_id = ?", (snapshot_id,)
+            ).fetchone()
+        return json.loads(row["document_json"]) if row is not None else None
+
+    def list_score_snapshots(self, limit: int = 50) -> list[dict[str, Any]]:
+        """List persisted score snapshots, newest first (E5-S4)."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT document_json FROM score_snapshots ORDER BY id DESC LIMIT ?", (limit,)
+            ).fetchall()
+        return [json.loads(row["document_json"]) for row in rows]
+
+    def record_snapshot_promotion(
+        self,
+        *,
+        policy_id: str,
+        snapshot_id: str,
+        baseline_snapshot_id: str,
+        promoted: bool,
+        reason: str,
+        decided_at: str,
+    ) -> None:
+        """Append one promotion decision (promoted or blocked) to the audit log (E5-S4)."""
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO score_snapshot_promotions "
+                "(policy_id, snapshot_id, baseline_snapshot_id, promoted, reason, decided_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (policy_id, snapshot_id, baseline_snapshot_id, 1 if promoted else 0, reason, decided_at),
+            )
+            conn.commit()
+
+    def get_active_score_snapshot(self, policy_id: str) -> dict[str, Any] | None:
+        """Fetch the currently promoted snapshot document for a policy id (E5-S4)."""
+        with self.connect() as conn:
+            row = conn.execute(
+                "SELECT snapshot_id FROM score_snapshot_promotions "
+                "WHERE policy_id = ? AND promoted = 1 ORDER BY id DESC LIMIT 1",
+                (policy_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return self.get_score_snapshot(row["snapshot_id"])
+
+    def list_snapshot_promotions(self, policy_id: str) -> list[dict[str, Any]]:
+        """List every promotion decision recorded for a policy id, newest first (E5-S4)."""
+        with self.connect() as conn:
+            rows = conn.execute(
+                "SELECT policy_id, snapshot_id, baseline_snapshot_id, promoted, reason, decided_at "
+                "FROM score_snapshot_promotions WHERE policy_id = ? ORDER BY id DESC",
+                (policy_id,),
+            ).fetchall()
+        return [
+            {
+                "policyId": row["policy_id"],
+                "snapshotId": row["snapshot_id"],
+                "baselineSnapshotId": row["baseline_snapshot_id"],
+                "promoted": bool(row["promoted"]),
+                "reason": row["reason"],
+                "decidedAt": row["decided_at"],
+            }
+            for row in rows
+        ]
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 

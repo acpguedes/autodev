@@ -132,6 +132,12 @@ class EvalResult:
             gate is declared).
         gate_reason: Human-readable explanation of the gate outcome.
         created_at: ISO-8601 UTC timestamp the result was produced.
+        agent_id: Fully qualified Agent Registry (E2) id this run measured
+            (:attr:`~backend.evals.contract.EvalTarget.agent_id`), or ``""``
+            for results persisted before this field existed (E5-S4, additive).
+            Used by :meth:`backend.evals.service.EvaluationService.publish_snapshot`
+            to group results into a :class:`~backend.routing.contract.ScoreSnapshot`'s
+            per-agent aggregates.
     """
 
     eval_id: str
@@ -146,6 +152,7 @@ class EvalResult:
     gate_passed: bool
     gate_reason: str
     created_at: str
+    agent_id: str = ""
 
     def to_document(self) -> dict[str, Any]:
         """Render this result as a JSON-serializable API/storage document."""
@@ -160,6 +167,7 @@ class EvalResult:
             "metrics": self.metrics.to_document(),
             "gate": {"passed": self.gate_passed, "reason": self.gate_reason},
             "createdAt": self.created_at,
+            "agentId": self.agent_id,
         }
 
     @classmethod
@@ -189,6 +197,7 @@ class EvalResult:
             gate_passed=bool(gate.get("passed", True)),
             gate_reason=str(gate.get("reason", "")),
             created_at=str(document.get("createdAt", "")),
+            agent_id=str(document.get("agentId", "")),
         )
 
 
