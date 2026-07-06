@@ -1,9 +1,14 @@
-"""Raw-document parsing and validation for ``routing-policy.yaml`` (E5-S1).
+"""Raw-document parsing and validation for ``routing-policy.yaml`` (E5-S1, E5-S2).
 
 Split out of :mod:`backend.routing.policy` to keep both modules under the
 repository's file-size guideline. This module imports the policy dataclasses
 from there — a one-directional dependency (this module depends on
 ``policy.py``, never the reverse), so there is no import cycle.
+
+This module parses the ``router:`` section. Parsing of the ``selector:``
+section is split out further into :mod:`backend.routing.selector_policy_parsing`
+(E5-S2) — the same file-size-guideline rationale, mirroring the
+:mod:`backend.routing.router`/:mod:`backend.routing.selector` executor split.
 """
 
 from __future__ import annotations
@@ -31,9 +36,9 @@ from backend.routing.policy import (
     RoutingPolicy,
     FallbackPolicySpec,
     GuardrailsPolicySpec,
-    SelectorPolicySpec,
     generic_router_default,
 )
+from backend.routing.selector_policy_parsing import parse_selector_section
 
 POLICY_ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*$")
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
@@ -90,7 +95,7 @@ def validate_routing_policy(raw: dict[str, Any]) -> RoutingPolicyValidationResul
         errors.append("hostApi must be a supported range expression")
 
     router = _parse_router(raw.get("router"), errors)
-    selector = SelectorPolicySpec(raw=_as_dict(raw.get("selector")))
+    selector = parse_selector_section(raw.get("selector"), errors)
     guardrails = GuardrailsPolicySpec(raw=_as_dict(raw.get("guardrails")))
     fallback = FallbackPolicySpec(raw=_as_dict(raw.get("fallback")))
 

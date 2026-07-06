@@ -32,13 +32,19 @@ from backend.routing.contract import (
     RouteDecision,
     RouteRequest,
     RouterPlugin,
+    ScoreSnapshot,
+    SelectDecision,
+    SelectorPlugin,
+    SelectRequest,
 )
 
-#: Bumped from 1.2.0 (E5-S1 + E5-S3): re-exports the Router contract
-#: (`RouteRequest`/`RouteDecision`/`RouterPlugin`, RFC-004) and the Evaluation
-#: Service contract (`EvalSpec`/`EvalResult`/`Evaluator`, RFC-005) — MINOR,
-#: additive changes to the public SDK surface (no existing export changed shape).
-SDK_CONTRACT_VERSION = "1.3.0"
+#: Bumped from 1.3.0 (E5-S2): re-exports the Selector contract
+#: (`SelectRequest`/`SelectDecision`/`SelectorPlugin`/`ScoreSnapshot`, RFC-004) —
+#: MINOR, additive change to the public SDK surface (no existing export
+#: changed shape). 1.3.0 itself re-exported the Router contract
+#: (`RouteRequest`/`RouteDecision`/`RouterPlugin`, RFC-004, E5-S1) and the
+#: Evaluation Service contract (`EvalSpec`/`EvalResult`/`Evaluator`, RFC-005, E5-S3).
+SDK_CONTRACT_VERSION = "1.4.0"
 
 
 @dataclass(frozen=True)
@@ -149,4 +155,8 @@ __all__ = [
     "RouteRequest",
     "RouterPlugin",
     "SDK_CONTRACT_VERSION",
+    "ScoreSnapshot",
+    "SelectDecision",
+    "SelectRequest",
+    "SelectorPlugin",
 ]
