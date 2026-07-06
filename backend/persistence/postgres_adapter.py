@@ -8,6 +8,8 @@ import os
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
+from backend.persistence.migrations import MigrationRunner
+from backend.persistence.migrations.postgres_versions import POSTGRES_STORE_MIGRATIONS
 from backend.plans.models import ApprovalRecord, PlanDocument, PlanStatus
 
 _DEFAULT_DATABASE_URL = "postgresql://autodev:autodev@postgres:5432/autodev"
@@ -68,131 +70,18 @@ class PostgresStore:
         return _connect(self.database_url)
 
     def _run_migrations(self, conn: Any) -> None:
-        """Create the store's tables, indexes, and record the schema version."""
-        _run_sql(
-            conn,
-            [
-                """
-                CREATE TABLE IF NOT EXISTS schema_version (
-                    namespace TEXT PRIMARY KEY,
-                    version INTEGER NOT NULL
-                )
-                """,
-                """
-                CREATE TABLE IF NOT EXISTS sessions (
-                    id TEXT PRIMARY KEY,
-                    goal TEXT NOT NULL,
-                    plan_json JSONB NOT NULL,
-                    artifacts_json JSONB NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """,
-                """
-                CREATE TABLE IF NOT EXISTS runs (
-                    id TEXT PRIMARY KEY,
-                    session_id TEXT NOT NULL REFERENCES sessions(id),
-                    status TEXT NOT NULL,
-                    run_type TEXT NOT NULL DEFAULT 'existing_repo_change',
-                    current_state TEXT NOT NULL DEFAULT 'starting',
-                    trigger_message TEXT NOT NULL,
-                    results_json JSONB NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    completed_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """,
-                """
-                CREATE TABLE IF NOT EXISTS run_steps (
-                    id BIGSERIAL PRIMARY KEY,
-                    run_id TEXT NOT NULL REFERENCES runs(id),
-                    step_key TEXT NOT NULL,
-                    agent TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    started_at TEXT NOT NULL,
-                    completed_at TEXT NOT NULL,
-                    attempt INTEGER NOT NULL DEFAULT 1
-                )
-                """,
-                """
-                CREATE TABLE IF NOT EXISTS messages (
-                    id BIGSERIAL PRIMARY KEY,
-                    session_id TEXT NOT NULL REFERENCES sessions(id),
-                    run_id TEXT REFERENCES runs(id),
-                    sequence INTEGER NOT NULL,
-                    role TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """,
-                """
-                CREATE TABLE IF NOT EXISTS plugins (
-                    id TEXT PRIMARY KEY,
-                    version TEXT NOT NULL,
-                    state TEXT NOT NULL,
-                    manifest_path TEXT NOT NULL,
-                    manifest_json JSONB NOT NULL,
-                    reason TEXT NOT NULL DEFAULT '',
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """,
-                """
-                CREATE TABLE IF NOT EXISTS plugin_events (
-                    id BIGSERIAL PRIMARY KEY,
-                    event_name TEXT NOT NULL,
-                    plugin_id TEXT NOT NULL,
-                    payload_json JSONB NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """,
-                """
-                CREATE TABLE IF NOT EXISTS eval_results (
-                    id BIGSERIAL PRIMARY KEY,
-                    eval_id TEXT NOT NULL,
-                    eval_version TEXT NOT NULL,
-                    run_id TEXT NOT NULL,
-                    mode TEXT NOT NULL,
-                    gate_passed BOOLEAN NOT NULL DEFAULT TRUE,
-                    document_json JSONB NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(eval_id, eval_version, run_id)
-                )
-                """,
-                """
-                CREATE TABLE IF NOT EXISTS score_snapshots (
-                    id BIGSERIAL PRIMARY KEY,
-                    snapshot_id TEXT NOT NULL UNIQUE,
-                    sample_count INTEGER NOT NULL DEFAULT 0,
-                    document_json JSONB NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """,
-                """
-                CREATE TABLE IF NOT EXISTS score_snapshot_promotions (
-                    id BIGSERIAL PRIMARY KEY,
-                    policy_id TEXT NOT NULL,
-                    snapshot_id TEXT NOT NULL,
-                    baseline_snapshot_id TEXT NOT NULL DEFAULT '',
-                    promoted BOOLEAN NOT NULL,
-                    reason TEXT NOT NULL,
-                    decided_at TEXT NOT NULL
-                )
-                """,
-                "CREATE INDEX IF NOT EXISTS idx_pg_runs_session_id ON runs(session_id)",
-                "CREATE INDEX IF NOT EXISTS idx_pg_run_steps_run_id ON run_steps(run_id, id)",
-                "CREATE INDEX IF NOT EXISTS idx_pg_messages_session_id ON messages(session_id, sequence)",
-                "CREATE INDEX IF NOT EXISTS idx_pg_plugin_events_plugin_id ON plugin_events(plugin_id, id)",
-                "CREATE INDEX IF NOT EXISTS idx_pg_eval_results_eval_id ON eval_results(eval_id, eval_version, id DESC)",
-                "CREATE INDEX IF NOT EXISTS idx_pg_score_snapshots_created ON score_snapshots(id DESC)",
-                "CREATE INDEX IF NOT EXISTS idx_pg_score_snapshot_promotions_policy_id "
-                "ON score_snapshot_promotions(policy_id, id DESC)",
-                """
-                INSERT INTO schema_version (namespace, version)
-                VALUES ('store', 1)
-                ON CONFLICT(namespace) DO UPDATE SET version = EXCLUDED.version
-                """,
-            ],
-        )
+        """Apply this store's versioned migrations via the shared runner.
+
+        Uses the same :class:`MigrationRunner` machinery as
+        :class:`~backend.persistence.sqlite_adapter.SQLiteStore`, running
+        against a psycopg connection (``engine="postgres"``) instead of ad
+        hoc ``CREATE TABLE IF NOT EXISTS`` statements. See
+        ``backend/persistence/migrations/postgres_versions.py`` for the
+        migration list.
+        """
+        MigrationRunner(
+            conn, POSTGRES_STORE_MIGRATIONS, namespace="store", engine="postgres"
+        ).run_pending()
 
     def create_session(
         self,

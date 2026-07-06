@@ -7,7 +7,13 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-05 (E4 — Reasoning epic complete, merged to `main`; **E5 — Routing/Selection/Evaluation epic complete (4/4)** on `epic/e5-routing-selection-evaluation` — Router, Selector, Evaluation Service, and the closed eval->routing feedback loop; full backend suite green (505/505, 90.64% coverage), ready for the epic→main PR)
+**Last updated:** 2026-07-06 (**E7 — Context & RAG epic complete (4/4)** on
+`epic/e7-context-rag` — tree-sitter indexing, pgvector embeddings + HNSW ANN,
+hybrid lexical/vector retrieval behind `/v2/context/retrieve`, and pluggable
+Context Providers wired into the Agent Runtime; a scoped E8-S1 tenancy slice
+(tenant_id + RLS on the new/core tables, reversible migrations) landed as an
+E7 prerequisite per ADR-010 — **E8 itself remains open**, see its row below;
+full backend suite green, ready for the epic→`main` PR)
 
 ## How to update this file
 
@@ -63,8 +69,8 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 | E4 | Reasoning | Beta | Done | 4/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
 | E5 | Routing / Selection / Evaluation | Beta | Done | 4/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
 | E6 | Skills v2 | Beta | Done | 5/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
-| E7 | Context & RAG | Beta | Not started | 0/4 | E1, E2, E8, E5 | [phases/e7_context_rag.md](phases/e7_context_rag.md) |
-| E8 | Persistence & Data | Alpha/Beta | Not started | 0/4 | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
+| E7 | Context & RAG | Beta | Done | 4/4 | E1, E2, E8, E5 | [phases/e7_context_rag.md](phases/e7_context_rag.md) |
+| E8 | Persistence & Data | Alpha/Beta | Not started · E8-S1 partial (E7 prereq)* | 1/4* | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
 | E9 | APIs, Events & MCP | Alpha/Beta | Not started | 0/4 | E8, E2, E6 | [phases/e9_apis_events_mcp.md](phases/e9_apis_events_mcp.md) |
 | E10 | UI/UX & Design System | Beta | Not started | 0/4 | E3, E9, E1 | [phases/e10_ui_ux_design_system.md](phases/e10_ui_ux_design_system.md) |
 | E11 | Observability, Security & Multi-tenant | Beta | Not started | 0/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
@@ -72,7 +78,18 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 
-Total: **25/71 stories complete** across 15 epics.
+Total: **30/71 stories complete** across 15 epics.
+
+\* E8's "1/4" reflects only the **scoped tenancy/reversible-migration slice**
+landed as an E7 prerequisite (ADR-010: `decisions/ADR-010-e8s1-scoped-tenancy.md`)
+— tenant_id + Row-Level Security on the new E7 tables and a lighter
+`tenant_id` retrofit on the core tables, plus up/down migration support in
+`MigrationRunner` and a versioned Postgres migration list. It is **not** a
+complete E8-S1 story: mandatory tenant scoping across the full repository
+call-site surface, negative-case RLS tests beyond the new/retrofitted
+tables, and E8-S2/S3/S4 (event store, Artifact Store, backup/RPO/RTO) remain
+open. E8's epic Status stays "Not started" (not "In progress") until a
+dedicated E8 story picks up the rest of E8-S1.
 
 ## Wave exit gates (§18.9 of the reference doc)
 
@@ -124,6 +141,41 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-07-06** — **E7 — Context & RAG epic complete (4/4)** on
+  `epic/e7-context-rag`. **E7-S0 (prerequisite, scoped E8-S1 slice)**: added
+  `backend/persistence/tenancy.py`, real up/down migration support in
+  `MigrationRunner` (`Migration` pairs, `rollback_to`/`run_down`, backward
+  compatible with forward-only lists), switched `PostgresStore` to the same
+  versioned runner SQLite uses
+  (`backend/persistence/migrations/postgres_versions.py`), and retrofitted
+  `tenant_id` + RLS onto the core tables — ADR-010. **E7-S1**: real
+  tree-sitter parsing for Python via a small language registry
+  (`backend/repository/providers/treesitter_provider.py`), syntax-aware
+  chunking (`chunking.py`), and `index()`/`reindex()`
+  (`backend/repository/indexing.py`) persisting hash-deduplicated chunk
+  metadata to a new tenant-scoped `code_chunks` table, wired to the job
+  queue for incremental reindexing. **E7-S2**: a pluggable
+  `EmbeddingProvider` (`backend/repository/embeddings/provider.py`,
+  deterministic `StubEmbeddingProvider` default) and a pgvector-backed store
+  (`pgvector_store.py`) — `code_embeddings` table with an HNSW cosine-distance
+  index (ADR-011), dedup-by-hash batch upsert. **E7-S3**: PostgreSQL
+  full-text lexical search, Reciprocal Rank Fusion, and the
+  `retrieve(query, filters, budget)` contract
+  (`backend/repository/retrieval/`), exposed as `GET /v2/context/retrieve`
+  (`backend/api/routers/context.py`, auto-registered — API-first per root
+  `CLAUDE.md`). **E7-S4**: the `ContextProvider` extension point and
+  `ContextComposer` (`backend/context/`) — concurrent execution, per-provider
+  timeout/isolation, weighting, and content dedup — plus two reference
+  providers (files, session memory) and policy-driven context injection into
+  `AgentRuntime`/`AgentRuntimeContext`. Full backend suite green (see `make
+  check` output before the epic→`main` PR). **Descoped/deferred**: no formal
+  CNF benchmark suite (100k-LOC indexing time, ANN p95, retrieval p95 —
+  reasoned about in ADR-011 instead of measured); tree-sitter coverage is
+  Python-only (registry designed for one-line language additions); the full
+  E8-S1 story (mandatory tenant scoping across every repository call site,
+  full negative-case RLS coverage) remains open — see the E8 row above and
+  ADR-010.
 
 - **2026-07-05** — **E5-S4 complete; E5 — Routing/Selection/Evaluation epic done (4/4)**,
   closing the loop described in reference §9.5. `backend/evals/service.py`:
