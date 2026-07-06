@@ -74,6 +74,7 @@ def _registry(tmp_path: Path, raw: dict[str, object]) -> SkillRegistry:
     registry = SkillRegistry(store)
     result = validate_manifest(raw)
     assert result.valid, result.errors
+    assert result.manifest is not None
     registry.register(result.manifest, plugin_id="autodev/plugin")
     return registry
 

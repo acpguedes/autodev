@@ -102,6 +102,7 @@ def _setup(tmp_path: Path):
 def _register(registry: SkillRegistry, raw: dict[str, object]) -> None:
     result = validate_manifest(raw)
     assert result.valid, result.errors
+    assert result.manifest is not None
     registry.register(result.manifest, plugin_id="autodev/plugin")
 
 
@@ -136,7 +137,7 @@ def test_missing_dependency_reported_before_any_step_runs(entrypoint_module: str
 
     assert exc_info.value.reason == "missing-dependency"
 
-    import pipeline_mod
+    import pipeline_mod  # type: ignore[import-not-found]
 
     assert pipeline_mod.CALLS == []
 
@@ -165,7 +166,7 @@ def test_mid_pipeline_failure_stops_execution(entrypoint_module: str, tmp_path: 
     assert exc_info.value.step_index == 1
     assert exc_info.value.reason == "denied"
 
-    import pipeline_mod
+    import pipeline_mod  # type: ignore[import-not-found]
 
     assert pipeline_mod.CALLS == ["a", "b"]
 
@@ -192,6 +193,6 @@ def test_aggregated_budget_exceeded_stops_before_execution(entrypoint_module: st
 
     assert exc_info.value.reason == "aggregated-budget-exceeded"
 
-    import pipeline_mod
+    import pipeline_mod  # type: ignore[import-not-found]
 
     assert pipeline_mod.CALLS == []

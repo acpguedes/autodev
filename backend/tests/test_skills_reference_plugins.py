@@ -59,6 +59,7 @@ def test_apply_patch_skill_is_dry_run_by_default(tmp_path: Path) -> None:
     registry, invoker = _registry_and_invoker(tmp_path, workspace)
     result = validate_manifest(yaml.safe_load((APPLY_PATCH_DIR / "skill.yaml").read_text(encoding="utf-8")))
     assert result.valid, result.errors
+    assert result.manifest is not None
     registry.register(result.manifest, plugin_id="autodev/skill-apply-patch")
 
     output = invoker.invoke(
@@ -80,6 +81,7 @@ def test_apply_patch_skill_writes_when_enabled(tmp_path: Path) -> None:
     registry, invoker = _registry_and_invoker(tmp_path, workspace)
     result = validate_manifest(yaml.safe_load((APPLY_PATCH_DIR / "skill.yaml").read_text(encoding="utf-8")))
     assert result.valid, result.errors
+    assert result.manifest is not None
     registry.register(result.manifest, plugin_id="autodev/skill-apply-patch")
 
     output = invoker.invoke(
@@ -101,6 +103,7 @@ def test_summarize_llm_skill_runs_offline(tmp_path: Path) -> None:
     registry, invoker = _registry_and_invoker(tmp_path, workspace)
     result = validate_manifest(yaml.safe_load((SUMMARIZE_LLM_DIR / "skill.yaml").read_text(encoding="utf-8")))
     assert result.valid, result.errors
+    assert result.manifest is not None
     registry.register(result.manifest, plugin_id="autodev/skill-summarize-llm")
 
     output = invoker.invoke("autodev/skill-summarize-llm", prompt="what happened?")

@@ -30,6 +30,7 @@ def _register_sample_skill(registry: SkillRegistry) -> None:
     }
     result = validate_manifest(raw)
     assert result.valid, result.errors
+    assert result.manifest is not None
     registry.register(result.manifest, plugin_id="autodev/plugin")
 
 
