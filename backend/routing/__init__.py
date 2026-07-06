@@ -1,10 +1,12 @@
-"""Router extension point (epic E5, story E5-S1).
+"""Router and Selector extension points (epic E5, stories E5-S1, E5-S2).
 
-This package delivers the E5-S1 story: a typed, versioned contract for the
-pluggable Router (:mod:`backend.routing.contract`), the declarative routing
-policy model and its YAML parser (:mod:`backend.routing.policy`,
-:mod:`backend.routing.policy_parsing`), the rules-pipeline executor
-(:mod:`backend.routing.router`), and the tracing service
+This package delivers the E5-S1 Router story and the E5-S2 Selector story: a
+typed, versioned contract for both pluggable extension points
+(:mod:`backend.routing.contract`), the declarative routing policy model and
+its YAML parser (:mod:`backend.routing.policy`, :mod:`backend.routing.policy_parsing`,
+:mod:`backend.routing.selector_policy_parsing`), the rules-pipeline Router
+executor (:mod:`backend.routing.router`), the Selector pipeline executor
+(:mod:`backend.routing.selector`), and the tracing service
 (:mod:`backend.routing.service`).
 
 See ``docs/architecture/v2_platform_reference.md`` §9 for the full
@@ -17,6 +19,7 @@ from backend.routing.contract import (
     LATENCY_CLASSES,
     ROUTE_SCHEMA_VERSION,
     ROUTING_CONTRACT_HOST_API,
+    SELECT_SCHEMA_VERSION,
     ContextDigest,
     ContextSignals,
     RouteConstraints,
@@ -24,6 +27,12 @@ from backend.routing.contract import (
     RouteInput,
     RouteRequest,
     RouterPlugin,
+    ScoreSnapshot,
+    SelectBudget,
+    SelectDecision,
+    SelectFallback,
+    SelectorPlugin,
+    SelectRequest,
     TraceEvent,
 )
 from backend.routing.policy import (
@@ -38,7 +47,11 @@ from backend.routing.policy import (
     RouterRuleSpec,
     RouterRulesStageSpec,
     RoutingPolicy,
+    SelectorCapabilityMatchingStageSpec,
+    SelectorCostAwareStageSpec,
+    SelectorPipelineSpec,
     SelectorPolicySpec,
+    SelectorScoreWeightedStageSpec,
     default_routing_policy,
 )
 from backend.routing.policy_parsing import (
@@ -47,6 +60,7 @@ from backend.routing.policy_parsing import (
     validate_routing_policy,
 )
 from backend.routing.router import EmbeddingsRouterStage, LLMRouterStage, Router
+from backend.routing.selector import NoEligibleAgentError, Selector
 from backend.routing.service import RoutingService
 
 __all__ = [
@@ -58,6 +72,7 @@ __all__ = [
     "GuardrailsPolicySpec",
     "LATENCY_CLASSES",
     "LLMRouterStage",
+    "NoEligibleAgentError",
     "ROUTE_SCHEMA_VERSION",
     "ROUTING_CONTRACT_HOST_API",
     "RouteConstraints",
@@ -76,7 +91,19 @@ __all__ = [
     "RoutingPolicy",
     "RoutingPolicyValidationResult",
     "RoutingService",
+    "SELECT_SCHEMA_VERSION",
+    "ScoreSnapshot",
+    "SelectBudget",
+    "SelectDecision",
+    "SelectFallback",
+    "Selector",
+    "SelectorCapabilityMatchingStageSpec",
+    "SelectorCostAwareStageSpec",
+    "SelectorPipelineSpec",
+    "SelectorPlugin",
     "SelectorPolicySpec",
+    "SelectorScoreWeightedStageSpec",
+    "SelectRequest",
     "TraceEvent",
     "default_routing_policy",
     "load_routing_policy",

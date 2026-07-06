@@ -80,3 +80,42 @@ local equivalent.
   `backend/tests/test_routing_router.py`) gate the Router implementation
   against this boundary; E5-S2 will add the analogous Selector contract tests
   when it implements `SelectorPlugin` against RFC-004's fixed shape.
+
+## Amendment (E5-S2)
+
+E5-S2 implements `SelectorPlugin` (`backend/routing/selector.py`) against
+RFC-004's fixed `SelectRequest`/`SelectDecision` shape without changing it.
+A few implementation details RFC-004 left open needed settling:
+
+1. **Selector pipeline is a sequential transform, not a cascade.** Unlike the
+   Router's `rules` stage (first-match-wins by confidence), each selector
+   stage (`capability-matching`, `cost-aware`, `score-weighted`) narrows or
+   reorders the candidate list the previous stage produced — matching
+   reference §9.3's pipeline example. `capability-matching` in particular
+   filters whatever pool it is handed (falling back to the full registry only
+   when it is the first stage to run), so it behaves correctly regardless of
+   where a policy places it in the declared stage order.
+2. **`model`/`reasoning_strategy` resolution.** Neither field exists as a
+   typed slot on `AgentManifest` (E2). The Selector reads optional
+   `policy.model`/`policy.reasoning_strategy` keys from the candidate's
+   free-form `AgentManifest.policy` mapping, falling back to module-level
+   defaults (`DEFAULT_MODEL`, `DEFAULT_REASONING_STRATEGY = "react"`) when
+   absent. A future story may promote these to typed manifest fields; this
+   convention is a documented placeholder, not a manifest schema change.
+3. **Fail-closed on no eligible candidate.** If the pipeline (including a
+   `cost-aware` stage's run-budget filter) leaves zero candidates, `select()`
+   raises `NoEligibleAgentError` rather than silently relaxing a filter —
+   consistent with reference §9.6's fail-closed default. `POST /v2/select`
+   maps this to HTTP 422.
+4. **Fallback list is capped** at `MAX_FALLBACKS = 3` remaining candidates,
+   most-preferred first; RFC-004 does not specify a cap.
+5. **Tenant quotas (`respect.tenant_quota`) are parsed but not enforced** — E11
+   (multi-tenancy/quotas) is not built yet. Only the run's own budget
+   (`SelectRequest.budget`) is respected. Same deferred-NFR pattern as E4.
+6. **SDK contract surface** (`backend/sdk/contracts.py`) re-exports
+   `SelectRequest`/`SelectDecision`/`SelectorPlugin`/`ScoreSnapshot`;
+   `SDK_CONTRACT_VERSION` bumped 1.3.0 → 1.4.0 (additive/MINOR).
+
+None of the above change the `SelectRequest`/`SelectDecision`/`SelectorPlugin`
+shape RFC-004 fixed; they are implementation conventions the RFC did not
+specify.

@@ -1,4 +1,4 @@
-# Router Contract (E5-S1)
+# Router and Selector Contract (E5-S1, E5-S2)
 
 The **Router** classifies a task's intent from the run state (message,
 session, repository context) and produces a **Route Decision**: the task
@@ -155,21 +155,132 @@ and pass it to `RoutingService`; no `Router`/`RoutingService` code changes.
 ## Policy document
 
 `routing-policy.yaml` (parsed by `backend.routing.policy`) governs the
-`router:` pipeline (fully implemented) plus placeholder `selector:`,
-`guardrails:`, and `fallback:` sections — parsed into `raw: dict` wrappers but
-unused until E5-S2 defines their typed shape on the *same*
-`RoutingPolicy` object (reference §9.3, §9.6).
+`router:` pipeline and the `selector:` pipeline (both fully implemented) plus
+placeholder `guardrails:` and `fallback:` sections — parsed into `raw: dict`
+wrappers but unused until a later E5 story defines their typed shape on the
+*same* `RoutingPolicy` object (reference §9.3, §9.6).
 
 `backend.routing.policy.default_routing_policy()` builds a permissive default
 that generalizes the v1 precursor's hardcoded `_ROUTE_MAP`
 (`backend/orchestrator/routing.py`) into the new declarative format:
 documentation updates, validation-only runs, and DevOps changes as `rules`,
-falling back to the full agent pipeline as `router.default`.
+falling back to the full agent pipeline as `router.default` — plus a default
+`selector:` pipeline (match on `required_capabilities` or every registered
+agent if none are given, `minimize_cost`, tie-break `lowest_cost`).
 
 ## Packaging as a plugin
 
-E5-S1 does not ship a `router-plugin.yaml` manifest format (unlike
-`reasoning-strategy.yaml`, E4-S1) — the pluggable surface for this story is
-the declarative `RoutingPolicy` pipeline plus the `RouterPlugin` Protocol for
-callers who want to supply an entirely custom classifier object. Manifest-based
-Router plugin packaging, if needed, is left to a later story.
+E5-S1/E5-S2 do not ship a `router-plugin.yaml`/`selector-plugin.yaml` manifest
+format (unlike `reasoning-strategy.yaml`, E4-S1) — the pluggable surface for
+these stories is the declarative `RoutingPolicy` pipelines plus the
+`RouterPlugin`/`SelectorPlugin` Protocols for callers who want to supply an
+entirely custom classifier/selector object. Manifest-based plugin packaging,
+if needed, is left to a later story.
+
+## Selector Contract (E5-S2)
+
+The **Selector** receives a Router's `RouteDecision` plus
+`required_capabilities` and a run `budget`, matches candidates in the **Agent
+Registry** (E2, `backend.agents.registry_v2.AgentRegistry`), and produces a
+**Select Decision**: the chosen agent/version/model/Reasoning Strategy (E4),
+its resolved budget, and up to 3 cascade-fallback candidates.
+
+```python
+from backend.agents.registry_v2 import AgentRegistry
+from backend.routing import RoutingPolicy, ScoreSnapshot, SelectDecision, SelectRequest
+
+class MySelector:
+    def select(
+        self, req: SelectRequest, policy: RoutingPolicy, registry: AgentRegistry, scores: ScoreSnapshot | None = None
+    ) -> SelectDecision:
+        ...
+```
+
+Synchronous, mirroring `RouterPlugin` (ADR-008): capability/cost-aware
+matching is in-process registry reads, no LLM/tool mediation to await.
+
+### Selecting a candidate
+
+```python
+from backend.agents.registry_v2 import AgentRegistry
+from backend.routing import RouteConstraints, RouteDecision, RoutingService, SelectBudget, SelectRequest, TraceEvent, default_routing_policy
+
+registry = AgentRegistry()  # or a store-bound instance for tests
+events: list[TraceEvent] = []
+service = RoutingService(default_routing_policy(), on_event=events.append)
+
+req = SelectRequest(
+    schema_version="1.0",
+    route=RouteDecision(
+        schema_version="1.0", task_type="existing-repo-change", intent="add-feature",
+        path=("navigator", "coder", "responder"), confidence=1.0,
+        constraints=RouteConstraints(max_cost_usd=0.05, latency_class="interactive"),
+        rationale="routed to the coder path",
+    ),
+    required_capabilities=("code.implementation",),
+    budget=SelectBudget(tokens=0, cost_usd=0.0, time_s=0),  # 0 = unconstrained
+)
+decision = service.select(req, registry=registry)
+# events[-1].name == "selector.decision.recorded"
+```
+
+`POST /v2/select` exposes the same flow over HTTP (see
+`backend/api/routers/routing.py`), returning **422** if no registered agent
+satisfies `required_capabilities` under the active policy
+(`backend.routing.selector.NoEligibleAgentError`, a fail-closed default).
+
+### The pipeline (`selector:` policy section)
+
+Unlike the Router's `rules` stage (first-match-wins by confidence), the
+selector pipeline is a **sequential transform**: each stage narrows or
+reorders the candidate list the previous stage produced.
+
+```yaml
+selector:
+  pipeline:
+    - kind: capability-matching
+      require_all: true
+    - kind: cost-aware
+      objective: minimize_cost         # minimize_cost | minimize_latency | maximize_quality
+      respect: {run_budget: true, tenant_quota: true}
+    - kind: score-weighted             # no-op until E5-S4 wires a real score snapshot
+      weights: {quality: 0.6, cost: 0.25, latency: 0.15}
+  tie_breaker: lowest_cost
+```
+
+- **`capability-matching`** — client-side set intersection (`require_all:
+  true`) or union (`false`) over `AgentRegistry.find_by_capability`, called
+  once per (deduplicated) required capability and keyed by `(agent_id,
+  version)` (ADR-008). An empty `required_capabilities` matches every
+  candidate already in the pool (or every registered agent, if it runs
+  first).
+- **`cost-aware`** — filters out candidates whose own
+  `AgentBudgets` cannot fit the run's `budget` (`respect.run_budget`; a `0` in
+  any `SelectRequest.budget` field means unconstrained for that dimension),
+  then its `objective` drives the final ranking. `respect.tenant_quota` is
+  parsed but **not enforced** — tenant quotas are E11 (multi-tenancy), not
+  built yet; only the run's own budget is respected.
+- **`score-weighted`** — a **documented no-op passthrough**: no Evaluation
+  Service score snapshot store exists yet (E5-S4 wires it in). The stage is
+  still fully typed (`ScoreSnapshot`, the `weights` spec) so a future story
+  doesn't need to redesign the pipeline signature; if a `ScoreSnapshot` is
+  supplied its `snapshot_id` is recorded as `SelectDecision.score_basis` for
+  forward audit, but its scores do not affect ordering today.
+- **`tie_breaker: lowest_cost`** — applied last, for full determinism: given
+  the same registry state, policy, and request, the same `SelectDecision`
+  comes out every run. Ties are broken by ascending cost, then descending
+  agent version (prefer newer), then ascending `agent_id` — a total order,
+  since the registry's primary key is `(agent_id, version)`.
+
+`model`/`reasoning_strategy` are read from the chosen candidate's
+`AgentManifest.policy` free-form mapping (`policy.model`,
+`policy.reasoning_strategy`; no typed field exists on the manifest for
+either), falling back to platform defaults when absent — see ADR-008's E5-S2
+amendment.
+
+### Pluggability
+
+Exactly like the Router: pass a custom policy (a different `selector:`
+pipeline) to change which candidate wins, or pass an entirely custom
+`SelectorPlugin` to `RoutingService(policy, selector=...)` — no
+`Selector`/`RoutingService` code changes required.

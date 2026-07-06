@@ -18,12 +18,15 @@ imports :class:`RoutingPolicy` from here) to avoid a circular import, mirroring
 the split between :mod:`backend.reasoning.policy` and
 :mod:`backend.reasoning.contract`.
 
-Only the ``router:`` section's ``rules`` stage is fully implemented in E5-S1.
-The ``embeddings`` and ``llm-router`` stage kinds are parsed into typed specs
-but executed as pluggable stubs (see :mod:`backend.routing.router`). The
-``selector:``, ``guardrails:``, and ``fallback:`` top-level sections are parsed
-into thin placeholder dataclasses — unused this story, but present so E5-S2
-can extend the *same* :class:`RoutingPolicy` object without a field rename.
+The ``router:`` section's ``rules`` stage is fully implemented (E5-S1). The
+``embeddings`` and ``llm-router`` stage kinds are parsed into typed specs but
+executed as pluggable stubs (see :mod:`backend.routing.router`). The
+``selector:`` section's ``capability-matching``, ``cost-aware``, and
+``score-weighted`` stage kinds plus its ``tie_breaker`` are fully parsed and
+executed (E5-S2, see :mod:`backend.routing.selector`) — ``score-weighted`` is
+a documented no-op passthrough until E5-S4 wires in a real Evaluation Service
+score snapshot. The ``guardrails:`` and ``fallback:`` top-level sections
+remain thin placeholders, parsed but unused (future E5 stories).
 """
 
 from __future__ import annotations
@@ -36,6 +39,17 @@ VALID_LATENCY_CLASSES = frozenset({"interactive", "batch"})
 
 #: Valid ``kind`` values for a router pipeline stage, per reference §9.3.
 VALID_ROUTER_STAGE_KINDS = frozenset({"rules", "embeddings", "llm-router"})
+
+#: Valid ``kind`` values for a selector pipeline stage, per reference §9.3.
+VALID_SELECTOR_STAGE_KINDS = frozenset({"capability-matching", "cost-aware", "score-weighted"})
+
+#: Valid values for :attr:`SelectorCostAwareStageSpec.objective`, per reference §9.3.
+VALID_COST_OBJECTIVES = frozenset({"minimize_cost", "minimize_latency", "maximize_quality"})
+
+#: Valid values for :attr:`SelectorPipelineSpec.tie_breaker`, per reference §9.3.
+#: Only ``lowest_cost`` is specified today; kept as a set (not a bare constant)
+#: so a future tie-breaker can be added without changing the validation shape.
+VALID_TIE_BREAKERS = frozenset({"lowest_cost"})
 
 
 @dataclass(frozen=True)
@@ -164,17 +178,93 @@ class RouterPipelineSpec:
 
 
 @dataclass(frozen=True)
-class SelectorPolicySpec:
-    """Placeholder for the ``selector:`` section — unused in E5-S1.
+class SelectorCapabilityMatchingStageSpec:
+    """A ``kind: capability-matching`` selector pipeline stage.
 
-    Parsed but not structurally validated; E5-S2 defines the typed shape and
-    replaces this placeholder's internals without renaming the
-    :attr:`RoutingPolicy.selector` field.
+    Matches a :class:`~backend.routing.contract.SelectRequest`'s
+    ``required_capabilities`` against the Agent Registry (E2), client-side
+    (ADR-008) — see :mod:`backend.routing.selector` for the intersection logic.
 
     Attributes:
-        raw: Original parsed ``selector`` mapping, or ``{}`` if absent.
+        require_all: When ``True`` (the default), a candidate must declare
+            *every* required capability; when ``False``, declaring at least
+            one is sufficient.
     """
 
+    require_all: bool = True
+
+
+@dataclass(frozen=True)
+class SelectorCostAwareStageSpec:
+    """A ``kind: cost-aware`` selector pipeline stage.
+
+    Attributes:
+        objective: One of :data:`VALID_COST_OBJECTIVES` — the ranking
+            objective applied to surviving candidates.
+        respect_run_budget: Whether to filter out candidates whose own
+            :class:`~backend.agents.manifest.AgentBudgets` cannot fit inside
+            the run's requested :class:`~backend.routing.contract.SelectBudget`.
+        respect_tenant_quota: Parsed for forward-compatibility with reference
+            §9.3's ``respect.tenant_quota``, but **not enforced** — tenant
+            quotas are an E11 (multi-tenancy) concept not yet built. This is a
+            documented non-functional limitation for E5-S2, the same pattern
+            as E4's deferred-NFR notes.
+    """
+
+    objective: str = "minimize_cost"
+    respect_run_budget: bool = True
+    respect_tenant_quota: bool = True
+
+
+@dataclass(frozen=True)
+class SelectorScoreWeightedStageSpec:
+    """A ``kind: score-weighted`` selector pipeline stage.
+
+    Not executed as a real re-ranking stage in E5-S2 — see
+    :mod:`backend.routing.selector` for the no-op passthrough handler. E5-S4
+    wires in a real :class:`~backend.routing.contract.ScoreSnapshot` and
+    applies these weights.
+
+    Attributes:
+        weights: Declared weight per score dimension (e.g. ``quality``,
+            ``cost``, ``latency``), parsed but unused until E5-S4.
+    """
+
+    weights: dict[str, float] = field(default_factory=dict)
+
+
+#: A single parsed selector pipeline stage of any kind.
+SelectorStageSpec = SelectorCapabilityMatchingStageSpec | SelectorCostAwareStageSpec | SelectorScoreWeightedStageSpec
+
+
+@dataclass(frozen=True)
+class SelectorPipelineSpec:
+    """The parsed ``selector.pipeline`` + ``selector.tie_breaker`` (reference §9.3).
+
+    Attributes:
+        stages: Ordered pipeline stages; unlike the Router's rules pipeline
+            (first-match-wins by confidence), these are a sequential
+            filter/rank transform — each stage narrows or reorders the
+            previous stage's candidate list (see :mod:`backend.routing.selector`).
+        tie_breaker: One of :data:`VALID_TIE_BREAKERS`, applied last for
+            deterministic ordering among otherwise-equal candidates.
+    """
+
+    stages: tuple[SelectorStageSpec, ...] = ()
+    tie_breaker: str = "lowest_cost"
+
+
+@dataclass(frozen=True)
+class SelectorPolicySpec:
+    """The ``selector:`` section of a routing policy (E5-S2).
+
+    Attributes:
+        pipeline: The parsed, executable selector pipeline.
+        raw: Original parsed ``selector`` mapping, or ``{}`` if absent (kept
+            unchanged from E5-S1 for forward-compat/debugging).
+    """
+
+    pipeline: SelectorPipelineSpec = field(default_factory=SelectorPipelineSpec)
     raw: dict[str, Any] = field(default_factory=dict)
 
 
@@ -209,8 +299,8 @@ class RoutingPolicy:
         id: Fully qualified policy id in ``namespace/name`` format.
         version: SemVer version of the policy.
         host_api: Supported host API version range.
-        router: The Router's declarative pipeline (fully implemented this story).
-        selector: Placeholder for the Selector's pipeline (E5-S2).
+        router: The Router's declarative pipeline (E5-S1).
+        selector: The Selector's declarative pipeline (E5-S2).
         guardrails: Placeholder for input/output guardrails (E5 later stories).
         fallback: Placeholder for cascade-fallback behavior (E5 later stories).
         raw: Original parsed policy document.
@@ -257,7 +347,10 @@ def default_routing_policy() -> RoutingPolicy:
     same intents as the v1 precursor's hardcoded ``_ROUTE_MAP``
     (`backend/orchestrator/routing.py`) — documentation updates,
     validation-only runs, and DevOps changes — plus the generic full-pipeline
-    fallback for everything else.
+    fallback for everything else. Also seeds a permissive default selector
+    pipeline: match on any declared required capability (or all agents, if
+    none are given), respect the run's own budget, and break ties by lowest
+    cost (E5-S2).
 
     Returns:
         A ready-to-use :class:`RoutingPolicy`.
@@ -296,6 +389,15 @@ def default_routing_policy() -> RoutingPolicy:
         router=RouterPipelineSpec(
             stages=(RouterRulesStageSpec(confidence_floor=0.0, rules=rules),), default=generic_router_default()
         ),
+        selector=SelectorPolicySpec(
+            pipeline=SelectorPipelineSpec(
+                stages=(
+                    SelectorCapabilityMatchingStageSpec(require_all=True),
+                    SelectorCostAwareStageSpec(objective="minimize_cost"),
+                ),
+                tie_breaker="lowest_cost",
+            )
+        ),
     )
 
 
@@ -312,9 +414,17 @@ __all__ = [
     "RouterRulesStageSpec",
     "RouterStageSpec",
     "RoutingPolicy",
+    "SelectorCapabilityMatchingStageSpec",
+    "SelectorCostAwareStageSpec",
+    "SelectorPipelineSpec",
     "SelectorPolicySpec",
+    "SelectorScoreWeightedStageSpec",
+    "SelectorStageSpec",
+    "VALID_COST_OBJECTIVES",
     "VALID_LATENCY_CLASSES",
     "VALID_ROUTER_STAGE_KINDS",
+    "VALID_SELECTOR_STAGE_KINDS",
+    "VALID_TIE_BREAKERS",
     "default_routing_policy",
     "generic_router_default",
 ]
