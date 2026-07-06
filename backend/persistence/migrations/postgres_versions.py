@@ -232,6 +232,64 @@ def _pg_m3_down_drop_code_chunks_table(conn: Any) -> None:
     conn.execute("DROP TABLE IF EXISTS code_chunks")
 
 
+#: Vector dimension baked into the ``code_embeddings.embedding`` column.
+#: pgvector requires a fixed dimension per column. Must match
+#: ``backend.repository.embeddings.provider.DEFAULT_EMBEDDING_DIMENSION`` —
+#: kept as a literal here (rather than imported) so this persistence-layer
+#: module has no dependency on the repository layer; see ADR-011.
+_CODE_EMBEDDING_DIMENSION = 128
+
+
+def _pg_m4_create_code_embeddings_table(conn: Any) -> None:
+    """Create the ``vector`` extension, ``code_embeddings`` table, HNSW index, and RLS (E7-S2).
+
+    Requires PostgreSQL's ``vector`` extension (pgvector). Uses an HNSW index
+    over cosine distance (``vector_cosine_ops``) rather than IVFFlat — see
+    ADR-011 for the recall/latency trade-off this records.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
+    conn.execute(
+        f"""
+        CREATE TABLE IF NOT EXISTS code_embeddings (
+            id BIGSERIAL PRIMARY KEY,
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            chunk_id BIGINT NOT NULL REFERENCES code_chunks(id) ON DELETE CASCADE,
+            content_hash TEXT NOT NULL,
+            embedding vector({_CODE_EMBEDDING_DIMENSION}) NOT NULL,
+            model TEXT NOT NULL DEFAULT 'stub',
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(tenant_id, chunk_id)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_code_embeddings_hnsw "
+        "ON code_embeddings USING hnsw (embedding vector_cosine_ops)"
+    )
+    conn.execute("ALTER TABLE code_embeddings ENABLE ROW LEVEL SECURITY")
+    conn.execute("ALTER TABLE code_embeddings FORCE ROW LEVEL SECURITY")
+    conn.execute("DROP POLICY IF EXISTS code_embeddings_tenant_isolation ON code_embeddings")
+    conn.execute(
+        "CREATE POLICY code_embeddings_tenant_isolation ON code_embeddings "
+        "USING (tenant_id = current_setting('app.tenant_id', true))"
+    )
+
+
+def _pg_m4_down_drop_code_embeddings_table(conn: Any) -> None:
+    """Revert :func:`_pg_m4_create_code_embeddings_table` by dropping the table.
+
+    The ``vector`` extension itself is intentionally left installed — it is
+    cluster/database-wide and other tables may depend on it.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute("DROP TABLE IF EXISTS code_embeddings")
+
+
 POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
     _pg_m1_create_core_tables,
     Migration(
@@ -243,6 +301,11 @@ POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_pg_m3_create_code_chunks_table,
         down=_pg_m3_down_drop_code_chunks_table,
         name="create_code_chunks_table",
+    ),
+    Migration(
+        up=_pg_m4_create_code_embeddings_table,
+        down=_pg_m4_down_drop_code_embeddings_table,
+        name="create_code_embeddings_table",
     ),
 ]
 
