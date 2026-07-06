@@ -172,3 +172,35 @@ def test_table_creation_is_idempotent(tmp_path: Path) -> None:
     plan = s2.get_plan("x")
     assert plan is not None
     assert plan.steps == ["step"]
+
+
+# ---------------------------------------------------------------------------
+# Tenant isolation (E8-S1, ADR-010)
+# ---------------------------------------------------------------------------
+
+
+def test_plans_are_tenant_isolated(store: PostgresPlanStore | SQLitePlanStore) -> None:
+    """A plan upserted under one tenant is invisible when queried under another."""
+    store.upsert_plan("shared-session", ["tenant a step"], tenant_id="a")
+    store.upsert_plan("other-session", ["tenant b step"], tenant_id="b")
+
+    plans_a = store.list_plans(tenant_id="a")
+    plans_b = store.list_plans(tenant_id="b")
+    session_ids_a = {p.session_id for p in plans_a}
+    session_ids_b = {p.session_id for p in plans_b}
+    assert "shared-session" in session_ids_a
+    assert "other-session" not in session_ids_a
+    assert "other-session" in session_ids_b
+    assert "shared-session" not in session_ids_b
+
+    assert store.get_plan("shared-session", tenant_id="a") is not None
+    assert store.get_plan("shared-session", tenant_id="b") is None
+
+
+def test_approvals_are_tenant_isolated(store: PostgresPlanStore | SQLitePlanStore) -> None:
+    """Approval records recorded under one tenant are invisible to another tenant."""
+    store.upsert_plan("session-a", ["step"], tenant_id="a")
+    store.approve("session-a", actor="alice", tenant_id="a")
+
+    assert len(store.list_approvals("session-a", tenant_id="a")) == 1
+    assert store.list_approvals("session-a", tenant_id="b") == []

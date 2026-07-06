@@ -378,6 +378,49 @@ def _p1_create_plan_tables(conn: sqlite3.Connection) -> None:
     )
 
 
-PLAN_STORE_MIGRATIONS = [
+#: Plan store tables retrofitted with a ``tenant_id`` column (E8-S1 scoped
+#: slice — see ADR-010). Unlike ``run_steps``/``plugin_events``/
+#: ``score_snapshot_promotions``, both ``plan_documents`` and
+#: ``plan_approvals`` get their own column rather than being scoped
+#: transitively — ``plan_approvals`` has no single parent row that is always
+#: tenant-scoped at query time.
+PLAN_STORE_TENANT_SCOPED_TABLES = ("plan_documents", "plan_approvals")
+
+
+def _p2_add_tenant_id_to_plan_tables(conn: sqlite3.Connection) -> None:
+    """Add a ``tenant_id`` column (default ``'default'``) to the plan store tables.
+
+    Scoped E8-S1 slice (ADR-010): backfills every existing row to the
+    ``'default'`` tenant so current single-tenant callers keep working
+    unchanged. Mirrors :func:`_m7_add_tenant_id_to_core_tables` for the plan
+    store's own tables.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    for table in PLAN_STORE_TENANT_SCOPED_TABLES:
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "tenant_id" not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+
+
+def _p2_down_remove_tenant_id_from_plan_tables(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_p2_add_tenant_id_to_plan_tables` by dropping the ``tenant_id`` column.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    for table in PLAN_STORE_TENANT_SCOPED_TABLES:
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "tenant_id" in existing:
+            conn.execute(f"ALTER TABLE {table} DROP COLUMN tenant_id")
+
+
+PLAN_STORE_MIGRATIONS: list[MigrationEntry] = [
     _p1_create_plan_tables,
+    Migration(
+        up=_p2_add_tenant_id_to_plan_tables,
+        down=_p2_down_remove_tenant_id_from_plan_tables,
+        name="add_tenant_id_to_plan_tables",
+    ),
 ]
