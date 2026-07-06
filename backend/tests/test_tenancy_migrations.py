@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import Sequence, cast
 
 import pytest
 
 from backend.persistence.migrations.postgres_versions import POSTGRES_STORE_MIGRATIONS
 from backend.persistence.migrations.runner import Migration, MigrationEntry, MigrationRunner
 from backend.persistence.migrations.versions import PLAN_STORE_MIGRATIONS, STORE_MIGRATIONS
-from backend.persistence.postgres_adapter import PostgresStore
+from backend.persistence.postgres_adapter import PostgresPlanStore, PostgresStore
 from backend.persistence.sqlite_adapter import SQLiteStore
 from backend.persistence.tenancy import (
     DEFAULT_TENANT_ID,
@@ -371,6 +372,150 @@ def test_postgres_migration_rollback_drops_policy_and_column() -> None:
     assert "DROP POLICY IF EXISTS sessions_tenant_isolation" in executed_sql
     assert "DROP COLUMN IF EXISTS tenant_id" in executed_sql
     assert "NO FORCE ROW LEVEL SECURITY" in executed_sql
+
+
+def test_postgres_plan_tables_migration_issues_tenant_rls_ddl() -> None:
+    """The plan store's tenancy migration (E8-S1-T3, appended at the end) issues the expected up DDL.
+
+    Unlike migration 2, this one also guards with ``CREATE TABLE IF NOT
+    EXISTS`` (see :func:`add_tenant_id_and_rls_to_plan_tables`'s docstring
+    for why), so both the table creation and the tenancy DDL are asserted.
+    """
+    conn = FakeConnection()
+    plan_tenant_migration = POSTGRES_STORE_MIGRATIONS[-1]
+    assert isinstance(plan_tenant_migration, Migration)
+    assert plan_tenant_migration.name == "add_tenant_id_and_rls_to_plan_tables"
+
+    plan_tenant_migration.up(conn)
+
+    executed_sql = "\n".join(sql for sql, _params in conn.executed)
+    assert "CREATE TABLE IF NOT EXISTS plan_documents" in executed_sql
+    assert "CREATE TABLE IF NOT EXISTS plan_approvals" in executed_sql
+    assert "ALTER TABLE plan_documents ADD COLUMN IF NOT EXISTS tenant_id" in executed_sql
+    assert "ALTER TABLE plan_approvals ADD COLUMN IF NOT EXISTS tenant_id" in executed_sql
+    assert "CREATE POLICY plan_documents_tenant_isolation" in executed_sql
+    assert "CREATE POLICY plan_approvals_tenant_isolation" in executed_sql
+    assert "current_setting('app.tenant_id', true)" in executed_sql
+
+
+def test_postgres_plan_tables_migration_rollback_drops_policy_and_column() -> None:
+    """The plan store's tenancy migration's down step reverts RLS and the ``tenant_id`` column."""
+    conn = FakeConnection()
+    plan_tenant_migration = POSTGRES_STORE_MIGRATIONS[-1]
+    assert isinstance(plan_tenant_migration, Migration)
+
+    plan_tenant_migration.down(conn)
+
+    executed_sql = "\n".join(sql for sql, _params in conn.executed)
+    assert "DROP POLICY IF EXISTS plan_documents_tenant_isolation" in executed_sql
+    assert "DROP POLICY IF EXISTS plan_approvals_tenant_isolation" in executed_sql
+    assert executed_sql.count("DROP COLUMN IF EXISTS tenant_id") == 2
+    assert "NO FORCE ROW LEVEL SECURITY" in executed_sql
+
+
+# ---------------------------------------------------------------------------
+# PostgresStore / PostgresPlanStore: methods scope the connection via
+# set_postgres_tenant() before querying (E8-S1-T3)
+# ---------------------------------------------------------------------------
+
+
+def test_postgres_store_create_session_scopes_tenant_before_insert(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``create_session`` calls ``set_postgres_tenant`` with the passed tenant before inserting.
+
+    The ``tenant_id`` column is also written explicitly in the ``INSERT``
+    (rather than left to its ``DEFAULT 'default'``) because the RLS policy's
+    implicit ``WITH CHECK`` (mirroring ``USING`` when none is given) would
+    otherwise reject the insert for any non-default tenant.
+    """
+    connections = install_fake_psycopg(monkeypatch)
+    store = PostgresStore("postgresql://autodev:autodev@postgres/autodev")
+
+    store.create_session(session_id="s1", goal="g", plan=[], artifacts={}, tenant_id="acme")
+
+    conn = connections[-1]
+    set_tenant_sql, set_tenant_params = conn.executed[0]
+    assert "set_config" in set_tenant_sql
+    assert set_tenant_params == ("acme",)
+    insert_sql, insert_params = conn.executed[1]
+    assert "INSERT INTO sessions" in insert_sql
+    assert cast(Sequence[object], insert_params)[-1] == "acme"
+
+
+def test_postgres_store_list_run_steps_scopes_tenant_and_joins_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``list_run_steps`` scopes the tenant and joins ``runs`` for transitive RLS scoping.
+
+    ``run_steps`` has no ``tenant_id``/RLS of its own (ADR-010) — the
+    ``JOIN`` to ``runs`` is what makes tenant isolation actually apply to
+    this read.
+    """
+    connections = install_fake_psycopg(monkeypatch)
+    store = PostgresStore("postgresql://autodev:autodev@postgres/autodev")
+
+    store.list_run_steps("run-1", tenant_id="acme")
+
+    conn = connections[-1]
+    set_tenant_sql, set_tenant_params = conn.executed[0]
+    assert "set_config" in set_tenant_sql
+    assert set_tenant_params == ("acme",)
+    query_sql, _query_params = conn.executed[1]
+    assert "FROM run_steps" in query_sql
+    assert "JOIN runs" in query_sql
+
+
+def test_postgres_store_get_active_score_snapshot_joins_score_snapshots(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``get_active_score_snapshot`` scopes the tenant and joins ``score_snapshots``.
+
+    ``score_snapshot_promotions`` has no ``tenant_id``/RLS of its own
+    (ADR-010) — the ``JOIN`` to ``score_snapshots`` transitively scopes this
+    read to *tenant_id*.
+    """
+    connections = install_fake_psycopg(monkeypatch)
+    store = PostgresStore("postgresql://autodev:autodev@postgres/autodev")
+
+    store.get_active_score_snapshot("policy-1", tenant_id="acme")
+
+    conn = connections[-1]
+    set_tenant_sql, set_tenant_params = conn.executed[0]
+    assert "set_config" in set_tenant_sql
+    assert set_tenant_params == ("acme",)
+    query_sql, _query_params = conn.executed[1]
+    assert "FROM score_snapshot_promotions" in query_sql
+    assert "JOIN score_snapshots" in query_sql
+
+
+def test_postgres_plan_store_upsert_plan_scopes_tenant_before_insert(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``upsert_plan`` calls ``set_postgres_tenant`` with the passed tenant before inserting."""
+    connections = install_fake_psycopg(monkeypatch)
+    store = PostgresPlanStore(database_url="postgresql://autodev:autodev@postgres/autodev")
+
+    store.upsert_plan("s1", ["step1"], tenant_id="acme")
+
+    conn = connections[-1]
+    set_tenant_sql, set_tenant_params = conn.executed[0]
+    assert "set_config" in set_tenant_sql
+    assert set_tenant_params == ("acme",)
+    insert_sql, insert_params = conn.executed[1]
+    assert "INSERT INTO plan_documents" in insert_sql
+    assert cast(Sequence[object], insert_params)[-1] == "acme"
+
+
+def test_postgres_plan_store_approve_scopes_tenant_on_both_writes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``approve`` threads *tenant_id* through both ``set_status`` and ``_append_approval``."""
+    connections = install_fake_psycopg(monkeypatch)
+    store = PostgresPlanStore(database_url="postgresql://autodev:autodev@postgres/autodev")
+
+    store.approve("s1", actor="alice", tenant_id="acme")
+
+    # Last two connections opened correspond to set_status then _append_approval.
+    status_conn, approval_conn = connections[-2], connections[-1]
+    assert status_conn.executed[0][1] == ("acme",)
+    assert "UPDATE plan_documents" in status_conn.executed[1][0]
+    assert approval_conn.executed[0][1] == ("acme",)
+    insert_sql, insert_params = approval_conn.executed[1]
+    assert "INSERT INTO plan_approvals" in insert_sql
+    assert cast(Sequence[object], insert_params)[-1] == "acme"
 
 
 # ---------------------------------------------------------------------------

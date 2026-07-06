@@ -9,7 +9,11 @@ from pathlib import Path
 from typing import Any, Iterable, Optional
 
 from backend.persistence.migrations import MigrationRunner
-from backend.persistence.migrations.postgres_versions import POSTGRES_STORE_MIGRATIONS
+from backend.persistence.migrations.postgres_versions import (
+    POSTGRES_STORE_MIGRATIONS,
+    add_tenant_id_and_rls_to_plan_tables,
+)
+from backend.persistence.tenancy import DEFAULT_TENANT_ID, set_postgres_tenant
 from backend.plans.models import ApprovalRecord, PlanDocument, PlanStatus
 
 _DEFAULT_DATABASE_URL = "postgresql://autodev:autodev@postgres:5432/autodev"
@@ -90,18 +94,22 @@ class PostgresStore:
         goal: str,
         plan: list[str],
         artifacts: dict[str, Any],
+        tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None:
-        """Insert a new session row."""
+        """Insert a new session row, scoped to *tenant_id*."""
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             conn.execute(
-                "INSERT INTO sessions (id, goal, plan_json, artifacts_json) VALUES (%s, %s, %s::jsonb, %s::jsonb)",
-                (session_id, goal, _json(plan), _json(artifacts)),
+                "INSERT INTO sessions (id, goal, plan_json, artifacts_json, tenant_id) "
+                "VALUES (%s, %s, %s::jsonb, %s::jsonb, %s)",
+                (session_id, goal, _json(plan), _json(artifacts), tenant_id),
             )
             conn.commit()
 
-    def get_session(self, session_id: str) -> dict[str, Any] | None:
-        """Fetch a session by id, or ``None`` if it does not exist."""
+    def get_session(self, session_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> dict[str, Any] | None:
+        """Fetch a session by id, or ``None`` if it does not exist or is outside *tenant_id*'s scope."""
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             row = conn.execute(
                 "SELECT id, goal, plan_json, artifacts_json, created_at, updated_at FROM sessions WHERE id = %s",
                 (session_id,),
@@ -117,9 +125,10 @@ class PostgresStore:
             "updated_at": str(row[5]),
         }
 
-    def list_sessions(self) -> list[dict[str, Any]]:
-        """List all sessions, most recently created first."""
+    def list_sessions(self, tenant_id: str = DEFAULT_TENANT_ID) -> list[dict[str, Any]]:
+        """List all sessions visible to *tenant_id*, most recently created first."""
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             rows = conn.execute(
                 "SELECT id, goal, plan_json, artifacts_json, created_at, updated_at FROM sessions ORDER BY created_at DESC"
             ).fetchall()
@@ -135,9 +144,12 @@ class PostgresStore:
             for row in rows
         ]
 
-    def update_session_artifacts(self, session_id: str, artifacts: dict[str, Any]) -> None:
-        """Replace a session's stored artifacts."""
+    def update_session_artifacts(
+        self, session_id: str, artifacts: dict[str, Any], tenant_id: str = DEFAULT_TENANT_ID
+    ) -> None:
+        """Replace a session's stored artifacts, scoped to *tenant_id*."""
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             conn.execute(
                 "UPDATE sessions SET artifacts_json = %s::jsonb, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
                 (_json(artifacts), session_id),
@@ -155,15 +167,17 @@ class PostgresStore:
         trigger_message: str,
         results: list[dict[str, Any]],
         steps: list[dict[str, Any]],
+        tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None:
-        """Insert a new run row along with its steps."""
+        """Insert a new run row along with its steps, scoped to *tenant_id*."""
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             conn.execute(
                 """
-                INSERT INTO runs (id, session_id, status, run_type, current_state, trigger_message, results_json)
-                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb)
+                INSERT INTO runs (id, session_id, status, run_type, current_state, trigger_message, results_json, tenant_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s)
                 """,
-                (run_id, session_id, status, run_type, current_state, trigger_message, _json(results)),
+                (run_id, session_id, status, run_type, current_state, trigger_message, _json(results), tenant_id),
             )
             self._replace_run_steps(conn, run_id, steps)
             conn.commit()
@@ -176,9 +190,11 @@ class PostgresStore:
         current_state: str,
         results: list[dict[str, Any]],
         steps: list[dict[str, Any]],
+        tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None:
-        """Update a run's status, state, results, and steps."""
+        """Update a run's status, state, results, and steps, scoped to *tenant_id*."""
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             conn.execute(
                 """
                 UPDATE runs
@@ -190,9 +206,10 @@ class PostgresStore:
             self._replace_run_steps(conn, run_id, steps)
             conn.commit()
 
-    def list_runs(self, session_id: str) -> list[dict[str, Any]]:
-        """List all runs for a session, most recently created first."""
+    def list_runs(self, session_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> list[dict[str, Any]]:
+        """List all runs for a session visible to *tenant_id*, most recently created first."""
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             rows = conn.execute(
                 """
                 SELECT id, session_id, status, run_type, current_state, trigger_message,
@@ -210,20 +227,33 @@ class PostgresStore:
                 "current_state": row[4],
                 "trigger_message": row[5],
                 "results": _loads(row[6]),
-                "steps": self.list_run_steps(row[0]),
+                "steps": self.list_run_steps(row[0], tenant_id=tenant_id),
                 "created_at": str(row[7]),
                 "completed_at": str(row[8]),
             }
             for row in rows
         ]
 
-    def list_run_steps(self, run_id: str) -> list[dict[str, Any]]:
-        """List all steps recorded for a run, in execution order."""
+    def list_run_steps(self, run_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> list[dict[str, Any]]:
+        """List all steps recorded for a run, in execution order, scoped to *tenant_id*.
+
+        ``run_steps`` has no ``tenant_id`` column or RLS policy of its own —
+        by design (ADR-010), it is scoped transitively through its parent
+        ``runs`` row. The ``JOIN`` below is what makes that transitive
+        scoping actually take effect: RLS on ``runs`` hides any row outside
+        *tenant_id*'s scope, so a ``run_id`` belonging to another tenant
+        yields zero joined rows here, even though ``run_steps`` itself has
+        no filter of its own.
+        """
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             rows = conn.execute(
                 """
-                SELECT step_key, agent, status, started_at, completed_at, attempt
-                FROM run_steps WHERE run_id = %s ORDER BY id ASC
+                SELECT rs.step_key, rs.agent, rs.status, rs.started_at, rs.completed_at, rs.attempt
+                FROM run_steps rs
+                JOIN runs r ON r.id = rs.run_id
+                WHERE rs.run_id = %s
+                ORDER BY rs.id ASC
                 """,
                 (run_id,),
             ).fetchall()
@@ -239,9 +269,10 @@ class PostgresStore:
             for row in rows
         ]
 
-    def list_messages(self, session_id: str) -> list[dict[str, Any]]:
-        """List all messages for a session, in sequence order."""
+    def list_messages(self, session_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> list[dict[str, Any]]:
+        """List all messages for a session visible to *tenant_id*, in sequence order."""
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             rows = conn.execute(
                 """
                 SELECT id, session_id, run_id, sequence, role, content, created_at
@@ -267,52 +298,75 @@ class PostgresStore:
         session_id: str,
         run_id: str,
         history: Iterable[dict[str, str]],
+        tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None:
-        """Append only the messages in ``history`` beyond what is already stored."""
-        existing = self.list_messages(session_id)
+        """Append only the messages in ``history`` beyond what is already stored, scoped to *tenant_id*."""
+        existing = self.list_messages(session_id, tenant_id=tenant_id)
         start = len(existing)
         new_messages = list(history)[start:]
         if not new_messages:
             return
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             with conn.cursor() as cur:
                 for offset, item in enumerate(new_messages, start=start):
                     cur.execute(
                         """
-                        INSERT INTO messages (session_id, run_id, sequence, role, content)
-                        VALUES (%s, %s, %s, %s, %s)
+                        INSERT INTO messages (session_id, run_id, sequence, role, content, tenant_id)
+                        VALUES (%s, %s, %s, %s, %s, %s)
                         """,
-                        (session_id, run_id, offset, item["role"], item["content"]),
+                        (session_id, run_id, offset, item["role"], item["content"], tenant_id),
                     )
             conn.commit()
 
     def create_eval_result(
-        self, *, eval_id: str, eval_version: str, run_id: str, document: dict[str, Any]
+        self,
+        *,
+        eval_id: str,
+        eval_version: str,
+        run_id: str,
+        document: dict[str, Any],
+        tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None:
-        """Persist one eval result document. Never overwrites an existing run (E5-S3)."""
+        """Persist one eval result document, scoped to *tenant_id*. Never overwrites an existing run (E5-S3)."""
         gate_passed = bool((document.get("gate") or {}).get("passed", True))
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             conn.execute(
                 """
-                INSERT INTO eval_results (eval_id, eval_version, run_id, mode, gate_passed, document_json)
-                VALUES (%s, %s, %s, %s, %s, %s::jsonb)
+                INSERT INTO eval_results (eval_id, eval_version, run_id, mode, gate_passed, document_json, tenant_id)
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s)
                 """,
-                (eval_id, eval_version, run_id, str(document.get("mode", "offline")), gate_passed, _json(document)),
+                (
+                    eval_id,
+                    eval_version,
+                    run_id,
+                    str(document.get("mode", "offline")),
+                    gate_passed,
+                    _json(document),
+                    tenant_id,
+                ),
             )
             conn.commit()
 
-    def get_eval_result(self, eval_id: str, eval_version: str, run_id: str) -> dict[str, Any] | None:
-        """Fetch one eval result document, or ``None`` if it does not exist (E5-S3)."""
+    def get_eval_result(
+        self, eval_id: str, eval_version: str, run_id: str, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> dict[str, Any] | None:
+        """Fetch one eval result document, or ``None`` if it does not exist (E5-S3), scoped to *tenant_id*."""
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             row = conn.execute(
                 "SELECT document_json FROM eval_results WHERE eval_id = %s AND eval_version = %s AND run_id = %s",
                 (eval_id, eval_version, run_id),
             ).fetchone()
         return _loads(row[0]) if row is not None else None
 
-    def list_eval_results(self, eval_id: str, eval_version: str | None = None) -> list[dict[str, Any]]:
-        """List eval result documents for an id, newest first, optionally by version (E5-S3)."""
+    def list_eval_results(
+        self, eval_id: str, eval_version: str | None = None, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> list[dict[str, Any]]:
+        """List eval result documents for an id, newest first, optionally by version (E5-S3), scoped to *tenant_id*."""
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             if eval_version is not None:
                 rows = conn.execute(
                     "SELECT document_json FROM eval_results WHERE eval_id = %s AND eval_version = %s "
@@ -327,28 +381,36 @@ class PostgresStore:
         return [_loads(row[0]) for row in rows]
 
     def create_score_snapshot(
-        self, *, snapshot_id: str, sample_count: int, document: dict[str, Any]
+        self,
+        *,
+        snapshot_id: str,
+        sample_count: int,
+        document: dict[str, Any],
+        tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None:
-        """Persist one immutable, versioned score snapshot document (E5-S4)."""
+        """Persist one immutable, versioned score snapshot document (E5-S4), scoped to *tenant_id*."""
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             conn.execute(
-                "INSERT INTO score_snapshots (snapshot_id, sample_count, document_json) "
-                "VALUES (%s, %s, %s::jsonb)",
-                (snapshot_id, sample_count, _json(document)),
+                "INSERT INTO score_snapshots (snapshot_id, sample_count, document_json, tenant_id) "
+                "VALUES (%s, %s, %s::jsonb, %s)",
+                (snapshot_id, sample_count, _json(document), tenant_id),
             )
             conn.commit()
 
-    def get_score_snapshot(self, snapshot_id: str) -> dict[str, Any] | None:
-        """Fetch one persisted score snapshot document, or ``None`` (E5-S4)."""
+    def get_score_snapshot(self, snapshot_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> dict[str, Any] | None:
+        """Fetch one persisted score snapshot document, or ``None`` (E5-S4), scoped to *tenant_id*."""
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             row = conn.execute(
                 "SELECT document_json FROM score_snapshots WHERE snapshot_id = %s", (snapshot_id,)
             ).fetchone()
         return _loads(row[0]) if row is not None else None
 
-    def list_score_snapshots(self, limit: int = 50) -> list[dict[str, Any]]:
-        """List persisted score snapshots, newest first (E5-S4)."""
+    def list_score_snapshots(self, limit: int = 50, tenant_id: str = DEFAULT_TENANT_ID) -> list[dict[str, Any]]:
+        """List persisted score snapshots, newest first (E5-S4), scoped to *tenant_id*."""
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             rows = conn.execute(
                 "SELECT document_json FROM score_snapshots ORDER BY id DESC LIMIT %s", (limit,)
             ).fetchall()
@@ -363,9 +425,20 @@ class PostgresStore:
         promoted: bool,
         reason: str,
         decided_at: str,
+        tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None:
-        """Append one promotion decision (promoted or blocked) to the audit log (E5-S4)."""
+        """Append one promotion decision (promoted or blocked) to the audit log (E5-S4).
+
+        ``score_snapshot_promotions`` has no ``tenant_id`` column or RLS
+        policy of its own (ADR-010: scoped transitively through its parent
+        ``score_snapshots`` row via *snapshot_id*), so this insert is not
+        itself RLS-checked. *tenant_id* still scopes the transaction (via
+        :func:`~backend.persistence.tenancy.set_postgres_tenant`) for
+        consistency with every other method and any future reads sharing
+        this connection.
+        """
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             conn.execute(
                 "INSERT INTO score_snapshot_promotions "
                 "(policy_id, snapshot_id, baseline_snapshot_id, promoted, reason, decided_at) "
@@ -374,24 +447,45 @@ class PostgresStore:
             )
             conn.commit()
 
-    def get_active_score_snapshot(self, policy_id: str) -> dict[str, Any] | None:
-        """Fetch the currently promoted snapshot document for a policy id (E5-S4)."""
+    def get_active_score_snapshot(self, policy_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> dict[str, Any] | None:
+        """Fetch the currently promoted snapshot document for a policy id (E5-S4), scoped to *tenant_id*.
+
+        Joins to ``score_snapshots`` so RLS on that table (which does carry
+        a ``tenant_id`` column and policy) transitively filters out
+        promotions pointing at a snapshot outside *tenant_id*'s scope.
+        """
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             row = conn.execute(
-                "SELECT snapshot_id FROM score_snapshot_promotions "
-                "WHERE policy_id = %s AND promoted = TRUE ORDER BY id DESC LIMIT 1",
+                """
+                SELECT ssp.snapshot_id
+                FROM score_snapshot_promotions ssp
+                JOIN score_snapshots ss ON ss.snapshot_id = ssp.snapshot_id
+                WHERE ssp.policy_id = %s AND ssp.promoted = TRUE
+                ORDER BY ssp.id DESC LIMIT 1
+                """,
                 (policy_id,),
             ).fetchone()
         if row is None:
             return None
-        return self.get_score_snapshot(row[0])
+        return self.get_score_snapshot(row[0], tenant_id=tenant_id)
 
-    def list_snapshot_promotions(self, policy_id: str) -> list[dict[str, Any]]:
-        """List every promotion decision recorded for a policy id, newest first (E5-S4)."""
+    def list_snapshot_promotions(self, policy_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> list[dict[str, Any]]:
+        """List every promotion decision recorded for a policy id, newest first (E5-S4), scoped to *tenant_id*.
+
+        See :meth:`get_active_score_snapshot` for why this joins to
+        ``score_snapshots``.
+        """
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             rows = conn.execute(
-                "SELECT policy_id, snapshot_id, baseline_snapshot_id, promoted, reason, decided_at "
-                "FROM score_snapshot_promotions WHERE policy_id = %s ORDER BY id DESC",
+                """
+                SELECT ssp.policy_id, ssp.snapshot_id, ssp.baseline_snapshot_id, ssp.promoted, ssp.reason,
+                       ssp.decided_at
+                FROM score_snapshot_promotions ssp
+                JOIN score_snapshots ss ON ss.snapshot_id = ssp.snapshot_id
+                WHERE ssp.policy_id = %s ORDER BY ssp.id DESC
+                """,
                 (policy_id,),
             ).fetchall()
         return [
@@ -450,7 +544,15 @@ class PostgresPlanStore:
         return _connect(self.database_url)
 
     def _run_migrations(self, conn: Any) -> None:
-        """Create the plan store's tables and record the schema version."""
+        """Create the plan store's tables, apply tenancy DDL, and record the schema version.
+
+        Calls :func:`add_tenant_id_and_rls_to_plan_tables` directly (rather
+        than only relying on it running as a step in
+        :data:`~backend.persistence.migrations.postgres_versions.POSTGRES_STORE_MIGRATIONS`)
+        so this store is correctly tenant-scoped on its own, even if a
+        :class:`PostgresStore` is never constructed against the same
+        database (see that function's docstring for the full rationale).
+        """
         _run_sql(
             conn,
             [
@@ -485,27 +587,31 @@ class PostgresPlanStore:
                 """,
             ],
         )
+        add_tenant_id_and_rls_to_plan_tables(conn)
+        conn.commit()
 
-    def upsert_plan(self, session_id: str, steps: list[str]) -> None:
-        """Create or replace a session's plan document, resetting its status to draft."""
+    def upsert_plan(self, session_id: str, steps: list[str], tenant_id: str = DEFAULT_TENANT_ID) -> None:
+        """Create or replace a session's plan document, resetting its status to draft, scoped to *tenant_id*."""
         now = self._now()
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             conn.execute(
                 """
-                INSERT INTO plan_documents (session_id, steps_json, status, updated_at)
-                VALUES (%s, %s::jsonb, 'draft', %s)
+                INSERT INTO plan_documents (session_id, steps_json, status, updated_at, tenant_id)
+                VALUES (%s, %s::jsonb, 'draft', %s, %s)
                 ON CONFLICT(session_id) DO UPDATE SET
                     steps_json = EXCLUDED.steps_json,
                     status = 'draft',
                     updated_at = EXCLUDED.updated_at
                 """,
-                (session_id, _json(steps), now),
+                (session_id, _json(steps), now, tenant_id),
             )
             conn.commit()
 
-    def get_plan(self, session_id: str) -> Optional[PlanDocument]:
-        """Fetch a session's plan document, or ``None`` if it does not exist."""
+    def get_plan(self, session_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> Optional[PlanDocument]:
+        """Fetch a session's plan document, or ``None`` if it does not exist, scoped to *tenant_id*."""
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             row = conn.execute(
                 "SELECT session_id, steps_json, status, updated_at FROM plan_documents WHERE session_id = %s",
                 (session_id,),
@@ -519,29 +625,35 @@ class PostgresPlanStore:
             updated_at=row[3],
         )
 
-    def set_status(self, session_id: str, status: str) -> None:
-        """Update a session's plan status."""
+    def set_status(self, session_id: str, status: str, tenant_id: str = DEFAULT_TENANT_ID) -> None:
+        """Update a session's plan status, scoped to *tenant_id*."""
         now = self._now()
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             conn.execute(
                 "UPDATE plan_documents SET status = %s, updated_at = %s WHERE session_id = %s",
                 (status, now, session_id),
             )
             conn.commit()
 
-    def approve(self, session_id: str, actor: str, note: str = "") -> None:
-        """Mark a session's plan as approved and record the approval."""
-        self.set_status(session_id, PlanStatus.APPROVED)
-        self._append_approval(session_id, decision=PlanStatus.APPROVED, actor=actor, note=note)
+    def approve(self, session_id: str, actor: str, note: str = "", tenant_id: str = DEFAULT_TENANT_ID) -> None:
+        """Mark a session's plan as approved and record the approval, scoped to *tenant_id*."""
+        self.set_status(session_id, PlanStatus.APPROVED, tenant_id=tenant_id)
+        self._append_approval(
+            session_id, decision=PlanStatus.APPROVED, actor=actor, note=note, tenant_id=tenant_id
+        )
 
-    def reject(self, session_id: str, actor: str, note: str = "") -> None:
-        """Mark a session's plan as rejected and record the rejection."""
-        self.set_status(session_id, PlanStatus.REJECTED)
-        self._append_approval(session_id, decision=PlanStatus.REJECTED, actor=actor, note=note)
+    def reject(self, session_id: str, actor: str, note: str = "", tenant_id: str = DEFAULT_TENANT_ID) -> None:
+        """Mark a session's plan as rejected and record the rejection, scoped to *tenant_id*."""
+        self.set_status(session_id, PlanStatus.REJECTED, tenant_id=tenant_id)
+        self._append_approval(
+            session_id, decision=PlanStatus.REJECTED, actor=actor, note=note, tenant_id=tenant_id
+        )
 
-    def list_plans(self) -> list[PlanDocument]:
-        """List all plan documents, most recently updated first."""
+    def list_plans(self, tenant_id: str = DEFAULT_TENANT_ID) -> list[PlanDocument]:
+        """List all plan documents visible to *tenant_id*, most recently updated first."""
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             rows = conn.execute(
                 "SELECT session_id, steps_json, status, updated_at FROM plan_documents ORDER BY updated_at DESC"
             ).fetchall()
@@ -555,9 +667,10 @@ class PostgresPlanStore:
             for row in rows
         ]
 
-    def list_approvals(self, session_id: str) -> list[ApprovalRecord]:
-        """List all approval decisions for a session's plan, oldest first."""
+    def list_approvals(self, session_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> list[ApprovalRecord]:
+        """List all approval decisions for a session's plan, oldest first, scoped to *tenant_id*."""
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             rows = conn.execute(
                 """
                 SELECT session_id, decision, actor, note, created_at
@@ -576,16 +689,19 @@ class PostgresPlanStore:
             for row in rows
         ]
 
-    def _append_approval(self, session_id: str, decision: str, actor: str, note: str) -> None:
-        """Insert an approval decision record for a session."""
+    def _append_approval(
+        self, session_id: str, decision: str, actor: str, note: str, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> None:
+        """Insert an approval decision record for a session, scoped to *tenant_id*."""
         now = self._now()
         with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
             conn.execute(
                 """
-                INSERT INTO plan_approvals (session_id, decision, actor, note, created_at)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO plan_approvals (session_id, decision, actor, note, created_at, tenant_id)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
-                (session_id, decision, actor, note, now),
+                (session_id, decision, actor, note, now, tenant_id),
             )
             conn.commit()
 
