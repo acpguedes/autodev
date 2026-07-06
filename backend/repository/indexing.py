@@ -197,17 +197,32 @@ def _persist_chunks(store: Any, file_path: str, chunks: list[Chunk], tenant_id: 
 
 
 def _upsert_chunk(conn: Any, param: str, tenant_id: str, file_path: str, chunk: Chunk) -> None:
-    """Insert or update one chunk row, keyed by ``(tenant_id, file_path, symbol, start_line)``."""
+    """Insert or update one chunk row, keyed by ``(tenant_id, file_path, symbol, start_line)``.
+
+    Persists ``chunk.content`` (the chunk's exact source text) alongside its
+    metadata so hybrid retrieval (E7-S3) can search and return it without
+    re-reading the source file.
+    """
     conn.execute(
         f"""
-        INSERT INTO code_chunks (tenant_id, file_path, symbol, start_line, end_line, content_hash)
-        VALUES ({param}, {param}, {param}, {param}, {param}, {param})
+        INSERT INTO code_chunks
+            (tenant_id, file_path, symbol, start_line, end_line, content_hash, content)
+        VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param})
         ON CONFLICT(tenant_id, file_path, symbol, start_line) DO UPDATE SET
             end_line = excluded.end_line,
             content_hash = excluded.content_hash,
+            content = excluded.content,
             indexed_at = CURRENT_TIMESTAMP
         """,
-        (tenant_id, file_path, chunk.symbol, chunk.start_line, chunk.end_line, chunk.content_hash),
+        (
+            tenant_id,
+            file_path,
+            chunk.symbol,
+            chunk.start_line,
+            chunk.end_line,
+            chunk.content_hash,
+            chunk.content,
+        ),
     )
 
 
