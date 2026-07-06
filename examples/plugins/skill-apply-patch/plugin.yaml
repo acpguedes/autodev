@@ -1,0 +1,14 @@
+schemaVersion: "1"
+id: "autodev/skill-apply-patch"
+name: "AutoDev Skill: Apply Patch"
+version: "1.0.0"
+hostApi: ">=2.0 <3.0"
+runtime:
+  loader: "in-process"
+  entrypoint: "autodev_skill_apply_patch:register"
+permissions: {}
+extensionPoints:
+  - kind: "skill"
+    id: "autodev/skill-apply-patch.skill"
+    contract: "^1.0"
+    manifest: "./skill.yaml"

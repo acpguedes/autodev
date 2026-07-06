@@ -1,0 +1,43 @@
+schemaVersion: "1"
+id: "autodev/skill-apply-patch"
+version: "1.0.0"
+name: "Apply Patch"
+description: "Generates and applies a unified diff for one file, with a path guard and dry-run by default."
+hostApi: ">=2.0 <3.0"
+
+kind: "deterministic"
+entrypoint: "autodev_skill_apply_patch:run"
+
+io:
+  input:
+    schemaVersion: "1"
+    type: object
+    required: ["path", "original", "updated"]
+    properties:
+      path: { type: string }
+      original: { type: string }
+      updated: { type: string }
+      root: { type: string }
+      enable: { type: boolean }
+  output:
+    schemaVersion: "1"
+    type: object
+    required: ["applied", "dryRun", "message"]
+    properties:
+      applied: { type: boolean }
+      dryRun: { type: boolean }
+      message: { type: string }
+
+permissions:
+  filesystem: "read-write"
+  network: "none"
+  sandbox: true
+
+dependencies: []
+
+triggers:
+  - "code.after-edit"
+
+budgets:
+  timeoutSec: 30
+  maxCostUsd: 0.0
