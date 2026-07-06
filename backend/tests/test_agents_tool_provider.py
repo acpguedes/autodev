@@ -59,6 +59,26 @@ def test_tool_broker_denies_undeclared_tools_and_network_by_default() -> None:
         broker.open_network("example.com", 443)
 
 
+def test_tool_broker_delegates_granted_skill_calls_to_skill_broker() -> None:
+    """A skill_broker, when set, is used for granted skills instead of the dict lookup."""
+    manifest = _manifest_with_tool()
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class _FakeSkillBroker:
+        def invoke(self, skill_id: str, **kwargs: object) -> dict[str, str]:
+            calls.append((skill_id, kwargs))
+            return {"ok": "true"}
+
+    broker = AgentToolBroker(manifest, skill_broker=_FakeSkillBroker())
+
+    result = broker.call_skill("autodev/skill-unified-diff", path="a.py")
+
+    assert result == {"ok": "true"}
+    assert calls == [("autodev/skill-unified-diff", {"path": "a.py"})]
+    with pytest.raises(ToolAccessDenied):
+        broker.call_skill("autodev/skill-not-granted")
+
+
 def test_runtime_injects_only_granted_tools_into_agent_context() -> None:
     """The runtime context exposes only the tools granted to the agent's manifest."""
     manifest = _manifest_with_tool()

@@ -1,7 +1,7 @@
 # E6 — Skills v2
 
 **Wave:** Beta
-**Status:** Not started · **Stories:** 0/5 complete
+**Status:** Done · **Stories:** 5/5 complete
 **Depends on:** E1
 **Enables:** E9-S4 (MCP) and composition in flows
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E6), §18.8, §18.9
@@ -107,8 +107,8 @@ Subtasks:
 
 ## Epic exit checklist
 
-- [ ] All 5 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
+- [x] All 5 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
       story-specific DoD above.
-- [ ] Contract tests green for the skill IO/invocation extension points.
-- [ ] `docs/v2_platform/progress.md` updated.
-- [ ] Beta wave entry item "Skills v2" satisfied (§18.9).
+- [x] Contract tests green for the skill IO/invocation extension points.
+- [x] `docs/v2_platform/progress.md` updated.
+- [x] Beta wave entry item "Skills v2" satisfied (§18.9).
