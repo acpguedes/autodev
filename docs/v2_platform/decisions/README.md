@@ -51,6 +51,7 @@ neither.
 | RFC-005 | Evaluation Service Contract (`eval.yaml`, `Evaluator`) | Accepted | E5-S3 | 2026-07-05 |
 | ADR-009 | Evaluation Service Boundary and Scope | Accepted | E5-S3 | 2026-07-05 |
 | ADR-010 | Scoped E8-S1 Tenancy Slice for E7 (Down Migrations + tenant_id/RLS) | Accepted | E7 (E8-S1 slice) | 2026-07-06 |
+| ADR-011 | pgvector HNSW Index for Code Chunk Embeddings | Accepted | E7-S2 | 2026-07-06 |
 
 > Update this table whenever an ADR or RFC is added or changes status. This index,
 > together with `docs/v2_platform/progress.md`, is the fastest way to see which
