@@ -1,0 +1,242 @@
+"""Tests for the E8-S1 scoped tenancy slice: down migrations and RLS DDL (ADR-010)."""
+
+from __future__ import annotations
+
+import sqlite3
+from pathlib import Path
+
+import pytest
+
+from backend.persistence.migrations.postgres_versions import POSTGRES_STORE_MIGRATIONS
+from backend.persistence.migrations.runner import Migration, MigrationRunner
+from backend.persistence.migrations.versions import STORE_MIGRATIONS
+from backend.persistence.postgres_adapter import PostgresStore
+from backend.persistence.tenancy import (
+    DEFAULT_TENANT_ID,
+    set_postgres_tenant,
+    sqlite_tenant_clause,
+)
+
+
+class FakeCursor:
+    """In-memory stand-in for a psycopg cursor, recording executed SQL on its connection."""
+
+    def __init__(self, conn: "FakeConnection") -> None:
+        self.conn = conn
+
+    def __enter__(self) -> "FakeCursor":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
+
+    def execute(self, sql: str, params: object = None) -> "FakeCursor":
+        self.conn.executed.append((sql, params))
+        return self
+
+    def fetchone(self) -> object:
+        return None
+
+    def fetchall(self) -> list[object]:
+        return []
+
+
+class FakeConnection:
+    """In-memory stand-in for a psycopg connection, used to assert on executed DDL."""
+
+    def __init__(self) -> None:
+        self.executed: list[tuple[str, object]] = []
+        self.commits = 0
+
+    def __enter__(self) -> "FakeConnection":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
+
+    def cursor(self) -> FakeCursor:
+        return FakeCursor(self)
+
+    def execute(self, sql: str, params: object = None) -> FakeCursor:
+        cursor = self.cursor()
+        cursor.execute(sql, params)
+        return cursor
+
+    def commit(self) -> None:
+        self.commits += 1
+
+
+def install_fake_psycopg(monkeypatch: pytest.MonkeyPatch) -> list[FakeConnection]:
+    """Patch ``sys.modules['psycopg']`` with a fake module recording connections made."""
+    import sys
+    from types import SimpleNamespace
+
+    connections: list[FakeConnection] = []
+
+    def connect(database_url: str) -> FakeConnection:
+        assert database_url.startswith("postgresql://")
+        conn = FakeConnection()
+        connections.append(conn)
+        return conn
+
+    monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(connect=connect))
+    return connections
+
+
+def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
+    """Return the set of column names currently defined on *table*."""
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+
+# ---------------------------------------------------------------------------
+# SQLite: up -> down -> up round trip
+# ---------------------------------------------------------------------------
+
+
+def test_sqlite_migrations_up_down_up_roundtrip(tmp_path: Path) -> None:
+    """Applying, rolling back, and reapplying SQLite migrations reaches the same schema."""
+    db_path = tmp_path / "roundtrip.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        runner = MigrationRunner(conn, STORE_MIGRATIONS, namespace="store")
+        runner.run_pending()
+        assert "tenant_id" in _columns(conn, "sessions")
+        assert "tenant_id" in _columns(conn, "runs")
+        assert "tenant_id" in _columns(conn, "messages")
+
+        runner.run_down(steps=1)
+        assert "tenant_id" not in _columns(conn, "sessions")
+        assert "tenant_id" not in _columns(conn, "runs")
+        version = conn.execute(
+            "SELECT version FROM schema_version WHERE namespace = 'store'"
+        ).fetchone()[0]
+        assert version == len(STORE_MIGRATIONS) - 1
+
+        runner.run_pending()
+        assert "tenant_id" in _columns(conn, "sessions")
+        assert "tenant_id" in _columns(conn, "messages")
+        version = conn.execute(
+            "SELECT version FROM schema_version WHERE namespace = 'store'"
+        ).fetchone()[0]
+        assert version == len(STORE_MIGRATIONS)
+    finally:
+        conn.close()
+
+
+def test_sqlite_rollback_to_specific_version(tmp_path: Path) -> None:
+    """``rollback_to`` reverts every migration above the requested target version."""
+    db_path = tmp_path / "rollback.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        runner = MigrationRunner(conn, STORE_MIGRATIONS, namespace="store")
+        runner.run_pending()
+
+        runner.rollback_to(4)
+
+        version = conn.execute(
+            "SELECT version FROM schema_version WHERE namespace = 'store'"
+        ).fetchone()[0]
+        assert version == 4
+        assert "tenant_id" not in _columns(conn, "sessions")
+        assert _columns(conn, "plugins")  # migration 4's table remains
+    finally:
+        conn.close()
+
+
+def test_rollback_to_rejects_invalid_targets(tmp_path: Path) -> None:
+    """``rollback_to`` refuses a target above the current version or below zero."""
+    conn = sqlite3.connect(tmp_path / "invalid.db")
+    try:
+        runner = MigrationRunner(conn, STORE_MIGRATIONS, namespace="store")
+        runner.run_pending()
+        with pytest.raises(ValueError):
+            runner.rollback_to(len(STORE_MIGRATIONS) + 1)
+        with pytest.raises(ValueError):
+            runner.rollback_to(-1)
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
+# PostgreSQL: RLS/tenant_id DDL via the FakeConnection mock pattern
+# ---------------------------------------------------------------------------
+
+
+def test_postgres_store_issues_tenant_rls_ddl(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Constructing a :class:`PostgresStore` issues tenant_id + RLS DDL via the versioned runner."""
+    connections = install_fake_psycopg(monkeypatch)
+
+    PostgresStore("postgresql://autodev:autodev@postgres/autodev")
+
+    executed_sql = "\n".join(sql for sql, _params in connections[0].executed)
+    # Core tables still created (behavior preserved for existing callers).
+    assert "CREATE TABLE IF NOT EXISTS sessions" in executed_sql
+    assert "CREATE TABLE IF NOT EXISTS runs" in executed_sql
+    # New tenancy DDL from the second migration.
+    assert "ADD COLUMN IF NOT EXISTS tenant_id" in executed_sql
+    assert "ENABLE ROW LEVEL SECURITY" in executed_sql
+    assert "FORCE ROW LEVEL SECURITY" in executed_sql
+    assert "CREATE POLICY sessions_tenant_isolation" in executed_sql
+    assert "current_setting('app.tenant_id', true)" in executed_sql
+
+
+def test_postgres_migration_rollback_drops_policy_and_column() -> None:
+    """The tenant/RLS migration's down step drops the policy, column, and RLS enforcement.
+
+    ``FakeConnection`` (mirroring ``test_postgres_store.py``) does not track real
+    schema-version state — ``fetchone()`` always returns ``None`` — so exercising
+    the runner's version-aware ``run_down``/``rollback_to`` bookkeeping against it
+    would be meaningless. That bookkeeping is covered against a real
+    ``sqlite3.Connection`` above; here we assert the migration's ``down`` DDL shape
+    directly, exactly as :class:`MigrationRunner` would invoke it.
+    """
+    conn = FakeConnection()
+    tenant_migration = POSTGRES_STORE_MIGRATIONS[1]
+    assert isinstance(tenant_migration, Migration)
+
+    tenant_migration.down(conn)
+
+    executed_sql = "\n".join(sql for sql, _params in conn.executed)
+    assert "DROP POLICY IF EXISTS sessions_tenant_isolation" in executed_sql
+    assert "DROP COLUMN IF EXISTS tenant_id" in executed_sql
+    assert "NO FORCE ROW LEVEL SECURITY" in executed_sql
+
+
+# ---------------------------------------------------------------------------
+# tenancy.py helpers
+# ---------------------------------------------------------------------------
+
+
+def test_set_postgres_tenant_uses_parameterized_set_config() -> None:
+    """``set_postgres_tenant`` uses ``set_config`` (bind-safe), never a literal SET LOCAL string."""
+    conn = FakeConnection()
+
+    set_postgres_tenant(conn, "acme")
+
+    sql, params = conn.executed[-1]
+    assert "set_config" in sql
+    assert "app.tenant_id" in sql
+    assert params == ("acme",)
+
+
+def test_set_postgres_tenant_rejects_empty_tenant() -> None:
+    """An empty tenant id is rejected rather than silently scoping to nothing."""
+    with pytest.raises(ValueError):
+        set_postgres_tenant(FakeConnection(), "")
+
+
+def test_sqlite_tenant_clause_defaults_and_validates() -> None:
+    """``sqlite_tenant_clause`` returns an AND-prefixed fragment and validates its input."""
+    clause, params = sqlite_tenant_clause()
+    assert clause == "AND tenant_id = ?"
+    assert params == (DEFAULT_TENANT_ID,)
+
+    with pytest.raises(ValueError):
+        sqlite_tenant_clause("")
+
+
+def test_sqlite_tenant_clause_custom_param_style() -> None:
+    """A caller building dialect-parameterized SQL can request ``%s`` placeholders."""
+    clause, params = sqlite_tenant_clause("acme", param_style="%s")
+    assert clause == "AND tenant_id = %s"
+    assert params == ("acme",)

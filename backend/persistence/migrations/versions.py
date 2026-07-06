@@ -9,6 +9,21 @@ from __future__ import annotations
 
 import sqlite3
 
+from backend.persistence.migrations.runner import Migration, MigrationEntry
+
+#: Core store tables retrofitted with a ``tenant_id`` column (E8-S1 scoped
+#: slice — see ADR-010). Child/audit tables (``run_steps``, ``plugin_events``,
+#: ``score_snapshot_promotions``) are scoped transitively through their
+#: parent row's tenant and are intentionally not retrofitted directly.
+TENANT_SCOPED_STORE_TABLES = (
+    "sessions",
+    "runs",
+    "messages",
+    "plugins",
+    "eval_results",
+    "score_snapshots",
+)
+
 
 # ---------------------------------------------------------------------------
 # SQLiteStore migrations
@@ -205,13 +220,48 @@ def _m6_create_score_snapshot_tables(conn: sqlite3.Connection) -> None:
     )
 
 
-STORE_MIGRATIONS = [
+def _m7_add_tenant_id_to_core_tables(conn: sqlite3.Connection) -> None:
+    """Add a ``tenant_id`` column (default ``'default'``) to the core store tables.
+
+    Scoped E8-S1 slice (ADR-010): backfills every existing row to the
+    ``'default'`` tenant so current single-tenant callers keep working
+    unchanged. SQLite has no Row-Level Security equivalent; tenant isolation
+    on SQLite is enforced by callers appending
+    :func:`backend.persistence.tenancy.sqlite_tenant_clause` to queries.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    for table in TENANT_SCOPED_STORE_TABLES:
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "tenant_id" not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+
+
+def _m7_down_remove_tenant_id_from_core_tables(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m7_add_tenant_id_to_core_tables` by dropping the ``tenant_id`` column.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    for table in TENANT_SCOPED_STORE_TABLES:
+        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+        if "tenant_id" in existing:
+            conn.execute(f"ALTER TABLE {table} DROP COLUMN tenant_id")
+
+
+STORE_MIGRATIONS: list[MigrationEntry] = [
     _m1_create_core_tables,
     _m2_runs_add_run_type,
     _m3_runs_add_current_state,
     _m4_create_plugin_tables,
     _m5_create_eval_results_table,
     _m6_create_score_snapshot_tables,
+    Migration(
+        up=_m7_add_tenant_id_to_core_tables,
+        down=_m7_down_remove_tenant_id_from_core_tables,
+        name="add_tenant_id_to_core_tables",
+    ),
 ]
 
 
