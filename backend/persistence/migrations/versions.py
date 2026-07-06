@@ -250,6 +250,50 @@ def _m7_down_remove_tenant_id_from_core_tables(conn: sqlite3.Connection) -> None
             conn.execute(f"ALTER TABLE {table} DROP COLUMN tenant_id")
 
 
+def _m8_create_code_chunks_table(conn: sqlite3.Connection) -> None:
+    """Create the ``code_chunks`` table and its indexes (E7-S1-T4).
+
+    Persists syntax-aware chunk metadata — file path, symbol, line span, and
+    content hash — produced by :mod:`backend.repository.chunking`. Tenant-
+    scoped from creation (E8-S1 slice, ADR-010): SQLite has no Row-Level
+    Security equivalent, so isolation here is enforced by callers appending
+    :func:`backend.persistence.tenancy.sqlite_tenant_clause` to queries.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS code_chunks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            file_path TEXT NOT NULL,
+            symbol TEXT NOT NULL DEFAULT '',
+            start_line INTEGER NOT NULL,
+            end_line INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            indexed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(tenant_id, file_path, symbol, start_line)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_code_chunks_file_path
+            ON code_chunks(tenant_id, file_path);
+
+        CREATE INDEX IF NOT EXISTS idx_code_chunks_hash
+            ON code_chunks(content_hash);
+        """
+    )
+
+
+def _m8_down_drop_code_chunks_table(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m8_create_code_chunks_table` by dropping the table.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    conn.execute("DROP TABLE IF EXISTS code_chunks")
+
+
 STORE_MIGRATIONS: list[MigrationEntry] = [
     _m1_create_core_tables,
     _m2_runs_add_run_type,
@@ -261,6 +305,11 @@ STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_m7_add_tenant_id_to_core_tables,
         down=_m7_down_remove_tenant_id_from_core_tables,
         name="add_tenant_id_to_core_tables",
+    ),
+    Migration(
+        up=_m8_create_code_chunks_table,
+        down=_m8_down_drop_code_chunks_table,
+        name="create_code_chunks_table",
     ),
 ]
 
