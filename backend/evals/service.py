@@ -1,23 +1,32 @@
-"""Evaluation Service: run offline evals, register online stubs, persist results (E5-S3).
+"""Evaluation Service: run offline evals, register online stubs, persist results,
+publish score snapshots (E5-S3, E5-S4).
 
 Ties the :class:`~backend.evals.runner.EvalRunner` to durable storage: it runs
 (or, for ``mode: online``, registers) an :class:`~backend.evals.contract.EvalSpec`,
 persists the immutable, versioned result, applies the spec's quality gate, and
 emits ``on_event`` trace events — mirroring the
-:class:`backend.reasoning.service.ReasoningService` shape.
+:class:`backend.reasoning.service.ReasoningService` shape. E5-S4 adds
+:meth:`EvaluationService.publish_snapshot`, which aggregates persisted
+:class:`~backend.evals.results.EvalResult` runs into a versioned, immutable
+:class:`~backend.routing.contract.ScoreSnapshot` — the signal
+:mod:`backend.routing.feedback` promotes/blocks for a routing policy's
+``score-weighted`` selector stage.
 """
 
 from __future__ import annotations
 
 import sqlite3
+import statistics
 import time
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Callable, Protocol, Sequence
 
 from backend.evals.contract import EvalCase, EvalError, EvalResultConflictError, EvalSpec, TraceEvent
 from backend.evals.results import EVAL_RESULT_SCHEMA_VERSION, EvalResult, RunMetrics
 from backend.evals.runner import EvalRunner
+from backend.routing.contract import SELECT_SCHEMA_VERSION, AgentScoreAggregate, ScoreSnapshot
 
 try:  # pragma: no cover - psycopg is a hard dependency per backend/requirements.txt
     import psycopg
@@ -28,7 +37,7 @@ except ImportError:  # pragma: no cover - defensive: psycopg missing in a SQLite
 
 
 class EvalResultStore(Protocol):
-    """Structural interface for the durable eval-result store.
+    """Structural interface for the durable eval-result and score-snapshot store.
 
     Concrete implementations live on :class:`~backend.persistence.sqlite_adapter.SQLiteStore`
     and ``PostgresStore``, selected via :func:`backend.persistence.database.get_store`.
@@ -46,6 +55,12 @@ class EvalResultStore(Protocol):
 
     def list_eval_results(self, eval_id: str, eval_version: str | None = None) -> list[dict[str, Any]]:
         """List eval result documents for an id, newest first, optionally filtered by version."""
+        ...
+
+    def create_score_snapshot(
+        self, *, snapshot_id: str, sample_count: int, document: dict[str, Any]
+    ) -> None:
+        """Persist one immutable, versioned score snapshot document (E5-S4)."""
         ...
 
 
@@ -114,6 +129,7 @@ class EvaluationService:
                 gate_passed=gate_passed,
                 gate_reason=gate_reason,
                 created_at=_utcnow(),
+                agent_id=spec.target.agent_id,
             )
             self._store_result(
                 eval_id=spec.id, eval_version=spec.version, run_id=run_id, document=result.to_document()
@@ -220,6 +236,78 @@ class EvaluationService:
             for document in self._store.list_eval_results(eval_id, eval_version)
         ]
 
+    def publish_snapshot(
+        self, eval_id: str, *, eval_version: str | None = None, snapshot_id: str | None = None
+    ) -> ScoreSnapshot:
+        """Aggregate persisted results into a new, versioned score snapshot (E5-S4).
+
+        Groups every persisted :class:`~backend.evals.results.EvalResult` for
+        ``eval_id`` (optionally restricted to ``eval_version``) by
+        :attr:`~backend.evals.results.EvalResult.agent_id` and computes, per
+        agent, the mean quality (mean of each run's per-evaluator mean
+        scores), mean cost (:attr:`~backend.evals.results.RunMetrics.cost_usd_mean`),
+        and mean p95 latency (:attr:`~backend.evals.results.RunMetrics.latency_p95_seconds`)
+        across its contributing runs. The resulting
+        :class:`~backend.routing.contract.ScoreSnapshot` is immutable and
+        versioned — publishing again always produces a new ``snapshot_id`` —
+        and is persisted via the same additive-table pattern as
+        ``eval_results`` (never overwritten).
+
+        This method only aggregates and durably publishes the snapshot; it
+        does not decide whether to *promote* it for any routing policy — see
+        :class:`backend.routing.feedback.RoutingFeedbackService` for the
+        regression-guarded promotion decision.
+
+        Args:
+            eval_id: Id of the eval spec whose persisted results are aggregated.
+            eval_version: If given, restrict aggregation to this version only.
+            snapshot_id: Explicit snapshot id; a fresh UUID4-suffixed id is
+                generated if omitted.
+
+        Returns:
+            The persisted, immutable :class:`~backend.routing.contract.ScoreSnapshot`.
+
+        Raises:
+            EvalError: If no results are persisted for ``eval_id`` (and
+                ``eval_version``, if given) to aggregate.
+        """
+        results = self.list_results(eval_id, eval_version)
+        if not results:
+            raise EvalError(
+                f"no persisted results for eval_id={eval_id!r}"
+                + (f", eval_version={eval_version!r}" if eval_version else "")
+                + " — nothing to aggregate into a score snapshot"
+            )
+        by_agent: dict[str, list[EvalResult]] = defaultdict(list)
+        for result in results:
+            by_agent[result.agent_id or "unknown"].append(result)
+
+        agent_scores = {agent_id: _aggregate_agent_results(runs) for agent_id, runs in by_agent.items()}
+        snapshot_id = snapshot_id or f"{eval_id}#{uuid.uuid4()}"
+        snapshot = ScoreSnapshot(
+            schema_version=SELECT_SCHEMA_VERSION,
+            snapshot_id=snapshot_id,
+            scores={agent_id: aggregate.quality for agent_id, aggregate in agent_scores.items()},
+            agent_scores=agent_scores,
+            sample_count=len(results),
+            created_at=_utcnow(),
+            source_run_ids=tuple(result.run_id for result in results),
+        )
+        self._store.create_score_snapshot(
+            snapshot_id=snapshot.snapshot_id, sample_count=snapshot.sample_count, document=snapshot.to_document()
+        )
+        self._emit(
+            "eval.scores.published",
+            {
+                "evalId": eval_id,
+                "evalVersion": eval_version or "",
+                "snapshotId": snapshot.snapshot_id,
+                "sampleCount": snapshot.sample_count,
+                "agentIds": sorted(agent_scores),
+            },
+        )
+        return snapshot
+
     def _store_result(self, *, eval_id: str, eval_version: str, run_id: str, document: dict[str, Any]) -> None:
         """Persist a result document, translating a store-level uniqueness
         violation into a typed :class:`~backend.evals.contract.EvalResultConflictError`.
@@ -264,6 +352,28 @@ class EvaluationService:
 def _utcnow() -> str:
     """Return the current UTC time as an ISO-8601 string."""
     return datetime.now(timezone.utc).isoformat()
+
+
+def _aggregate_agent_results(results: Sequence[EvalResult]) -> AgentScoreAggregate:
+    """Aggregate one agent's contributing eval runs into a single aggregate.
+
+    Args:
+        results: Non-empty sequence of :class:`EvalResult` runs for one agent.
+
+    Returns:
+        The :class:`~backend.routing.contract.AgentScoreAggregate` — mean
+        per-run quality (itself the mean of a run's per-evaluator mean
+        scores), mean cost, mean p95 latency, and the contributing run count.
+    """
+    run_qualities = [
+        statistics.fmean(result.metrics.quality.values()) if result.metrics.quality else 0.0 for result in results
+    ]
+    return AgentScoreAggregate(
+        quality=statistics.fmean(run_qualities),
+        cost_usd=statistics.fmean(result.metrics.cost_usd_mean for result in results),
+        latency_seconds=statistics.fmean(result.metrics.latency_p95_seconds for result in results),
+        sample_count=len(results),
+    )
 
 
 __all__ = ["EvalResultStore", "EvaluationService"]

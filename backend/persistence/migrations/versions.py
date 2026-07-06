@@ -163,12 +163,55 @@ def _m5_create_eval_results_table(conn: sqlite3.Connection) -> None:
     )
 
 
+def _m6_create_score_snapshot_tables(conn: sqlite3.Connection) -> None:
+    """Create the score_snapshots and score_snapshot_promotions tables (E5-S4).
+
+    ``score_snapshots`` holds immutable, versioned Evaluation Service score
+    snapshots (never overwritten — one row per ``snapshot_id``).
+    ``score_snapshot_promotions`` is an append-only audit log of every
+    promotion decision (promoted or blocked) a routing policy id's feedback
+    loop makes; the latest ``promoted = 1`` row per ``policy_id`` is that
+    policy's currently active snapshot.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS score_snapshots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            snapshot_id TEXT NOT NULL UNIQUE,
+            sample_count INTEGER NOT NULL DEFAULT 0,
+            document_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_score_snapshots_created
+            ON score_snapshots(id DESC);
+
+        CREATE TABLE IF NOT EXISTS score_snapshot_promotions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            policy_id TEXT NOT NULL,
+            snapshot_id TEXT NOT NULL,
+            baseline_snapshot_id TEXT NOT NULL DEFAULT '',
+            promoted INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            decided_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_score_snapshot_promotions_policy_id
+            ON score_snapshot_promotions(policy_id, id DESC);
+        """
+    )
+
+
 STORE_MIGRATIONS = [
     _m1_create_core_tables,
     _m2_runs_add_run_type,
     _m3_runs_add_current_state,
     _m4_create_plugin_tables,
     _m5_create_eval_results_table,
+    _m6_create_score_snapshot_tables,
 ]
 
 

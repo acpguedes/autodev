@@ -1,13 +1,19 @@
-"""Selector pipeline executor (E5-S2).
+"""Selector pipeline executor (E5-S2, E5-S4).
 
 Implements the ``selector:`` policy pipeline in full: ``capability-matching``
 (client-side set intersection over
 :meth:`backend.agents.registry_v2.AgentRegistry.find_by_capability`, per
 ADR-008), ``cost-aware`` (objective-based ranking, filtered by the run's own
 budget — tenant quotas are E11 and out of scope), and ``score-weighted``
-(a documented no-op passthrough until E5-S4 wires in a real
-:class:`~backend.routing.contract.ScoreSnapshot`), followed by the policy's
-``tie_breaker`` for fully deterministic ordering.
+(blends a published :class:`~backend.routing.contract.ScoreSnapshot` into the
+ranking per the stage's configured ``weights``, E5-S4 — see
+:mod:`backend.routing.feedback` for how a snapshot is published/promoted),
+followed by the policy's ``tie_breaker`` for fully deterministic ordering.
+The ``score-weighted`` stage's implementation itself lives in
+:mod:`backend.routing.selector_scoring`, split out to keep both modules under
+the repository's file-size guideline (mirrors the
+:mod:`backend.routing.policy`/:mod:`backend.routing.selector_policy_parsing`
+split).
 
 Unlike the Router's ``rules`` pipeline (first-match-wins by confidence, see
 :mod:`backend.routing.router`), the selector pipeline is a **sequential
@@ -44,9 +50,9 @@ from backend.routing.policy import (
     RoutingPolicy,
     SelectorCapabilityMatchingStageSpec,
     SelectorCostAwareStageSpec,
-    SelectorScoreWeightedStageSpec,
     SelectorStageSpec,
 )
+from backend.routing.selector_scoring import SCORE_WEIGHTED_OBJECTIVE, apply_score_weighted
 
 #: Model id used when a candidate agent's manifest declares no ``policy.model``.
 DEFAULT_MODEL = "provider/default-model"
@@ -96,8 +102,10 @@ class Selector:
             policy: The routing policy in effect.
             registry: Agent Registry (E2) to match ``required_capabilities``
                 against.
-            scores: Optional Evaluation Service score snapshot (E5-S4); not
-                yet applied to ranking (see the ``score-weighted`` stage below).
+            scores: Optional Evaluation Service score snapshot (E5-S4);
+                blended into ranking by a ``score-weighted`` pipeline stage,
+                if the policy declares one (see
+                :func:`backend.routing.selector_scoring.apply_score_weighted`).
 
         Returns:
             The resulting :class:`SelectDecision`, with up to
@@ -174,7 +182,8 @@ def _evaluate_stage(
     base = candidates if candidates is not None else registry.list_agents()
     if isinstance(stage, SelectorCostAwareStageSpec):
         return _apply_cost_aware(base, req.budget, stage), stage.objective
-    return _apply_score_weighted(base, stage, scores), objective
+    weighted, applied = apply_score_weighted(base, stage, scores)
+    return weighted, SCORE_WEIGHTED_OBJECTIVE if applied else objective
 
 
 def _match_capabilities(
@@ -295,29 +304,6 @@ def _fits_run_budget(agent_budgets: AgentBudgets, run_budget: SelectBudget) -> b
     if run_budget.time_s > 0 and agent_budgets.wall_clock_seconds > run_budget.time_s:
         return False
     return True
-
-
-def _apply_score_weighted(
-    candidates: list[AgentRef],
-    spec: SelectorScoreWeightedStageSpec,
-    scores: ScoreSnapshot | None,
-) -> list[AgentRef]:
-    """Apply the ``score-weighted`` stage — a documented no-op passthrough.
-
-    No Evaluation Service score snapshot store exists yet (E5-S4 wires that
-    in); regardless of whether ``scores``/``spec.weights`` are supplied, this
-    stage does not reorder or filter candidates today.
-
-    Args:
-        candidates: The candidate list to (not) transform.
-        spec: The score-weighted stage configuration (unused this story).
-        scores: An optional score snapshot (unused this story).
-
-    Returns:
-        ``candidates`` unchanged.
-    """
-    del spec, scores  # unused until E5-S4
-    return list(candidates)
 
 
 def _deterministic_order(candidates: list[AgentRef], objective: str, tie_breaker: str) -> list[AgentRef]:

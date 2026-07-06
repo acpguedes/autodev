@@ -272,9 +272,11 @@ class SelectDecision:
         reasoning_strategy: Reasoning Strategy (E4) id the chosen agent should run under.
         budget: Resolved budget ceiling for this run of the chosen agent.
         fallbacks: Ordered cascade-fallback candidates, most-preferred first.
-        score_basis: Id of the Evaluation Service score snapshot considered for
-            this decision, or ``""`` when none was supplied (E5-S4 wires a real
-            snapshot store in; see :mod:`backend.routing.selector`).
+        score_basis: Id of the Evaluation Service :class:`ScoreSnapshot`
+            considered for this decision, or ``""`` when none was supplied —
+            enables deterministic replay of a decision against the exact
+            snapshot that informed it (see :mod:`backend.routing.selector`
+            and :mod:`backend.routing.feedback`).
     """
 
     schema_version: str
@@ -288,29 +290,136 @@ class SelectDecision:
 
 
 @dataclass(frozen=True)
-class ScoreSnapshot:
-    """Typed placeholder for an Evaluation Service score snapshot (E5-S4).
+class AgentScoreAggregate:
+    """Per-agent quality/cost/latency aggregate carried by a :class:`ScoreSnapshot` (E5-S4).
 
-    E5-S4 is responsible for publishing real, versioned snapshots from the
-    Evaluation Service (:mod:`backend.evals`) and wiring them into the
-    ``score-weighted`` selector stage. This minimal shape exists only so the
-    :class:`SelectorPlugin` Protocol and the selector pipeline can be typed
-    against a stable parameter today; :mod:`backend.routing.selector` treats
-    the ``score-weighted`` stage as a no-op passthrough regardless of whether
-    a snapshot is supplied.
+    Produced by :meth:`backend.evals.service.EvaluationService.publish_snapshot`
+    from one or more persisted :class:`~backend.evals.results.EvalResult`
+    documents for the same agent id — see reference §9.4's three first-class
+    metric dimensions (quality, cost, latency).
+
+    Attributes:
+        quality: Mean quality score across the contributing eval runs, in
+            ``[0, 1]`` (mean of each run's per-evaluator mean scores).
+        cost_usd: Mean per-run cost in US dollars across the contributing eval
+            runs (:attr:`~backend.evals.results.RunMetrics.cost_usd_mean`).
+        latency_seconds: Mean p95 per-run latency in seconds across the
+            contributing eval runs
+            (:attr:`~backend.evals.results.RunMetrics.latency_p95_seconds`).
+        sample_count: Number of :class:`~backend.evals.results.EvalResult`
+            runs aggregated into this entry.
+    """
+
+    quality: float = 0.0
+    cost_usd: float = 0.0
+    latency_seconds: float = 0.0
+    sample_count: int = 0
+
+    def to_document(self) -> dict[str, Any]:
+        """Render this aggregate as a JSON-serializable document."""
+        return {
+            "quality": self.quality,
+            "costUsd": self.cost_usd,
+            "latencySeconds": self.latency_seconds,
+            "sampleCount": self.sample_count,
+        }
+
+    @classmethod
+    def from_document(cls, document: dict[str, Any]) -> "AgentScoreAggregate":
+        """Parse an aggregate back from its JSON document.
+
+        Args:
+            document: Document produced by :meth:`to_document`.
+
+        Returns:
+            The reconstructed :class:`AgentScoreAggregate`.
+        """
+        return cls(
+            quality=float(document.get("quality", 0.0)),
+            cost_usd=float(document.get("costUsd", 0.0)),
+            latency_seconds=float(document.get("latencySeconds", 0.0)),
+            sample_count=int(document.get("sampleCount", 0)),
+        )
+
+
+@dataclass(frozen=True)
+class ScoreSnapshot:
+    """A versioned, immutable Evaluation Service score snapshot (E5-S4).
+
+    Published by :meth:`backend.evals.service.EvaluationService.publish_snapshot`
+    from a set of persisted :class:`~backend.evals.results.EvalResult` runs,
+    and consumed by the ``score-weighted`` selector stage
+    (:mod:`backend.routing.selector`) and the promotion/regression guard
+    (:mod:`backend.routing.feedback`). A :class:`SelectDecision`'s
+    ``score_basis`` records ``snapshot_id`` so the decision can be replayed
+    deterministically against the exact snapshot that informed it (reference
+    §9.5, principle 7).
 
     Attributes:
         schema_version: Contract schema version, e.g. ``"1.0"``.
         snapshot_id: Identifier of this score snapshot (becomes a
             :class:`SelectDecision`'s ``score_basis`` when supplied).
         scores: Mapping of ``agent_id`` (or ``agent_id@version``) to a scalar
-            quality/blended score. Fields and shape are provisional — E5-S4
-            may extend or replace them.
+            quality score — kept for backward compatibility with pre-E5-S4
+            callers that only need a single blended number; equal to
+            ``agent_scores[key].quality`` for every key :meth:`publish_snapshot`
+            populates.
+        agent_scores: Mapping of ``agent_id`` (or ``agent_id@version``) to its
+            full :class:`AgentScoreAggregate` (quality, cost, latency, sample
+            count) — the detailed breakdown the ``score-weighted`` stage and
+            the promotion guard actually compute against.
+        sample_count: Total number of contributing
+            :class:`~backend.evals.results.EvalResult` runs aggregated across
+            every agent in this snapshot; compared against
+            :attr:`~backend.evals.contract.ABTestSpec.min_samples` by the
+            regression guard (reference §9.5 hysteresis).
+        created_at: ISO-8601 UTC timestamp the snapshot was published.
+        source_run_ids: Ids of the :class:`~backend.evals.results.EvalResult`
+            runs aggregated into this snapshot, for audit/traceability.
     """
 
     schema_version: str
     snapshot_id: str
     scores: dict[str, float] = field(default_factory=dict)
+    agent_scores: dict[str, "AgentScoreAggregate"] = field(default_factory=dict)
+    sample_count: int = 0
+    created_at: str = ""
+    source_run_ids: tuple[str, ...] = ()
+
+    def to_document(self) -> dict[str, Any]:
+        """Render this snapshot as a JSON-serializable document."""
+        return {
+            "schemaVersion": self.schema_version,
+            "snapshotId": self.snapshot_id,
+            "scores": dict(self.scores),
+            "agentScores": {agent_id: agg.to_document() for agent_id, agg in self.agent_scores.items()},
+            "sampleCount": self.sample_count,
+            "createdAt": self.created_at,
+            "sourceRunIds": list(self.source_run_ids),
+        }
+
+    @classmethod
+    def from_document(cls, document: dict[str, Any]) -> "ScoreSnapshot":
+        """Parse a snapshot back from its JSON document.
+
+        Args:
+            document: Document produced by :meth:`to_document`.
+
+        Returns:
+            The reconstructed :class:`ScoreSnapshot`.
+        """
+        return cls(
+            schema_version=str(document.get("schemaVersion", "1.0")),
+            snapshot_id=str(document["snapshotId"]),
+            scores={str(key): float(value) for key, value in (document.get("scores") or {}).items()},
+            agent_scores={
+                str(agent_id): AgentScoreAggregate.from_document(aggregate)
+                for agent_id, aggregate in (document.get("agentScores") or {}).items()
+            },
+            sample_count=int(document.get("sampleCount", 0)),
+            created_at=str(document.get("createdAt", "")),
+            source_run_ids=tuple(str(run_id) for run_id in document.get("sourceRunIds", [])),
+        )
 
 
 class SelectorPlugin(Protocol):
@@ -343,7 +452,8 @@ class SelectorPlugin(Protocol):
             registry: Agent Registry (E2) to match ``required_capabilities``
                 against.
             scores: Optional Evaluation Service score snapshot (E5-S4); ``None``
-                until the closed feedback loop lands.
+                when no snapshot has been published/promoted yet, in which
+                case the ``score-weighted`` stage is a no-op passthrough.
 
         Returns:
             The resulting :class:`SelectDecision`.
@@ -352,6 +462,7 @@ class SelectorPlugin(Protocol):
 
 
 __all__ = [
+    "AgentScoreAggregate",
     "ContextDigest",
     "ContextSignals",
     "LATENCY_CLASSES",

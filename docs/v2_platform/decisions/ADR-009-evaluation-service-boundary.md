@@ -93,3 +93,55 @@ dependents.
 - RFC-005, `docs/architecture/v2_platform_reference.md` §9.4, ADR-001
   (PostgreSQL as default production state store), ADR-007 (the Reasoning
   Engine's analogous `on_event`/boundary decisions this ADR mirrors).
+
+## Amendment (E5-S4)
+
+E5-S4 is "E5-S4 will be the first consumer" materializing: it adds
+`EvaluationService.publish_snapshot`, which aggregates persisted
+`EvalResult`s into a versioned `ScoreSnapshot` (`backend.routing.contract`)
+and durably publishes it. Deciding whether that snapshot is *promoted* for a
+routing policy is explicitly **not** this service's concern — see ADR-008's
+E5-S4 amendment for `RoutingFeedbackService`, which owns that decision.
+
+1. **Aggregation boundary: `publish_snapshot` groups by `agent_id`, nothing
+   else.** `EvalResult` gained an additive `agent_id: str = ""` field
+   (populated from `spec.target.agent_id` in `run_offline`; `""`/`"unknown"`
+   for results persisted before this field existed, so old rows are not
+   dropped, just bucketed together) — this is the only new column on the
+   already-immutable `eval_results` table. Per-agent quality is the mean of
+   each contributing run's per-evaluator mean scores; cost/latency use
+   `RunMetrics.cost_usd_mean`/`latency_p95_seconds`. No new dataset/case
+   concept is introduced; this reuses `list_results` unchanged.
+2. **Snapshot storage is additive and mirrors `eval_results`'s immutability
+   convention, not a new mechanism.** Two new tables, `score_snapshots`
+   (one immutable row per `snapshot_id`) and `score_snapshot_promotions`
+   (append-only audit log of every promotion decision), added identically to
+   `SQLiteStore` and `PostgresStore` — same "additive table/method on both
+   adapters" pattern point 4 of the original decision established for
+   `eval_results`. `score_snapshot_promotions` intentionally lives alongside
+   `score_snapshots` (both are new, both are Evaluation-Service-adjacent
+   persistence concerns) even though the *decision logic* that writes to it
+   lives in `backend.routing.feedback` — the store methods themselves are
+   boundary-agnostic plumbing, not policy.
+3. **Publishing raises `EvalError` (fails closed) when there is nothing to
+   aggregate**, rather than persisting an empty/meaningless snapshot —
+   consistent with this ADR's existing "fail loud, not silent" posture for
+   `run_offline`/`register_online`'s `EvalResultConflictError`.
+4. **`publish_snapshot` emits `eval.scores.published`** via the same
+   `on_event`/`TraceEvent` mirroring convention (decision 3 above) — one more
+   event alongside `eval.run.*`, not a new tracing mechanism.
+5. **No online A/B/canary traffic-splitting is built here either** — decision
+   1's scope boundary still holds. `publish_snapshot` aggregates whatever
+   `EvalResult`s are already persisted (offline or online-registered); actual
+   variant/control comparison and promotion is `RoutingFeedbackService`'s job
+   (ADR-008 amendment), reusing `ABTestSpec.promote_if`/`min_samples` as pure
+   data, not by adding an A/B execution engine to the Evaluation Service.
+
+## Rollback plan (E5-S4 addendum)
+
+`score_snapshots`/`score_snapshot_promotions` and the `agent_id` column are
+additive; dropping them reverts cleanly. `backend.routing.feedback` is the
+only consumer of the new store methods — removing it alongside the tables
+leaves E5-S1/S2/S3 behavior fully intact (the `score-weighted` selector stage
+falls back to its documented no-op passthrough when no snapshot is ever
+supplied, exactly as before E5-S4).

@@ -2,11 +2,12 @@
 
 Covers the story DoD: capability-based matching (``require_all`` intersection
 correctness), cost-aware ordering, deterministic tie-breaking (same inputs
-produce the same decision on repeated runs), decision trace emission,
-score-weighted no-op passthrough behavior, and pluggability (a custom
-:class:`~backend.routing.contract.SelectorPlugin` works without core changes).
-Does not duplicate E5-S1's router tests (:mod:`test_routing_router`) or
-E5-S3's eval tests.
+produce the same decision on repeated runs), decision trace emission, and
+pluggability (a custom :class:`~backend.routing.contract.SelectorPlugin`
+works without core changes). Does not duplicate E5-S1's router tests
+(:mod:`test_routing_router`), E5-S3's eval tests, E5-S4's ``score-weighted``
+stage tests (:mod:`test_routing_selector_scoring`), or E5-S4's closed
+eval-to-selection feedback loop (:mod:`test_routing_feedback_e2e`).
 """
 
 from __future__ import annotations
@@ -22,7 +23,6 @@ from backend.persistence.database import DurableStore
 from backend.routing.contract import (
     RouteConstraints,
     RouteDecision,
-    ScoreSnapshot,
     SelectBudget,
     SelectDecision,
     SelectRequest,
@@ -34,7 +34,6 @@ from backend.routing.policy import (
     SelectorCostAwareStageSpec,
     SelectorPipelineSpec,
     SelectorPolicySpec,
-    SelectorScoreWeightedStageSpec,
     default_routing_policy,
 )
 from backend.routing.selector import NoEligibleAgentError, Selector
@@ -99,7 +98,6 @@ def _select_policy(
     require_all: bool = True,
     objective: str = "minimize_cost",
     respect_run_budget: bool = True,
-    include_score_weighted: bool = False,
     tie_breaker: str = "lowest_cost",
 ) -> RoutingPolicy:
     """Build a minimal RoutingPolicy wrapping a selector pipeline for tests."""
@@ -108,8 +106,6 @@ def _select_policy(
         SelectorCapabilityMatchingStageSpec(require_all=require_all),
         SelectorCostAwareStageSpec(objective=objective, respect_run_budget=respect_run_budget),
     )
-    if include_score_weighted:
-        stages = stages + (SelectorScoreWeightedStageSpec(weights={"quality": 0.6, "cost": 0.4}),)
     return RoutingPolicy(
         schema_version=policy.schema_version,
         id=policy.id,
@@ -379,39 +375,6 @@ def test_routing_service_records_a_selector_decision_trace_event(tmp_path: Path)
     assert event.payload["agent_id"] == decision.agent_id
     assert event.payload["model"] == decision.model
     assert event.payload["reasoning_strategy"] == decision.reasoning_strategy
-
-
-# ---------------------------------------------------------------------------
-# Score-weighted no-op passthrough
-# ---------------------------------------------------------------------------
-
-
-def test_score_weighted_stage_does_not_change_ordering_without_a_snapshot(tmp_path: Path) -> None:
-    """The score-weighted stage is a documented no-op when no snapshot is supplied."""
-    registry = _registry(tmp_path)
-    _register(registry, agent_id="acme/cheap", cost_usd=0.1)
-    _register(registry, agent_id="acme/expensive", cost_usd=0.9)
-
-    policy = _select_policy(objective="minimize_cost", include_score_weighted=True)
-    decision = Selector().select(_select_request(), policy, registry)
-
-    assert decision.agent_id == "acme/cheap"
-    assert decision.score_basis == ""
-
-
-def test_score_weighted_stage_records_but_does_not_apply_a_supplied_snapshot(tmp_path: Path) -> None:
-    """A supplied ScoreSnapshot is recorded as score_basis but does not reorder candidates."""
-    registry = _registry(tmp_path)
-    _register(registry, agent_id="acme/cheap", cost_usd=0.1)
-    _register(registry, agent_id="acme/expensive", cost_usd=0.9)
-
-    policy = _select_policy(objective="minimize_cost", include_score_weighted=True)
-    snapshot = ScoreSnapshot(schema_version="1.0", snapshot_id="snap-1", scores={"acme/expensive": 1.0})
-    decision = Selector().select(_select_request(), policy, registry, snapshot)
-
-    # Still the cheapest candidate — the snapshot's scores are not applied to ranking yet.
-    assert decision.agent_id == "acme/cheap"
-    assert decision.score_basis == "snap-1"
 
 
 # ---------------------------------------------------------------------------

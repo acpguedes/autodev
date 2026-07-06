@@ -29,6 +29,7 @@ from backend.reasoning.contract import (
 )
 from backend.routing.contract import (
     ROUTING_CONTRACT_HOST_API,
+    AgentScoreAggregate,
     RouteDecision,
     RouteRequest,
     RouterPlugin,
@@ -38,13 +39,16 @@ from backend.routing.contract import (
     SelectRequest,
 )
 
-#: Bumped from 1.3.0 (E5-S2): re-exports the Selector contract
-#: (`SelectRequest`/`SelectDecision`/`SelectorPlugin`/`ScoreSnapshot`, RFC-004) —
-#: MINOR, additive change to the public SDK surface (no existing export
-#: changed shape). 1.3.0 itself re-exported the Router contract
+#: Bumped from 1.4.0 (E5-S4): re-exports `AgentScoreAggregate`, the fleshed-out
+#: per-agent quality/cost/latency breakdown `ScoreSnapshot.agent_scores` now
+#: carries — MINOR, additive change to the public SDK surface (`ScoreSnapshot`
+#: itself gained fields with defaults; no existing export changed shape).
+#: 1.4.0 re-exported the Selector contract
+#: (`SelectRequest`/`SelectDecision`/`SelectorPlugin`/`ScoreSnapshot`, RFC-004,
+#: E5-S2). 1.3.0 re-exported the Router contract
 #: (`RouteRequest`/`RouteDecision`/`RouterPlugin`, RFC-004, E5-S1) and the
 #: Evaluation Service contract (`EvalSpec`/`EvalResult`/`Evaluator`, RFC-005, E5-S3).
-SDK_CONTRACT_VERSION = "1.4.0"
+SDK_CONTRACT_VERSION = "1.5.0"
 
 
 @dataclass(frozen=True)
@@ -129,6 +133,7 @@ class AgentHandler(Protocol):
 
 
 __all__ = [
+    "AgentScoreAggregate",
     "ContractTestResult",
     "EVAL_CONTRACT_HOST_API",
     "EvalCase",
