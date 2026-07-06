@@ -31,3 +31,12 @@ contract (required keys present, declared properties only, primitive type
 match) — deliberately dependency-free so it runs well under 20ms per call.
 
 A runnable example is at `docs/v2_platform/templates/manifests/skill.yaml.example`.
+
+## Registry
+
+`backend/skills/registry_v2.py`'s `SkillRegistry` (mirrors `AgentRegistry`) persists
+skill registrations and resolves them by SemVer range: `register(manifest, plugin_id=)`,
+`resolve(id, version_range="*")`, `find_by_trigger(trigger)`, `deprecate(id, version,
+reason)`, `list_skills()`, `catalog()`. `sync_from_plugin_store()` registers skills
+declared via `skill` extension points in enabled plugins. Exposed at `/v2/skills`
+(catalog), `/v2/skills/search?trigger=`, and `/v2/skills/{id}?version=` (`backend/api/routers/skills_v2.py`).
