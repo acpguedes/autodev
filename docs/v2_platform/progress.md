@@ -62,7 +62,7 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 | E3 | Orchestration Engine | Alpha/Beta | Alpha done · S6→Beta | 5/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
 | E4 | Reasoning | Beta | Done | 4/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
 | E5 | Routing / Selection / Evaluation | Beta | Done | 4/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
-| E6 | Skills v2 | Beta | Not started | 0/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
+| E6 | Skills v2 | Beta | Done | 5/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
 | E7 | Context & RAG | Beta | Not started | 0/4 | E1, E2, E8, E5 | [phases/e7_context_rag.md](phases/e7_context_rag.md) |
 | E8 | Persistence & Data | Alpha/Beta | Not started | 0/4 | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
 | E9 | APIs, Events & MCP | Alpha/Beta | Not started | 0/4 | E8, E2, E6 | [phases/e9_apis_events_mcp.md](phases/e9_apis_events_mcp.md) |
