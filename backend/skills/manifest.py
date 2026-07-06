@@ -169,7 +169,8 @@ def validate_manifest(raw: dict[str, Any]) -> ValidationResult:
     if entrypoint and not ENTRYPOINT_RE.match(entrypoint):
         errors.append("entrypoint must use module:callable format")
 
-    io_raw = raw.get("io") if isinstance(raw.get("io"), dict) else {}
+    _io_value = raw.get("io")
+    io_raw: dict[str, Any] = _io_value if isinstance(_io_value, dict) else {}
     io_input = _parse_io_schema(io_raw.get("input"), "io.input", errors)
     io_output = _parse_io_schema(io_raw.get("output"), "io.output", errors)
     permissions = _parse_permissions(raw.get("permissions", {}), errors)
