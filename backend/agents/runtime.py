@@ -14,6 +14,8 @@ from typing import Any, Protocol
 from backend.agents.manifest import AgentBudgets, AgentManifest, ValidationError, validate_agent_io
 from backend.agents.provider import LLMProvider, StubLLMProvider
 from backend.agents.tools import AgentToolBroker
+from backend.context.composer import ContextComposer
+from backend.context.provider import ContextItem
 from backend.observability.tracing import trace_run_step
 
 
@@ -153,6 +155,9 @@ class AgentRuntimeContext:
         input: Validated input payload for the run.
         run_id: Identifier of the run.
         tenant_id: Identifier of the tenant the run is scoped to.
+        context_items: Composed, attributed context (E7-S4) injected before
+            the handler runs when the runtime was built with a
+            ``context_composer``; empty otherwise.
     """
 
     manifest: AgentManifest
@@ -163,6 +168,7 @@ class AgentRuntimeContext:
     _broker: AgentToolBroker
     _provider: LLMProvider
     _steps: list[AgentRuntimeStep] = field(default_factory=list)
+    context_items: list[ContextItem] = field(default_factory=list)
 
     def consume_budget(
         self,
@@ -278,17 +284,25 @@ class AgentRuntime:
         tools: dict[str, Any] | None = None,
         skills: dict[str, Any] | None = None,
         provider: LLMProvider | None = None,
+        context_composer: ContextComposer | None = None,
     ) -> None:
-        """Initialize the runtime with shared tools, skills, and LLM provider.
+        """Initialize the runtime with shared tools, skills, LLM provider, and context policy.
 
         Args:
             tools: Mapping of tool id to callable implementation, if any.
             skills: Mapping of skill id to callable implementation, if any.
             provider: LLM provider to use; defaults to :class:`StubLLMProvider`.
+            context_composer: Composer (E7-S4) whose output is attached to
+                every run's :attr:`AgentRuntimeContext.context_items`; the
+                composer's provider list/weights/timeouts are the
+                policy-driven part — the runtime itself just injects
+                whatever it produces. ``None`` (default) means no context
+                injection.
         """
         self._tools = tools or {}
         self._skills = skills or {}
         self._provider = provider or StubLLMProvider()
+        self._context_composer = context_composer
 
     def run(
         self,
@@ -299,6 +313,7 @@ class AgentRuntime:
         run_id: str | None = None,
         tenant_id: str = "default",
         budgets: AgentBudgets | None = None,
+        context_query: str = "",
     ) -> AgentRunResult:
         """Run an agent handler end-to-end with validation and guardrails.
 
@@ -309,6 +324,9 @@ class AgentRuntime:
             run_id: Identifier to use for this run; generated if omitted.
             tenant_id: Identifier of the tenant the run is scoped to.
             budgets: Budgets to enforce; defaults to the manifest's declared budgets.
+            context_query: Query forwarded to the runtime's ``context_composer``
+                (if any) to focus what context is composed for this run;
+                ignored when no composer is configured.
 
         Returns:
             The final :class:`AgentRunResult`, whatever the outcome.
@@ -318,6 +336,8 @@ class AgentRuntime:
         ledger = _BudgetLedger(active_budgets)
         broker = AgentToolBroker(manifest, tools=self._tools, skills=self._skills)
         ctx = AgentRuntimeContext(manifest, payload, active_run_id, tenant_id, ledger, broker, self._provider)
+        if self._context_composer is not None:
+            ctx.context_items = self._context_composer.compose(context_query, tenant_id=tenant_id).items
 
         try:
             validate_agent_io(manifest, payload, "input")
