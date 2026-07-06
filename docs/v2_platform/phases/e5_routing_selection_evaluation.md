@@ -1,7 +1,7 @@
 # E5 — Routing / Selection / Evaluation
 
 **Wave:** Beta
-**Status:** In progress · **Stories:** 2/4 complete (S1, S3 done; S2 depends on S1, S4 depends on S2+S3)
+**Status:** In progress · **Stories:** 3/4 complete (S1, S2, S3 done; S4 depends on S2+S3)
 **Depends on:** E2, E4
 **Enables:** E7-S3 (retrieval eval), E12-S3
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E5), §18.8, §18.9
@@ -33,7 +33,7 @@ Subtasks:
 | DoD (specific) | Contract tests; routing-accuracy metrics |
 | Dependencies | E2-S2, E4-S1 |
 
-### E5-S2 — Selector (agent/model/strategy by policy and cost)
+### E5-S2 — Selector (agent/model/strategy by policy and cost) — Done
 
 Subtasks:
 - `E5-S2-T1`: capability-based matching.

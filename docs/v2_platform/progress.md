@@ -7,7 +7,7 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-05 (E4 — Reasoning epic complete, merged to `main`; **E5 — Routing/Selection/Evaluation started, S1+S3 done (2/4)** on `epic/e5-routing-selection-evaluation` — Router contract/policy/rules-pipeline and the standalone Evaluation Service; S2 (Selector, depends on S1) and S4 (feedback loop, depends on S2+S3) remain)
+**Last updated:** 2026-07-05 (E4 — Reasoning epic complete, merged to `main`; **E5 — Routing/Selection/Evaluation, S1+S2+S3 done (3/4)** on `epic/e5-routing-selection-evaluation` — Router, Selector, and the standalone Evaluation Service; only S4 (feedback loop, depends on S2+S3) remains)
 
 ## How to update this file
 
@@ -61,7 +61,7 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 | E2 | Agent Framework | Alpha | Done | 5/5 | E0, E1 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
 | E3 | Orchestration Engine | Alpha/Beta | Alpha done · S6→Beta | 5/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
 | E4 | Reasoning | Beta | Done | 4/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
-| E5 | Routing / Selection / Evaluation | Beta | In progress | 2/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
+| E5 | Routing / Selection / Evaluation | Beta | In progress | 3/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
 | E6 | Skills v2 | Beta | Not started | 0/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
 | E7 | Context & RAG | Beta | Not started | 0/4 | E1, E2, E8, E5 | [phases/e7_context_rag.md](phases/e7_context_rag.md) |
 | E8 | Persistence & Data | Alpha/Beta | Not started | 0/4 | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
@@ -72,7 +72,7 @@ progress on `epic/e4-reasoning`; follow `agent_guide.md` §1-4 quality rules
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 
-Total: **23/71 stories complete** across 15 epics.
+Total: **24/71 stories complete** across 15 epics.
 
 ## Wave exit gates (§18.9 of the reference doc)
 
@@ -125,6 +125,24 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-07-05** — **E5-S2 complete (3/4)**. `backend/routing/selector.py`: the
+  Selector pipeline — capability-matching (client-side intersection/union over
+  `AgentRegistry.find_by_capability`, `registry_v2.py` untouched per ADR-008),
+  cost-aware (run-budget filter + objective ranking over `AgentBudgets`), a
+  documented score-weighted no-op passthrough (real snapshot wiring is E5-S4),
+  and a deterministic tie-break (three chained stable sorts: agent_id -> version
+  -> tie_breaker cost -> objective). `SelectRequest`/`SelectDecision`/
+  `SelectorPlugin`/`ScoreSnapshot` added to `backend/routing/contract.py` per
+  RFC-004 (already covered both Router and Selector); an ADR-008 amendment
+  records the implementation details RFC-004 left open (model/strategy
+  resolution from `AgentManifest.policy`, fail-closed `NoEligibleAgentError`,
+  3-item fallback cap). `POST /v2/select` added. SDK contract bumped `1.3.0` ->
+  `1.4.0`. 16 new tests (38/38 routing tests green, no regressions). Code review
+  caught two real bugs before commit: capability-matching wasn't narrowing an
+  already-filtered candidate pool from a prior stage, and a duplicated
+  capability in a request inflated a candidate's score — both fixed with
+  regression tests. **E5-S4 (feedback loop, depends on S2+S3) is the only story
+  left.**
 - **2026-07-05** — **E5-S1 and E5-S3 complete (2/4)**, opened `epic/e5-routing-selection-evaluation`
   from `main`. **E5-S1 (Router)**: `backend/routing/` — typed `RouteRequest`/`RouteDecision`
   contract and `RouterPlugin` protocol (§9.2), a declarative `routing.yaml` policy model
