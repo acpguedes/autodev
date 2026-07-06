@@ -294,6 +294,34 @@ def _m8_down_drop_code_chunks_table(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS code_chunks")
 
 
+def _m9_add_content_column_to_code_chunks(conn: sqlite3.Connection) -> None:
+    """Add a ``content`` column to ``code_chunks`` (E7-S3-T1).
+
+    Hybrid retrieval needs the chunk's actual source text to search/return —
+    ``code_chunks`` previously stored only span/hash metadata. Defaults to
+    ``''`` for any row indexed before this migration; a subsequent reindex
+    repopulates it (:func:`backend.repository.indexing._upsert_chunk` now
+    writes ``content`` on every insert/update).
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(code_chunks)").fetchall()}
+    if "content" not in existing:
+        conn.execute("ALTER TABLE code_chunks ADD COLUMN content TEXT NOT NULL DEFAULT ''")
+
+
+def _m9_down_remove_content_column_from_code_chunks(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m9_add_content_column_to_code_chunks` by dropping the ``content`` column.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(code_chunks)").fetchall()}
+    if "content" in existing:
+        conn.execute("ALTER TABLE code_chunks DROP COLUMN content")
+
+
 STORE_MIGRATIONS: list[MigrationEntry] = [
     _m1_create_core_tables,
     _m2_runs_add_run_type,
@@ -310,6 +338,11 @@ STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_m8_create_code_chunks_table,
         down=_m8_down_drop_code_chunks_table,
         name="create_code_chunks_table",
+    ),
+    Migration(
+        up=_m9_add_content_column_to_code_chunks,
+        down=_m9_down_remove_content_column_from_code_chunks,
+        name="add_content_column_to_code_chunks",
     ),
 ]
 

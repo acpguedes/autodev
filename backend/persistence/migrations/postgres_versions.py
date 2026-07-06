@@ -290,6 +290,34 @@ def _pg_m4_down_drop_code_embeddings_table(conn: Any) -> None:
     conn.execute("DROP TABLE IF EXISTS code_embeddings")
 
 
+def _pg_m5_add_content_column_to_code_chunks(conn: Any) -> None:
+    """Add a ``content`` column plus a full-text search index to ``code_chunks`` (E7-S3-T1).
+
+    Hybrid retrieval needs the chunk's actual source text to search/return —
+    ``code_chunks`` previously stored only span/hash metadata. A GIN index
+    over ``to_tsvector('english', content)`` backs
+    ``backend/repository/retrieval/lexical.py``'s ``ts_rank`` search.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute("ALTER TABLE code_chunks ADD COLUMN IF NOT EXISTS content TEXT NOT NULL DEFAULT ''")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_code_chunks_fts ON code_chunks "
+        "USING GIN (to_tsvector('english', content))"
+    )
+
+
+def _pg_m5_down_remove_content_column_from_code_chunks(conn: Any) -> None:
+    """Revert :func:`_pg_m5_add_content_column_to_code_chunks`.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute("DROP INDEX IF EXISTS idx_pg_code_chunks_fts")
+    conn.execute("ALTER TABLE code_chunks DROP COLUMN IF EXISTS content")
+
+
 POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
     _pg_m1_create_core_tables,
     Migration(
@@ -306,6 +334,11 @@ POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_pg_m4_create_code_embeddings_table,
         down=_pg_m4_down_drop_code_embeddings_table,
         name="create_code_embeddings_table",
+    ),
+    Migration(
+        up=_pg_m5_add_content_column_to_code_chunks,
+        down=_pg_m5_down_remove_content_column_from_code_chunks,
+        name="add_content_column_to_code_chunks",
     ),
 ]
 
