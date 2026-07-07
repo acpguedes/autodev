@@ -128,6 +128,14 @@ build-frontend: ## Build the Next.js frontend for production
 	cd $(FRONTEND_DIR) && $(NPM) run build
 
 # --------------------------------------------------------------------------
+# API docs
+# --------------------------------------------------------------------------
+.PHONY: openapi-v2
+
+openapi-v2: ## Generate docs/api/openapi_v2.json from the live /v2 FastAPI routes
+	$(PY) scripts/generate_openapi_v2.py
+
+# --------------------------------------------------------------------------
 # Run (development servers)
 # --------------------------------------------------------------------------
 .PHONY: run-backend run-frontend
