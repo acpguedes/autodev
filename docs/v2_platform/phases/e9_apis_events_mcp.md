@@ -2,7 +2,7 @@
 
 **Wave:** Split — E9-S1 (Control Plane API /v2 core, minimal) targets Alpha;
 E9-S2/S3/S4 (streaming, event catalog, MCP) target Beta.
-**Status:** Not started · **Stories:** 0/4 complete
+**Status:** In progress · E9-S1 (Control Plane API /v2 core) and E9-S3 (event catalog + canonical envelope) done · **Stories:** 2/4 complete
 **Depends on:** E8, E2, E6 (RBAC is integrated later via E11-S2, not a hard dependency
 of the API core — see §18.8 note)
 **Enables:** E10; exposes streaming/events/MCP
