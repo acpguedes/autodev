@@ -2,7 +2,7 @@
 
 **Wave:** Split — E9-S1 (Control Plane API /v2 core, minimal) targets Alpha;
 E9-S2/S3/S4 (streaming, event catalog, MCP) target Beta.
-**Status:** In progress · E9-S1 (Control Plane API /v2 core) and E9-S3 (event catalog + canonical envelope) done · **Stories:** 2/4 complete
+**Status:** Done (2026-07-07) · all stories complete · **Stories:** 4/4 complete
 **Depends on:** E8, E2, E6 (RBAC is integrated later via E11-S2, not a hard dependency
 of the API core — see §18.8 note)
 **Enables:** E10; exposes streaming/events/MCP
@@ -114,10 +114,10 @@ servers as agent tools) is a separate slice, tracked independently.
 
 ## Epic exit checklist
 
-- [ ] All 4 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
+- [x] All 4 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
       story-specific DoD above.
-- [ ] Contract tests green for `/v2` API surface, streaming transport, event schemas,
-      and the MCP adapter.
-- [ ] `docs/v2_platform/progress.md` updated.
-- [ ] Alpha exit criterion "minimal Control Plane API /v2" (E9-S1) and Beta entry item
+- [x] Contract tests green for `/v2` API surface, streaming transport, event schemas,
+      and the MCP adapter (incl. `backend/tests/test_mcp_interop.py`).
+- [x] `docs/v2_platform/progress.md` updated.
+- [x] Alpha exit criterion "minimal Control Plane API /v2" (E9-S1) and Beta entry item
       "streaming, event catalog, MCP" (E9-S2/S3/S4) satisfied per §18.9.

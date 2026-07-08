@@ -53,10 +53,10 @@ SQLite store abstraction for E8, the v1 skills registry for E6) are starting
 points only — they do not satisfy the v2 contracts. E3's Alpha slice (S1-S5) is
 complete and verified (flow suite 38/38 green); its only open story, **E3-S6**
 (visual flow editor), is Beta-deferred behind **E10** (Design System, not
-started). Remaining Alpha anchor work: **E8-S2** and **E12-S1** (E9-S1 landed;
-E9-S3's event catalog unblocks E8-S2). **Next action: complete E9 — S2
-(streaming) and S4 (MCP server); follow `agent_guide.md` §1-4 quality rules
-(mandatory from E3 onward).**
+started). Remaining Alpha anchor work: **E8-S2** and **E12-S1** (E9 is now
+complete; E9-S3's event catalog unblocks E8-S2). **Next action: E8-S2 (Event
+Store) and E12-S1; follow `agent_guide.md` §1-4 quality rules (mandatory from
+E3 onward).**
 
 ## Epic status
 
@@ -71,14 +71,14 @@ E9-S3's event catalog unblocks E8-S2). **Next action: complete E9 — S2
 | E6 | Skills v2 | Beta | Done | 5/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
 | E7 | Context & RAG | Beta | Done | 4/4 | E1, E2, E8, E5 | [phases/e7_context_rag.md](phases/e7_context_rag.md) |
 | E8 | Persistence & Data | Alpha/Beta | In progress · E8-S1 done, E8-S3 partial (T2 gap) | 1/4* | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
-| E9 | APIs, Events & MCP | Alpha/Beta | In progress · S1 done, S3 done | 2/4 | E8, E2, E6 | [phases/e9_apis_events_mcp.md](phases/e9_apis_events_mcp.md) |
+| E9 | APIs, Events & MCP | Alpha/Beta | Done | 4/4 | E8, E2, E6 | [phases/e9_apis_events_mcp.md](phases/e9_apis_events_mcp.md) |
 | E10 | UI/UX & Design System | Beta | Not started | 0/4 | E3, E9, E1 | [phases/e10_ui_ux_design_system.md](phases/e10_ui_ux_design_system.md) |
 | E11 | Observability, Security & Multi-tenant | Beta | Not started | 0/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
 | E12 | Quality & Evals | Alpha/Beta | Not started | 0/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 
-Total: **30/71 stories complete** across 15 epics.
+Total: **32/71 stories complete** across 15 epics.
 
 \* **E8-S1 is now complete (2026-07-06)**: on top of the scoped tenancy/
 reversible-migration slice landed as an E7 prerequisite (ADR-010:
@@ -158,6 +158,16 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-07-07** — **E9 — APIs, Events & MCP epic complete (4/4)** on
+  `epic/e9-apis-events-mcp`. **E9-S2**: run event streaming over SSE with
+  cursor resume and event-type filters. **E9-S4**: MCP server exposing
+  platform skills (stdio + `/v2/mcp`, least-privilege skill→tool mapping),
+  MCP client + agent tool adapter with least-privilege allowlists, and an
+  interop test round-tripping the stdio client against the real server
+  (`backend/tests/test_mcp_interop.py`). E9-S1 (minimal Control Plane API)
+  and E9-S3 (event catalog + canonical envelope) had landed earlier. This
+  unblocks E8-S2 (Event Store) and the E9-S1 dependents (E10, E11, E14).
 
 - **2026-07-06** — **E8-S1 complete; E8-S3 partial** on `epic/e8-persistence-data`.
   **E8-S1** (finishing the ADR-010 scoped slice): `backend/persistence/base.py`
