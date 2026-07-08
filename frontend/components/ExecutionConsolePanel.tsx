@@ -1,5 +1,7 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
+
 import type { RunResponse } from "../lib/api";
 
 type ExecutionConsolePanelProps = {
@@ -53,37 +55,51 @@ export function ExecutionConsolePanel({ runs, isBusy }: ExecutionConsolePanelPro
   return (
     // Rendered inside the shell's execution-panel `aside` (E15-S2), so this is
     // a plain container rather than a nested `complementary` landmark.
-    <div className="execution-console" aria-live="polite">
-      <div className="execution-console__header">
-        <div>
-          <p className="eyebrow">Execução</p>
-          <h2>Painel lateral</h2>
+    <div className="flex h-full flex-col gap-4" aria-live="polite">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">
+            Execução
+          </p>
+          <h2 className="font-serif text-lg font-semibold text-ds-fg">Painel lateral</h2>
         </div>
-        <span className={`status-pill ${isBusy ? "status-pill--running" : ""}`}>
+        <Badge
+          variant="secondary"
+          className={isBusy ? "bg-ds-accent/15 text-ds-accent-strong" : undefined}
+        >
           {isBusy ? "Executando" : "Pronto"}
-        </span>
+        </Badge>
       </div>
 
-      <p className="status-text">
+      <p className="text-sm text-ds-fg-3">
         {isBusy
           ? "Mostrando a atividade mais recente, comandos derivados e saídas registradas."
           : "Quando houver atividade, o histórico executado aparece aqui em ordem cronológica."}
       </p>
 
       {entries.length === 0 ? (
-        <div className="execution-console__empty">
-          <p>Ainda não há comandos ou saídas registrados para esta sessão.</p>
+        <div className="rounded-ds-md border border-dashed border-ds-line bg-ds-bg-3 p-4">
+          <p className="text-sm text-ds-fg-3">
+            Ainda não há comandos ou saídas registrados para esta sessão.
+          </p>
         </div>
       ) : (
-        <div className="execution-console__stream">
+        <div className="flex flex-col gap-3 overflow-y-auto">
           {entries.map((entry) => (
-            <article className="console-entry" key={entry.id}>
-              <div className="console-entry__header">
-                <span className="console-entry__label">{entry.label}</span>
-                <span className="status-pill">{entry.status}</span>
+            <article
+              className="flex flex-col gap-2 rounded-ds-md border border-ds-line bg-ds-bg-3 p-3"
+              key={entry.id}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">
+                  {entry.label}
+                </span>
+                <Badge variant="secondary">{entry.status}</Badge>
               </div>
-              <code className="console-entry__command">{entry.command}</code>
-              <pre className="console-entry__output">{entry.output}</pre>
+              <code className="font-mono text-[13px] text-ds-fg-2">{entry.command}</code>
+              <pre className="overflow-x-auto whitespace-pre-wrap rounded-ds-sm bg-ds-bg-4 p-3 font-mono text-xs text-ds-fg-2">
+                {entry.output}
+              </pre>
             </article>
           ))}
         </div>

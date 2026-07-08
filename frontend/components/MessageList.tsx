@@ -1,7 +1,5 @@
 "use client";
 
-import { Fragment } from "react";
-
 export type Message = {
   author: string;
   content: string;
@@ -13,14 +11,19 @@ type MessageListProps = {
 
 export function MessageList({ messages }: MessageListProps) {
   return (
-    <div className="message-list">
+    <div className="flex min-h-[340px] flex-1 flex-col gap-4 overflow-y-auto pr-1.5">
       {messages.map((message, index) => (
-        <Fragment key={`${message.author}-${index}`}>
-          <div className="message">
-            <span className="message__author">{message.author}</span>
-            <p className="message__content">{message.content}</p>
-          </div>
-        </Fragment>
+        <div
+          className="rounded-ds-md border border-ds-line bg-ds-bg-3 p-4"
+          key={`${message.author}-${index}`}
+        >
+          <span className="text-[11px] font-bold uppercase tracking-[0.05em] text-ds-accent-strong">
+            {message.author}
+          </span>
+          <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-ds-fg-2">
+            {message.content}
+          </p>
+        </div>
       ))}
     </div>
   );

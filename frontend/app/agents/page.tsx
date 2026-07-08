@@ -2,6 +2,7 @@
 
 import AgentsPanel from "../../components/AgentsPanel";
 import { useShellHeader } from "@/components/shell/ShellProvider";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 export default function AgentsPage() {
   useShellHeader({
@@ -11,25 +12,23 @@ export default function AgentsPage() {
 
   return (
     <div className="flex flex-col gap-6 p-8">
-      <section className="hero-card">
-        <div>
-          <p className="eyebrow">Agents</p>
-          <h1>Agent registry</h1>
-          <p className="subtitle">
-            The core roster plus self-registered specialized agents (security, refactor, docs).
-          </p>
-        </div>
-      </section>
+      <header className="flex flex-col gap-2">
+        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">Agents</p>
+        <h1 className="font-serif text-2xl font-semibold text-ds-fg">Agent registry</h1>
+        <p className="text-sm text-ds-fg-3">
+          The core roster plus self-registered specialized agents (security, refactor, docs).
+        </p>
+      </header>
 
-      <section className="panel-card">
-        <div className="panel-card__header">
-          <div>
-            <p className="eyebrow">Registry</p>
-            <h2>Registered agents</h2>
-          </div>
-        </div>
-        <AgentsPanel />
-      </section>
+      <Card className="border-ds-line bg-ds-bg-2 shadow-ds-sm">
+        <CardHeader>
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">Registry</p>
+          <h2 className="font-serif text-lg font-semibold text-ds-fg">Registered agents</h2>
+        </CardHeader>
+        <CardContent>
+          <AgentsPanel />
+        </CardContent>
+      </Card>
     </div>
   );
 }
