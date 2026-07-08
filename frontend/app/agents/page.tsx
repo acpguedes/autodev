@@ -1,11 +1,16 @@
 "use client";
 
-import ChatLayout from "../../components/ChatLayout";
 import AgentsPanel from "../../components/AgentsPanel";
+import { useShellHeader } from "@/components/shell/ShellProvider";
 
 export default function AgentsPage() {
+  useShellHeader({
+    title: "Agents",
+    subtitle: "The core roster plus self-registered specialized agents.",
+  });
+
   return (
-    <ChatLayout currentView="agents">
+    <div className="flex flex-col gap-6 p-8">
       <section className="hero-card">
         <div>
           <p className="eyebrow">Agents</p>
@@ -25,6 +30,6 @@ export default function AgentsPage() {
         </div>
         <AgentsPanel />
       </section>
-    </ChatLayout>
+    </div>
   );
 }

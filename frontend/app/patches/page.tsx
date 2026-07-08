@@ -2,10 +2,15 @@
 
 import { FormEvent, useState } from "react";
 
-import ChatLayout from "../../components/ChatLayout";
 import { generatePatch } from "../../lib/api_ext";
+import { useShellHeader } from "@/components/shell/ShellProvider";
 
 export default function PatchesPage() {
+  useShellHeader({
+    title: "Patches",
+    subtitle: "Auditable unified-diff generation.",
+  });
+
   const [path, setPath] = useState("example.py");
   const [original, setOriginal] = useState("");
   const [updated, setUpdated] = useState("");
@@ -25,7 +30,7 @@ export default function PatchesPage() {
   }
 
   return (
-    <ChatLayout currentView="patches">
+    <div className="flex flex-col gap-6 p-8">
       <section className="hero-card">
         <div>
           <p className="eyebrow">Patches</p>
@@ -63,6 +68,6 @@ export default function PatchesPage() {
           <p className="empty-state">{error ?? "Generate a diff to preview it here."}</p>
         )}
       </section>
-    </ChatLayout>
+    </div>
   );
 }

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Newsreader, Instrument_Sans, JetBrains_Mono } from "next/font/google";
 import "../styles/globals.css";
+import { AppShell } from "@/components/shell/AppShell";
+import { ShellProvider } from "@/components/shell/ShellProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { Toaster } from "@/components/ui/toaster";
 
@@ -49,10 +51,12 @@ export default function RootLayout({
       >
         <ThemeProvider
           attribute="class"
-          defaultTheme="dark"
+          defaultTheme="light"
           enableSystem={false}
         >
-          {children}
+          <ShellProvider>
+            <AppShell>{children}</AppShell>
+          </ShellProvider>
           <Toaster />
         </ThemeProvider>
       </body>

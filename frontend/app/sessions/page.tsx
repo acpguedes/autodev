@@ -3,7 +3,7 @@
 import Link from "next/link";
 import * as React from "react";
 
-import ChatLayout from "../../components/ChatLayout";
+import { useShellHeader } from "@/components/shell/ShellProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +34,11 @@ import { statusVariant } from "@/lib/utils";
  * @returns The sessions list page.
  */
 export default function SessionsPage() {
+  useShellHeader({
+    title: "Sessions",
+    subtitle: "Create sessions and follow their runs, traces, and live event streams.",
+  });
+
   const [sessions, setSessions] = React.useState<SessionV2[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
@@ -87,7 +92,7 @@ export default function SessionsPage() {
   );
 
   return (
-    <ChatLayout currentView="sessions">
+    <div className="flex flex-col gap-6 p-8">
       <div className="space-y-6">
         <Card>
           <CardHeader>
@@ -183,6 +188,6 @@ export default function SessionsPage() {
           </CardContent>
         </Card>
       </div>
-    </ChatLayout>
+    </div>
   );
 }

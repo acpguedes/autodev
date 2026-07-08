@@ -2,13 +2,18 @@
 
 import { useEffect } from "react";
 
-import ChatLayout from "../../components/ChatLayout";
 import { installExamplePanels } from "../../components/panels/ExampleRunSummaryPanel";
 import { PanelManager } from "../../components/panels/PanelManager";
 import { PanelSlotOutlet } from "../../components/panels/PanelSlotOutlet";
 import { PANEL_SLOTS } from "../../lib/panels/registry";
+import { useShellHeader } from "@/components/shell/ShellProvider";
 
 export default function PanelsPage() {
+  useShellHeader({
+    title: "Panels",
+    subtitle: "Pluggable UI panels contributed by plugins.",
+  });
+
   // Built-in example panel; plugin panels arrive via the Plugin Host bridge
   // (lib/panels/discovery.ts). Registered client-side to keep SSR clean.
   useEffect(() => {
@@ -16,8 +21,7 @@ export default function PanelsPage() {
   }, []);
 
   return (
-    <ChatLayout currentView="panels">
-      <div className="flex flex-col gap-6 p-6">
+    <div className="flex flex-col gap-6 p-6">
         <header>
           <p className="eyebrow">UI Extension Points</p>
           <h2>Pluggable panels</h2>
@@ -37,7 +41,6 @@ export default function PanelsPage() {
             <PanelSlotOutlet slot={slot} />
           </section>
         ))}
-      </div>
-    </ChatLayout>
+    </div>
   );
 }

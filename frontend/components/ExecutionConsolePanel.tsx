@@ -51,7 +51,9 @@ export function ExecutionConsolePanel({ runs, isBusy }: ExecutionConsolePanelPro
   const entries = buildConsoleEntries(runs);
 
   return (
-    <aside className="execution-console" aria-live="polite">
+    // Rendered inside the shell's execution-panel `aside` (E15-S2), so this is
+    // a plain container rather than a nested `complementary` landmark.
+    <div className="execution-console" aria-live="polite">
       <div className="execution-console__header">
         <div>
           <p className="eyebrow">Execução</p>
@@ -86,7 +88,7 @@ export function ExecutionConsolePanel({ runs, isBusy }: ExecutionConsolePanelPro
           ))}
         </div>
       )}
-    </aside>
+    </div>
   );
 }
 
