@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from backend.events.runtime import emit_event
 from backend.flows.checkpoint import (
     backoff_delay,
     build_eval_state,
@@ -143,6 +144,16 @@ class NodeActivationMixin:
                     "attempt": step.attempt,
                 },
             )
+            emit_event(
+                "run.step.started",
+                tenant_id=run.tenant_id,
+                partition_key=run.run_id,
+                data={
+                    "stepKey": node.id,
+                    "agent": node.ref.id if node.ref else node.type,
+                },
+                subject={"runId": run.run_id, "stepId": step.step_id},
+            )
             ctx = NodeContext(
                 manifest=manifest,
                 node=node,
@@ -190,6 +201,17 @@ class NodeActivationMixin:
                         "error": str(exc),
                         "willRetry": will_retry,
                     },
+                )
+                emit_event(
+                    "run.step.failed",
+                    tenant_id=run.tenant_id,
+                    partition_key=run.run_id,
+                    data={
+                        "stepKey": node.id,
+                        "error": str(exc),
+                        "attempt": step.attempt,
+                    },
+                    subject={"runId": run.run_id, "stepId": step.step_id},
                 )
                 if not will_retry:
                     return self._fail_run(run.run_id, state, reason, str(exc))
@@ -251,6 +273,17 @@ class NodeActivationMixin:
                 "attempt": step.attempt,
                 "nextNodeId": next_node,
             },
+        )
+        emit_event(
+            "run.step.completed",
+            tenant_id=run.tenant_id,
+            partition_key=run.run_id,
+            data={
+                "stepKey": node.id,
+                "status": "completed",
+                "attempt": step.attempt,
+            },
+            subject={"runId": run.run_id, "stepId": step.step_id},
         )
         return None
 
