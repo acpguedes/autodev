@@ -1,7 +1,7 @@
 # E15 — Frontend Redesign: Design Language & App Shell
 
 **Wave:** Beta
-**Status:** Not started (0/4 complete)
+**Status:** In progress (0/4 complete)
 **Depends on:** E10
 **Enables:** E16 (partially — E16's endpoints back the shell's live status
 surfaces, but E16 does not require E15 to land first), E17, E14-S5 (the

@@ -52,7 +52,8 @@ neither.
 | ADR-009 | Evaluation Service Boundary and Scope | Accepted | E5-S3 | 2026-07-05 |
 | ADR-010 | Scoped E8-S1 Tenancy Slice for E7 (Down Migrations + tenant_id/RLS) | Accepted | E7 (E8-S1 slice) | 2026-07-06 |
 | ADR-011 | pgvector HNSW Index for Code Chunk Embeddings | Accepted | E7-S2 | 2026-07-06 |
-| RFC-006 | Frontend redesign — Execution Control Center | Draft | E15–E17 | 2026-07-08 |
+| RFC-006 | Frontend redesign — Execution Control Center | Accepted | E15–E17 | 2026-07-08 |
+| ADR-012 | E15 Design Language & App Shell Implementation Decisions | Accepted | E15 | 2026-07-08 |
 
 > Update this table whenever an ADR or RFC is added or changes status. This index,
 > together with `docs/v2_platform/progress.md`, is the fastest way to see which
