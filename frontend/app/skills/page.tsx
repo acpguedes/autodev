@@ -5,7 +5,7 @@ import SkillsPanel from "../../components/SkillsPanel";
 
 export default function SkillsPage() {
   return (
-    <ChatLayout currentView="dashboard">
+    <ChatLayout currentView="skills">
       <section className="hero-card">
         <div>
           <p className="eyebrow">Skills</p>

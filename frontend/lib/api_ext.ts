@@ -20,12 +20,26 @@ const resolveBaseUrl = (): string => {
 
 const API_BASE_URL = resolveBaseUrl();
 
-const buildUrl = (path: string): string => {
+/**
+ * Build an absolute (or root-relative) URL for a control-plane API path.
+ *
+ * @param path - API path, with or without a leading slash.
+ * @returns The full URL against the resolved API base URL.
+ */
+export const buildUrl = (path: string): string => {
   const normalized = path.startsWith("/") ? path : `/${path}`;
   return API_BASE_URL ? `${API_BASE_URL}${normalized}` : normalized;
 };
 
-async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
+/**
+ * Fetch an API path and decode its JSON body.
+ *
+ * @param path - API path relative to the control-plane base URL.
+ * @param init - Optional fetch options (method, headers, body).
+ * @returns The decoded JSON payload.
+ * @throws Error when the response status is not ok.
+ */
+export async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(buildUrl(path), init);
   if (!response.ok) {
     throw new Error(`Request failed for ${path} (${response.status})`);

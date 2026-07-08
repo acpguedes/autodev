@@ -5,7 +5,7 @@ import AgentsPanel from "../../components/AgentsPanel";
 
 export default function AgentsPage() {
   return (
-    <ChatLayout currentView="dashboard">
+    <ChatLayout currentView="agents">
       <section className="hero-card">
         <div>
           <p className="eyebrow">Agents</p>

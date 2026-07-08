@@ -52,8 +52,8 @@ the baseline these epics build on and are measured against. The remaining
 SQLite store abstraction for E8, the v1 skills registry for E6) are starting
 points only — they do not satisfy the v2 contracts. E3's Alpha slice (S1-S5) is
 complete and verified (flow suite 38/38 green); its only open story, **E3-S6**
-(visual flow editor), is Beta-deferred behind **E10** (Design System, not
-started). Remaining Alpha anchor work: **E8-S2** and **E12-S1** (E9 is now
+(visual flow editor), was Beta-deferred behind **E10** (Design System, now
+**Done** — E3-S6 unblocked). Remaining Alpha anchor work: **E8-S2** and **E12-S1** (E9 is now
 complete; E9-S3's event catalog unblocks E8-S2). **Next action: E8-S2 (Event
 Store) and E12-S1; follow `agent_guide.md` §1-4 quality rules (mandatory from
 E3 onward).**
@@ -72,13 +72,13 @@ E3 onward).**
 | E7 | Context & RAG | Beta | Done | 4/4 | E1, E2, E8, E5 | [phases/e7_context_rag.md](phases/e7_context_rag.md) |
 | E8 | Persistence & Data | Alpha/Beta | In progress · E8-S1 done, E8-S3 partial (T2 gap) | 1/4* | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
 | E9 | APIs, Events & MCP | Alpha/Beta | Done | 4/4 | E8, E2, E6 | [phases/e9_apis_events_mcp.md](phases/e9_apis_events_mcp.md) |
-| E10 | UI/UX & Design System | Beta | Not started | 0/4 | E3, E9, E1 | [phases/e10_ui_ux_design_system.md](phases/e10_ui_ux_design_system.md) |
+| E10 | UI/UX & Design System | Beta | Done | 4/4 | E3, E9, E1 | [phases/e10_ui_ux_design_system.md](phases/e10_ui_ux_design_system.md) |
 | E11 | Observability, Security & Multi-tenant | Beta | Not started | 0/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
 | E12 | Quality & Evals | Alpha/Beta | Not started | 0/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 
-Total: **32/71 stories complete** across 15 epics.
+Total: **36/71 stories complete** across 15 epics.
 
 \* **E8-S1 is now complete (2026-07-06)**: on top of the scoped tenancy/
 reversible-migration slice landed as an E7 prerequisite (ADR-010:
@@ -159,6 +159,16 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-07-08** — **E10 — UI/UX & Design System epic complete (4/4)** on
+  `epic/e10-ui-ux-design-system`. **E10-S1**: design tokens + shadcn/ui
+  component library with Storybook and a11y tests
+  (`frontend/docs/design-tokens.md`). **E10-S2**: key screens (sessions,
+  runs, catalogs, dashboards) with streaming. **E10-S3**: visual flow editor
+  (YAML round-trip, validation, deterministic layout). **E10-S4**: pluggable
+  panels / UI Extension Points (`frontend/docs/pluggable-panels.md`). Gates:
+  tsc/lint/build green, 68/68 unit tests, e2e smoke on `/`, `/sessions`,
+  `/flows`, `/panels` (all render, no page errors; only backend-offline
+  fetch warnings). E10 lands the Beta UI anchor and unblocks **E3-S6**.
 - **2026-07-07** — **E9 — APIs, Events & MCP epic complete (4/4)** on
   `epic/e9-apis-events-mcp`. **E9-S2**: run event streaming over SSE with
   cursor resume and event-type filters. **E9-S4**: MCP server exposing
