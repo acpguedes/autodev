@@ -9,6 +9,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { getRuntimeConfig } from "@/lib/api";
 import { getAgentCatalogV2, getSkillCatalogV2, listSessionsV2 } from "@/lib/api_v2";
 
+import { LocaleSwitcher } from "./LocaleSwitcher";
 import {
   SHELL_LEGACY_NAV,
   SHELL_PRIMARY_NAV,
@@ -230,6 +231,11 @@ export function SidebarRail(): React.JSX.Element {
         <div className="flex items-center justify-between gap-2 rounded-ds-md border border-ds-line bg-ds-bg-2 px-2 py-1.5">
           <span className="text-[12.5px] font-semibold text-ds-fg-2">Theme</span>
           <ThemeToggle />
+        </div>
+
+        <div className="flex items-center justify-between gap-2 rounded-ds-md border border-ds-line bg-ds-bg-2 px-2 py-1.5">
+          <span className="text-[12.5px] font-semibold text-ds-fg-2">Language</span>
+          <LocaleSwitcher />
         </div>
       </div>
     </aside>

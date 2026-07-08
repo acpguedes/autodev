@@ -7,6 +7,7 @@ import MessageList, { type Message } from "../components/MessageList";
 import { useExecutionPanel, useShell, useShellHeader } from "@/components/shell/ShellProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useTranslations } from "@/lib/i18n";
 import {
   type ExecutionPlanResponse,
   type RunResponse,
@@ -29,6 +30,7 @@ export default function Page() {
 }
 
 function ExecutionControlCenter() {
+  const { t } = useTranslations();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [plan, setPlan] = useState<string[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -65,18 +67,22 @@ function ExecutionControlCenter() {
           setMessages([
             {
               author: "Planner",
-              content: `Plano inicial criado para o objetivo: ${planResponse.goal}`,
+              content: t("chat.initialPlanMessage", { goal: planResponse.goal }),
             },
           ]);
           setSessions(await listSessions());
           setExecutionPlan(await getExecutionPlan(planResponse.session_id));
         }
       } catch {
-        setError("Não foi possível carregar o workspace de chat.");
+        setError(t("chat.errors.loadWorkspace"));
       }
     }
 
     void bootstrap();
+    // Only ever bootstrap once on mount; `t` is stable per locale and
+    // re-running this on locale change would re-fetch session state for no
+    // reason.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const currentWorkspaceLabel = config?.repository.repository_label;
@@ -124,7 +130,7 @@ function ExecutionControlCenter() {
       setMessages(mapHistoryToMessages(response.history));
       await refreshSessionState(sessionId);
     } catch {
-      setError("Não foi possível enviar a mensagem para o orquestrador.");
+      setError(t("chat.errors.sendMessage"));
     } finally {
       setPendingMessage("");
       setIsLoading(false);
@@ -146,20 +152,23 @@ function ExecutionControlCenter() {
       setMessages([
         {
           author: "Planner",
-          content: `Plano inicial criado para o objetivo: ${response.goal}`,
+          content: t("chat.initialPlanMessage", { goal: response.goal }),
         },
       ]);
       setSessions(await listSessions());
       setExecutionPlan(await getExecutionPlan(response.session_id));
       setPanelOpen(false);
     } catch {
-      setError("Não foi possível criar uma nova sessão.");
+      setError(t("chat.errors.createSession"));
     }
+    // `t` is stable per locale; omitting it keeps this callback's identity
+    // tied to the values that actually change its behavior.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config, setPanelOpen]);
 
   useShellHeader({
-    title: "Chat",
-    subtitle: "Plan, analyze, and propose auditable patches with the agents.",
+    title: t("chat.pageTitle"),
+    subtitle: t("chat.pageSubtitle"),
     onNewSession: handleCreateSession,
   });
 
@@ -176,7 +185,7 @@ function ExecutionControlCenter() {
       setMessages(mapHistoryToMessages(response.history));
       await refreshSessionState(sessionId);
     } catch {
-      setError("Não foi possível executar o plano gerado.");
+      setError(t("chat.errors.executePlan"));
     } finally {
       setIsExecutingPlan(false);
     }
@@ -188,13 +197,13 @@ function ExecutionControlCenter() {
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-1">
             <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">
-              Sessão ativa
+              {t("chat.sessionLabel")}
             </p>
             <h2 className="font-serif text-xl font-semibold text-ds-fg">
-              Chat focado na execução
+              {t("chat.heading")}
             </h2>
             <p className="text-sm text-ds-fg-3">
-              Uma interface mais limpa para conversar com os agentes sem o visual de dashboard.
+              {t("chat.description")}
             </p>
           </div>
 
@@ -203,7 +212,7 @@ function ExecutionControlCenter() {
             onClick={handleExecutePlan}
             disabled={!executionPlan || executionPlan.tasks.length === 0 || isExecutingPlan}
           >
-            {isExecutingPlan ? "Executando..." : "Executar plano"}
+            {isExecutingPlan ? t("chat.executingPlan") : t("chat.executePlan")}
           </Button>
         </header>
 
@@ -211,24 +220,31 @@ function ExecutionControlCenter() {
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{executionStatus}</Badge>
             <Badge variant="outline" className="text-ds-fg-2">
-              {currentWorkspaceLabel || "Workspace não configurado"}
+              {currentWorkspaceLabel || t("chat.workspaceUnconfigured")}
             </Badge>
             <Badge variant="outline" className="text-ds-fg-2">
-              Sessões: {sessions.length}
+              {t("chat.sessionsCount", { count: sessions.length })}
             </Badge>
           </div>
           <p className="text-xs text-ds-fg-3">
-            Sessão: {sessionId || "não iniciada"} · Root: {currentProjectRoot || "não configurado"}
+            {t("chat.sessionMeta", {
+              sessionId: sessionId || t("chat.sessionNotStarted"),
+              projectRoot: currentProjectRoot || t("chat.rootNotConfigured"),
+            })}
           </p>
           {executionPlan ? (
             <div className="flex flex-col gap-2 rounded-ds-md border border-ds-line bg-ds-bg-2 p-3">
               <div className="flex items-center justify-between gap-2">
-                <strong className="text-sm font-semibold text-ds-fg">Próximas etapas</strong>
-                <span className="text-xs text-ds-fg-3">{executionPlan.tasks.length} tarefas</span>
+                <strong className="text-sm font-semibold text-ds-fg">
+                  {t("chat.nextSteps")}
+                </strong>
+                <span className="text-xs text-ds-fg-3">
+                  {t("chat.taskCount", { count: executionPlan.tasks.length })}
+                </span>
               </div>
               {nextTasks.length === 0 ? (
                 <p className="text-sm text-ds-fg-3">
-                  Envie uma instrução no chat para gerar um backlog executável.
+                  {t("chat.noTasksPrompt")}
                 </p>
               ) : (
                 <ol className="list-decimal flex-col gap-2 pl-5 text-sm text-ds-fg-2 marker:text-ds-fg-3">
@@ -260,17 +276,19 @@ function ExecutionControlCenter() {
             className={textareaClass}
             value={pendingMessage}
             onChange={(event) => setPendingMessage(event.target.value)}
-            placeholder="Descreva a mudança que você quer fazer..."
+            placeholder={t("chat.messagePlaceholder")}
           />
           <div className="flex justify-end">
             <Button type="submit" disabled={isLoading || !pendingMessage.trim()}>
-              {isLoading ? "Enviando..." : "Enviar"}
+              {isLoading ? t("chat.sending") : t("chat.send")}
             </Button>
           </div>
         </form>
 
         <div className="flex flex-col gap-2">
-          <strong className="text-sm font-semibold text-ds-fg">Plano atual</strong>
+          <strong className="text-sm font-semibold text-ds-fg">
+            {t("chat.currentPlan")}
+          </strong>
           <div className="flex flex-wrap gap-2">
             {plan.map((step, index) => (
               <Badge variant="outline" className="text-ds-fg-2" key={`${index}-${step}`}>

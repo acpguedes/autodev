@@ -1,6 +1,22 @@
 {
   "extends": ["next", "next/core-web-vitals", "plugin:storybook/recommended"],
+  "plugins": ["i18next"],
   "rules": {
-    "react/react-in-jsx-scope": "off"
-  }
+    "react/react-in-jsx-scope": "off",
+    "i18next/no-literal-string": "warn"
+  },
+  "overrides": [
+    {
+      "files": ["app/page.tsx", "components/ExecutionConsolePanel.tsx"],
+      "rules": {
+        "i18next/no-literal-string": "error"
+      }
+    },
+    {
+      "files": ["**/*.stories.tsx", "**/__tests__/**", "e2e/**"],
+      "rules": {
+        "i18next/no-literal-string": "off"
+      }
+    }
+  ]
 }
