@@ -1,7 +1,7 @@
 # E15 — Frontend Redesign: Design Language & App Shell
 
 **Wave:** Beta
-**Status:** In progress (0/4 complete)
+**Status:** In progress (1/4 complete)
 **Depends on:** E10
 **Enables:** E16 (partially — E16's endpoints back the shell's live status
 surfaces, but E16 does not require E15 to land first), E17, E14-S5 (the
@@ -29,6 +29,15 @@ keeping WCAG 2.2 AA conformance.
 ## Stories
 
 ### E15-S1 — Design tokens v2 (prototype design language)
+
+**Status:** Done (2026-07-08). Additive `--ds-*` token layer (warm-paper
+light / charcoal dark, iris accent, status/diff triads, radius + shadow
+scales) landed in `styles/globals.css` with `--ds-token-version` bumped to
+`2.0.0`; Newsreader / Instrument Sans / JetBrains Mono wired via
+`next/font/google`; `tailwind.config.ts` `ds` namespace, `design-tokens.md`
+v2 reference with the WCAG 2.2 AA contrast audit, a Vitest token guard, and
+a Storybook token showcase added. Three light status colors nudged 1–2
+lightness points for AA; all pairs verified.
 
 Subtasks:
 - `E15-S1-T1`: define the v2 color system — warm-paper light theme
