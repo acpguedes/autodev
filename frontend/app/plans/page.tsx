@@ -2,10 +2,15 @@
 
 import { FormEvent, useState } from "react";
 
-import ChatLayout from "../../components/ChatLayout";
 import { getPlan, type PlanDocument } from "../../lib/api_ext";
+import { useShellHeader } from "@/components/shell/ShellProvider";
 
 export default function PlansPage() {
+  useShellHeader({
+    title: "Plans",
+    subtitle: "Editable plans with approval gates.",
+  });
+
   const [sessionId, setSessionId] = useState("");
   const [plan, setPlan] = useState<PlanDocument | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +27,7 @@ export default function PlansPage() {
   }
 
   return (
-    <ChatLayout currentView="plans">
+    <div className="flex flex-col gap-6 p-8">
       <section className="hero-card">
         <div>
           <p className="eyebrow">Plans</p>
@@ -56,6 +61,6 @@ export default function PlansPage() {
           <p className="empty-state">{error ?? "Enter a session id to load its plan."}</p>
         )}
       </section>
-    </ChatLayout>
+    </div>
   );
 }

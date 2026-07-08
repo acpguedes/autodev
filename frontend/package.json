@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "e2e": "playwright test",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },

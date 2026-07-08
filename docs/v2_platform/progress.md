@@ -10,8 +10,12 @@
 **Last updated:** 2026-07-08 (**E10 — UI/UX & Design System epic complete (4/4)** on
 `epic/e10-ui-ux-design-system` — Design System, key screens, visual flow editor, pluggable
 UI panels; also planning-only addition of E15–E17 frontend redesign epics before E11 kickoff;
-**E15-S1 — Design tokens v2 done** on `epic/e15-design-language-shell` — additive `--ds-*`
-warm-paper/charcoal token layer, redesign typefaces, `--ds-token-version` 2.0.0)
+**E15-S1 — Design tokens v2 done** and **E15-S2 — Execution Control Center shell done** on
+`epic/e15-design-language-shell` — additive `--ds-*` warm-paper/charcoal token layer,
+redesign typefaces, `--ds-token-version` 2.0.0; three-region app shell (250px rail /
+64px contextual header / dismissible 400px execution panel) wrapping every
+`frontend/app/` route, with persisted panel/nav state, Playwright e2e navigation
+suite (`frontend/e2e/`), and axe-covered shell Storybook stories)
 
 ## How to update this file
 
@@ -76,7 +80,7 @@ E3 onward).**
 | E12 | Quality & Evals | Alpha/Beta | Not started | 0/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
-| E15 | Frontend Redesign: Design Language & App Shell | Beta | In progress · E15-S1 done | 1/4 | E10 | [phases/e15_design_language_shell.md](phases/e15_design_language_shell.md) |
+| E15 | Frontend Redesign: Design Language & App Shell | Beta | In progress · E15-S1, E15-S2 done | 2/4 | E10 | [phases/e15_design_language_shell.md](phases/e15_design_language_shell.md) |
 | E16 | Frontend Redesign: Control-Plane API Enablement | Beta | Not started | 0/4 | E9, E3, E8-S1 | [phases/e16_redesign_api_enablement.md](phases/e16_redesign_api_enablement.md) |
 | E17 | Frontend Redesign: Control Center Screens | Beta | Not started | 0/6 | E15, E16 | [phases/e17_control_center_screens.md](phases/e17_control_center_screens.md) |
 

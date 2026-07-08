@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import ChatLayout from "../../components/ChatLayout";
 import PlanSidebar from "../../components/PlanSidebar";
+import { useShellHeader } from "@/components/shell/ShellProvider";
 import {
   type RepositoryContextResponse,
   type RuntimeConfig,
@@ -19,6 +19,11 @@ import {
 const DEFAULT_REPOSITORY_QUERY = "configuração llm repositório projeto";
 
 export default function ConfigPage() {
+  useShellHeader({
+    title: "Config",
+    subtitle: "Repository and model settings.",
+  });
+
   const [config, setConfig] = useState<RuntimeConfig | null>(null);
   const [configDraft, setConfigDraft] = useState<RuntimeConfig | null>(null);
   const [instructions, setInstructions] = useState<RuntimeInstructions | null>(null);
@@ -95,20 +100,17 @@ export default function ConfigPage() {
   }
 
   return (
-    <ChatLayout
-      currentView="config"
-      sidebar={
-        <PlanSidebar
-          plan={activeSession?.plan ?? []}
-          sessionId={activeSession?.session_id}
-          status={activeSession?.status ?? "idle"}
-          repositoryLabel={
-            configDraft?.repository.repository_label || config?.repository.repository_label
-          }
-          projectRoot={configDraft?.repository.project_root || config?.repository.project_root}
-        />
-      }
-    >
+    <div className="flex flex-col gap-6 p-8">
+      <PlanSidebar
+        plan={activeSession?.plan ?? []}
+        sessionId={activeSession?.session_id}
+        status={activeSession?.status ?? "idle"}
+        repositoryLabel={
+          configDraft?.repository.repository_label || config?.repository.repository_label
+        }
+        projectRoot={configDraft?.repository.project_root || config?.repository.project_root}
+      />
+
       <section className="hero-card">
         <div>
           <p className="eyebrow">Configuration workspace</p>
@@ -363,6 +365,6 @@ export default function ConfigPage() {
           {error}
         </p>
       ) : null}
-    </ChatLayout>
+    </div>
   );
 }

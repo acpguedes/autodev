@@ -1,11 +1,16 @@
 "use client";
 
-import ChatLayout from "../../components/ChatLayout";
 import SkillsPanel from "../../components/SkillsPanel";
+import { useShellHeader } from "@/components/shell/ShellProvider";
 
 export default function SkillsPage() {
+  useShellHeader({
+    title: "Skills",
+    subtitle: "Deterministic skills the platform exposes for agents and operators.",
+  });
+
   return (
-    <ChatLayout currentView="skills">
+    <div className="flex flex-col gap-6 p-8">
       <section className="hero-card">
         <div>
           <p className="eyebrow">Skills</p>
@@ -25,6 +30,6 @@ export default function SkillsPage() {
         </div>
         <SkillsPanel />
       </section>
-    </ChatLayout>
+    </div>
   );
 }

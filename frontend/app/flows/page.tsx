@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
-import ChatLayout from "@/components/ChatLayout";
 import { FlowEditor } from "@/components/flow/FlowEditor";
+import { ShellHeaderPortal } from "@/components/shell/ShellProvider";
 
 export const metadata: Metadata = {
   title: "Flow Editor — AutoDev Architect",
@@ -11,7 +11,11 @@ export const metadata: Metadata = {
 
 export default function FlowsPage() {
   return (
-    <ChatLayout currentView="flows">
+    <>
+      <ShellHeaderPortal
+        title="Flows"
+        subtitle="Visual editor for flow.yaml manifests."
+      />
       <section className="flex h-full flex-col gap-4 p-6">
         <header>
           <h2 className="text-lg font-semibold text-foreground">Visual flow editor</h2>
@@ -25,6 +29,6 @@ export default function FlowsPage() {
           <FlowEditor />
         </div>
       </section>
-    </ChatLayout>
+    </>
   );
 }

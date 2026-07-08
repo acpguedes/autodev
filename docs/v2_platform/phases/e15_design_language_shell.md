@@ -1,7 +1,7 @@
 # E15 — Frontend Redesign: Design Language & App Shell
 
 **Wave:** Beta
-**Status:** In progress (1/4 complete)
+**Status:** In progress (2/4 complete)
 **Depends on:** E10
 **Enables:** E16 (partially — E16's endpoints back the shell's live status
 surfaces, but E16 does not require E15 to land first), E17, E14-S5 (the
@@ -63,6 +63,15 @@ Subtasks:
 | Dependencies | E10-S1 |
 
 ### E15-S2 — Execution Control Center shell
+
+**Status:** Done (2026-07-08). Three-region shell — 250px sidebar rail
+(brand, workspace switcher, primary nav with count badges, provider status,
+theme toggle), 64px contextual header (view title/subtitle, repo chip,
+panel toggle, "+ New session"), dismissible 400px execution panel with
+persisted open/closed state — wired as the single layout for all
+`frontend/app/` routes; `ChatLayout` retired; Playwright e2e navigation
+suite and axe audit of the three regions green; shell documented via
+Storybook stories.
 
 Subtasks:
 - `E15-S2-T1`: build the 250px sidebar rail — brand block, workspace
