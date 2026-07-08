@@ -60,6 +60,7 @@ export function PanelManager({ registry = panelRegistry }: PanelManagerProps) {
                   <input
                     type="checkbox"
                     className="h-4 w-4 rounded border-input"
+                    aria-label={`Enable ${panel.manifest.title}`}
                     checked={panel.enabled}
                     onChange={(event) =>
                       registry.setEnabled(panel.manifest.id, event.target.checked)

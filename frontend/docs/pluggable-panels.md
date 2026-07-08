@@ -47,7 +47,12 @@ This mirrors the `ui_panel` plugin asset in
 
 ## Sandbox and permissions (T2)
 
-- Panels never receive raw platform capabilities; they get a `PanelHost`
+> **Scope note:** this is API-level permission gating, not a security
+> boundary. Panels run in the same JS realm as the host page and can still
+> reach `window`/globals directly; true isolation (iframe/worker sandbox)
+> is deferred to the E1 plugin-host integration.
+
+- Panels do not receive raw platform capabilities via the contract; they get a `PanelHost`
   created by `createPanelHost(manifest)` (`lib/panels/host.ts`).
 - **Deny by default:** `host.fetch` throws `PanelPermissionError` unless the
   target origin matches the manifest's `permissions.network.egress`
