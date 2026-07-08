@@ -103,9 +103,9 @@ Subtasks:
 | --- | --- |
 | Functional | An operator approves/denies an action from the Web UI and sees the result in real time; can revoke a previously saved dynamic permission; can pause/cancel/resume a running run |
 | Non-functional | WCAG 2.2 AA; log streaming starts < 1 s (inherited from E9-S2) |
-| DoR (specific) | E10 (base Design System) and E9-S2 (streaming) available |
+| DoR (specific) | E10 (base Design System), E9-S2 (streaming), and redesigned shell/screens from E15–E17 available |
 | DoD (specific) | End-to-end approve/deny UI test; a11y audit; docs |
-| Dependencies | E14-S2, E14-S3, E9-S2, E10 |
+| Dependencies | E14-S2, E14-S3, E9-S2, E10, E15, E16, E17 |
 
 ### E14-S6 — Governed Interactive Shell (`autodev --shell`)
 

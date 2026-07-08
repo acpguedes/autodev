@@ -101,3 +101,7 @@ Subtasks:
 - [ ] `docs/v2_platform/progress.md` updated.
 - [ ] Beta wave entry item "Design System, key screens, visual flow editor, pluggable
       panels" satisfied (§18.9).
+
+## Next steps: Frontend redesign
+
+The frontend redesign toward the Execution Control Center prototype (`layout_prototype_brainstorm/`) is planned in **E15–E17**, which supersede parts of the E10 visual design while keeping its component/token infrastructure.
