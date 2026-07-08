@@ -1,6 +1,6 @@
 # RFC-006: Frontend redesign — Execution Control Center
 
-- **Status:** Draft
+- **Status:** Accepted (2026-07-08)
 - **Author(s):** AutoDev Architect maintainers          **Date:** 2026-07-08
 - **Reviewers:** TBD
 - **Epic(s):** E15, E16, E17                 **Stories:** E15-S1..S4, E16-S1..S5, E17-S1..S5 (14 stories total)

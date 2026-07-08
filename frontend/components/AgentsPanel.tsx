@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { Badge } from "@/components/ui/badge";
 import { listAgents, type AgentSummary } from "../lib/api_ext";
 
 export function AgentsPanel() {
@@ -15,20 +16,20 @@ export function AgentsPanel() {
   }, []);
 
   if (error) {
-    return <p className="empty-state">{error}</p>;
+    return <p className="text-sm text-ds-fg-3">{error}</p>;
   }
 
   if (agents.length === 0) {
-    return <p className="empty-state">Loading agents...</p>;
+    return <p className="text-sm text-ds-fg-3">Loading agents...</p>;
   }
 
   return (
-    <div className="tag-list">
+    <div className="flex flex-wrap gap-2">
       {agents.map((agent) => (
-        <span className="tag" key={agent.name}>
+        <Badge key={agent.name} variant="secondary">
           {agent.name}
-          {agent.has_contract ? " · contract" : ""}
-        </span>
+          {agent.has_contract ? " · contract" : ""}
+        </Badge>
       ))}
     </div>
   );

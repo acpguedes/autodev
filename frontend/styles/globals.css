@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 /**
- * Design tokens — version 1.0.0.
+ * Design tokens — version 2.0.0.
  *
  * Color tokens are HSL triplets (consumed as `hsl(var(--x))`) so components
  * can apply opacity modifiers via Tailwind's `/<alpha>` syntax. Typography,
@@ -13,7 +13,7 @@
  */
 @layer base {
   :root {
-    --ds-token-version: "1.0.0";
+    --ds-token-version: "2.0.0";
 
     /* Typography */
     --font-sans: Inter, system-ui, sans-serif;
@@ -76,29 +76,10 @@
     --bg: #0b1020;
     --panel: #121936;
     --panel-alt: #0f1530;
-    --ui-border: rgba(148, 163, 184, 0.18);
     --text: #f8fafc;
-    --ui-muted: rgba(226, 232, 240, 0.72);
-    --ui-accent: #38bdf8;
     --accent-strong: #818cf8;
-    --danger: #f87171;
 
     /* Themed surface tokens for legacy shell components. */
-    --surface-card: linear-gradient(180deg, rgba(18, 25, 54, 0.96), rgba(15, 21, 48, 0.96));
-    --surface-card-compact: rgba(15, 21, 48, 0.86);
-    --surface-inset: rgba(15, 23, 42, 0.45);
-    --surface-inset-md: rgba(15, 23, 42, 0.56);
-    --surface-inset-lg: rgba(15, 23, 42, 0.68);
-    --surface-inset-xl: rgba(15, 23, 42, 0.72);
-    --surface-input: rgba(15, 23, 42, 0.92);
-    --surface-input-deep: rgba(8, 15, 30, 0.92);
-    --surface-console: rgba(8, 15, 30, 0.86);
-    --surface-code: rgba(15, 23, 42, 0.92);
-    --surface-command: rgba(15, 23, 42, 0.96);
-    --surface-button-secondary: rgba(15, 23, 42, 0.95);
-    --danger-surface: rgba(248, 113, 113, 0.12);
-    --danger-border: rgba(248, 113, 113, 0.22);
-    --danger-text: #fecaca;
   }
 
   .light {
@@ -129,29 +110,113 @@
     --bg: #f8fafc;
     --panel: #ffffff;
     --panel-alt: #f1f5f9;
-    --ui-border: rgba(15, 23, 42, 0.12);
     --text: #0f172a;
-    --ui-muted: rgba(15, 23, 42, 0.64);
-    --ui-accent: #0284c7;
     --accent-strong: #4338ca;
-    --danger: #dc2626;
 
     /* Themed surface tokens for legacy shell components. */
-    --surface-card: linear-gradient(180deg, #ffffff, #f8fafc);
-    --surface-card-compact: #ffffff;
-    --surface-inset: rgba(15, 23, 42, 0.03);
-    --surface-inset-md: rgba(15, 23, 42, 0.04);
-    --surface-inset-lg: rgba(15, 23, 42, 0.05);
-    --surface-inset-xl: rgba(15, 23, 42, 0.06);
-    --surface-input: #ffffff;
-    --surface-input-deep: #ffffff;
-    --surface-console: #f1f5f9;
-    --surface-code: rgba(15, 23, 42, 0.05);
-    --surface-command: #0f172a;
-    --surface-button-secondary: #ffffff;
-    --danger-surface: rgba(220, 38, 38, 0.08);
-    --danger-border: rgba(220, 38, 38, 0.25);
-    --danger-text: #b91c1c;
+  }
+
+  /* ============================================================
+   * Design tokens v2 (E15-S1) — "Execution Control Center".
+   *
+   * Additive layer: every E10 token/class above is retained until
+   * E15-S3 removes the superseded set. Palette is extracted verbatim
+   * from `layout_prototype_brainstorm/Autodev Redesing.html` and pinned
+   * by ADR-012 (warm-paper light / charcoal dark, iris accent). Colors
+   * are HSL triplets consumed as `hsl(var(--ds-token))`, so Tailwind
+   * `/<alpha>` modifiers yield the prototype's status/accent tints
+   * (e.g. `hsl(var(--ds-success) / 0.12)`).
+   *
+   * Contrast: every foreground/background pair below meets WCAG 2.2 AA
+   * (body >= 4.5:1, large text / UI >= 3:1). Three light status colors
+   * had their lightness nudged 1-2 points from the prototype to clear
+   * 4.5:1 on `--ds-bg`; see `frontend/docs/design-tokens.md`.
+   * ============================================================ */
+  :root {
+    /* Radius scale (prototype: chips 6px, controls 10px, cards 12px). */
+    --ds-radius-sm: 0.375rem; /* 6px */
+    --ds-radius-md: 0.625rem; /* 10px */
+    --ds-radius-lg: 0.75rem; /* 12px */
+    --ds-radius-xl: 1rem; /* 16px */
+    --ds-radius-full: 9999px;
+
+    /* Serif display type scale (Newsreader) for shell headings; body
+     * copy stays sans. Sizes pair with `--ds-display-leading`. */
+    --ds-display-lg: 2.25rem; /* 36px */
+    --ds-display-md: 1.75rem; /* 28px */
+    --ds-display-sm: 1.375rem; /* 22px */
+    --ds-display-leading: 1.15;
+  }
+
+  :root,
+  .light {
+    /* Surfaces (warm paper) */
+    --ds-bg: 40 37% 97%;
+    --ds-bg-2: 0 0% 100%;
+    --ds-bg-3: 40 27% 94%;
+    --ds-bg-4: 42 25% 90%;
+    /* Lines / dividers (decorative; see design-tokens.md contrast notes) */
+    --ds-line: 40 24% 88%;
+    --ds-line-strong: 41 19% 80%;
+    /* Text */
+    --ds-fg: 45 8% 10%;
+    --ds-fg-2: 44 7% 32%;
+    --ds-fg-3: 44 6% 53%;
+    /* Accent (iris) — ADR-012 spec values; strong is the hover state */
+    --ds-accent: 245 70% 59%;
+    --ds-accent-strong: 244 74% 68%;
+    --ds-accent-fg: 0 0% 100%;
+    /* Status (lightness nudged from prototype for AA on --ds-bg) */
+    --ds-success: 149 71% 30%;
+    --ds-warn: 35 83% 34%;
+    --ds-danger: 5 56% 50%;
+    /* Diff add/del tints */
+    --ds-add-bg: 138 44% 92%;
+    --ds-add-fg: 148 70% 25%;
+    --ds-add-gut: 135 39% 68%;
+    --ds-del-bg: 8 75% 94%;
+    --ds-del-fg: 5 56% 42%;
+    --ds-del-gut: 9 56% 75%;
+    /* Elevation */
+    --ds-shadow-sm: 0 1px 2px hsl(45 8% 10% / 0.05);
+    --ds-shadow-md: 0 1px 2px hsl(45 8% 10% / 0.04),
+      0 10px 28px hsl(45 8% 10% / 0.07);
+    --ds-shadow-lg: 0 2px 4px hsl(45 8% 10% / 0.05),
+      0 18px 42px hsl(45 8% 10% / 0.1);
+  }
+
+  .dark {
+    /* Surfaces (charcoal) */
+    --ds-bg: 260 9% 6%;
+    --ds-bg-2: 270 9% 9%;
+    --ds-bg-3: 260 9% 13%;
+    --ds-bg-4: 255 10% 16%;
+    /* Lines / dividers */
+    --ds-line: 255 9% 17%;
+    --ds-line-strong: 251 9% 25%;
+    /* Text */
+    --ds-fg: 40 21% 95%;
+    --ds-fg-2: 42 8% 68%;
+    --ds-fg-3: 45 5% 46%;
+    /* Accent (iris) */
+    --ds-accent: 243 100% 77%;
+    --ds-accent-strong: 243 100% 82%;
+    --ds-accent-fg: 260 9% 6%;
+    /* Status */
+    --ds-success: 144 53% 59%;
+    --ds-warn: 37 70% 59%;
+    --ds-danger: 5 81% 68%;
+    /* Diff add/del tints */
+    --ds-add-bg: 143 33% 11%;
+    --ds-add-fg: 143 54% 62%;
+    --ds-add-gut: 144 36% 29%;
+    --ds-del-bg: 8 40% 12%;
+    --ds-del-fg: 5 80% 71%;
+    --ds-del-gut: 7 44% 30%;
+    /* Elevation */
+    --ds-shadow-sm: 0 1px 2px hsl(0 0% 0% / 0.4);
+    --ds-shadow-md: 0 1px 2px hsl(0 0% 0% / 0.4), 0 14px 34px hsl(0 0% 0% / 0.45);
+    --ds-shadow-lg: 0 2px 6px hsl(0 0% 0% / 0.5), 0 22px 48px hsl(0 0% 0% / 0.5);
   }
 }
 
@@ -183,658 +248,4 @@ button {
 
 button:hover:not(:disabled) {
   transform: translateY(-1px);
-}
-
-.chat-layout {
-  display: grid;
-  grid-template-columns: minmax(280px, 340px) 1fr;
-  min-height: 100vh;
-}
-
-.chat-layout--focus {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-
-.chat-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 1.1rem 2rem;
-  border-bottom: 1px solid var(--ui-border);
-  background: hsl(var(--background) / 0.72);
-  backdrop-filter: blur(18px);
-  position: sticky;
-  top: 0;
-  z-index: 10;
-}
-
-.chat-topbar__brand h1 {
-  margin: 0;
-  font-size: 1.1rem;
-}
-
-.chat-topbar__nav {
-  display: flex;
-  gap: 0.75rem;
-}
-
-.chat-layout__sidebar {
-  background-color: hsl(var(--background) / 0.95);
-  padding: 1.5rem;
-  border-right: 1px solid var(--ui-border);
-  position: sticky;
-  top: 0;
-  align-self: start;
-  min-height: 100vh;
-}
-
-.sidebar-shell {
-  display: grid;
-  gap: 1.25rem;
-}
-
-.sidebar-brand h1 {
-  margin: 0;
-  font-size: 1.25rem;
-}
-
-.sidebar-nav {
-  display: grid;
-  gap: 0.5rem;
-}
-
-.sidebar-nav__link {
-  color: var(--text);
-  text-decoration: none;
-  border: 1px solid var(--ui-border);
-  border-radius: 0.85rem;
-  padding: 0.8rem 0.95rem;
-  background: hsl(var(--background) / 0.7);
-  font-weight: 600;
-}
-
-.sidebar-nav__link:focus-visible {
-  outline: 2px solid hsl(var(--ring));
-  outline-offset: 2px;
-}
-
-.sidebar-nav__link--active {
-  border-color: hsl(var(--ring) / 0.55);
-  background: hsl(var(--ring) / 0.18);
-}
-
-.chat-layout__main {
-  padding: 2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-.workspace-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1.5rem;
-}
-
-.workspace-shell--with-console {
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
-}
-
-.sidebar-stack {
-  display: grid;
-  gap: 1rem;
-}
-
-.sidebar-card,
-.panel-card,
-.hero-card {
-  background: var(--surface-card);
-  border: 1px solid var(--ui-border);
-  border-radius: 1rem;
-  box-shadow: var(--shadow-lg);
-}
-
-.sidebar-card {
-  padding: 1.25rem;
-}
-
-.sidebar-card--compact {
-  background: var(--surface-card-compact);
-}
-
-.sidebar-title,
-.panel-card h2,
-.hero-card h1 {
-  margin: 0;
-}
-
-.sidebar-title {
-  font-size: 0.95rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  margin-bottom: 1rem;
-}
-
-.sidebar-plan {
-  padding-left: 1rem;
-  display: grid;
-  gap: 0.75rem;
-  margin: 0;
-}
-
-.sidebar-metadata {
-  margin: 0;
-  display: grid;
-  gap: 0.9rem;
-}
-
-.sidebar-metadata div {
-  display: grid;
-  gap: 0.3rem;
-}
-
-.sidebar-metadata dt {
-  color: var(--ui-muted);
-  font-size: 0.8rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.sidebar-metadata dd {
-  margin: 0;
-  word-break: break-word;
-}
-
-.hero-card,
-.panel-card {
-  padding: 1.5rem;
-}
-
-.chat-surface,
-.execution-console {
-  background: var(--surface-card);
-  border: 1px solid var(--ui-border);
-  border-radius: 1rem;
-  box-shadow: var(--shadow-lg);
-}
-
-.chat-surface {
-  padding: 1.5rem;
-  display: grid;
-  gap: 1rem;
-  min-height: calc(100vh - 8.5rem);
-}
-
-.chat-surface__header,
-.execution-console__header,
-.chat-overview,
-.plan-preview__header,
-.console-entry__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.chat-surface__actions,
-.chat-overview__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-}
-
-.chat-overview {
-  padding: 1rem 1.1rem;
-  border: 1px solid var(--ui-border);
-  border-radius: 0.95rem;
-  background: var(--surface-inset);
-  flex-direction: column;
-  align-items: stretch;
-}
-
-.plan-preview {
-  display: grid;
-  gap: 0.85rem;
-}
-
-.plan-preview__list {
-  margin: 0;
-  padding-left: 1.2rem;
-  display: grid;
-  gap: 0.65rem;
-}
-
-.plan-preview__list li {
-  display: grid;
-  gap: 0.3rem;
-}
-
-.hero-card {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  align-items: flex-start;
-}
-
-.hero-card__actions {
-  display: flex;
-  gap: 0.75rem;
-}
-
-.eyebrow {
-  margin: 0 0 0.5rem;
-  color: var(--ui-accent);
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-size: 0.75rem;
-  font-weight: 700;
-}
-
-.subtitle,
-.run-card__meta,
-.status-text,
-.empty-state,
-.note-list,
-.info-label {
-  color: var(--ui-muted);
-}
-
-.panel-grid {
-  display: grid;
-  gap: 1.5rem;
-}
-
-.panel-grid--two-up {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.panel-card__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.panel-card__header--stack-mobile {
-  flex-wrap: wrap;
-}
-
-.config-form,
-.instruction-stack,
-.repository-context,
-.execution-plan {
-  display: grid;
-  gap: 1rem;
-}
-
-.execution-plan__summary {
-  padding: 1rem;
-  border-radius: 0.9rem;
-  border: 1px solid var(--ui-border);
-  background: var(--surface-inset-lg);
-}
-
-.execution-task-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: 0.9rem;
-}
-
-.execution-task-card {
-  border: 1px solid var(--ui-border);
-  border-radius: 0.9rem;
-  padding: 1rem;
-  background: var(--surface-inset-md);
-}
-
-.execution-task-card__header {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-  align-items: flex-start;
-  margin-bottom: 0.65rem;
-}
-
-.config-form__grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-}
-
-.config-form label,
-.search-form {
-  display: grid;
-  gap: 0.45rem;
-}
-
-.config-form label span,
-.info-label {
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-
-.config-form__full-width {
-  grid-column: 1 / -1;
-}
-
-.config-form input,
-.config-form textarea,
-.config-form select,
-.search-form input,
-.chat-composer textarea {
-  width: 100%;
-  border-radius: 0.85rem;
-  border: 1px solid var(--ui-border);
-  padding: 0.8rem 0.95rem;
-  background: var(--surface-input);
-  color: var(--text);
-}
-
-.config-form textarea,
-.chat-composer textarea {
-  min-height: 110px;
-  resize: vertical;
-}
-
-.config-form__actions,
-.search-form,
-.chat-composer {
-  display: flex;
-  gap: 0.75rem;
-}
-
-.config-form__actions {
-  justify-content: flex-end;
-}
-
-.chat-composer {
-  align-items: stretch;
-}
-
-button,
-.secondary-button {
-  border: none;
-  border-radius: 0.85rem;
-  padding: 0.9rem 1.2rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-button {
-  background: linear-gradient(120deg, var(--ui-accent), var(--accent-strong));
-  color: #020617;
-}
-
-.secondary-button {
-  background: var(--surface-button-secondary);
-  color: var(--text);
-  border: 1px solid var(--ui-border);
-}
-
-.secondary-button--link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-}
-
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.inline-code,
-.code-block {
-  display: block;
-  font-family: "SFMono-Regular", ui-monospace, monospace;
-  font-size: 0.88rem;
-}
-
-.inline-code {
-  padding: 0.65rem 0.8rem;
-  border-radius: 0.75rem;
-  background: var(--surface-code);
-  border: 1px solid var(--ui-border);
-  overflow-x: auto;
-}
-
-.code-block {
-  margin: 0;
-  white-space: pre-wrap;
-  background: var(--surface-code);
-  border: 1px solid var(--ui-border);
-  border-radius: 0.85rem;
-  padding: 1rem;
-  overflow-x: auto;
-}
-
-.note-list {
-  margin: 0;
-  padding-left: 1.2rem;
-  display: grid;
-  gap: 0.5rem;
-}
-
-.tag-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.tag,
-.status-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.3rem 0.65rem;
-  border-radius: 999px;
-  background: rgba(56, 189, 248, 0.12);
-  border: 1px solid rgba(56, 189, 248, 0.22);
-}
-
-.candidate-list,
-.run-list,
-.message-list {
-  display: grid;
-  gap: 1rem;
-}
-
-.candidate-card,
-.run-card,
-.message {
-  background: var(--surface-inset-xl);
-  border-radius: 0.9rem;
-  padding: 1rem;
-  border: 1px solid var(--ui-border);
-}
-
-.run-card__summary {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.run-card__summary p {
-  margin: 0.35rem 0 0;
-}
-
-.run-steps {
-  margin: 1rem 0 0;
-  padding-left: 1rem;
-  display: grid;
-  gap: 0.45rem;
-}
-
-.run-steps li {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.message-list {
-  flex: 1;
-  min-height: 340px;
-  max-height: 100%;
-  overflow-y: auto;
-  padding-right: 0.35rem;
-}
-
-.message__author {
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--ui-accent);
-}
-
-.message__content {
-  margin: 0.5rem 0 0;
-  white-space: pre-wrap;
-  line-height: 1.6;
-}
-
-.chat-composer--clean {
-  align-items: flex-end;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--ui-border);
-}
-
-.chat-composer--clean textarea {
-  min-height: 92px;
-  background: var(--surface-input-deep);
-}
-
-.chat-plan-notes {
-  display: grid;
-  gap: 0.75rem;
-}
-
-.execution-console {
-  padding: 1.25rem;
-  display: grid;
-  gap: 1rem;
-  align-self: start;
-  position: sticky;
-  top: 5.8rem;
-  max-height: calc(100vh - 7rem);
-  overflow: hidden;
-}
-
-.execution-console__empty,
-.execution-console__stream {
-  display: grid;
-  gap: 0.85rem;
-}
-
-.execution-console__stream {
-  overflow-y: auto;
-  padding-right: 0.25rem;
-}
-
-.console-entry {
-  display: grid;
-  gap: 0.75rem;
-  padding: 1rem;
-  border-radius: 0.95rem;
-  background: var(--surface-console);
-  border: 1px solid var(--ui-border);
-}
-
-.console-entry__label {
-  font-size: 0.78rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--ui-muted);
-}
-
-.console-entry__command,
-.console-entry__output {
-  margin: 0;
-  font-family: "SFMono-Regular", ui-monospace, monospace;
-  font-size: 0.86rem;
-}
-
-.console-entry__command {
-  display: block;
-  padding: 0.8rem 0.9rem;
-  border-radius: 0.8rem;
-  background: var(--surface-command);
-  border: 1px solid var(--ui-border);
-  color: #bfdbfe;
-  white-space: pre-wrap;
-}
-
-.console-entry__output {
-  white-space: pre-wrap;
-  color: var(--ui-muted);
-  line-height: 1.55;
-}
-
-.status-pill--running {
-  background: rgba(52, 211, 153, 0.16);
-  border-color: rgba(52, 211, 153, 0.28);
-}
-
-.error-banner {
-  margin: 0;
-  padding: 1rem 1.2rem;
-  border-radius: 0.9rem;
-  background: var(--danger-surface);
-  border: 1px solid var(--danger-border);
-  color: var(--danger-text);
-}
-
-@media (max-width: 1180px) {
-  .chat-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .workspace-shell--with-console {
-    grid-template-columns: 1fr;
-  }
-
-  .chat-layout__sidebar {
-    min-height: auto;
-    position: static;
-    border-right: none;
-    border-bottom: 1px solid var(--ui-border);
-  }
-
-  .panel-grid--two-up,
-  .config-form__grid {
-    grid-template-columns: 1fr;
-  }
-
-  .execution-console {
-    position: static;
-    max-height: none;
-  }
-}
-
-@media (max-width: 720px) {
-  .chat-topbar,
-  .chat-layout__main,
-  .chat-layout__sidebar {
-    padding: 1rem;
-  }
-
-  .hero-card,
-  .panel-card__header,
-  .chat-surface__header,
-  .execution-console__header,
-  .console-entry__header,
-  .chat-composer,
-  .search-form,
-  .config-form__actions,
-  .run-card__summary {
-    flex-direction: column;
-  }
-
-  .execution-task-card__header {
-    flex-direction: column;
-  }
 }

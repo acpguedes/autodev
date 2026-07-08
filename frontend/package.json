@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "e2e": "playwright test",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },
@@ -39,6 +40,7 @@
     "autoprefixer": "^10.5.0",
     "eslint": "8.56.0",
     "eslint-config-next": "14.2.32",
+    "eslint-plugin-i18next": "^6.1.5",
     "eslint-plugin-storybook": "^10.4.6",
     "playwright": "^1.61.1",
     "postcss": "^8.5.15",

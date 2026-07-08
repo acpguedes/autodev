@@ -1,5 +1,7 @@
 "use client";
 
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+
 type PlanSidebarProps = {
   plan: string[];
   sessionId?: string | null;
@@ -16,37 +18,55 @@ export function PlanSidebar({
   projectRoot,
 }: PlanSidebarProps) {
   return (
-    <div className="sidebar-stack">
-      <section className="sidebar-card">
-        <h2 className="sidebar-title">Execution plan</h2>
-        <ol className="sidebar-plan">
-          {plan.map((step, index) => (
-            <li key={index}>{step}</li>
-          ))}
-        </ol>
-      </section>
+    <div className="grid gap-4 md:grid-cols-2">
+      <Card className="border-ds-line bg-ds-bg-2 shadow-ds-sm">
+        <CardHeader className="pb-3">
+          <h2 className="font-serif text-base font-semibold text-ds-fg">Execution plan</h2>
+        </CardHeader>
+        <CardContent>
+          <ol className="list-decimal pl-5 text-sm text-ds-fg-2 marker:text-ds-fg-3">
+            {plan.map((step, index) => (
+              <li className="mb-1.5 last:mb-0" key={index}>
+                {step}
+              </li>
+            ))}
+          </ol>
+        </CardContent>
+      </Card>
 
-      <section className="sidebar-card sidebar-card--compact">
-        <h2 className="sidebar-title">Workspace</h2>
-        <dl className="sidebar-metadata">
-          <div>
-            <dt>Label</dt>
-            <dd>{repositoryLabel || "Not configured"}</dd>
-          </div>
-          <div>
-            <dt>Session</dt>
-            <dd>{sessionId || "No session yet"}</dd>
-          </div>
-          <div>
-            <dt>Status</dt>
-            <dd>{status || "idle"}</dd>
-          </div>
-          <div>
-            <dt>Root</dt>
-            <dd>{projectRoot || "Not configured"}</dd>
-          </div>
-        </dl>
-      </section>
+      <Card className="border-ds-line bg-ds-bg-2 shadow-ds-sm">
+        <CardHeader className="pb-3">
+          <h2 className="font-serif text-base font-semibold text-ds-fg">Workspace</h2>
+        </CardHeader>
+        <CardContent>
+          <dl className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <dt className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">
+                Label
+              </dt>
+              <dd className="text-sm text-ds-fg">{repositoryLabel || "Not configured"}</dd>
+            </div>
+            <div>
+              <dt className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">
+                Session
+              </dt>
+              <dd className="break-all text-sm text-ds-fg">{sessionId || "No session yet"}</dd>
+            </div>
+            <div>
+              <dt className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">
+                Status
+              </dt>
+              <dd className="text-sm text-ds-fg">{status || "idle"}</dd>
+            </div>
+            <div>
+              <dt className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">
+                Root
+              </dt>
+              <dd className="break-all text-sm text-ds-fg">{projectRoot || "Not configured"}</dd>
+            </div>
+          </dl>
+        </CardContent>
+      </Card>
     </div>
   );
 }

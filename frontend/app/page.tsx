@@ -1,10 +1,13 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
-import ChatLayout from "../components/ChatLayout";
 import ExecutionConsolePanel from "../components/ExecutionConsolePanel";
 import MessageList, { type Message } from "../components/MessageList";
+import { useExecutionPanel, useShell, useShellHeader } from "@/components/shell/ShellProvider";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useTranslations } from "@/lib/i18n";
 import {
   type ExecutionPlanResponse,
   type RunResponse,
@@ -19,11 +22,15 @@ import {
   sendChatMessage,
 } from "../lib/api";
 
+const textareaClass =
+  "min-h-[110px] w-full resize-y rounded-ds-md border border-ds-line bg-ds-bg-2 px-3 py-2 text-sm text-ds-fg shadow-sm transition-colors placeholder:text-ds-fg-3 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ds-accent";
+
 export default function Page() {
   return <ExecutionControlCenter />;
 }
 
 function ExecutionControlCenter() {
+  const { t } = useTranslations();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [plan, setPlan] = useState<string[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -35,7 +42,7 @@ function ExecutionControlCenter() {
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
   const [runs, setRuns] = useState<RunResponse[]>([]);
   const [executionPlan, setExecutionPlan] = useState<ExecutionPlanResponse | null>(null);
-  const [isConsoleOpen, setIsConsoleOpen] = useState(false);
+  const { setPanelOpen } = useShell();
 
   useEffect(() => {
     async function bootstrap() {
@@ -60,18 +67,22 @@ function ExecutionControlCenter() {
           setMessages([
             {
               author: "Planner",
-              content: `Plano inicial criado para o objetivo: ${planResponse.goal}`,
+              content: t("chat.initialPlanMessage", { goal: planResponse.goal }),
             },
           ]);
           setSessions(await listSessions());
           setExecutionPlan(await getExecutionPlan(planResponse.session_id));
         }
       } catch {
-        setError("Não foi possível carregar o workspace de chat.");
+        setError(t("chat.errors.loadWorkspace"));
       }
     }
 
     void bootstrap();
+    // Only ever bootstrap once on mount; `t` is stable per locale and
+    // re-running this on locale change would re-fetch session state for no
+    // reason.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const currentWorkspaceLabel = config?.repository.repository_label;
@@ -79,14 +90,21 @@ function ExecutionControlCenter() {
   const executionStatus = runs[0]?.status ?? executionPlan?.status ?? "awaiting_input";
   const isBusy = isLoading || isExecutingPlan;
   const hasConsoleEntries = runs.some((run) => run.results.length > 0);
-  const showConsole = isConsoleOpen || isBusy || hasConsoleEntries;
   const nextTasks = executionPlan?.tasks.slice(0, 3) ?? [];
+
+  // Surface the execution console in the shell's right panel and auto-open it
+  // whenever there is live activity or recorded output to show.
+  const consoleContent = useMemo(
+    () => <ExecutionConsolePanel runs={runs} isBusy={isBusy} />,
+    [runs, isBusy]
+  );
+  useExecutionPanel(consoleContent);
 
   useEffect(() => {
     if (isBusy || hasConsoleEntries) {
-      setIsConsoleOpen(true);
+      setPanelOpen(true);
     }
-  }, [hasConsoleEntries, isBusy]);
+  }, [hasConsoleEntries, isBusy, setPanelOpen]);
 
   async function refreshSessionState(activeSessionId: string) {
     const refreshedSessions = await listSessions();
@@ -112,14 +130,14 @@ function ExecutionControlCenter() {
       setMessages(mapHistoryToMessages(response.history));
       await refreshSessionState(sessionId);
     } catch {
-      setError("Não foi possível enviar a mensagem para o orquestrador.");
+      setError(t("chat.errors.sendMessage"));
     } finally {
       setPendingMessage("");
       setIsLoading(false);
     }
   }
 
-  async function handleCreateSession() {
+  const handleCreateSession = useCallback(async () => {
     if (!config) {
       return;
     }
@@ -134,16 +152,25 @@ function ExecutionControlCenter() {
       setMessages([
         {
           author: "Planner",
-          content: `Plano inicial criado para o objetivo: ${response.goal}`,
+          content: t("chat.initialPlanMessage", { goal: response.goal }),
         },
       ]);
       setSessions(await listSessions());
       setExecutionPlan(await getExecutionPlan(response.session_id));
-      setIsConsoleOpen(false);
+      setPanelOpen(false);
     } catch {
-      setError("Não foi possível criar uma nova sessão.");
+      setError(t("chat.errors.createSession"));
     }
-  }
+    // `t` is stable per locale; omitting it keeps this callback's identity
+    // tied to the values that actually change its behavior.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, setPanelOpen]);
+
+  useShellHeader({
+    title: t("chat.pageTitle"),
+    subtitle: t("chat.pageSubtitle"),
+    onNewSession: handleCreateSession,
+  });
 
   async function handleExecutePlan() {
     if (!sessionId) {
@@ -158,109 +185,120 @@ function ExecutionControlCenter() {
       setMessages(mapHistoryToMessages(response.history));
       await refreshSessionState(sessionId);
     } catch {
-      setError("Não foi possível executar o plano gerado.");
+      setError(t("chat.errors.executePlan"));
     } finally {
       setIsExecutingPlan(false);
     }
   }
 
   return (
-    <ChatLayout currentView="dashboard" layoutMode="focus">
-      <div className={`workspace-shell ${showConsole ? "workspace-shell--with-console" : ""}`}>
-        <section className="chat-surface">
-          <header className="chat-surface__header">
-            <div>
-              <p className="eyebrow">Sessão ativa</p>
-              <h2>Chat focado na execução</h2>
-              <p className="subtitle">
-                Uma interface mais limpa para conversar com os agentes sem o visual de dashboard.
-              </p>
-            </div>
-
-            <div className="chat-surface__actions">
-              <button className="secondary-button" type="button" onClick={handleCreateSession}>
-                Nova sessão
-              </button>
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => setIsConsoleOpen((current) => !current)}
-              >
-                {showConsole ? "Ocultar painel" : "Abrir painel"}
-              </button>
-              <button
-                type="button"
-                onClick={handleExecutePlan}
-                disabled={!executionPlan || executionPlan.tasks.length === 0 || isExecutingPlan}
-              >
-                {isExecutingPlan ? "Executando..." : "Executar plano"}
-              </button>
-            </div>
-          </header>
-
-          <div className="chat-overview">
-            <div className="chat-overview__meta">
-              <span className="status-pill">{executionStatus}</span>
-              <span className="tag">{currentWorkspaceLabel || "Workspace não configurado"}</span>
-              <span className="tag">Sessões: {sessions.length}</span>
-            </div>
-            <p className="run-card__meta">
-              Sessão: {sessionId || "não iniciada"} · Root: {currentProjectRoot || "não configurado"}
+    <div className="flex flex-col gap-6 p-8">
+      <section className="flex flex-col gap-5 rounded-lg border border-ds-line bg-ds-bg-2 p-6 shadow-ds-sm">
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">
+              {t("chat.sessionLabel")}
             </p>
-            {executionPlan ? (
-              <div className="plan-preview">
-                <div className="plan-preview__header">
-                  <strong>Próximas etapas</strong>
-                  <span className="run-card__meta">{executionPlan.tasks.length} tarefas</span>
-                </div>
-                {nextTasks.length === 0 ? (
-                  <p className="empty-state">
-                    Envie uma instrução no chat para gerar um backlog executável.
-                  </p>
-                ) : (
-                  <ol className="plan-preview__list">
-                    {nextTasks.map((task) => (
-                      <li key={task.task_id}>
-                        <strong>{task.title}</strong>
-                        <span>{task.description}</span>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </div>
-            ) : null}
+            <h2 className="font-serif text-xl font-semibold text-ds-fg">
+              {t("chat.heading")}
+            </h2>
+            <p className="text-sm text-ds-fg-3">
+              {t("chat.description")}
+            </p>
           </div>
 
-          {error ? <p className="error-banner">{error}</p> : null}
+          <Button
+            type="button"
+            onClick={handleExecutePlan}
+            disabled={!executionPlan || executionPlan.tasks.length === 0 || isExecutingPlan}
+          >
+            {isExecutingPlan ? t("chat.executingPlan") : t("chat.executePlan")}
+          </Button>
+        </header>
 
-          <MessageList messages={messages} />
-
-          <form className="chat-composer chat-composer--clean" onSubmit={handleSubmit}>
-            <textarea
-              value={pendingMessage}
-              onChange={(event) => setPendingMessage(event.target.value)}
-              placeholder="Descreva a mudança que você quer fazer..."
-            />
-            <button type="submit" disabled={isLoading || !pendingMessage.trim()}>
-              {isLoading ? "Enviando..." : "Enviar"}
-            </button>
-          </form>
-
-          <div className="chat-plan-notes">
-            <strong>Plano atual</strong>
-            <div className="tag-list">
-              {plan.map((step, index) => (
-                <span className="tag" key={`${index}-${step}`}>
-                  {step}
+        <div className="flex flex-col gap-3 rounded-ds-md border border-ds-line bg-ds-bg-3 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">{executionStatus}</Badge>
+            <Badge variant="outline" className="text-ds-fg-2">
+              {currentWorkspaceLabel || t("chat.workspaceUnconfigured")}
+            </Badge>
+            <Badge variant="outline" className="text-ds-fg-2">
+              {t("chat.sessionsCount", { count: sessions.length })}
+            </Badge>
+          </div>
+          <p className="text-xs text-ds-fg-3">
+            {t("chat.sessionMeta", {
+              sessionId: sessionId || t("chat.sessionNotStarted"),
+              projectRoot: currentProjectRoot || t("chat.rootNotConfigured"),
+            })}
+          </p>
+          {executionPlan ? (
+            <div className="flex flex-col gap-2 rounded-ds-md border border-ds-line bg-ds-bg-2 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <strong className="text-sm font-semibold text-ds-fg">
+                  {t("chat.nextSteps")}
+                </strong>
+                <span className="text-xs text-ds-fg-3">
+                  {t("chat.taskCount", { count: executionPlan.tasks.length })}
                 </span>
-              ))}
+              </div>
+              {nextTasks.length === 0 ? (
+                <p className="text-sm text-ds-fg-3">
+                  {t("chat.noTasksPrompt")}
+                </p>
+              ) : (
+                <ol className="list-decimal flex-col gap-2 pl-5 text-sm text-ds-fg-2 marker:text-ds-fg-3">
+                  {nextTasks.map((task) => (
+                    <li key={task.task_id} className="mb-2 last:mb-0">
+                      <strong className="block text-ds-fg">{task.title}</strong>
+                      <span>{task.description}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
             </div>
-          </div>
-        </section>
+          ) : null}
+        </div>
 
-        {showConsole ? <ExecutionConsolePanel runs={runs} isBusy={isBusy} /> : null}
-      </div>
-    </ChatLayout>
+        {error ? (
+          <p
+            role="alert"
+            className="rounded-ds-md border border-ds-danger/40 bg-ds-danger/10 px-4 py-3 text-sm text-ds-danger"
+          >
+            {error}
+          </p>
+        ) : null}
+
+        <MessageList messages={messages} />
+
+        <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
+          <textarea
+            className={textareaClass}
+            value={pendingMessage}
+            onChange={(event) => setPendingMessage(event.target.value)}
+            placeholder={t("chat.messagePlaceholder")}
+          />
+          <div className="flex justify-end">
+            <Button type="submit" disabled={isLoading || !pendingMessage.trim()}>
+              {isLoading ? t("chat.sending") : t("chat.send")}
+            </Button>
+          </div>
+        </form>
+
+        <div className="flex flex-col gap-2">
+          <strong className="text-sm font-semibold text-ds-fg">
+            {t("chat.currentPlan")}
+          </strong>
+          <div className="flex flex-wrap gap-2">
+            {plan.map((step, index) => (
+              <Badge variant="outline" className="text-ds-fg-2" key={`${index}-${step}`}>
+                {step}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 

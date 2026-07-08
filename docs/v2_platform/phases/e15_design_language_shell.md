@@ -1,7 +1,7 @@
 # E15 — Frontend Redesign: Design Language & App Shell
 
 **Wave:** Beta
-**Status:** Not started (0/4 complete)
+**Status:** Done (2026-07-08, 4/4 complete)
 **Depends on:** E10
 **Enables:** E16 (partially — E16's endpoints back the shell's live status
 surfaces, but E16 does not require E15 to land first), E17, E14-S5 (the
@@ -30,6 +30,15 @@ keeping WCAG 2.2 AA conformance.
 
 ### E15-S1 — Design tokens v2 (prototype design language)
 
+**Status:** Done (2026-07-08). Additive `--ds-*` token layer (warm-paper
+light / charcoal dark, iris accent, status/diff triads, radius + shadow
+scales) landed in `styles/globals.css` with `--ds-token-version` bumped to
+`2.0.0`; Newsreader / Instrument Sans / JetBrains Mono wired via
+`next/font/google`; `tailwind.config.ts` `ds` namespace, `design-tokens.md`
+v2 reference with the WCAG 2.2 AA contrast audit, a Vitest token guard, and
+a Storybook token showcase added. Three light status colors nudged 1–2
+lightness points for AA; all pairs verified.
+
 Subtasks:
 - `E15-S1-T1`: define the v2 color system — warm-paper light theme
   (`#faf8f4` base) and charcoal dark theme (`#100f12` base), iris accent
@@ -54,6 +63,15 @@ Subtasks:
 | Dependencies | E10-S1 |
 
 ### E15-S2 — Execution Control Center shell
+
+**Status:** Done (2026-07-08). Three-region shell — 250px sidebar rail
+(brand, workspace switcher, primary nav with count badges, provider status,
+theme toggle), 64px contextual header (view title/subtitle, repo chip,
+panel toggle, "+ New session"), dismissible 400px execution panel with
+persisted open/closed state — wired as the single layout for all
+`frontend/app/` routes; `ChatLayout` retired; Playwright e2e navigation
+suite and axe audit of the three regions green; shell documented via
+Storybook stories.
 
 Subtasks:
 - `E15-S2-T1`: build the 250px sidebar rail — brand block, workspace
@@ -80,6 +98,17 @@ Subtasks:
 
 ### E15-S3 — Legacy CSS migration
 
+**Status:** Done (2026-07-08). Purged legacy `styles/globals.css` classes from
+all 6 identified pages (dashboard, config, plans, patches, agents, skills) in
+favor of the token-driven `components/ui` kit; confirmed zero remaining
+references to the removed legacy class names under `frontend/app/` or
+`frontend/components/`. While re-running the full verification suite after
+merging this story into the epic branch, two pre-existing failures in
+`AppShell.stories.tsx` were found and fixed: a missing Next.js App Router mock
+for `ShellProvider`'s `useRouter()` call (added `parameters.nextjs.appDirectory:
+true`), and a WCAG 2.2 AA contrast violation (`text-ds-fg-3` on
+`bg-ds-bg-3` in the shell's section labels, corrected to `text-ds-fg-2`).
+
 Subtasks:
 - `E15-S3-T1`: inventory every legacy `styles/globals.css` class still
   consumed by `app/page.tsx` (dashboard), `app/config/page.tsx`,
@@ -103,6 +132,22 @@ Subtasks:
 | Dependencies | E15-S1, E15-S2 |
 
 ### E15-S4 — i18n foundation (en default, pt-BR)
+
+**Status:** Done (2026-07-08). Dependency-free i18n layer (`frontend/lib/i18n/`)
+with nested-key JSON dictionaries for `en` (default) and `pt-BR`, dot-path key
+lookup, `{{placeholder}}` interpolation, and a compile-time completeness check
+(`pt-BR.json` assigned to the `en`-derived `Dictionary` type, so a missing or
+mismatched key fails the TypeScript build rather than surfacing a raw
+fallback key). `I18nProvider` wired into `app/layout.tsx` inside
+`ThemeProvider`, keeping `document.documentElement.lang` in sync with the
+active locale for WCAG 2.2 SC 3.1.1. All hardcoded copy in `app/page.tsx` and
+`components/ExecutionConsolePanel.tsx` externalized (`ChatLayout.tsx` was
+already retired by E15-S2/S3, so it required no changes). A `LocaleSwitcher`
+component (mirrors `ThemeToggle`'s mount-guard pattern) added to
+`SidebarRail`. `eslint-plugin-i18next`'s `no-literal-string` rule installed as
+a global warning, escalated to an error for the two migrated files via
+`.eslintrc.json` overrides (exempting `*.stories.tsx`, `__tests__/**`,
+`e2e/**`). Approach documented in `frontend/docs/i18n.md`.
 
 Subtasks:
 - `E15-S4-T1`: introduce locale infrastructure (routing/provider strategy
@@ -159,15 +204,18 @@ Subtasks:
 
 ## Epic exit checklist
 
-- [ ] All 4 stories meet the global DoD (`../templates/dod_checklist.md`)
+- [x] All 4 stories meet the global DoD (`../templates/dod_checklist.md`)
       plus their story-specific DoD above.
-- [ ] No application code under `frontend/app/` or `frontend/components/`
+- [x] No application code under `frontend/app/` or `frontend/components/`
       references removed legacy `styles/globals.css` classes.
-- [ ] i18n coverage check passes (no hardcoded, non-externalized UI strings
+- [x] i18n coverage check passes (no hardcoded, non-externalized UI strings
       in the migrated surfaces) and RFC-006's language decision is fully
       implemented (English default, pt-BR complete).
-- [ ] a11y audit passes with no blocking WCAG 2.2 AA violations across the
+- [x] a11y audit passes with no blocking WCAG 2.2 AA violations across the
       new shell and all migrated pages.
-- [ ] `docs/v2_platform/progress.md` updated.
-- [ ] Beta wave §18.9 entry updated to reflect the E15 redesign scope
-      (Design Language & App Shell) alongside the existing E10 entry.
+- [x] `docs/v2_platform/progress.md` updated.
+- [x] Beta wave §18.9 entry updated to reflect the E15 redesign scope
+      (Design Language & App Shell) alongside the existing E10 entry. (Already
+      present in `docs/architecture/v2_platform_reference.md` §18.9's "Entra"
+      and "Critérios de saída" rows for v2.0-beta from prior planning-only
+      commits; no further edit needed.)

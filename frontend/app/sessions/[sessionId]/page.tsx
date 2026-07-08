@@ -3,8 +3,8 @@
 import { useParams } from "next/navigation";
 import * as React from "react";
 
-import ChatLayout from "../../../components/ChatLayout";
 import RunEventStream from "../../../components/RunEventStream";
+import { useShellHeader } from "@/components/shell/ShellProvider";
 import { Badge } from "@/components/ui/badge";
 import {
   Breadcrumb,
@@ -101,6 +101,11 @@ export default function SessionDetailPage() {
   const params = useParams<{ sessionId: string }>();
   const sessionId = params.sessionId;
 
+  useShellHeader({
+    title: "Session detail",
+    subtitle: "Runs, traces, live event stream, and conversation history.",
+  });
+
   const [session, setSession] = React.useState<SessionV2 | null>(null);
   const [runs, setRuns] = React.useState<RunV2[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -151,7 +156,7 @@ export default function SessionDetailPage() {
   }, [runs, selectedRunId]);
 
   return (
-    <ChatLayout currentView="sessions">
+    <div className="flex flex-col gap-6 p-8">
       <div className="space-y-6">
         <Breadcrumb>
           <BreadcrumbList>
@@ -311,6 +316,6 @@ export default function SessionDetailPage() {
           </TabsContent>
         </Tabs>
       </div>
-    </ChatLayout>
+    </div>
   );
 }

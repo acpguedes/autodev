@@ -1,0 +1,41 @@
+{
+  "chat": {
+    "pageTitle": "Chat",
+    "pageSubtitle": "Planeje, analise e proponha patches auditáveis com os agentes.",
+    "sessionLabel": "Sessão ativa",
+    "heading": "Chat focado na execução",
+    "description": "Uma interface mais limpa para conversar com os agentes sem o visual de dashboard.",
+    "executePlan": "Executar plano",
+    "executingPlan": "Executando...",
+    "workspaceUnconfigured": "Workspace não configurado",
+    "sessionsCount": "Sessões: {{count}}",
+    "sessionMeta": "Sessão: {{sessionId}} · Root: {{projectRoot}}",
+    "sessionNotStarted": "não iniciada",
+    "rootNotConfigured": "não configurado",
+    "nextSteps": "Próximas etapas",
+    "taskCount": "{{count}} tarefas",
+    "noTasksPrompt": "Envie uma instrução no chat para gerar um backlog executável.",
+    "messagePlaceholder": "Descreva a mudança que você quer fazer...",
+    "send": "Enviar",
+    "sending": "Enviando...",
+    "currentPlan": "Plano atual",
+    "initialPlanMessage": "Plano inicial criado para o objetivo: {{goal}}",
+    "errors": {
+      "loadWorkspace": "Não foi possível carregar o workspace de chat.",
+      "sendMessage": "Não foi possível enviar a mensagem para o orquestrador.",
+      "createSession": "Não foi possível criar uma nova sessão.",
+      "executePlan": "Não foi possível executar o plano gerado."
+    }
+  },
+  "executionConsole": {
+    "sectionLabel": "Execução",
+    "title": "Painel lateral",
+    "statusBusy": "Executando",
+    "statusReady": "Pronto",
+    "descriptionBusy": "Mostrando a atividade mais recente, comandos derivados e saídas registradas.",
+    "descriptionIdle": "Quando houver atividade, o histórico executado aparece aqui em ordem cronológica.",
+    "emptyState": "Ainda não há comandos ou saídas registrados para esta sessão.",
+    "runTypePlanExecution": "Execução",
+    "runTypeAgent": "Agente"
+  }
+}
