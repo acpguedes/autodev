@@ -22,6 +22,7 @@ def clean_settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "OPENAI_API_KEY",
         "AUTODEV_REDIS_URL",
         "AUTODEV_JOB_BACKEND",
+        "AUTODEV_EVENT_BUS",
         "STORAGE_BACKEND",
         "AUTODEV_MINIO_ENDPOINT",
         "AUTODEV_MINIO_ACCESS_KEY",
@@ -49,6 +50,7 @@ def test_prod_profile_requires_postgres_redis_and_minio() -> None:
     message = str(excinfo.value)
     assert "prod profile requires DATABASE_URL to use PostgreSQL" in message
     assert "prod profile requires AUTODEV_JOB_BACKEND=redis" in message
+    assert "prod profile requires AUTODEV_EVENT_BUS=redis" in message
     assert "prod profile requires AUTODEV_REDIS_URL" in message
     assert "prod profile requires STORAGE_BACKEND=s3" in message
     assert "prod profile requires MinIO/S3 settings" in message
@@ -60,6 +62,7 @@ def test_prod_profile_accepts_explicit_postgres_redis_and_s3() -> None:
         autodev_profile="prod",
         database_url="postgresql://autodev:autodev@postgres:5432/autodev",
         autodev_job_backend="redis",
+        autodev_event_bus="redis",
         autodev_redis_url="redis://redis:6379/0",
         storage_backend="s3",
         autodev_minio_endpoint="minio:9000",
@@ -68,6 +71,7 @@ def test_prod_profile_accepts_explicit_postgres_redis_and_s3() -> None:
     )
 
     assert settings.autodev_job_backend == "redis"
+    assert settings.autodev_event_bus == "redis"
     assert settings.storage_backend == "s3"
 
 
@@ -78,6 +82,7 @@ def test_prod_profile_rejects_invalid_redis_url() -> None:
             autodev_profile="prod",
             database_url="postgresql://autodev:autodev@postgres:5432/autodev",
             autodev_job_backend="redis",
+            autodev_event_bus="redis",
             autodev_redis_url="http://redis:6379/0",
             storage_backend="s3",
             autodev_minio_endpoint="minio:9000",

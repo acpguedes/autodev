@@ -2,7 +2,7 @@
 
 **Wave:** Split — E9-S1 (Control Plane API /v2 core, minimal) targets Alpha;
 E9-S2/S3/S4 (streaming, event catalog, MCP) target Beta.
-**Status:** Not started · **Stories:** 0/4 complete
+**Status:** Done (2026-07-07) · all stories complete · **Stories:** 4/4 complete
 **Depends on:** E8, E2, E6 (RBAC is integrated later via E11-S2, not a hard dependency
 of the API core — see §18.8 note)
 **Enables:** E10; exposes streaming/events/MCP
@@ -83,6 +83,25 @@ Subtasks:
 | DoD | Interop tested with a reference MCP server; docs; contract test |
 | Dependencies | E2, E6, E9-S1 |
 
+**E9-S4-T1/T3 landed (2026-07-07)**: a stdlib-only MCP server (`backend/mcp/`)
+implements JSON-RPC 2.0 (`jsonrpc.py`) plus a transport-agnostic dispatcher
+(`server.py`) supporting `initialize`, `tools/list`, and `tools/call`, wired
+to two transports — stdio (`python -m backend.mcp.stdio_server`) and HTTP
+(`POST /v2/mcp`, `backend/api/routers/mcp_v2.py`, auto-discovered and gated
+by the existing `require_v2_principal`/optional bearer-token auth). Every
+tool call is routed through the existing
+`backend.skills.invoker.SkillInvocationBroker`, so permission enforcement,
+input/output schema validation, and timeout budgets are reused rather than
+reimplemented. T3 (least-privilege mapping) is enforced via an explicit
+allowlist — the `autodev_mcp_exposed_skills` setting (comma-separated skill
+ids, empty by default) or a constructor override — so only explicitly
+allowlisted skills are visible to `tools/list` or callable via `tools/call`;
+every other registered skill stays invisible and unreachable through this
+server. Tool-execution failures (invocation denial, budget-exceeded,
+sandbox `PermissionDenied`) surface as `isError: true` results rather than
+JSON-RPC protocol errors or crashes. `E9-S4-T2` (consuming external MCP
+servers as agent tools) is a separate slice, tracked independently.
+
 ## v1 precursor / starting point
 
 - FastAPI routers already exist with auto-discovery
@@ -95,10 +114,10 @@ Subtasks:
 
 ## Epic exit checklist
 
-- [ ] All 4 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
+- [x] All 4 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
       story-specific DoD above.
-- [ ] Contract tests green for `/v2` API surface, streaming transport, event schemas,
-      and the MCP adapter.
-- [ ] `docs/v2_platform/progress.md` updated.
-- [ ] Alpha exit criterion "minimal Control Plane API /v2" (E9-S1) and Beta entry item
+- [x] Contract tests green for `/v2` API surface, streaming transport, event schemas,
+      and the MCP adapter (incl. `backend/tests/test_mcp_interop.py`).
+- [x] `docs/v2_platform/progress.md` updated.
+- [x] Alpha exit criterion "minimal Control Plane API /v2" (E9-S1) and Beta entry item
       "streaming, event catalog, MCP" (E9-S2/S3/S4) satisfied per §18.9.

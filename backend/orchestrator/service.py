@@ -34,6 +34,7 @@ from backend.agents import (
     ResponderAgent,
     ValidatorAgent,
 )
+from backend.events.runtime import emit_event
 from backend.persistence import DurableStore, get_store
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
 from backend.observability.tracing import trace_run_step
@@ -333,6 +334,13 @@ class OrchestratorService:
             steps=[],
             tenant_id=DEFAULT_TENANT_ID,
         )
+        emit_event(
+            "flow.run.started",
+            tenant_id=DEFAULT_TENANT_ID,
+            partition_key=run_id,
+            data={"flowId": f"orchestrator.{run_type}", "flowVersion": "1.0.0"},
+            subject={"runId": run_id, "sessionId": session_id},
+        )
 
         history = [
             HistoryItem(role=record["role"], content=record["content"])
@@ -374,6 +382,13 @@ class OrchestratorService:
             ],
             steps=[step.to_dict() for step in steps],
             tenant_id=DEFAULT_TENANT_ID,
+        )
+        emit_event(
+            "flow.run.completed",
+            tenant_id=DEFAULT_TENANT_ID,
+            partition_key=run_id,
+            data={"status": "completed", "costUsd": 0.0, "tokens": 0},
+            subject={"runId": run_id, "sessionId": session_id},
         )
 
         next_history = [HistoryItem(**item) for item in final_context.history]

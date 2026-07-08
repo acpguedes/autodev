@@ -72,6 +72,9 @@ class Settings(BaseSettings):
     autodev_job_backend: Literal["inprocess", "redis"] = "inprocess"
     autodev_redis_url: str = ""
 
+    # --- event bus (E9-S2-T2) ---
+    autodev_event_bus: Literal["inmemory", "redis"] = "inmemory"
+
     # --- artifacts ---
     storage_backend: Literal["local", "s3"] = "local"
     autodev_artifact_dir: str = "/data/artifacts"
@@ -80,6 +83,9 @@ class Settings(BaseSettings):
     autodev_minio_access_key: str = ""
     autodev_minio_secret_key: str = ""
     autodev_minio_secure: bool = False
+
+    # --- MCP (Model Context Protocol) ---
+    autodev_mcp_exposed_skills: str = ""
 
     # --- observability ---
     otel_service_name: str = "autodev-backend"
@@ -174,6 +180,8 @@ class Settings(BaseSettings):
                 errors.append("prod profile requires DATABASE_URL to use PostgreSQL")
             if self.autodev_job_backend != "redis":
                 errors.append("prod profile requires AUTODEV_JOB_BACKEND=redis")
+            if self.autodev_event_bus != "redis":
+                errors.append("prod profile requires AUTODEV_EVENT_BUS=redis")
             if not self.autodev_redis_url.strip():
                 errors.append("prod profile requires AUTODEV_REDIS_URL")
             elif urlparse(self.autodev_redis_url).scheme not in {"redis", "rediss"}:
@@ -201,6 +209,22 @@ class Settings(BaseSettings):
             origin.strip()
             for origin in self.autodev_cors_origins.split(",")
             if origin.strip()
+        ]
+
+    def mcp_exposed_skills(self) -> list[str]:
+        """Parse the comma-separated ``autodev_mcp_exposed_skills`` field into a list.
+
+        Empty by default, so no skill is exposed through the MCP server
+        (:class:`backend.mcp.server.McpServer`) until explicitly allowlisted
+        (E9-S4-T3 least-privilege mapping).
+
+        Returns:
+            The configured MCP-exposed skill ids, with blanks removed.
+        """
+        return [
+            skill_id.strip()
+            for skill_id in self.autodev_mcp_exposed_skills.split(",")
+            if skill_id.strip()
         ]
 
     def redacted_model_dump(self) -> dict[str, Any]:

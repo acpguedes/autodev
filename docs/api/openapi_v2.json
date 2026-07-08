@@ -1,0 +1,3795 @@
+{
+  "components": {
+    "schemas": {
+      "AgentContractsResponse": {
+        "description": "Response body for ``GET /agents/contracts``.",
+        "properties": {
+          "contracts": {
+            "additionalProperties": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Contracts",
+            "type": "object"
+          }
+        },
+        "required": [
+          "contracts"
+        ],
+        "title": "AgentContractsResponse",
+        "type": "object"
+      },
+      "AgentDetail": {
+        "properties": {
+          "has_metadata_contract": {
+            "title": "Has Metadata Contract",
+            "type": "boolean"
+          },
+          "metadata_schema": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata Schema"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "has_metadata_contract",
+          "source"
+        ],
+        "title": "AgentDetail",
+        "type": "object"
+      },
+      "AgentExecutionModel": {
+        "description": "API representation of a single agent execution result.",
+        "properties": {
+          "agent": {
+            "title": "Agent",
+            "type": "string"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "agent",
+          "content",
+          "metadata"
+        ],
+        "title": "AgentExecutionModel",
+        "type": "object"
+      },
+      "AgentExecutionV2": {
+        "description": "Result produced by an agent during orchestration.",
+        "properties": {
+          "agent": {
+            "title": "Agent",
+            "type": "string"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "agent",
+          "content",
+          "metadata"
+        ],
+        "title": "AgentExecutionV2",
+        "type": "object"
+      },
+      "AgentSummary": {
+        "properties": {
+          "has_metadata_contract": {
+            "title": "Has Metadata Contract",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "has_metadata_contract",
+          "source"
+        ],
+        "title": "AgentSummary",
+        "type": "object"
+      },
+      "ApplyRequest": {
+        "properties": {
+          "diff": {
+            "default": "",
+            "title": "Diff",
+            "type": "string"
+          },
+          "original": {
+            "title": "Original",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "original",
+          "updated"
+        ],
+        "title": "ApplyRequest",
+        "type": "object"
+      },
+      "ApprovalRequest": {
+        "properties": {
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor"
+        ],
+        "title": "ApprovalRequest",
+        "type": "object"
+      },
+      "ChatRequest": {
+        "description": "Request body for ``POST /chat``.",
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "message"
+        ],
+        "title": "ChatRequest",
+        "type": "object"
+      },
+      "ChatResponse": {
+        "description": "Response body for endpoints returning a completed orchestration run.",
+        "properties": {
+          "current_state": {
+            "title": "Current State",
+            "type": "string"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryItemModel"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/AgentExecutionModel"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "run_type": {
+            "title": "Run Type",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/RunStepModel"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run_id",
+          "session_id",
+          "status",
+          "run_type",
+          "current_state",
+          "history",
+          "results",
+          "steps"
+        ],
+        "title": "ChatResponse",
+        "type": "object"
+      },
+      "ContextDigestBody": {
+        "description": "Request body for :class:`backend.routing.contract.ContextDigest`.",
+        "properties": {
+          "repo": {
+            "default": "",
+            "title": "Repo",
+            "type": "string"
+          },
+          "signals": {
+            "$ref": "#/components/schemas/ContextSignalsBody"
+          }
+        },
+        "title": "ContextDigestBody",
+        "type": "object"
+      },
+      "ContextSignalsBody": {
+        "description": "Request body for :class:`backend.routing.contract.ContextSignals`.",
+        "properties": {
+          "has_tests": {
+            "default": false,
+            "title": "Has Tests",
+            "type": "boolean"
+          },
+          "languages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Languages",
+            "type": "array"
+          }
+        },
+        "title": "ContextSignalsBody",
+        "type": "object"
+      },
+      "DynamicChatRequest": {
+        "description": "Request body for ``POST /chat/dynamic``.\n\nAttributes:\n    session_id: Identifier of the existing orchestration session.\n    message: User message to route through the orchestrator.",
+        "properties": {
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "message"
+        ],
+        "title": "DynamicChatRequest",
+        "type": "object"
+      },
+      "DynamicChatResponse": {
+        "description": "Response body for ``POST /chat/dynamic``.\n\nAttributes:\n    run_id: Identifier assigned to this run.\n    session_id: Identifier of the session the run belongs to.\n    status: Terminal run status.\n    run_type: Inferred orchestration run type.\n    current_state: Final graph state name.\n    mode: Execution path taken, ``\"dynamic\"`` or ``\"fallback\"``.\n    results: Agent results produced during the run.\n    steps: Steps recorded during the run.",
+        "properties": {
+          "current_state": {
+            "title": "Current State",
+            "type": "string"
+          },
+          "mode": {
+            "title": "Mode",
+            "type": "string"
+          },
+          "results": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "run_type": {
+            "title": "Run Type",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run_id",
+          "session_id",
+          "status",
+          "run_type",
+          "current_state",
+          "mode"
+        ],
+        "title": "DynamicChatResponse",
+        "type": "object"
+      },
+      "EnqueueRequest": {
+        "properties": {
+          "job_type": {
+            "title": "Job Type",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Payload",
+            "type": "object"
+          }
+        },
+        "required": [
+          "job_type"
+        ],
+        "title": "EnqueueRequest",
+        "type": "object"
+      },
+      "EnqueueResponse": {
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id"
+        ],
+        "title": "EnqueueResponse",
+        "type": "object"
+      },
+      "ExecutedRunV2": {
+        "description": "The run produced by executing a session's derived execution plan.",
+        "properties": {
+          "current_state": {
+            "title": "Current State",
+            "type": "string"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryItemV2"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/AgentExecutionV2"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "run_type": {
+            "title": "Run Type",
+            "type": "string"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/RunStepV2"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "run_id",
+          "session_id",
+          "status",
+          "run_type",
+          "current_state",
+          "history",
+          "results",
+          "steps"
+        ],
+        "title": "ExecutedRunV2",
+        "type": "object"
+      },
+      "ExecutionPlanResponse": {
+        "description": "Response body for ``GET /sessions/{session_id}/execution-plan``.",
+        "properties": {
+          "analysis_summary": {
+            "title": "Analysis Summary",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionTaskModel"
+            },
+            "title": "Tasks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "session_id",
+          "summary",
+          "analysis_summary",
+          "tasks",
+          "status"
+        ],
+        "title": "ExecutionPlanResponse",
+        "type": "object"
+      },
+      "ExecutionPlanV2": {
+        "description": "Step-by-step execution plan derived from a session's artifacts.",
+        "properties": {
+          "analysis_summary": {
+            "title": "Analysis Summary",
+            "type": "string"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/ExecutionTaskV2"
+            },
+            "title": "Tasks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "session_id",
+          "summary",
+          "analysis_summary",
+          "tasks",
+          "status"
+        ],
+        "title": "ExecutionPlanV2",
+        "type": "object"
+      },
+      "ExecutionTaskModel": {
+        "description": "API representation of a single execution-plan task.",
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "source_agent": {
+            "title": "Source Agent",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "title",
+          "description",
+          "source_agent",
+          "category",
+          "status"
+        ],
+        "title": "ExecutionTaskModel",
+        "type": "object"
+      },
+      "ExecutionTaskV2": {
+        "description": "Executable task derived from agent analysis artifacts.",
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "source_agent": {
+            "title": "Source Agent",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "task_id": {
+            "title": "Task Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_id",
+          "title",
+          "description",
+          "source_agent",
+          "category",
+          "status"
+        ],
+        "title": "ExecutionTaskV2",
+        "type": "object"
+      },
+      "GenerateRequest": {
+        "properties": {
+          "original": {
+            "title": "Original",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "original",
+          "updated"
+        ],
+        "title": "GenerateRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HistoryItemModel": {
+        "description": "API representation of a single conversation history entry.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "HistoryItemModel",
+        "type": "object"
+      },
+      "HistoryItemV2": {
+        "description": "A single conversational turn.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ],
+        "title": "HistoryItemV2",
+        "type": "object"
+      },
+      "InvokeRequest": {
+        "properties": {
+          "inputs": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Inputs",
+            "type": "object"
+          }
+        },
+        "title": "InvokeRequest",
+        "type": "object"
+      },
+      "InvokeResponse": {
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "data": {
+            "additionalProperties": true,
+            "default": {},
+            "title": "Data",
+            "type": "object"
+          },
+          "success": {
+            "default": true,
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "InvokeResponse",
+        "type": "object"
+      },
+      "JobStatusResponse": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "job_type": {
+            "title": "Job Type",
+            "type": "string"
+          },
+          "result": {
+            "title": "Result"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "job_type",
+          "status"
+        ],
+        "title": "JobStatusResponse",
+        "type": "object"
+      },
+      "LLMSettings": {
+        "description": "Persisted LLM provider settings.",
+        "properties": {
+          "api_key": {
+            "default": "",
+            "title": "Api Key",
+            "type": "string"
+          },
+          "base_url": {
+            "default": "",
+            "title": "Base Url",
+            "type": "string"
+          },
+          "model": {
+            "default": "gpt-4o-mini",
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "default": "stub",
+            "title": "Provider",
+            "type": "string"
+          },
+          "temperature": {
+            "default": 0.2,
+            "title": "Temperature",
+            "type": "number"
+          }
+        },
+        "title": "LLMSettings",
+        "type": "object"
+      },
+      "PageMetaV2": {
+        "description": "Pagination metadata attached to every ``/v2`` list response.",
+        "properties": {
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "limit",
+          "offset",
+          "total"
+        ],
+        "title": "PageMetaV2",
+        "type": "object"
+      },
+      "PatchResponse": {
+        "properties": {
+          "diff": {
+            "title": "Diff",
+            "type": "string"
+          },
+          "original": {
+            "title": "Original",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "original",
+          "updated",
+          "diff"
+        ],
+        "title": "PatchResponse",
+        "type": "object"
+      },
+      "PatchResultResponse": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "applied",
+          "dry_run",
+          "message"
+        ],
+        "title": "PatchResultResponse",
+        "type": "object"
+      },
+      "PlanRequest": {
+        "description": "Request body for ``POST /plan``.",
+        "properties": {
+          "goal": {
+            "description": "High level goal provided by the user",
+            "title": "Goal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "goal"
+        ],
+        "title": "PlanRequest",
+        "type": "object"
+      },
+      "PlanResponse": {
+        "description": "Response body describing a newly created planning session.",
+        "properties": {
+          "goal": {
+            "title": "Goal",
+            "type": "string"
+          },
+          "plan": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Plan",
+            "type": "array"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "goal",
+          "plan",
+          "status"
+        ],
+        "title": "PlanResponse",
+        "type": "object"
+      },
+      "PlanUpsertRequest": {
+        "properties": {
+          "steps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "steps"
+        ],
+        "title": "PlanUpsertRequest",
+        "type": "object"
+      },
+      "RepositoryContextResponse": {
+        "description": "Response body for ``GET /repository/context``.",
+        "properties": {
+          "candidate_files": {
+            "items": {
+              "$ref": "#/components/schemas/RepositoryFileMatchModel"
+            },
+            "title": "Candidate Files",
+            "type": "array"
+          },
+          "inventory_sample": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Inventory Sample",
+            "type": "array"
+          },
+          "matched_terms": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Matched Terms",
+            "type": "array"
+          },
+          "query": {
+            "title": "Query",
+            "type": "string"
+          },
+          "root": {
+            "title": "Root",
+            "type": "string"
+          },
+          "top_directories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Top Directories",
+            "type": "array"
+          },
+          "total_files": {
+            "title": "Total Files",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query",
+          "root",
+          "total_files",
+          "top_directories",
+          "candidate_files",
+          "inventory_sample",
+          "matched_terms"
+        ],
+        "title": "RepositoryContextResponse",
+        "type": "object"
+      },
+      "RepositoryFileMatchModel": {
+        "description": "API representation of a single repository search match.",
+        "properties": {
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "score": {
+            "title": "Score",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "path",
+          "score",
+          "reasons"
+        ],
+        "title": "RepositoryFileMatchModel",
+        "type": "object"
+      },
+      "RepositorySettings": {
+        "description": "Persisted repository/workspace settings.",
+        "properties": {
+          "default_goal": {
+            "default": "Bootstrap AutoDev project",
+            "title": "Default Goal",
+            "type": "string"
+          },
+          "project_root": {
+            "title": "Project Root",
+            "type": "string"
+          },
+          "repository_label": {
+            "default": "Current workspace",
+            "title": "Repository Label",
+            "type": "string"
+          }
+        },
+        "title": "RepositorySettings",
+        "type": "object"
+      },
+      "RouteConstraintsBody": {
+        "description": "Request body for :class:`backend.routing.contract.RouteConstraints`.",
+        "properties": {
+          "latency_class": {
+            "default": "interactive",
+            "title": "Latency Class",
+            "type": "string"
+          },
+          "max_cost_usd": {
+            "default": 0.05,
+            "title": "Max Cost Usd",
+            "type": "number"
+          }
+        },
+        "title": "RouteConstraintsBody",
+        "type": "object"
+      },
+      "RouteDecisionBody": {
+        "description": "Request body for the ``route`` field of a ``SelectRequest`` (reference \u00a79.2).",
+        "properties": {
+          "confidence": {
+            "default": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "constraints": {
+            "$ref": "#/components/schemas/RouteConstraintsBody"
+          },
+          "intent": {
+            "title": "Intent",
+            "type": "string"
+          },
+          "path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Path",
+            "type": "array"
+          },
+          "rationale": {
+            "default": "",
+            "title": "Rationale",
+            "type": "string"
+          },
+          "schemaVersion": {
+            "default": "1.0",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "task_type": {
+            "title": "Task Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "task_type",
+          "intent"
+        ],
+        "title": "RouteDecisionBody",
+        "type": "object"
+      },
+      "RouteInputBody": {
+        "description": "Request body for :class:`backend.routing.contract.RouteInput`.",
+        "properties": {
+          "attachments": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Attachments",
+            "type": "array"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "RouteInputBody",
+        "type": "object"
+      },
+      "RouteRequestBody": {
+        "description": "Request body for ``POST /v2/route`` (reference \u00a79.2 ``RouteRequest``).",
+        "properties": {
+          "context": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context"
+          },
+          "context_digest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContextDigestBody"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/RouteInputBody"
+          },
+          "run_id": {
+            "default": "",
+            "title": "Run Id",
+            "type": "string"
+          },
+          "schemaVersion": {
+            "default": "1.0",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "session_id": {
+            "default": "",
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "input"
+        ],
+        "title": "RouteRequestBody",
+        "type": "object"
+      },
+      "RunListV2": {
+        "description": "Paginated collection of :class:`RunV2`.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RunV2"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMetaV2"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "RunListV2",
+        "type": "object"
+      },
+      "RunRequest": {
+        "properties": {
+          "command": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Command",
+            "type": "array"
+          },
+          "cwd": {
+            "default": ".",
+            "title": "Cwd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "command"
+        ],
+        "title": "RunRequest",
+        "type": "object"
+      },
+      "RunResponse": {
+        "description": "Response body describing a single historical orchestration run.",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_state": {
+            "title": "Current State",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/AgentExecutionModel"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "run_type": {
+            "title": "Run Type",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/RunStepModel"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "trigger_message": {
+            "title": "Trigger Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "session_id",
+          "status",
+          "run_type",
+          "current_state",
+          "trigger_message",
+          "created_at",
+          "results",
+          "steps"
+        ],
+        "title": "RunResponse",
+        "type": "object"
+      },
+      "RunStepModel": {
+        "description": "API representation of a single orchestration run step.",
+        "properties": {
+          "agent": {
+            "title": "Agent",
+            "type": "string"
+          },
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "completed_at": {
+            "title": "Completed At",
+            "type": "string"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "step_key": {
+            "title": "Step Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step_key",
+          "agent",
+          "status",
+          "started_at",
+          "completed_at",
+          "attempt"
+        ],
+        "title": "RunStepModel",
+        "type": "object"
+      },
+      "RunStepV2": {
+        "description": "A completed step within a run.",
+        "properties": {
+          "agent": {
+            "title": "Agent",
+            "type": "string"
+          },
+          "attempt": {
+            "title": "Attempt",
+            "type": "integer"
+          },
+          "completed_at": {
+            "title": "Completed At",
+            "type": "string"
+          },
+          "started_at": {
+            "title": "Started At",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "step_key": {
+            "title": "Step Key",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step_key",
+          "agent",
+          "status",
+          "started_at",
+          "completed_at",
+          "attempt"
+        ],
+        "title": "RunStepV2",
+        "type": "object"
+      },
+      "RunV2": {
+        "description": "A single historical run, as returned by ``GET .../runs``.",
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "current_state": {
+            "title": "Current State",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/AgentExecutionV2"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "run_type": {
+            "title": "Run Type",
+            "type": "string"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/RunStepV2"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "trigger_message": {
+            "title": "Trigger Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "run_id",
+          "session_id",
+          "status",
+          "run_type",
+          "current_state",
+          "trigger_message",
+          "created_at",
+          "results",
+          "steps"
+        ],
+        "title": "RunV2",
+        "type": "object"
+      },
+      "RuntimeConfig": {
+        "description": "Top-level persisted application configuration.",
+        "properties": {
+          "llm": {
+            "$ref": "#/components/schemas/LLMSettings"
+          },
+          "repository": {
+            "$ref": "#/components/schemas/RepositorySettings"
+          },
+          "version": {
+            "default": 1,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "title": "RuntimeConfig",
+        "type": "object"
+      },
+      "RuntimeConfigResponse": {
+        "description": "Response body for ``GET``/``PUT /config``.",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/RuntimeConfig"
+          },
+          "instructions": {
+            "$ref": "#/components/schemas/RuntimeInstructions"
+          }
+        },
+        "required": [
+          "config",
+          "instructions"
+        ],
+        "title": "RuntimeConfigResponse",
+        "type": "object"
+      },
+      "RuntimeConfigResponseV2": {
+        "description": "Typed, versioned envelope around the runtime configuration document.",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/RuntimeConfig"
+          },
+          "instructions": {
+            "$ref": "#/components/schemas/RuntimeInstructions"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "config",
+          "instructions"
+        ],
+        "title": "RuntimeConfigResponseV2",
+        "type": "object"
+      },
+      "RuntimeConfigUpdateRequest": {
+        "description": "Request body for ``PUT /config``.",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/RuntimeConfig"
+          }
+        },
+        "required": [
+          "config"
+        ],
+        "title": "RuntimeConfigUpdateRequest",
+        "type": "object"
+      },
+      "RuntimeConfigUpdateRequestV2": {
+        "description": "Request body for ``PUT /v2/config``.",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/RuntimeConfig"
+          }
+        },
+        "required": [
+          "config"
+        ],
+        "title": "RuntimeConfigUpdateRequestV2",
+        "type": "object"
+      },
+      "RuntimeInstructions": {
+        "description": "Instructional metadata returned to UI/API clients.",
+        "properties": {
+          "config_file_example": {
+            "title": "Config File Example",
+            "type": "string"
+          },
+          "config_path": {
+            "title": "Config Path",
+            "type": "string"
+          },
+          "env_file_example": {
+            "title": "Env File Example",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "config_path",
+          "config_file_example",
+          "env_file_example",
+          "notes"
+        ],
+        "title": "RuntimeInstructions",
+        "type": "object"
+      },
+      "SelectBudgetBody": {
+        "description": "Request body for :class:`backend.routing.contract.SelectBudget`.\n\n``0`` in any field means unconstrained for that dimension (see\n:mod:`backend.routing.selector`).",
+        "properties": {
+          "cost_usd": {
+            "default": 0.0,
+            "title": "Cost Usd",
+            "type": "number"
+          },
+          "time_s": {
+            "default": 0,
+            "title": "Time S",
+            "type": "integer"
+          },
+          "tokens": {
+            "default": 0,
+            "title": "Tokens",
+            "type": "integer"
+          }
+        },
+        "title": "SelectBudgetBody",
+        "type": "object"
+      },
+      "SelectRequestBody": {
+        "description": "Request body for ``POST /v2/select`` (reference \u00a79.2 ``SelectRequest``).",
+        "properties": {
+          "budget": {
+            "$ref": "#/components/schemas/SelectBudgetBody"
+          },
+          "required_capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Capabilities",
+            "type": "array"
+          },
+          "route": {
+            "$ref": "#/components/schemas/RouteDecisionBody"
+          },
+          "schemaVersion": {
+            "default": "1.0",
+            "title": "Schemaversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "route"
+        ],
+        "title": "SelectRequestBody",
+        "type": "object"
+      },
+      "SessionCreateRequestV2": {
+        "description": "Request body for ``POST /v2/sessions``.",
+        "properties": {
+          "goal": {
+            "description": "High level goal for the new session.",
+            "minLength": 1,
+            "title": "Goal",
+            "type": "string"
+          }
+        },
+        "required": [
+          "goal"
+        ],
+        "title": "SessionCreateRequestV2",
+        "type": "object"
+      },
+      "SessionListV2": {
+        "description": "Paginated collection of :class:`SessionV2`.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SessionV2"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMetaV2"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "SessionListV2",
+        "type": "object"
+      },
+      "SessionResponse": {
+        "description": "Response body describing a single orchestration session.",
+        "properties": {
+          "goal": {
+            "title": "Goal",
+            "type": "string"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryItemModel"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "plan": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Plan",
+            "type": "array"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "goal",
+          "plan",
+          "status",
+          "history"
+        ],
+        "title": "SessionResponse",
+        "type": "object"
+      },
+      "SessionV2": {
+        "description": "A session, as returned by create/list/get.",
+        "properties": {
+          "goal": {
+            "title": "Goal",
+            "type": "string"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryItemV2"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "plan": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Plan",
+            "type": "array"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "goal",
+          "plan",
+          "status"
+        ],
+        "title": "SessionV2",
+        "type": "object"
+      },
+      "Settings": {
+        "description": "Application settings sourced from environment variables and an optional JSON file.",
+        "properties": {
+          "autodev_api_token": {
+            "default": "",
+            "title": "Autodev Api Token",
+            "type": "string"
+          },
+          "autodev_artifact_dir": {
+            "default": "/data/artifacts",
+            "title": "Autodev Artifact Dir",
+            "type": "string"
+          },
+          "autodev_config_path": {
+            "default": "",
+            "title": "Autodev Config Path",
+            "type": "string"
+          },
+          "autodev_cors_origins": {
+            "default": "http://localhost:3000,http://127.0.0.1:3000",
+            "title": "Autodev Cors Origins",
+            "type": "string"
+          },
+          "autodev_dynamic_orch": {
+            "default": false,
+            "title": "Autodev Dynamic Orch",
+            "type": "boolean"
+          },
+          "autodev_enable_hsts": {
+            "default": false,
+            "title": "Autodev Enable Hsts",
+            "type": "boolean"
+          },
+          "autodev_enable_patch_apply": {
+            "default": false,
+            "title": "Autodev Enable Patch Apply",
+            "type": "boolean"
+          },
+          "autodev_enable_sandbox": {
+            "default": false,
+            "title": "Autodev Enable Sandbox",
+            "type": "boolean"
+          },
+          "autodev_host": {
+            "default": "127.0.0.1",
+            "title": "Autodev Host",
+            "type": "string"
+          },
+          "autodev_job_backend": {
+            "default": "inprocess",
+            "enum": [
+              "inprocess",
+              "redis"
+            ],
+            "title": "Autodev Job Backend",
+            "type": "string"
+          },
+          "autodev_minio_access_key": {
+            "default": "",
+            "title": "Autodev Minio Access Key",
+            "type": "string"
+          },
+          "autodev_minio_bucket": {
+            "default": "autodev-artifacts",
+            "title": "Autodev Minio Bucket",
+            "type": "string"
+          },
+          "autodev_minio_endpoint": {
+            "default": "",
+            "title": "Autodev Minio Endpoint",
+            "type": "string"
+          },
+          "autodev_minio_secret_key": {
+            "default": "",
+            "title": "Autodev Minio Secret Key",
+            "type": "string"
+          },
+          "autodev_minio_secure": {
+            "default": false,
+            "title": "Autodev Minio Secure",
+            "type": "boolean"
+          },
+          "autodev_port": {
+            "default": 8000,
+            "title": "Autodev Port",
+            "type": "integer"
+          },
+          "autodev_profile": {
+            "default": "local",
+            "enum": [
+              "local",
+              "prod"
+            ],
+            "title": "Autodev Profile",
+            "type": "string"
+          },
+          "autodev_project_root": {
+            "default": "",
+            "title": "Autodev Project Root",
+            "type": "string"
+          },
+          "autodev_redis_url": {
+            "default": "",
+            "title": "Autodev Redis Url",
+            "type": "string"
+          },
+          "autodev_repo_provider": {
+            "default": "lexical",
+            "title": "Autodev Repo Provider",
+            "type": "string"
+          },
+          "autodev_sandbox_allow_local": {
+            "default": false,
+            "title": "Autodev Sandbox Allow Local",
+            "type": "boolean"
+          },
+          "autodev_sandbox_docker_network": {
+            "default": "none",
+            "title": "Autodev Sandbox Docker Network",
+            "type": "string"
+          },
+          "autodev_settings_file": {
+            "default": "",
+            "title": "Autodev Settings File",
+            "type": "string"
+          },
+          "database_url": {
+            "default": "sqlite:///./autodev.db",
+            "title": "Database Url",
+            "type": "string"
+          },
+          "feature_execution_plans": {
+            "default": true,
+            "title": "Feature Execution Plans",
+            "type": "boolean"
+          },
+          "feature_patch_workflow": {
+            "default": true,
+            "title": "Feature Patch Workflow",
+            "type": "boolean"
+          },
+          "feature_repository_intelligence": {
+            "default": true,
+            "title": "Feature Repository Intelligence",
+            "type": "boolean"
+          },
+          "llm_provider": {
+            "default": "stub",
+            "title": "Llm Provider",
+            "type": "string"
+          },
+          "ollama_base_url": {
+            "default": "",
+            "title": "Ollama Base Url",
+            "type": "string"
+          },
+          "openai_api_key": {
+            "default": "",
+            "title": "Openai Api Key",
+            "type": "string"
+          },
+          "openai_base_url": {
+            "default": "",
+            "title": "Openai Base Url",
+            "type": "string"
+          },
+          "openai_model": {
+            "default": "gpt-4o-mini",
+            "title": "Openai Model",
+            "type": "string"
+          },
+          "openai_temperature": {
+            "default": 0.2,
+            "title": "Openai Temperature",
+            "type": "number"
+          },
+          "openai_verify_ssl": {
+            "default": true,
+            "title": "Openai Verify Ssl",
+            "type": "boolean"
+          },
+          "otel_exporter_otlp_endpoint": {
+            "default": "",
+            "title": "Otel Exporter Otlp Endpoint",
+            "type": "string"
+          },
+          "otel_service_name": {
+            "default": "autodev-backend",
+            "title": "Otel Service Name",
+            "type": "string"
+          },
+          "otel_traces_sampler": {
+            "default": "parentbased_traceidratio",
+            "title": "Otel Traces Sampler",
+            "type": "string"
+          },
+          "otel_traces_sampler_arg": {
+            "default": 1.0,
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Otel Traces Sampler Arg",
+            "type": "number"
+          },
+          "storage_backend": {
+            "default": "local",
+            "enum": [
+              "local",
+              "s3"
+            ],
+            "title": "Storage Backend",
+            "type": "string"
+          }
+        },
+        "title": "Settings",
+        "type": "object"
+      },
+      "SkillDetail": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "SkillDetail",
+        "type": "object"
+      },
+      "SkillSummary": {
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "SkillSummary",
+        "type": "object"
+      },
+      "SymbolsResponse": {
+        "properties": {
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "symbols": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Symbols",
+            "type": "array"
+          }
+        },
+        "required": [
+          "symbols",
+          "provider"
+        ],
+        "title": "SymbolsResponse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "ValidationResultResponse": {
+        "properties": {
+          "backend": {
+            "title": "Backend",
+            "type": "string"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "returncode": {
+            "title": "Returncode",
+            "type": "integer"
+          },
+          "skipped": {
+            "title": "Skipped",
+            "type": "boolean"
+          },
+          "stderr": {
+            "title": "Stderr",
+            "type": "string"
+          },
+          "stdout": {
+            "title": "Stdout",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_id",
+          "returncode",
+          "stdout",
+          "stderr",
+          "backend",
+          "skipped"
+        ],
+        "title": "ValidationResultResponse",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "AutoDev Orchestrator - Control Plane API /v2",
+    "version": "0.3.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/v2/agents/catalog": {
+      "get": {
+        "description": "List the agent catalog, optionally filtered by capability.\n\nArgs:\n    capability: If given, restrict the catalog to agents declaring this capability.\n    registry: Agent registry dependency.\n\nReturns:\n    The catalog document as a JSON-serializable dict.",
+        "operationId": "list_agent_catalog_v2_agents_catalog_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "capability",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Capability"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Agent Catalog V2 Agents Catalog Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Agent Catalog",
+        "tags": [
+          "agents"
+        ]
+      }
+    },
+    "/v2/config": {
+      "get": {
+        "description": "Return the current runtime configuration with secrets redacted.\n\nArgs:\n    config_service: Shared runtime config service (same singleton v1's\n        ``GET /config`` uses).\n\nReturns:\n    The versioned configuration document.",
+        "operationId": "get_runtime_config_v2_v2_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeConfigResponseV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Runtime Config V2",
+        "tags": [
+          "config"
+        ]
+      },
+      "put": {
+        "description": "Persist a new runtime configuration and apply it to the process.\n\nArgs:\n    request: The new configuration to persist.\n    config_service: Shared runtime config service (same singleton v1's\n        ``PUT /config`` uses).\n\nReturns:\n    The versioned configuration document after the update.",
+        "operationId": "update_runtime_config_v2_v2_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuntimeConfigUpdateRequestV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeConfigResponseV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Runtime Config V2",
+        "tags": [
+          "config"
+        ]
+      }
+    },
+    "/v2/context/retrieve": {
+      "get": {
+        "description": "Retrieve the most relevant code snippets for *query* via hybrid retrieval.\n\nArgs:\n    query: Free-text (and, in vector/hybrid mode, embedded) search query.\n    mode: ``\"lexical\"``, ``\"vector\"``, or ``\"hybrid\"`` (default).\n    tenant_id: Tenant to scope the search to.\n    path_prefix: Optional file path prefix filter.\n    symbol: Optional exact symbol name filter.\n    budget: Optional maximum total estimated token count across results;\n        results are truncated in relevance order (least relevant\n        dropped first) rather than arbitrarily cut off.\n    limit: Maximum number of chunk ids considered per underlying\n        retrieval mode before fusion/truncation.\n    store: Durable store dependency.\n\nReturns:\n    ``{\"query\", \"mode\", \"results\": [{\"chunkId\", \"filePath\", \"symbol\",\n    \"startLine\", \"endLine\", \"content\", \"score\", \"source\"}, ...]}``.\n\nRaises:\n    HTTPException: 422 for an unrecognized *mode*; 501 when the active\n        store is not PostgreSQL (hybrid retrieval requires pgvector and\n        full-text search, both Postgres-only \u2014 see ADR-011).",
+        "operationId": "retrieve_context_v2_context_retrieve_get",
+        "parameters": [
+          {
+            "description": "Free-text/semantic search query",
+            "in": "query",
+            "name": "query",
+            "required": true,
+            "schema": {
+              "description": "Free-text/semantic search query",
+              "minLength": 1,
+              "title": "Query",
+              "type": "string"
+            }
+          },
+          {
+            "description": "One of: lexical, vector, hybrid",
+            "in": "query",
+            "name": "mode",
+            "required": false,
+            "schema": {
+              "default": "hybrid",
+              "description": "One of: lexical, vector, hybrid",
+              "title": "Mode",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tenant_id",
+            "required": false,
+            "schema": {
+              "default": "default",
+              "title": "Tenant Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Restrict results to this file path prefix",
+            "in": "query",
+            "name": "path_prefix",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Restrict results to this file path prefix",
+              "title": "Path Prefix"
+            }
+          },
+          {
+            "description": "Restrict results to this exact symbol name",
+            "in": "query",
+            "name": "symbol",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Restrict results to this exact symbol name",
+              "title": "Symbol"
+            }
+          },
+          {
+            "description": "Max total estimated tokens across results",
+            "in": "query",
+            "name": "budget",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Max total estimated tokens across results",
+              "title": "Budget"
+            }
+          },
+          {
+            "description": "Max chunk ids considered per retrieval mode",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "Max chunk ids considered per retrieval mode",
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Retrieve Context V2 Context Retrieve Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Retrieve Context",
+        "tags": [
+          "context"
+        ]
+      }
+    },
+    "/v2/evals/results/{namespace}/{name}": {
+      "get": {
+        "description": "List persisted results for an eval id, newest first.\n\nArgs:\n    namespace: Eval id namespace segment.\n    name: Eval id name segment.\n    version: If given, restrict to this eval spec version only.\n    service: Evaluation Service dependency.\n\nReturns:\n    The matching results, most recently created first.",
+        "operationId": "list_eval_results_v2_evals_results__namespace___name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Eval Results V2 Evals Results  Namespace   Name  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Eval Results",
+        "tags": [
+          "evals"
+        ]
+      }
+    },
+    "/v2/evals/results/{namespace}/{name}/{version}/{run_id}": {
+      "get": {
+        "description": "Fetch one persisted eval result.\n\nArgs:\n    namespace: Eval id namespace segment.\n    name: Eval id name segment.\n    version: Eval spec version.\n    run_id: Id of the specific run.\n    service: Evaluation Service dependency.\n\nReturns:\n    The result document.\n\nRaises:\n    HTTPException: 404 when no such result is stored.",
+        "operationId": "get_eval_result_v2_evals_results__namespace___name___version___run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "version",
+            "required": true,
+            "schema": {
+              "title": "Version",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Eval Result V2 Evals Results  Namespace   Name   Version   Run Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Eval Result",
+        "tags": [
+          "evals"
+        ]
+      }
+    },
+    "/v2/evals/run": {
+      "post": {
+        "description": "Validate an ``eval.yaml`` spec and execute (or register) it.\n\nOffline specs (``mode: offline``) run every declared evaluator over the\nsupplied cases and persist a new, versioned result. Online specs\n(``mode: online``) are persisted as a typed-but-minimal registration stub\n\u2014 no traffic-splitting/A-B infrastructure exists yet (E5-S4, future story).\n\nArgs:\n    body: ``{\"spec\": {...eval.yaml document...}, \"cases\": [{\"caseId\":\n        \"...\", \"payload\": {...}}, ...], \"runId\": \"...\"}``. ``cases`` is\n        required for offline mode and ignored for online mode; ``runId``\n        is optional (a UUID4 is generated if omitted).\n    service: Evaluation Service dependency.\n\nReturns:\n    The persisted result (or online registration) document.\n\nRaises:\n    HTTPException: 422 when the spec is invalid, ``cases`` is missing for\n        an offline run, or the run itself fails; 409 when the (optional,\n        client-supplied) ``runId`` collides with an already-stored result\n        for this eval id+version (results are immutable \u2014 ADR-009).",
+        "operationId": "run_eval_v2_evals_run_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Run Eval V2 Evals Run Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run Eval",
+        "tags": [
+          "evals"
+        ]
+      }
+    },
+    "/v2/evals/{namespace}/{name}/publish": {
+      "post": {
+        "description": "Publish a score snapshot from persisted results and decide its promotion (E5-S4).\n\nAggregates every persisted :class:`~backend.evals.results.EvalResult` for\nthis eval id (optionally restricted to ``evalVersion``) into a new,\nversioned :class:`~backend.routing.contract.ScoreSnapshot`, then decides\nwhether to promote it as ``policyId``'s active snapshot \u2014 guarded by\n``minSamples`` (hysteresis) and ``promoteIf`` (regression criterion,\nreference \u00a79.4/\u00a79.5). The decision is always persisted and traced, whether\nor not the snapshot is promoted (reference \u00a79.6 fail-closed default).\n\nArgs:\n    namespace: Eval id namespace segment.\n    name: Eval id name segment.\n    body: ``{\"policyId\": \"...\", \"evalVersion\": \"...\" (optional),\n        \"promoteIf\": \"variant.quality >= control.quality and ...\" (optional,\n        default: always promote once the sample guard passes),\n        \"minSamples\": 0 (optional, default 0 = no minimum)}``.\n    service: Evaluation Service dependency.\n    feedback: Routing Feedback Service dependency.\n\nReturns:\n    ``{\"schemaVersion\", \"snapshot\": <ScoreSnapshot document>, \"promotion\":\n    <PromotionDecision document>}``.\n\nRaises:\n    HTTPException: 422 when ``policyId`` is missing or no results are\n        persisted for this eval id to aggregate.",
+        "operationId": "publish_snapshot_v2_evals__namespace___name__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Publish Snapshot V2 Evals  Namespace   Name  Publish Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish Snapshot",
+        "tags": [
+          "evals"
+        ]
+      }
+    },
+    "/v2/evals/{namespace}/{name}/snapshots": {
+      "get": {
+        "description": "Inspect the promotion history for a policy id (E5-S4).\n\nArgs:\n    namespace: Eval id namespace segment (kept for URL symmetry with the\n        other ``/v2/evals/{namespace}/{name}/...`` routes; snapshots\n        themselves are not scoped by eval id, only promotions are).\n    name: Eval id name segment.\n    policy_id: Routing policy id whose promotion history to list.\n    feedback: Routing Feedback Service dependency.\n\nReturns:\n    ``{\"schemaVersion\", \"promotions\": [<PromotionDecision document>, ...]}``.\n\nRaises:\n    HTTPException: 422 when ``policyId`` is missing.",
+        "operationId": "list_snapshots_v2_evals__namespace___name__snapshots_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "policyId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Policyid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Snapshots V2 Evals  Namespace   Name  Snapshots Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Snapshots",
+        "tags": [
+          "evals"
+        ]
+      }
+    },
+    "/v2/flows": {
+      "get": {
+        "description": "List the registered flow catalog.\n\nArgs:\n    engine: Flow engine dependency.\n\nReturns:\n    The catalog document.",
+        "operationId": "list_flows_v2_flows_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Flows V2 Flows Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Flows",
+        "tags": [
+          "flows"
+        ]
+      },
+      "post": {
+        "description": "Validate and register a flow definition.\n\nArgs:\n    manifest: Raw ``flow.yaml`` document as JSON.\n    engine: Flow engine dependency.\n\nReturns:\n    A registration document for the stored flow version.\n\nRaises:\n    HTTPException: 422 when the manifest is invalid.",
+        "operationId": "register_flow_v2_flows_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Manifest",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Register Flow V2 Flows Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Register Flow",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/v2/flows/cron/tick": {
+      "post": {
+        "description": "Start a run for every flow whose cron trigger is due now.\n\nArgs:\n    body: Optional ``{\"at\": \"<ISO-8601>\"}`` override of the tick time\n        (used by tests and backfills).\n    engine: Flow engine dependency.\n\nReturns:\n    The runs started by this tick.\n\nRaises:\n    HTTPException: 422 when the ``at`` override is not a valid timestamp.",
+        "operationId": "cron_tick_v2_flows_cron_tick_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Cron Tick V2 Flows Cron Tick Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cron Tick",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/v2/flows/human/expire": {
+      "post": {
+        "description": "Expire every due human wait (operator/cron surface, E3-S4).\n\nArgs:\n    body: Optional ``{\"at\": \"<ISO-8601>\"}`` override of the expiry moment\n        (used by tests and backfills).\n    service: Human-in-the-loop service dependency.\n\nReturns:\n    The ids of the runs routed through their timeout edges.\n\nRaises:\n    HTTPException: 422 when the ``at`` override is not a valid timestamp.",
+        "operationId": "expire_human_waits_v2_flows_human_expire_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Expire Human Waits V2 Flows Human Expire Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Expire Human Waits",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/v2/flows/runs/{run_id}": {
+      "get": {
+        "description": "Fetch a run with its steps.\n\nArgs:\n    run_id: Id of the run.\n    engine: Flow engine dependency.\n\nReturns:\n    The run document including its ordered steps.\n\nRaises:\n    HTTPException: 404 when the run is unknown.",
+        "operationId": "get_run_v2_flows_runs__run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Run V2 Flows Runs  Run Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/v2/flows/runs/{run_id}/events": {
+      "get": {
+        "description": "Fetch a run's ordered event store.\n\nArgs:\n    run_id: Id of the run.\n    engine: Flow engine dependency.\n\nReturns:\n    The run's events in emission order.\n\nRaises:\n    HTTPException: 404 when the run is unknown.",
+        "operationId": "get_run_events_v2_flows_runs__run_id__events_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Run Events V2 Flows Runs  Run Id  Events Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Run Events",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/v2/flows/runs/{run_id}/human-decision": {
+      "post": {
+        "description": "Record a human decision and resume the paused run (E3-S4).\n\nArgs:\n    run_id: Id of the paused run.\n    body: ``{\"decision\": {...}, \"actor\": \"...\"}``; ``actor`` defaults to\n        ``\"anonymous\"`` and is recorded on the decision event.\n    engine: Flow engine dependency (used to render the run's steps).\n    service: Human-in-the-loop service dependency.\n\nReturns:\n    The resulting run document including its ordered steps.\n\nRaises:\n    HTTPException: 404 for unknown runs, 409 when the run is not waiting,\n        422 for invalid decisions or expired waits (the timeout route is\n        taken before the 422 is returned \u2014 fail closed on the SLA).",
+        "operationId": "post_human_decision_v2_flows_runs__run_id__human_decision_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Human Decision V2 Flows Runs  Run Id  Human Decision Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Human Decision",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/v2/flows/runs/{run_id}/pending-human": {
+      "get": {
+        "description": "Fetch the pending human request of a paused run (E3-S4).\n\nArgs:\n    run_id: Id of the run.\n    service: Human-in-the-loop service dependency.\n\nReturns:\n    The pending request document (node id, prompt, form, expiry).\n\nRaises:\n    HTTPException: 404 when the run is unknown; 409 when the run is not\n        waiting for a human decision.",
+        "operationId": "get_pending_human_v2_flows_runs__run_id__pending_human_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Pending Human V2 Flows Runs  Run Id  Pending Human Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Pending Human",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/v2/flows/validate": {
+      "post": {
+        "description": "Validate a flow definition without registering it.\n\nArgs:\n    manifest: Raw ``flow.yaml`` document as JSON.\n\nReturns:\n    The validation outcome with every error found.",
+        "operationId": "validate_flow_v2_flows_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Manifest",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Validate Flow V2 Flows Validate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Validate Flow",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/v2/flows/{namespace}/{name}": {
+      "get": {
+        "description": "List the registered versions of one flow.\n\nArgs:\n    namespace: Flow id namespace segment.\n    name: Flow id name segment.\n    engine: Flow engine dependency.\n\nReturns:\n    The flow's registered versions, oldest first.\n\nRaises:\n    HTTPException: 404 when the flow has no registered versions.",
+        "operationId": "get_flow_versions_v2_flows__namespace___name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Flow Versions V2 Flows  Namespace   Name  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Flow Versions",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/v2/flows/{namespace}/{name}/runs": {
+      "post": {
+        "description": "Start (and synchronously execute) a run of a registered flow.\n\nArgs:\n    namespace: Flow id namespace segment.\n    name: Flow id name segment.\n    body: ``{\"input\": {...}, \"versionRange\": \"...\", \"tenantId\": \"...\"}``.\n    engine: Flow engine dependency.\n\nReturns:\n    The terminal run document including steps.\n\nRaises:\n    HTTPException: 404 for unknown flows, 422 for invalid input.",
+        "operationId": "start_run_v2_flows__namespace___name__runs_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Start Run V2 Flows  Namespace   Name  Runs Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Start Run",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/v2/flows/{namespace}/{name}/trigger": {
+      "post": {
+        "description": "Start a run through a declared trigger (message/webhook/event).\n\nThe trigger type must be declared by the flow's manifest (fail closed);\n``event`` triggers must also match a subscribed event name.\n\nArgs:\n    namespace: Flow id namespace segment.\n    name: Flow id name segment.\n    body: ``{\"type\": \"message|webhook|event\", \"event\": \"...\",\n        \"input\": {...}, \"payload\": {...}}``.\n    engine: Flow engine dependency.\n\nReturns:\n    The terminal run document.\n\nRaises:\n    HTTPException: 404 for unknown flows, 422 for undeclared triggers or\n        invalid input.",
+        "operationId": "trigger_run_v2_flows__namespace___name__trigger_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "namespace",
+            "required": true,
+            "schema": {
+              "title": "Namespace",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Trigger Run V2 Flows  Namespace   Name  Trigger Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Trigger Run",
+        "tags": [
+          "flows"
+        ]
+      }
+    },
+    "/v2/plugins/active": {
+      "get": {
+        "description": "List currently active plugins.\n\nArgs:\n    registry: Active plugin registry dependency.\n\nReturns:\n    A snapshot of active plugins as a JSON-serializable dict.",
+        "operationId": "list_active_plugins_v2_plugins_active_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Active Plugins V2 Plugins Active Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Active Plugins",
+        "tags": [
+          "plugins"
+        ]
+      }
+    },
+    "/v2/route": {
+      "post": {
+        "description": "Classify a task and return its routed decision.\n\nArgs:\n    body: A ``RouteRequest`` document (reference \u00a79.2). ``context`` is an\n        additive, out-of-contract field carrying caller-supplied signals\n        (e.g. an upstream ``intent`` hint) forwarded to the Router.\n    service: Routing service dependency.\n\nReturns:\n    A ``RouteDecision`` document as JSON.",
+        "operationId": "route_request_v2_route_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Route Request V2 Route Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Route Request",
+        "tags": [
+          "routing"
+        ]
+      }
+    },
+    "/v2/select": {
+      "post": {
+        "description": "Select an agent/model/strategy for a routed task.\n\nLooks up whatever :class:`~backend.routing.contract.ScoreSnapshot` is\ncurrently promoted for the platform default routing policy (E5-S4) and\nforwards it to the Selector's ``score-weighted`` stage \u2014 a snapshot\npublished and promoted via ``POST /v2/evals/{namespace}/{name}/publish``\nchanges this decision on the next call, with no other client-visible\nchange (the closed feedback loop, reference \u00a79.5).\n\nArgs:\n    body: A ``SelectRequest`` document (reference \u00a79.2).\n    service: Routing service dependency.\n    registry: Agent Registry dependency, synced with enabled plugins\n        before matching (same convention as ``GET /v2/agents/catalog``).\n    feedback: Routing Feedback Service dependency, used to fetch the\n        active score snapshot (if any) for the default routing policy.\n\nReturns:\n    A ``SelectDecision`` document as JSON.\n\nRaises:\n    HTTPException: 422 if no registered agent satisfies the request's\n        ``required_capabilities`` under the active selector policy.",
+        "operationId": "select_request_v2_select_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Select Request V2 Select Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Select Request",
+        "tags": [
+          "routing"
+        ]
+      }
+    },
+    "/v2/sessions": {
+      "get": {
+        "description": "List all known sessions.\n\nArgs:\n    pagination: Shared limit/offset pagination window.\n    orchestrator: Orchestrator service dependency.\n\nReturns:\n    A paginated collection of sessions.",
+        "operationId": "list_sessions_v2_v2_sessions_get",
+        "parameters": [
+          {
+            "description": "Max items to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "Max items to return.",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of items to skip.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Number of items to skip.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionListV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Sessions V2",
+        "tags": [
+          "sessions"
+        ]
+      },
+      "post": {
+        "description": "Create a new session and generate its initial plan.\n\nArgs:\n    request: The session creation request (goal).\n    orchestrator: Orchestrator service dependency.\n\nReturns:\n    The newly created session.",
+        "operationId": "create_session_v2_v2_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionCreateRequestV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Session V2",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/v2/sessions/{session_id}": {
+      "get": {
+        "description": "Fetch a single session by id.\n\nArgs:\n    session_id: Identifier of the session.\n    orchestrator: Orchestrator service dependency.\n\nReturns:\n    The requested session.\n\nRaises:\n    HTTPException: 404 if ``session_id`` does not exist.",
+        "operationId": "get_session_v2_v2_sessions__session_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Session V2",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/v2/sessions/{session_id}/execution-plan": {
+      "get": {
+        "description": "Derive an execution plan from a session's accumulated agent artifacts.\n\nArgs:\n    session_id: Identifier of the session.\n    orchestrator: Orchestrator service dependency.\n\nReturns:\n    The derived execution plan.\n\nRaises:\n    HTTPException: 404 if ``session_id`` does not exist.",
+        "operationId": "get_execution_plan_v2_v2_sessions__session_id__execution_plan_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutionPlanV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Execution Plan V2",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/v2/sessions/{session_id}/execution-plan/execute": {
+      "post": {
+        "description": "Execute a session's derived execution plan and record the run.\n\nArgs:\n    session_id: Identifier of the session.\n    orchestrator: Orchestrator service dependency.\n\nReturns:\n    The completed run.\n\nRaises:\n    HTTPException: 404 if ``session_id`` does not exist; 400 if the\n        session has no executable tasks.",
+        "operationId": "execute_execution_plan_v2_v2_sessions__session_id__execution_plan_execute_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecutedRunV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute Execution Plan V2",
+        "tags": [
+          "planning"
+        ]
+      }
+    },
+    "/v2/sessions/{session_id}/runs": {
+      "get": {
+        "description": "List all historical runs for a session.\n\nArgs:\n    session_id: Identifier of the session.\n    pagination: Shared limit/offset pagination window.\n    orchestrator: Orchestrator service dependency.\n\nReturns:\n    A paginated collection of runs.\n\nRaises:\n    HTTPException: 404 if ``session_id`` does not exist.",
+        "operationId": "list_session_runs_v2_v2_sessions__session_id__runs_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max items to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "Max items to return.",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of items to skip.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Number of items to skip.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunListV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Session Runs V2",
+        "tags": [
+          "runs"
+        ]
+      }
+    },
+    "/v2/skills": {
+      "get": {
+        "description": "List the full skill catalog.\n\nArgs:\n    registry: Skill registry dependency.\n\nReturns:\n    The catalog document as a JSON-serializable dict.",
+        "operationId": "list_skill_catalog_v2_skills_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Skill Catalog V2 Skills Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Skill Catalog",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/v2/skills/search": {
+      "get": {
+        "description": "Search the skill catalog by trigger.\n\nArgs:\n    trigger: Trigger identifier to search for.\n    registry: Skill registry dependency.\n\nReturns:\n    The catalog document restricted to skills declaring ``trigger``.",
+        "operationId": "search_skills_v2_skills_search_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "trigger",
+            "required": true,
+            "schema": {
+              "title": "Trigger",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Search Skills V2 Skills Search Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search Skills",
+        "tags": [
+          "skills"
+        ]
+      }
+    },
+    "/v2/skills/{skill_id}": {
+      "get": {
+        "description": "Resolve a single skill by id and version range.\n\nArgs:\n    skill_id: Fully qualified skill id (``namespace/name``).\n    version: SemVer range expression, or ``\"*\"`` for any version.\n    registry: Skill registry dependency.\n\nReturns:\n    The resolved skill's catalog item.\n\nRaises:\n    HTTPException: 404 if no registered version satisfies ``version``.",
+        "operationId": "get_skill_v2_skills__skill_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "skill_id",
+            "required": true,
+            "schema": {
+              "title": "Skill Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "default": "*",
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Skill V2 Skills  Skill Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Skill",
+        "tags": [
+          "skills"
+        ]
+      }
+    }
+  }
+}
