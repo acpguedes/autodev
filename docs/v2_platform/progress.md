@@ -7,15 +7,21 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-08 (**E10 — UI/UX & Design System epic complete (4/4)** on
-`epic/e10-ui-ux-design-system` — Design System, key screens, visual flow editor, pluggable
-UI panels; also planning-only addition of E15–E17 frontend redesign epics before E11 kickoff;
-**E15-S1 — Design tokens v2 done** and **E15-S2 — Execution Control Center shell done** on
-`epic/e15-design-language-shell` — additive `--ds-*` warm-paper/charcoal token layer,
-redesign typefaces, `--ds-token-version` 2.0.0; three-region app shell (250px rail /
-64px contextual header / dismissible 400px execution panel) wrapping every
-`frontend/app/` route, with persisted panel/nav state, Playwright e2e navigation
-suite (`frontend/e2e/`), and axe-covered shell Storybook stories)
+**Last updated:** 2026-07-08 (**E15 — Frontend Redesign: Design Language & App Shell
+epic complete (4/4)** on `epic/e15-design-language-shell`, merged to `main`. **E15-S1**:
+additive `--ds-*` warm-paper/charcoal token layer, redesign typefaces,
+`--ds-token-version` 2.0.0. **E15-S2**: three-region app shell (250px rail / 64px
+contextual header / dismissible 400px execution panel) wrapping every `frontend/app/`
+route, with persisted panel/nav state, Playwright e2e navigation suite
+(`frontend/e2e/`), and axe-covered shell Storybook stories. **E15-S3**: purged legacy
+`styles/globals.css` classes from the 6 remaining pages in favor of the token-driven
+`components/ui` kit, plus a router-mock and WCAG contrast fix in the shell Storybook
+stories. **E15-S4**: dependency-free i18n foundation (`frontend/lib/i18n/`) with
+English default + pt-BR, externalized copy in `app/page.tsx` and
+`ExecutionConsolePanel.tsx`, a `SidebarRail` locale switcher, and an
+`eslint-plugin-i18next` lint gate. Gates: lint 0 errors, `tsc --noEmit` clean, 22/22
+test files (89/89 tests), 12/12 e2e tests. E10 — UI/UX & Design System epic (4/4) on
+`epic/e10-ui-ux-design-system` remains complete from the prior entry.)
 
 ## How to update this file
 
@@ -56,8 +62,9 @@ points only — they do not satisfy the v2 contracts. E3's Alpha slice (S1-S5) i
 complete and verified (flow suite 38/38 green); its only open story, **E3-S6**
 (visual flow editor), was Beta-deferred behind **E10** (Design System, now
 **Done** — E3-S6 unblocked). Remaining Alpha anchor work: **E8-S2** and **E12-S1** (E9 is now
-complete; E9-S3's event catalog unblocks E8-S2). The frontend redesign epics **E15** → **E16** → **E17** (Execution Control Center prototype)
-are planned to run before the E11 kickoff. **Next action: E8-S2 (Event
+complete; E9-S3's event catalog unblocks E8-S2). The frontend redesign epics **E15** (done) → **E16** → **E17** (Execution Control Center prototype)
+are planned to run before the E11 kickoff; **E15** is now complete and **E16** is next
+in that sequence. **Next action: E8-S2 (Event
 Store) and E12-S1; follow `agent_guide.md` §1-4 quality rules (mandatory from
 E3 onward).**
 
@@ -80,11 +87,11 @@ E3 onward).**
 | E12 | Quality & Evals | Alpha/Beta | Not started | 0/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
-| E15 | Frontend Redesign: Design Language & App Shell | Beta | In progress · E15-S1, E15-S2 done | 2/4 | E10 | [phases/e15_design_language_shell.md](phases/e15_design_language_shell.md) |
+| E15 | Frontend Redesign: Design Language & App Shell | Beta | Done | 4/4 | E10 | [phases/e15_design_language_shell.md](phases/e15_design_language_shell.md) |
 | E16 | Frontend Redesign: Control-Plane API Enablement | Beta | Not started | 0/4 | E9, E3, E8-S1 | [phases/e16_redesign_api_enablement.md](phases/e16_redesign_api_enablement.md) |
 | E17 | Frontend Redesign: Control Center Screens | Beta | Not started | 0/6 | E15, E16 | [phases/e17_control_center_screens.md](phases/e17_control_center_screens.md) |
 
-Total: **37/85 stories complete** across 18 epics.
+Total: **39/85 stories complete** across 18 epics.
 
 \* **E8-S1 is now complete (2026-07-06)**: on top of the scoped tenancy/
 reversible-migration slice landed as an E7 prerequisite (ADR-010:
@@ -164,6 +171,28 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-07-08** — **E15 — Frontend Redesign: Design Language & App Shell epic
+  complete (4/4)** on `epic/e15-design-language-shell`, merged into `main` via PR.
+  **E15-S3** (legacy CSS migration): purged legacy `styles/globals.css` classes from
+  the dashboard, config, plans, patches, agents, and skills pages in favor of the
+  token-driven `components/ui` kit; no remaining references to removed legacy
+  classes under `frontend/app/` or `frontend/components/`; fixed two pre-existing
+  `AppShell.stories.tsx` test failures (App Router mock for `useRouter`, and an
+  `fg-3` -> `fg-2` WCAG 2.2 AA contrast fix) discovered while re-running the suite
+  after the merge. **E15-S4** (i18n foundation): added a dependency-free i18n layer
+  (`frontend/lib/i18n/`) — nested-key JSON dictionaries, dot-path lookup,
+  `{{placeholder}}` interpolation, and a compile-time completeness check (a
+  mismatched/missing `pt-BR.json` key fails the TypeScript build); externalized all
+  hardcoded copy in `app/page.tsx` and `ExecutionConsolePanel.tsx`
+  (`ChatLayout.tsx` was already retired by E15-S2/S3); added a `LocaleSwitcher` in
+  `SidebarRail`; installed `eslint-plugin-i18next` with `no-literal-string` as a
+  global warning escalated to an error for the two migrated files; documented the
+  approach in `frontend/docs/i18n.md`. Gates for the epic as a whole: `npm run
+  lint` (0 errors, 178 pre-existing warnings outside this epic's scope), `npm run
+  typecheck` clean, `npm run test` (22/22 files, 89/89 tests), `npm run e2e`
+  (12/12 Playwright tests). This satisfies RFC-006's language decision (English
+  default, pt-BR complete) and clears the last E15 dependency for **E16**/**E17**.
 
 - **2026-07-08** — Added planning-only epics **E15** (Design Language & App Shell),
   **E16** (Control-Plane API Enablement), **E17** (Control Center Screens) to readapt

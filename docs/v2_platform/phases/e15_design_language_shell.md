@@ -1,7 +1,7 @@
 # E15 — Frontend Redesign: Design Language & App Shell
 
 **Wave:** Beta
-**Status:** In progress (2/4 complete)
+**Status:** Done (2026-07-08, 4/4 complete)
 **Depends on:** E10
 **Enables:** E16 (partially — E16's endpoints back the shell's live status
 surfaces, but E16 does not require E15 to land first), E17, E14-S5 (the
@@ -98,6 +98,17 @@ Subtasks:
 
 ### E15-S3 — Legacy CSS migration
 
+**Status:** Done (2026-07-08). Purged legacy `styles/globals.css` classes from
+all 6 identified pages (dashboard, config, plans, patches, agents, skills) in
+favor of the token-driven `components/ui` kit; confirmed zero remaining
+references to the removed legacy class names under `frontend/app/` or
+`frontend/components/`. While re-running the full verification suite after
+merging this story into the epic branch, two pre-existing failures in
+`AppShell.stories.tsx` were found and fixed: a missing Next.js App Router mock
+for `ShellProvider`'s `useRouter()` call (added `parameters.nextjs.appDirectory:
+true`), and a WCAG 2.2 AA contrast violation (`text-ds-fg-3` on
+`bg-ds-bg-3` in the shell's section labels, corrected to `text-ds-fg-2`).
+
 Subtasks:
 - `E15-S3-T1`: inventory every legacy `styles/globals.css` class still
   consumed by `app/page.tsx` (dashboard), `app/config/page.tsx`,
@@ -121,6 +132,22 @@ Subtasks:
 | Dependencies | E15-S1, E15-S2 |
 
 ### E15-S4 — i18n foundation (en default, pt-BR)
+
+**Status:** Done (2026-07-08). Dependency-free i18n layer (`frontend/lib/i18n/`)
+with nested-key JSON dictionaries for `en` (default) and `pt-BR`, dot-path key
+lookup, `{{placeholder}}` interpolation, and a compile-time completeness check
+(`pt-BR.json` assigned to the `en`-derived `Dictionary` type, so a missing or
+mismatched key fails the TypeScript build rather than surfacing a raw
+fallback key). `I18nProvider` wired into `app/layout.tsx` inside
+`ThemeProvider`, keeping `document.documentElement.lang` in sync with the
+active locale for WCAG 2.2 SC 3.1.1. All hardcoded copy in `app/page.tsx` and
+`components/ExecutionConsolePanel.tsx` externalized (`ChatLayout.tsx` was
+already retired by E15-S2/S3, so it required no changes). A `LocaleSwitcher`
+component (mirrors `ThemeToggle`'s mount-guard pattern) added to
+`SidebarRail`. `eslint-plugin-i18next`'s `no-literal-string` rule installed as
+a global warning, escalated to an error for the two migrated files via
+`.eslintrc.json` overrides (exempting `*.stories.tsx`, `__tests__/**`,
+`e2e/**`). Approach documented in `frontend/docs/i18n.md`.
 
 Subtasks:
 - `E15-S4-T1`: introduce locale infrastructure (routing/provider strategy
@@ -177,15 +204,18 @@ Subtasks:
 
 ## Epic exit checklist
 
-- [ ] All 4 stories meet the global DoD (`../templates/dod_checklist.md`)
+- [x] All 4 stories meet the global DoD (`../templates/dod_checklist.md`)
       plus their story-specific DoD above.
-- [ ] No application code under `frontend/app/` or `frontend/components/`
+- [x] No application code under `frontend/app/` or `frontend/components/`
       references removed legacy `styles/globals.css` classes.
-- [ ] i18n coverage check passes (no hardcoded, non-externalized UI strings
+- [x] i18n coverage check passes (no hardcoded, non-externalized UI strings
       in the migrated surfaces) and RFC-006's language decision is fully
       implemented (English default, pt-BR complete).
-- [ ] a11y audit passes with no blocking WCAG 2.2 AA violations across the
+- [x] a11y audit passes with no blocking WCAG 2.2 AA violations across the
       new shell and all migrated pages.
-- [ ] `docs/v2_platform/progress.md` updated.
-- [ ] Beta wave §18.9 entry updated to reflect the E15 redesign scope
-      (Design Language & App Shell) alongside the existing E10 entry.
+- [x] `docs/v2_platform/progress.md` updated.
+- [x] Beta wave §18.9 entry updated to reflect the E15 redesign scope
+      (Design Language & App Shell) alongside the existing E10 entry. (Already
+      present in `docs/architecture/v2_platform_reference.md` §18.9's "Entra"
+      and "Critérios de saída" rows for v2.0-beta from prior planning-only
+      commits; no further edit needed.)
