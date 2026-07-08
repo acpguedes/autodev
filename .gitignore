@@ -50,6 +50,8 @@ frontend/out/
 frontend/package-lock.json
 frontend/tsconfig.tsbuildinfo
 *.tsbuildinfo
+frontend/storybook-static/
+frontend/*storybook.log
 
 # --- AI tooling (Claude Code, Codex CLI, etc.) ---
 .claude/
