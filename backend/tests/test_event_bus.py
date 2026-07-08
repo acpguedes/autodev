@@ -18,6 +18,12 @@ def _envelope(type_: str = "run.step.started", partition: str = "run_1") -> Even
     )
 
 
+def _entry_sort_key(entry_id: str) -> tuple[int, int]:
+    """Parse a fake stream entry id (``"N-0"``) into a numerically comparable key."""
+    ms, _, seq = entry_id.partition("-")
+    return (int(ms), int(seq or 0))
+
+
 class _FakeRedisStreamClient:
     """In-memory stand-in for a Redis client, used to test :class:`RedisEventBus`."""
 
@@ -36,9 +42,30 @@ class _FakeRedisStreamClient:
         entries.append((entry_id, dict(fields)))
         return entry_id
 
-    def xrange(self, key: str) -> list[tuple[str, dict[str, str]]]:
-        """Return all entries of an in-memory stream, oldest first."""
-        return list(self.streams.get(key, []))
+    def xrange(self, key: str, min: str = "-") -> list[tuple[str, dict[str, str]]]:
+        """Return entries of an in-memory stream, oldest first.
+
+        Args:
+            key: Stream key.
+            min: Redis ``XRANGE`` start bound — ``"-"`` for the beginning of
+                the stream, ``"(<id>"`` for an exclusive start (matching
+                :meth:`RedisEventBus.replay_from`'s cursor resume), or a bare
+                id for an inclusive start.
+
+        Returns:
+            Matching entries, oldest first.
+        """
+        entries = self.streams.get(key, [])
+        if min == "-":
+            return list(entries)
+        exclusive = min.startswith("(")
+        bound = _entry_sort_key(min[1:] if exclusive else min)
+        return [
+            (entry_id, fields)
+            for entry_id, fields in entries
+            if _entry_sort_key(entry_id) > bound
+            or (not exclusive and _entry_sort_key(entry_id) == bound)
+        ]
 
 
 def test_in_memory_bus_dispatches_by_type_and_wildcard() -> None:
@@ -103,3 +130,39 @@ def test_redis_bus_requires_client_or_url() -> None:
     """Constructing without a client or URL fails fast, matching Redis conventions."""
     with pytest.raises(ValueError):
         RedisEventBus()
+
+
+def test_in_memory_replay_from_full_and_resumed() -> None:
+    """``replay_from`` returns cursors, resumes exclusive of the given cursor, and empties past the end."""
+    bus = InMemoryEventBus()
+    first, second, third = _envelope(), _envelope(), _envelope()
+    for envelope in (first, second, third):
+        bus.publish(envelope)
+
+    full = bus.replay_from("run_1", None)
+    assert [cursor for cursor, _ in full] == ["0", "1", "2"]
+    assert [e.eventId for _, e in full] == [first.eventId, second.eventId, third.eventId]
+
+    resumed = bus.replay_from("run_1", full[0][0])
+    assert [e.eventId for _, e in resumed] == [second.eventId, third.eventId]
+
+    assert bus.replay_from("run_1", full[-1][0]) == []
+    assert bus.replay_from("unknown_partition", None) == []
+
+
+def test_redis_bus_replay_from_full_and_resumed() -> None:
+    """The Redis bus's ``replay_from`` resumes past a given entry id via exclusive ``XRANGE``."""
+    client = _FakeRedisStreamClient()
+    bus = RedisEventBus(client=client)
+    first, second, third = _envelope(), _envelope(), _envelope()
+    for envelope in (first, second, third):
+        bus.publish(envelope)
+
+    full = bus.replay_from("run_1", None)
+    cursors = [cursor for cursor, _ in full]
+    assert [e.eventId for _, e in full] == [first.eventId, second.eventId, third.eventId]
+
+    resumed = bus.replay_from("run_1", cursors[0])
+    assert [e.eventId for _, e in resumed] == [second.eventId, third.eventId]
+
+    assert bus.replay_from("run_1", cursors[-1]) == []

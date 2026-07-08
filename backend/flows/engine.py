@@ -38,6 +38,7 @@ from backend.flows.checkpoint import (
     replay_decision_path,
     select_next_node,
 )
+from backend.events.runtime import emit_event
 from backend.flows.expressions import ExpressionError
 from backend.flows.handlers import FlowHandlerRegistry, FlowNodeError, build_default_handlers
 from backend.flows.manifest import validate_run_input
@@ -171,6 +172,13 @@ class FlowEngine(NodeActivationMixin):
                 "trigger": run.trigger,
                 "entryNodeId": entry_id,
             },
+        )
+        emit_event(
+            "flow.run.started",
+            tenant_id=tenant_id,
+            partition_key=run.run_id,
+            data={"flowId": manifest.id, "flowVersion": manifest.version},
+            subject={"runId": run.run_id},
         )
         if execute:
             return self.execute_run(run.run_id)
@@ -431,6 +439,18 @@ class FlowEngine(NodeActivationMixin):
             name="flow.run.completed",
             payload={"flowId": manifest.id, "output": output},
         )
+        metrics = state.get("metrics", {})
+        emit_event(
+            "flow.run.completed",
+            tenant_id=run.tenant_id,
+            partition_key=run.run_id,
+            data={
+                "status": "completed",
+                "costUsd": float(metrics.get("cost_usd", 0.0)),
+                "tokens": int(metrics.get("tokens", 0.0)),
+            },
+            subject={"runId": run.run_id},
+        )
         result = self.runs.get_run(run.run_id)
         if result is None:  # pragma: no cover - the run was just persisted
             raise FlowRunError(f"run {run.run_id!r} vanished after completion")
@@ -463,6 +483,13 @@ class FlowEngine(NodeActivationMixin):
         record = self.runs.get_run(run_id)
         if record is None:  # pragma: no cover - the run was just persisted
             raise FlowRunError(f"run {run_id!r} vanished while failing")
+        emit_event(
+            "flow.run.failed",
+            tenant_id=record.tenant_id,
+            partition_key=run_id,
+            data={"error": detail, "failedStep": str(state.get("cursor") or "")},
+            subject={"runId": run_id},
+        )
         return record
 
 

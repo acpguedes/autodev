@@ -1,9 +1,15 @@
-"""Event Bus with in-memory and Redis Streams backends (E9-S3-T2, §14.5).
+"""Event Bus with in-memory and Redis Streams backends (E9-S2-T1, E9-S3-T2, §14.5).
 
 Delivery is **at-least-once**; consumers must be idempotent by ``eventId``.
 Ordering is guaranteed **per partition key** (one Redis stream / in-memory
 list per partition), not globally. A subscriber that raises does not block
 delivery to the remaining subscribers (resilient delivery, E9-S3 CNF).
+
+:meth:`EventBus.replay_from` (E9-S2-T1) adds cursor-aware replay on top of
+:meth:`EventBus.replay`: it returns each envelope paired with an opaque,
+backend-specific cursor, and accepts an ``after_cursor`` exclusive-start
+position so a consumer (e.g. the ``/v2/runs/{run_id}/events/stream`` SSE
+endpoint) can resume exactly where it left off after a reconnect.
 """
 
 from __future__ import annotations
@@ -49,6 +55,12 @@ class EventBus(Protocol):
 
     def replay(self, partition_key: str) -> list[EventEnvelope]:
         """Return every stored envelope of a partition, in publish order."""
+        ...
+
+    def replay_from(
+        self, partition_key: str, after_cursor: str | None
+    ) -> list[tuple[str, EventEnvelope]]:
+        """Return a partition's envelopes strictly after a cursor, with cursors."""
         ...
 
 
@@ -117,6 +129,27 @@ class InMemoryEventBus:
         """
         return list(self._partitions[partition_key])
 
+    def replay_from(
+        self, partition_key: str, after_cursor: str | None
+    ) -> list[tuple[str, EventEnvelope]]:
+        """Return a partition's envelopes strictly after a cursor.
+
+        The cursor is the envelope's zero-based position within the
+        partition's append-only list, stringified (``"0"``, ``"1"``, ...).
+
+        Args:
+            partition_key: Partition to replay.
+            after_cursor: Exclusive-start cursor; ``None`` replays from the
+                beginning of the partition.
+
+        Returns:
+            Ordered ``(cursor, envelope)`` pairs for events strictly after
+            ``after_cursor``.
+        """
+        envelopes = self._partitions[partition_key]
+        start = int(after_cursor) + 1 if after_cursor is not None else 0
+        return [(str(index), envelopes[index]) for index in range(start, len(envelopes))]
+
 
 class RedisEventBus:
     """Redis Streams-backed bus: durable, replayable, ordered per partition."""
@@ -173,13 +206,53 @@ class RedisEventBus:
             Stored envelopes, in stream order.
         """
         entries = self._client.xrange(_stream_key(partition_key))
-        envelopes: list[EventEnvelope] = []
-        for _entry_id, fields in entries:
-            raw = fields.get(b"envelope") or fields.get("envelope")
-            if isinstance(raw, bytes):
-                raw = raw.decode("utf-8")
-            envelopes.append(EventEnvelope.model_validate(json.loads(raw)))
-        return envelopes
+        return [_decode_entry(fields) for _entry_id, fields in entries]
+
+    def replay_from(
+        self, partition_key: str, after_cursor: str | None
+    ) -> list[tuple[str, EventEnvelope]]:
+        """Return a partition stream's entries strictly after a cursor.
+
+        The cursor is the Redis stream entry id (e.g. ``"1699999999999-0"``).
+        Resuming uses ``XRANGE``'s exclusive-start syntax (``(id``) so the
+        cursor entry itself is never re-delivered.
+
+        Args:
+            partition_key: Partition to replay.
+            after_cursor: Exclusive-start stream entry id; ``None`` replays
+                from the beginning of the stream.
+
+        Returns:
+            Ordered ``(entry_id, envelope)`` pairs for entries strictly after
+            ``after_cursor``.
+        """
+        start = f"({after_cursor}" if after_cursor is not None else "-"
+        entries = self._client.xrange(_stream_key(partition_key), min=start)
+        result: list[tuple[str, EventEnvelope]] = []
+        for entry_id, fields in entries:
+            if isinstance(entry_id, bytes):
+                entry_id = entry_id.decode("utf-8")
+            result.append((entry_id, _decode_entry(fields)))
+        return result
+
+
+def _decode_entry(fields: dict[Any, Any]) -> EventEnvelope:
+    """Decode a Redis stream entry's fields back into an :class:`EventEnvelope`.
+
+    Args:
+        fields: The entry's field map, as returned by ``XADD``/``XRANGE``
+            (keys and values may be ``str`` or ``bytes`` depending on the
+            client's ``decode_responses`` setting).
+
+    Returns:
+        The decoded envelope.
+    """
+    raw = fields.get(b"envelope") or fields.get("envelope")
+    if isinstance(raw, bytes):
+        raw = raw.decode("utf-8")
+    if not isinstance(raw, str):
+        raise ValueError(f"missing or invalid 'envelope' field in stream entry: {fields!r}")
+    return EventEnvelope.model_validate(json.loads(raw))
 
 
 __all__ = ["EventBus", "InMemoryEventBus", "RedisEventBus", "Subscriber", "WILDCARD"]
