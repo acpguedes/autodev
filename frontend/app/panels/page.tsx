@@ -22,10 +22,12 @@ export default function PanelsPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-        <header>
-          <p className="eyebrow">UI Extension Points</p>
-          <h2>Pluggable panels</h2>
-          <p className="subtitle">
+        <header className="flex flex-col gap-2">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">
+            UI Extension Points
+          </p>
+          <h2 className="font-serif text-2xl font-semibold text-ds-fg">Pluggable panels</h2>
+          <p className="text-sm text-ds-fg-3">
             Panels contributed by plugins, mounted into registered slots. Disable a
             panel to remove it from every slot.
           </p>

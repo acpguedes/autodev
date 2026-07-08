@@ -15,18 +15,18 @@ export function SkillsPanel() {
   }, []);
 
   if (error) {
-    return <p className="empty-state">{error}</p>;
+    return <p className="text-sm text-ds-fg-3">{error}</p>;
   }
 
   if (skills.length === 0) {
-    return <p className="empty-state">Loading skills...</p>;
+    return <p className="text-sm text-ds-fg-3">Loading skills...</p>;
   }
 
   return (
-    <ul className="note-list">
+    <ul className="flex flex-col gap-2 text-sm text-ds-fg-2">
       {skills.map((skill) => (
         <li key={skill.name}>
-          <strong>{skill.name}</strong> — {skill.description}
+          <strong className="font-semibold text-ds-fg">{skill.name}</strong> — {skill.description}
         </li>
       ))}
     </ul>

@@ -4,6 +4,9 @@ import { FormEvent, useState } from "react";
 
 import { generatePatch } from "../../lib/api_ext";
 import { useShellHeader } from "@/components/shell/ShellProvider";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 
 export default function PatchesPage() {
   useShellHeader({
@@ -29,45 +32,57 @@ export default function PatchesPage() {
     }
   }
 
+  const fieldLabel = "text-sm font-medium text-ds-fg-2";
+  const textareaClass =
+    "min-h-[110px] w-full resize-y rounded-ds-md border border-ds-line bg-ds-bg-2 px-3 py-2 text-sm text-ds-fg shadow-sm transition-colors placeholder:text-ds-fg-3 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ds-accent";
+
   return (
     <div className="flex flex-col gap-6 p-8">
-      <section className="hero-card">
-        <div>
-          <p className="eyebrow">Patches</p>
-          <h1>Unified-diff generation</h1>
-          <p className="subtitle">
-            Generate an auditable unified diff between two versions of a file.
-          </p>
-        </div>
-      </section>
+      <header className="flex flex-col gap-2">
+        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">Patches</p>
+        <h1 className="font-serif text-2xl font-semibold text-ds-fg">Unified-diff generation</h1>
+        <p className="text-sm text-ds-fg-3">
+          Generate an auditable unified diff between two versions of a file.
+        </p>
+      </header>
 
-      <section className="panel-card">
-        <form className="config-form" onSubmit={handleGenerate}>
-          <div className="config-form__grid">
-            <label className="config-form__full-width">
-              <span>Path</span>
-              <input value={path} onChange={(event) => setPath(event.target.value)} />
+      <Card className="border-ds-line bg-ds-bg-2 shadow-ds-sm">
+        <CardContent className="flex flex-col gap-4 pt-6">
+          <form className="flex flex-col gap-4" onSubmit={handleGenerate}>
+            <label className="flex flex-col gap-1.5">
+              <span className={fieldLabel}>Path</span>
+              <Input value={path} onChange={(event) => setPath(event.target.value)} />
             </label>
-            <label className="config-form__full-width">
-              <span>Original</span>
-              <textarea value={original} onChange={(event) => setOriginal(event.target.value)} />
+            <label className="flex flex-col gap-1.5">
+              <span className={fieldLabel}>Original</span>
+              <textarea
+                className={textareaClass}
+                value={original}
+                onChange={(event) => setOriginal(event.target.value)}
+              />
             </label>
-            <label className="config-form__full-width">
-              <span>Updated</span>
-              <textarea value={updated} onChange={(event) => setUpdated(event.target.value)} />
+            <label className="flex flex-col gap-1.5">
+              <span className={fieldLabel}>Updated</span>
+              <textarea
+                className={textareaClass}
+                value={updated}
+                onChange={(event) => setUpdated(event.target.value)}
+              />
             </label>
-          </div>
-          <div className="config-form__actions">
-            <button type="submit">Generate diff</button>
-          </div>
-        </form>
+            <div className="flex justify-end">
+              <Button type="submit">Generate diff</Button>
+            </div>
+          </form>
 
-        {diff ? (
-          <pre className="code-block">{diff}</pre>
-        ) : (
-          <p className="empty-state">{error ?? "Generate a diff to preview it here."}</p>
-        )}
-      </section>
+          {diff ? (
+            <pre className="overflow-x-auto whitespace-pre-wrap rounded-ds-md border border-ds-line bg-ds-bg-3 p-4 font-mono text-[13px] text-ds-fg-2">
+              {diff}
+            </pre>
+          ) : (
+            <p className="text-sm text-ds-fg-3">{error ?? "Generate a diff to preview it here."}</p>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

@@ -5,6 +5,8 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import ExecutionConsolePanel from "../components/ExecutionConsolePanel";
 import MessageList, { type Message } from "../components/MessageList";
 import { useExecutionPanel, useShell, useShellHeader } from "@/components/shell/ShellProvider";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   type ExecutionPlanResponse,
   type RunResponse,
@@ -18,6 +20,9 @@ import {
   requestPlan,
   sendChatMessage,
 } from "../lib/api";
+
+const textareaClass =
+  "min-h-[110px] w-full resize-y rounded-ds-md border border-ds-line bg-ds-bg-2 px-3 py-2 text-sm text-ds-fg shadow-sm transition-colors placeholder:text-ds-fg-3 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ds-accent";
 
 export default function Page() {
   return <ExecutionControlCenter />;
@@ -179,86 +184,102 @@ function ExecutionControlCenter() {
 
   return (
     <div className="flex flex-col gap-6 p-8">
-      <section className="chat-surface">
-        <header className="chat-surface__header">
-          <div>
-            <p className="eyebrow">Sessão ativa</p>
-            <h2>Chat focado na execução</h2>
-            <p className="subtitle">
+      <section className="flex flex-col gap-5 rounded-lg border border-ds-line bg-ds-bg-2 p-6 shadow-ds-sm">
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">
+              Sessão ativa
+            </p>
+            <h2 className="font-serif text-xl font-semibold text-ds-fg">
+              Chat focado na execução
+            </h2>
+            <p className="text-sm text-ds-fg-3">
               Uma interface mais limpa para conversar com os agentes sem o visual de dashboard.
             </p>
           </div>
 
-          <div className="chat-surface__actions">
-            <button
-              type="button"
-              onClick={handleExecutePlan}
-              disabled={!executionPlan || executionPlan.tasks.length === 0 || isExecutingPlan}
-            >
-              {isExecutingPlan ? "Executando..." : "Executar plano"}
-            </button>
-          </div>
+          <Button
+            type="button"
+            onClick={handleExecutePlan}
+            disabled={!executionPlan || executionPlan.tasks.length === 0 || isExecutingPlan}
+          >
+            {isExecutingPlan ? "Executando..." : "Executar plano"}
+          </Button>
         </header>
 
-        <div className="chat-overview">
-            <div className="chat-overview__meta">
-              <span className="status-pill">{executionStatus}</span>
-              <span className="tag">{currentWorkspaceLabel || "Workspace não configurado"}</span>
-              <span className="tag">Sessões: {sessions.length}</span>
-            </div>
-            <p className="run-card__meta">
-              Sessão: {sessionId || "não iniciada"} · Root: {currentProjectRoot || "não configurado"}
-            </p>
-            {executionPlan ? (
-              <div className="plan-preview">
-                <div className="plan-preview__header">
-                  <strong>Próximas etapas</strong>
-                  <span className="run-card__meta">{executionPlan.tasks.length} tarefas</span>
-                </div>
-                {nextTasks.length === 0 ? (
-                  <p className="empty-state">
-                    Envie uma instrução no chat para gerar um backlog executável.
-                  </p>
-                ) : (
-                  <ol className="plan-preview__list">
-                    {nextTasks.map((task) => (
-                      <li key={task.task_id}>
-                        <strong>{task.title}</strong>
-                        <span>{task.description}</span>
-                      </li>
-                    ))}
-                  </ol>
-                )}
+        <div className="flex flex-col gap-3 rounded-ds-md border border-ds-line bg-ds-bg-3 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">{executionStatus}</Badge>
+            <Badge variant="outline" className="text-ds-fg-2">
+              {currentWorkspaceLabel || "Workspace não configurado"}
+            </Badge>
+            <Badge variant="outline" className="text-ds-fg-2">
+              Sessões: {sessions.length}
+            </Badge>
+          </div>
+          <p className="text-xs text-ds-fg-3">
+            Sessão: {sessionId || "não iniciada"} · Root: {currentProjectRoot || "não configurado"}
+          </p>
+          {executionPlan ? (
+            <div className="flex flex-col gap-2 rounded-ds-md border border-ds-line bg-ds-bg-2 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <strong className="text-sm font-semibold text-ds-fg">Próximas etapas</strong>
+                <span className="text-xs text-ds-fg-3">{executionPlan.tasks.length} tarefas</span>
               </div>
-            ) : null}
-          </div>
-
-          {error ? <p className="error-banner">{error}</p> : null}
-
-          <MessageList messages={messages} />
-
-          <form className="chat-composer chat-composer--clean" onSubmit={handleSubmit}>
-            <textarea
-              value={pendingMessage}
-              onChange={(event) => setPendingMessage(event.target.value)}
-              placeholder="Descreva a mudança que você quer fazer..."
-            />
-            <button type="submit" disabled={isLoading || !pendingMessage.trim()}>
-              {isLoading ? "Enviando..." : "Enviar"}
-            </button>
-          </form>
-
-          <div className="chat-plan-notes">
-            <strong>Plano atual</strong>
-            <div className="tag-list">
-              {plan.map((step, index) => (
-                <span className="tag" key={`${index}-${step}`}>
-                  {step}
-                </span>
-              ))}
+              {nextTasks.length === 0 ? (
+                <p className="text-sm text-ds-fg-3">
+                  Envie uma instrução no chat para gerar um backlog executável.
+                </p>
+              ) : (
+                <ol className="list-decimal flex-col gap-2 pl-5 text-sm text-ds-fg-2 marker:text-ds-fg-3">
+                  {nextTasks.map((task) => (
+                    <li key={task.task_id} className="mb-2 last:mb-0">
+                      <strong className="block text-ds-fg">{task.title}</strong>
+                      <span>{task.description}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
             </div>
+          ) : null}
+        </div>
+
+        {error ? (
+          <p
+            role="alert"
+            className="rounded-ds-md border border-ds-danger/40 bg-ds-danger/10 px-4 py-3 text-sm text-ds-danger"
+          >
+            {error}
+          </p>
+        ) : null}
+
+        <MessageList messages={messages} />
+
+        <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
+          <textarea
+            className={textareaClass}
+            value={pendingMessage}
+            onChange={(event) => setPendingMessage(event.target.value)}
+            placeholder="Descreva a mudança que você quer fazer..."
+          />
+          <div className="flex justify-end">
+            <Button type="submit" disabled={isLoading || !pendingMessage.trim()}>
+              {isLoading ? "Enviando..." : "Enviar"}
+            </Button>
           </div>
-        </section>
+        </form>
+
+        <div className="flex flex-col gap-2">
+          <strong className="text-sm font-semibold text-ds-fg">Plano atual</strong>
+          <div className="flex flex-wrap gap-2">
+            {plan.map((step, index) => (
+              <Badge variant="outline" className="text-ds-fg-2" key={`${index}-${step}`}>
+                {step}
+              </Badge>
+            ))}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
