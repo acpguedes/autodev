@@ -1,7 +1,7 @@
 # E10 — UI/UX & Design System
 
 **Wave:** Beta
-**Status:** Not started · **Stories:** 0/4 complete
+**Status:** Done (2026-07-08) · **Stories:** 4/4 complete
 **Depends on:** E3, E9, E1
 **Enables:** consumes API/streaming; hosts the flow editor and pluggable UI panels
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.7.4 (E10), §18.8, §18.9
