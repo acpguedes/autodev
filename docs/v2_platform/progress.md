@@ -7,13 +7,9 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-06 (**E7 — Context & RAG epic complete (4/4)** on
-`epic/e7-context-rag` — tree-sitter indexing, pgvector embeddings + HNSW ANN,
-hybrid lexical/vector retrieval behind `/v2/context/retrieve`, and pluggable
-Context Providers wired into the Agent Runtime; a scoped E8-S1 tenancy slice
-(tenant_id + RLS on the new/core tables, reversible migrations) landed as an
-E7 prerequisite per ADR-010 — **E8 itself remains open**, see its row below;
-full backend suite green, ready for the epic→`main` PR)
+**Last updated:** 2026-07-08 (**E10 — UI/UX & Design System epic complete (4/4)** on
+`epic/e10-ui-ux-design-system` — Design System, key screens, visual flow editor, pluggable
+UI panels; also planning-only addition of E15–E17 frontend redesign epics before E11 kickoff)
 
 ## How to update this file
 
@@ -54,7 +50,8 @@ points only — they do not satisfy the v2 contracts. E3's Alpha slice (S1-S5) i
 complete and verified (flow suite 38/38 green); its only open story, **E3-S6**
 (visual flow editor), was Beta-deferred behind **E10** (Design System, now
 **Done** — E3-S6 unblocked). Remaining Alpha anchor work: **E8-S2** and **E12-S1** (E9 is now
-complete; E9-S3's event catalog unblocks E8-S2). **Next action: E8-S2 (Event
+complete; E9-S3's event catalog unblocks E8-S2). The frontend redesign epics **E15** → **E16** → **E17** (Execution Control Center prototype)
+are planned to run before the E11 kickoff. **Next action: E8-S2 (Event
 Store) and E12-S1; follow `agent_guide.md` §1-4 quality rules (mandatory from
 E3 onward).**
 
@@ -77,8 +74,11 @@ E3 onward).**
 | E12 | Quality & Evals | Alpha/Beta | Not started | 0/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
+| E15 | Frontend Redesign: Design Language & App Shell | Beta | Not started | 0/4 | E10 | [phases/e15_design_language_shell.md](phases/e15_design_language_shell.md) |
+| E16 | Frontend Redesign: Control-Plane API Enablement | Beta | Not started | 0/4 | E9, E3, E8-S1 | [phases/e16_redesign_api_enablement.md](phases/e16_redesign_api_enablement.md) |
+| E17 | Frontend Redesign: Control Center Screens | Beta | Not started | 0/6 | E15, E16 | [phases/e17_control_center_screens.md](phases/e17_control_center_screens.md) |
 
-Total: **36/71 stories complete** across 15 epics.
+Total: **36/85 stories complete** across 18 epics.
 
 \* **E8-S1 is now complete (2026-07-06)**: on top of the scoped tenancy/
 reversible-migration slice landed as an E7 prerequisite (ADR-010:
@@ -158,6 +158,12 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-07-08** — Added planning-only epics **E15** (Design Language & App Shell),
+  **E16** (Control-Plane API Enablement), **E17** (Control Center Screens) to readapt
+  the frontend to the Execution Control Center prototype (`layout_prototype_brainstorm/`);
+  scheduled before E11 kickoff. Doc-only change; RFC-006 drafted; per-epic ADRs required
+  before implementation.
 
 - **2026-07-08** — **E10 — UI/UX & Design System epic complete (4/4)** on
   `epic/e10-ui-ux-design-system`. **E10-S1**: design tokens + shadcn/ui
