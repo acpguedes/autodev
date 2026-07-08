@@ -25,7 +25,8 @@
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "swr": "2.2.0",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@storybook/addon-a11y": "^10.4.6",

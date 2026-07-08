@@ -15,6 +15,7 @@ type ChatLayoutProps = {
     | "config"
     | "agents"
     | "plans"
+    | "flows"
     | "skills"
     | "patches"
     | "panels";
@@ -27,6 +28,7 @@ const NAV_ITEMS: Array<{ view: ChatLayoutProps["currentView"]; href: Route; labe
   { view: "config", href: "/config", label: "Config" },
   { view: "agents", href: "/agents", label: "Agents" },
   { view: "plans", href: "/plans", label: "Plans" },
+  { view: "flows", href: "/flows", label: "Flows" },
   { view: "skills", href: "/skills", label: "Skills" },
   { view: "patches", href: "/patches", label: "Patches" },
   { view: "panels", href: "/panels" as Route, label: "Panels" },
