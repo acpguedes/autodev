@@ -1,0 +1,1384 @@
+<!DOCTYPE html>
+<!-- saved from url=(0330)https://5335720a-2bb9-4669-9d22-e6b66609f6c6.claudeusercontent.com/v1/design/projects/5335720a-2bb9-4669-9d22-e6b66609f6c6/serve/AutoDev%20Redesign-print-1l2q1n6.dc.html?t=414c501f495754bdfef63cd53b4b0f17cb6d34e7fc9dcb1a55a7be9520570e30.72a1d68b-1adf-409c-8906-34d1df70a514.a1b7e60f-098f-483c-a918-e5501462a9fb.1783527158&direct=1 -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><style>@media print {
+  figure, table { break-inside: avoid; }
+  *, *::before, *::after {
+    print-color-adjust: exact; -webkit-print-color-adjust: exact;
+    backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+    animation-delay: -99s !important; animation-duration: .001s !important;
+    animation-iteration-count: 1 !important; animation-fill-mode: both !important;
+    animation-play-state: running !important; transition-duration: 0s !important;
+  }
+}</style><style>
+    .sc-placeholder{background:color-mix(in srgb,currentColor 8%,transparent);
+      border:1px solid color-mix(in srgb,currentColor 50%,transparent);
+      border-radius:2px;box-sizing:border-box;overflow:hidden}
+    @keyframes sc-shine{0%{background-position:100% 50%}100%{background-position:0% 50%}}
+    html.sc-dc-streaming .sc-placeholder,
+    html.sc-dc-streaming .sc-interp.sc-missing{position:relative;
+      background:color-mix(in srgb,currentColor 5%,transparent);
+      border-color:transparent}
+    html.sc-dc-streaming .sc-placeholder::before,
+    html.sc-dc-streaming .sc-interp.sc-missing::before{content:'';
+      position:absolute;inset:0;pointer-events:none;
+      background:linear-gradient(90deg,rgba(217,119,87,0) 25%,rgba(247,225,211,.95) 37%,rgba(217,119,87,0) 63%);
+      background-size:400% 100%;animation:sc-shine 1.4s ease infinite}
+    html.sc-dc-streaming .sc-placeholder:nth-child(n+9 of .sc-placeholder)::before,
+    html.sc-dc-streaming .sc-interp.sc-missing:nth-child(n+9 of .sc-interp.sc-missing)::before{animation:none;
+      background:color-mix(in srgb,currentColor 8%,transparent)}
+    .sc-placeholder-error{padding:4px 8px;font:11px/1.4 ui-monospace,monospace;
+      color:color-mix(in srgb,currentColor 70%,transparent);word-break:break-word}
+    .sc-interp.sc-missing{display:inline-block;width:2em;height:1em;overflow:hidden;
+      vertical-align:text-bottom;background:rgba(255,255,255,.3);border:1px solid rgba(0,0,0,.5);
+      border-radius:2px;box-sizing:border-box;color:transparent;
+      user-select:none}
+    .sc-interp.sc-unresolved{font-family:ui-monospace,monospace;font-size:.85em;
+      color:color-mix(in srgb,currentColor 50%,transparent);
+      background:color-mix(in srgb,currentColor 10%,transparent);border-radius:3px;
+      padding:0 3px}
+    .sc-host.sc-has-error{position:relative}
+    .sc-logic-error{position:absolute;top:8px;left:8px;z-index:2147483647;max-width:60ch;
+      padding:6px 10px;background:#b00020;color:#fff;font:12px/1.4 ui-monospace,monospace;
+      border-radius:4px;white-space:pre-wrap;pointer-events:none}
+    /* Mirrors PRINT_BASELINE_CSS in apps/web deck-stage-export.ts — keep both
+       in sync until dc-runtime regains a build step. */
+    @media print {
+      @page { margin: 0.5cm; }
+      figure, table { break-inside: avoid; }
+      #dc-root, #dc-root > .sc-host { height: auto; }
+      *, *::before, *::after {
+        print-color-adjust: exact; -webkit-print-color-adjust: exact;
+        backdrop-filter: none !important; -webkit-backdrop-filter: none !important;
+        animation-delay: -99s !important; animation-duration: .001s !important;
+        animation-iteration-count: 1 !important; animation-fill-mode: both !important;
+        animation-play-state: running !important; transition-duration: 0s !important;
+      }
+    }
+  </style>
+<style data-omelette-injected="">html,body{background:transparent}</style><script data-omelette-injected="">(()=>{{const H=new URLSearchParams(location.search).get("theme");if(H==="light"||H==="dark"){document.documentElement.dataset.theme=H}}{const H=()=>{try{if(document.querySelector('meta[name="color-scheme"]'))return;const A=getComputedStyle(document.documentElement).getPropertyValue("color-scheme").trim();if(A&&A!=="normal")return;const M=(L)=>{if(!L)return null;const F=getComputedStyle(L).backgroundColor.match(/^rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+%?))?\s*\)$/);if(!F)return null;const Y=F[4]==null?1:parseFloat(F[4])/(F[4].endsWith("%")?100:1);if(Y<0.99)return null;return[+F[1],+F[2],+F[3]]};const j=M(document.body)||M(document.documentElement);if(!j)return;const x=(L)=>{const F=L/255;return F<=0.04045?F/12.92:((F+0.055)/1.055)**2.4};const G=0.2126*x(j[0])+0.7152*x(j[1])+0.0722*x(j[2]);document.documentElement.style.setProperty("color-scheme",G<0.4?"dark":"light")}catch{}};if(document.readyState==="complete")H();else window.addEventListener("load",H)}var S=["https://claude.ai","https://preview.claude.ai","https://5335720a-2bb9-4669-9d22-e6b66609f6c6.claudeusercontent.com"];var v=true;var P=30000;var h=3000;document.addEventListener("DOMContentLoaded",()=>{const H=window.Babel;const A="om-src-id";if(H&&H.registerPlugin&&!(H.availablePlugins&&H.availablePlugins[A])){H.registerPlugin(A,({types:G})=>({visitor:{JSXOpeningElement(L,F){const Y=L.node;if(Y.name&&Y.name.type==="JSXMemberExpression")return;for(let J=0;J<Y.attributes.length;J++){const V=Y.attributes[J];if(V.type==="JSXAttribute"&&V.name&&V.name.name==="data-om-id")return}const B=F.file&&F.file.opts&&F.file.opts.filename||"?";const w=Y.loc&&Y.loc.start;const z=`jsx:${B}:${Y.start??0}:${w?w.line:0}:${w?w.column+1:0}`;Y.attributes.push(G.jsxAttribute(G.jsxIdentifier("data-om-id"),G.stringLiteral(z)))}}}))}const M="om-text-extract";let j=false;if(v&&H&&H.registerPlugin&&!(H.availablePlugins&&H.availablePlugins[M])){const G=window.React;if(G&&G.useSyncExternalStore&&G.createElement){j=true;const L={};const F=new Set;let Y=0;window.__omTextO=L;window.__omTextSet=(z)=>{for(const J in z){const V=z[J];if(V==null)delete L[J];else L[J]=V}Y++;F.forEach((J)=>J())};const B=(z)=>{F.add(z);return()=>F.delete(z)};const w=()=>Y;window.__OmT=function z(J){G.useSyncExternalStore(B,w,w);return G.createElement("span",{"data-om-text":J.i,className:"__om-t"},J.i in L?L[J.i]:J.children)};H.registerPlugin(M,({types:z})=>{const J={style:1,script:1,noscript:1,textarea:1,title:1,option:1,text:1,tspan:1,textPath:1};const V={placeholder:1,alt:1,title:1,label:1,"aria-label":1,"aria-description":1,"aria-placeholder":1};const W=(Z,q)=>z.logicalExpression("??",z.memberExpression(z.logicalExpression("||",z.memberExpression(z.identifier("window"),z.identifier("__omTextO")),z.objectExpression([])),z.stringLiteral(Z),true),q);const Q=(Z)=>Z.file&&Z.file.opts&&Z.file.opts.filename||"?";const C=(Z)=>Z.file&&Z.file.code||"";const K=(Z,q)=>{const U=($)=>$&&$.start!=null&&$.end!=null&&($.type==="StringLiteral"||$.type==="TemplateLiteral"&&$.expressions.length===0)?[$.start,$.end]:null;const N=U(q);if(N)return N;if(q&&q.type==="Identifier"){const $=Z.scope.getBinding(q.name);if($&&$.constant&&$.path.node.type==="VariableDeclarator"){return U($.path.node.init)}}return null};const E=(Z,q,U)=>{const N=Z.node;let $=false;const R=(D,k)=>{$=true;return z.jsxElement(z.jsxOpeningElement(z.jsxIdentifier("__OmT"),[z.jsxAttribute(z.jsxIdentifier("i"),z.stringLiteral(D))],false),z.jsxClosingElement(z.jsxIdentifier("__OmT")),[k],false)};const X=N.children.map((D)=>{if(D.type==="JSXText"){if(D.start==null||D.end==null)return D;const k=U.slice(D.start,D.end);const f=k.length-k.trimStart().length;const I=k.length-k.trimEnd().length;if(f+I>=k.length)return D;return R(`txt:${q}:${D.start+f}:${D.end-I}`,D)}if(D.type==="JSXExpressionContainer"){const k=K(Z,D.expression);if(k)return R(`str:${q}:${k[0]}:${k[1]}`,D)}return D});if($)N.children=X};return{visitor:{JSXOpeningElement(Z,q){const U=Z.node;const N=Q(q);const $={};for(let R=0;R<U.attributes.length;R++){const X=U.attributes[R];if(X.type!=="JSXAttribute"||!X.name)continue;const D=X.name.name;if(!V[D])continue;if(!X.value||X.value.type!=="StringLiteral")continue;if(X.value.start==null||X.value.end==null)continue;const k=`txt:${N}:${X.value.start}:${X.value.end}`;$[D]=k;X.value=z.jsxExpressionContainer(W(k,z.stringLiteral(X.value.value)))}if(Object.keys($).length){U.attributes.push(z.jsxAttribute(z.jsxIdentifier("data-om-text-attrs"),z.stringLiteral(JSON.stringify($))))}},JSXElement(Z,q){const U=Z.node.openingElement;const N=U&&U.name&&U.name.name;if(N==="__OmT")return;if(typeof N==="string"&&J[N])return;E(Z,Q(q),C(q))},JSXFragment(Z,q){E(Z,Q(q),C(q))}}}})}}const x=j?["transform-react-jsx-source",A,M]:["transform-react-jsx-source",A];document.querySelectorAll('script[type="text/babel"],script[type="text/jsx"]').forEach((G,L)=>{const F=G.getAttribute("data-plugins")||"";const Y=x.filter((B)=>F.indexOf(B)<0);if(Y.length){G.setAttribute("data-plugins",F?`${F},${Y.join(",")}`:Y.join(","))}if(!G.hasAttribute("data-filename")){G.setAttribute("data-filename",G.getAttribute("src")||`inline-${L}`)}})});var _=window.parent;if(_&&_!==window){const H=(z,J)=>{try{_.postMessage({__omelette_log:true,type:z,data:J},"*")}catch{}};["log","warn","error"].forEach((z)=>{const J=console[z];console[z]=(...V)=>{const W=V.map((Q)=>{try{return typeof Q==="object"?JSON.stringify(Q):String(Q)}catch{try{return String(Q)}catch{return"[unstringifiable]"}}}).join(" ");H(z,W);J.apply(console,V)}});window.addEventListener("error",(z)=>{const J=z.target;if(J&&J!==window&&J.tagName){const V=J.src||J.href||"";H("resource_error",`${J.tagName} failed to load: ${V}`)}else{H("error",`${z.message||"Unknown error"} at ${z.filename||"?"}:${z.lineno||0}:${z.colno||0}`)}},true);window.addEventListener("unhandledrejection",(z)=>{const J=z.reason;const V=J instanceof Error?`${J.message} ${J.stack}`:String(J);H("error",`Unhandled rejection: ${V}`)});window.addEventListener("click",(z)=>{if(z.defaultPrevented||z.button!==0)return;if(z.metaKey||z.ctrlKey||z.shiftKey||z.altKey)return;const J=z.composedPath?z.composedPath():[];const V=["button","input","select","textarea","summary","label"];let W=null;for(const E of J){if(!(E instanceof Element))continue;if(E.localName==="a"){if(!(E instanceof HTMLAnchorElement))return;W=E;break}if(V.indexOf(E.localName)!==-1)return}if(!W)return;if(W.isContentEditable)return;const Q=W.closest("[contenteditable]");if(Q&&Q.getAttribute("contenteditable")!=="false")return;const C=(W.getAttribute("target")||"_self").toLowerCase();if(C!=="_self"&&C!=="_top"&&C!=="_parent")return;let K;try{K=new URL(W.href)}catch{return}if(K.protocol!=="http:"&&K.protocol!=="https:")return;if(location.origin==="null")return;if(K.origin===location.origin)return;z.preventDefault();window.open(K.href,"_blank","noopener,noreferrer")});const A=()=>{try{_.postMessage({type:"omelette:height",height:document.documentElement.scrollHeight},"*")}catch{}};if(window.ResizeObserver)new ResizeObserver(A).observe(document.documentElement);const M=()=>{A();if(!document.querySelector('script[type="text/babel"],script[type="text/jsx"]'))return;const z=()=>document.getElementById("root")||document.querySelector("body > div[id]");const J=z()?.firstElementChild??null;let V=0;const W=()=>{const Q=z();if(Q&&Q.firstElementChild!==J||++V>30){A();return}setTimeout(W,100)};setTimeout(W,100)};if(document.readyState==="complete")M();else window.addEventListener("load",M);const j={};let x=0;const G=(z)=>new Promise((J,V)=>{if(!S.length){V(new Error("claude.complete: no parent origin"));return}const W=`c${++x}`;const Q=()=>setTimeout(()=>{delete j[W];V(new Error(`claude.complete: no data for ${P/1000}s`))},P);const C=Q();j[W]={resolve:J,reject:V,text:"",t:C,arm:Q};try{for(const K of S){_.postMessage({__om_api:true,id:W,body:z},K)}}catch(K){clearTimeout(C);delete j[W];V(K)}});const L=8;const F=async(z,J)=>{if(!Array.isArray(z.messages)){throw new Error("claude.complete: tools require a messages array")}const V=z.messages.slice();const W={...z,tools:z.tools.map((K)=>{if(K===null||typeof K!=="object")return K;const E={};for(const Z of Object.keys(K)){if(typeof K[Z]!=="function")E[Z]=K[Z]}return E})};const Q=W.tool_choice;const C=Q!=null&&(Q.type==="any"||Q.type==="tool")?{...W,tool_choice:Q.disable_parallel_tool_use!==undefined?{type:"auto",disable_parallel_tool_use:Q.disable_parallel_tool_use}:{type:"auto"}}:W;for(let K=0;K<L;K++){const E=await G({...K===0?W:C,messages:V});const Z=E.message;const q=Z&&Array.isArray(Z.content)?Z.content:null;const U=q?q.filter(($)=>$?.type==="tool_use"):[];if(Z?.stop_reason!=="tool_use"||U.length===0){return E.text}const N=[];for(const $ of U){const R=J.get($.name);if(!R){N.push({type:"tool_result",tool_use_id:$.id,content:`no handler for tool "${$.name}"`,is_error:true});continue}try{const X=await R($.input);const D=typeof X==="string"?X:w(X)??"";N.push({type:"tool_result",tool_use_id:$.id,content:D})}catch(X){N.push({type:"tool_result",tool_use_id:$.id,content:String(X?.message??X??"tool handler failed"),is_error:true})}}V.push({role:"assistant",content:q},{role:"user",content:N})}throw new Error(`claude.complete: exceeded ${L} tool turns`)};window.claude={complete(z){const J=z;if(J!==null&&typeof J==="object"&&Array.isArray(J.tools)&&J.tools.some((V)=>V!==null&&typeof V==="object"&&typeof V.run==="function")){const V=new Map;for(const W of J.tools){if(W!==null&&typeof W==="object"&&typeof W.run==="function"){V.set(String(W.name),W.run)}}return F(J,V)}return G(z).then((V)=>V.text)}};const Y={};let B=0;window.omelette={writeFile:(z,J)=>new Promise((V,W)=>{if(!S.length){V();return}const Q=`f${++B}`;const C=setTimeout(()=>{delete Y[Q];V()},h);Y[Q]={resolve:V,reject:W,t:C};try{for(const K of S){_.postMessage({__om_file:true,id:Q,op:"write",path:z,content:J},K)}}catch{clearTimeout(C);delete Y[Q];V()}})};const w=(z)=>{try{return JSON.stringify(z)}catch{return JSON.stringify(String(z))}};window.addEventListener("message",(z)=>{if(S.indexOf(z.origin)<0)return;if(z.source!==_)return;const J=z.data;if(!J)return;if(J.type==="omelette-preview-refresh"){if(typeof J.token!=="string"||!/^[0-9a-f.-]+(\.(rc|pr-[0-9]+))?(\.[0-9]+\.[0-9a-f]{16})?$/.test(J.token))return;const Q=Math.max(1,Math.floor((J.expiresAt||0)-Date.now()/1000));document.cookie="__Host-omelette-preview="+J.token+"; Path=/; Secure; SameSite=None; Partitioned; Max-Age="+Q;return}if(J.__om_file_r){const Q=Y[J.id];if(!Q)return;clearTimeout(Q.t);delete Y[J.id];if(J.ok)Q.resolve();else Q.reject(new Error(J.error||"write failed"));return}if(J.__om_api_r){const Q=j[J.id];if(!Q)return;if(J.error!=null){clearTimeout(Q.t);delete j[J.id];Q.reject(new Error(J.error));return}if(J.chunk!=null){clearTimeout(Q.t);Q.t=Q.arm();Q.text+=J.chunk;return}if(J.done){clearTimeout(Q.t);delete j[J.id];Q.resolve({text:J.text!=null?J.text:Q.text,message:J.message});return}return}if(!J.__om_eval)return;const V=J;const W=(Q)=>{z.source.postMessage({...Q,__om_eval_r:1,id:V.id},z.origin)};try{const Q=(0,eval)(V.code);if(Q&&typeof Q.then==="function"){Q.then((C)=>W({ok:1,v:w(C)}),(C)=>W({ok:0,e:String(C)}))}else{W({ok:1,v:w(Q)})}}catch(Q){W({ok:0,e:String(Q)})}})}})();
+</script>
+
+<style data-omelette-print-defaults="">
+@media print {
+  @page { margin: 0.5in; }
+  h1, h2, h3, h4, h5, h6 { break-after: avoid; }
+  figure, table, pre, blockquote, img, svg, tr, [class~="card" i] { break-inside: avoid; }
+  img, svg { max-width: 100%; }
+  p { orphans: 3; widows: 3; }
+}
+</style>
+
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./AutoDev Redesign_files/support.js.download"></script><style>x-dc{display:none!important}</style><script src="./AutoDev Redesign_files/react.production.min.js.download" integrity="sha384-DGyLxAyjq0f9SPpVevD6IgztCFlnMF6oW/XQGmfe+IsZ8TqEiDrcHkMLKI6fiB/Z" crossorigin="anonymous"></script><script src="./AutoDev Redesign_files/react-dom.production.min.js.download" integrity="sha384-gTGxhz21lVGYNMcdJOyq01Edg0jhn/c22nsx0kyqP0TxaV5WVdsSH1fSDUf5YJj1" crossorigin="anonymous"></script>
+<title>AutoDev Redesign</title><style id="__dc-atomics">.fx{display:flex}.col{display:flex;flex-direction:column}.grid{display:grid}.ac{align-items:center}.jc{justify-content:center}.jb{justify-content:space-between}.f1{flex:1}.noshrink{flex-shrink:0}.wrap{flex-wrap:wrap}.fw5{font-weight:500}.fw6{font-weight:600}.fw7{font-weight:700}.fw8{font-weight:800}.fs11{font-size:11px}.fs12{font-size:12px}.fs13{font-size:13px}.fs14{font-size:14px}.fs15{font-size:15px}.fs16{font-size:16px}.fs20{font-size:20px}.fs22{font-size:22px}.upper{text-transform:uppercase}.tc{text-align:center}.nowrap{white-space:nowrap}.gap8{gap:8px}.gap10{gap:10px}.gap12{gap:12px}.gap16{gap:16px}.gap24{gap:24px}.m0{margin:0}.mt8{margin-top:8px}.mt12{margin-top:12px}.mt16{margin-top:16px}.mb8{margin-bottom:8px}.mb12{margin-bottom:12px}.mb16{margin-bottom:16px}.posrel{position:relative}.posabs{position:absolute}.round{border-radius:50%}.ohide{overflow:hidden}.bbox{box-sizing:border-box}.pointer{cursor:pointer}.w100{width:100%}.b0{border:none}</style><style></style><link rel="preconnect" href="https://fonts.googleapis.com/" data-dc-tpl="1"><link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin="" data-dc-tpl="2"><link href="./AutoDev Redesign_files/css2" rel="stylesheet" data-dc-tpl="3"><style data-dc-tpl="4">
+:root{
+  --font-sans:'Instrument Sans',system-ui,sans-serif;
+  --font-serif:'Newsreader',Georgia,serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+[data-theme="light"]{
+  --bg:#faf8f4; --bg-2:#ffffff; --bg-3:#f3f0ea; --bg-4:#ece8df;
+  --line:#e7e2d8; --line-strong:#d6d0c3;
+  --fg:#1b1a17; --fg-2:#57544c; --fg-3:#8f8b80;
+  --accent:#5a4fe0; --accent-2:#7a72ea;
+  --accent-tint:color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-line:color-mix(in srgb, var(--accent) 30%, transparent);
+  --accent-fg:#ffffff;
+  --success:#178a4e; --success-tint:color-mix(in srgb, var(--success) 12%, transparent);
+  --warn:#a86a10; --warn-tint:color-mix(in srgb, var(--warn) 14%, transparent);
+  --danger:#c8483b; --danger-tint:color-mix(in srgb, var(--danger) 12%, transparent);
+  --add-bg:#e3f4e8; --add-fg:#136c3c; --add-gut:#8fce9f;
+  --del-bg:#fbe6e3; --del-fg:#a83a2f; --del-gut:#e3a79c;
+  --shadow-sm:0 1px 2px rgba(28,27,25,.05);
+  --shadow:0 1px 2px rgba(28,27,25,.04), 0 10px 28px rgba(28,27,25,.07);
+}
+[data-theme="dark"]{
+  --bg:#100f12; --bg-2:#171519; --bg-3:#201e24; --bg-4:#28262e;
+  --line:#2a2830; --line-strong:#3b3944;
+  --fg:#f4f2ee; --fg-2:#b3afa6; --fg-3:#7c7970;
+  --accent:#8e88ff; --accent-2:#a7a2ff;
+  --accent-tint:color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-line:color-mix(in srgb, var(--accent) 38%, transparent);
+  --accent-fg:#100f12;
+  --success:#5fce8c; --success-tint:color-mix(in srgb, var(--success) 16%, transparent);
+  --warn:#e0a94e; --warn-tint:color-mix(in srgb, var(--warn) 18%, transparent);
+  --danger:#f0796d; --danger-tint:color-mix(in srgb, var(--danger) 18%, transparent);
+  --add-bg:#122419; --add-fg:#6bd393; --add-gut:#2f6444;
+  --del-bg:#2a1512; --del-fg:#f0837a; --del-gut:#6e332b;
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 14px 34px rgba(0,0,0,.45);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);}
+@keyframes ad-spin{to{transform:rotate(360deg)}}
+@keyframes ad-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.8)}}
+@keyframes ad-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes ad-blink{0%,100%{opacity:1}50%{opacity:0}}
+::selection{background:var(--accent-tint)}
+.ad-scroll::-webkit-scrollbar{width:9px;height:9px}
+.ad-scroll::-webkit-scrollbar-thumb{background:var(--line-strong);border-radius:9px;border:2px solid transparent;background-clip:content-box}
+.ad-scroll::-webkit-scrollbar-track{background:transparent}
+a{color:var(--accent);text-decoration:none}
+a:hover{color:var(--accent-2)}
+</style><style>*,*::before,*::after{animation-delay:-99s !important;animation-duration:.001s !important;animation-iteration-count:1 !important;animation-fill-mode:both !important;animation-play-state:running !important;transition-duration:0s !important}</style></head>
+<body data-om-frame-wrap="">
+<div id="dc-root" data-om-frame-wrap=""><div class="sc-host" data-sc-name="AutoDev Redesign-print-1l2q1n6" data-om-frame-wrap=""><template data-dc-tpl="5" id="__bundler_thumbnail" data-bg-color="#faf8f4"></template><div data-dc-tpl="6" data-theme="light" data-om-frame="" style="height: 100vh; display: flex; font-family: var(--font-sans); color: var(--fg); background: var(--bg); overflow: hidden;">
+
+  
+  <aside data-dc-tpl="7" style="width: 250px; flex: 0 0 auto; display: flex; flex-direction: column; background: var(--bg-2); border-right: 1px solid var(--line); padding: 22px 16px 16px;">
+    <div data-dc-tpl="8" style="display: flex; align-items: center; gap: 11px; padding: 4px 8px 22px;">
+      <div data-dc-tpl="9" style="width: 34px; height: 34px; border-radius: 10px; background: var(--accent); display: flex; align-items: center; justify-content: center; flex: 0 0 auto; box-shadow: none !important; filter: drop-shadow(rgba(28, 27, 25, 0.05) 0px 1px 2px) !important;">
+        <div data-dc-tpl="10" style="width: 13px; height: 13px; border: 2.4px solid var(--accent-fg); border-radius: 4px; transform: rotate(45deg);"></div>
+      </div>
+      <div data-dc-tpl="11" style="line-height: 1.1;">
+        <div data-dc-tpl="12" style="font-weight: 600; font-size: 15px; letter-spacing: -0.01em;">AutoDev</div>
+        <div data-dc-tpl="13" style="font-size: 12px; color: var(--fg-3);">Architect</div>
+      </div>
+    </div>
+
+    <button data-dc-tpl="14" data-tip="Abre as sessões deste workspace" style="display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 1px solid var(--line); background: var(--bg-3); color: var(--fg); border-radius: 11px; padding: 9px 11px; cursor: pointer; margin-bottom: 20px; font-family: var(--font-sans);">
+      <div data-dc-tpl="15" style="width: 22px; height: 22px; border-radius: 6px; background: var(--accent-tint); color: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex: 0 0 auto;">a</div>
+      <div data-dc-tpl="16" style="flex: 1 1 0%; min-width: 0px; line-height: 1.15;">
+        <div data-dc-tpl="17" style="font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">acpguedes/autodev</div>
+        <div data-dc-tpl="18" style="font-size: 11px; color: var(--fg-3);">main · workspace</div>
+      </div>
+      <span data-dc-tpl="19" style="color: var(--fg-3); font-size: 11px;">⌄</span>
+    </button>
+
+    <div data-dc-tpl="20" style="font-size: 10.5px; font-weight: 700; letter-spacing: 0.11em; text-transform: uppercase; color: var(--fg-3); padding: 0px 10px 8px;">Workspace</div>
+    <nav data-dc-tpl="21" style="display: flex; flex-direction: column; gap: 2px;">
+      <button data-dc-tpl="22" data-tip="Converse com os agentes e acompanhe a execução em tempo real" style="display: flex; align-items: center; gap: 12px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: var(--accent-tint); cursor: pointer; border-radius: 10px; padding: 10px 11px; font: 600 13.5px var(--font-sans); text-align: left; transition: background 0.12s; color: var(--accent); box-shadow: inset 3px 0 0 var(--accent);">
+        <svg data-dc-tpl="23" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect data-dc-tpl="24" x="3" y="4" width="18" height="13" rx="3.5"></rect><path data-dc-tpl="25" d="M8 17l-2.5 3.2V17" stroke-linejoin="round"></path></svg>
+        <span data-dc-tpl="26" style="flex: 1 1 0%;">Chat</span>
+      </button>
+      <button data-dc-tpl="27" data-tip="Revise e aprove as etapas do plano antes de aplicar patches" style="display: flex; align-items: center; gap: 12px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: transparent; cursor: pointer; border-radius: 10px; padding: 10px 11px; font: 600 13.5px var(--font-sans); text-align: left; transition: background 0.12s; color: var(--fg-2);">
+        <svg data-dc-tpl="28" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect data-dc-tpl="29" x="4" y="4" width="16" height="16" rx="4"></rect><path data-dc-tpl="30" d="M8.5 12l2.3 2.3 4.7-4.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <span data-dc-tpl="31" style="flex: 1 1 0%;">Planos</span>
+        <span data-dc-tpl="32" style="font: 700 10.5px var(--font-mono); background: var(--bg-4); color: var(--fg-2); border-radius: 6px; padding: 1px 6px; min-width: 18px; text-align: center;"><span class="sc-interp">4</span></span>
+      </button>
+      <button data-dc-tpl="33" data-tip="Inspecione os diffs propostos em dry-run, arquivo por arquivo" style="display: flex; align-items: center; gap: 12px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: transparent; cursor: pointer; border-radius: 10px; padding: 10px 11px; font: 600 13.5px var(--font-sans); text-align: left; transition: background 0.12s; color: var(--fg-2);">
+        <svg data-dc-tpl="34" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path data-dc-tpl="35" d="M6 4h9l3 3v13H6z" stroke-linejoin="round"></path><path data-dc-tpl="36" d="M9.5 13h5M12 10.5v5" stroke-linecap="round"></path></svg>
+        <span data-dc-tpl="37" style="flex: 1 1 0%;">Patches</span>
+        <span data-dc-tpl="38" style="display: none;"><span class="sc-interp">3</span></span>
+      </button>
+      <button data-dc-tpl="39" data-tip="Veja o pipeline de agentes e o contrato de cada um" style="display: flex; align-items: center; gap: 12px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: transparent; cursor: pointer; border-radius: 10px; padding: 10px 11px; font: 600 13.5px var(--font-sans); text-align: left; transition: background 0.12s; color: var(--fg-2);">
+        <svg data-dc-tpl="40" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle data-dc-tpl="41" cx="6" cy="12" r="2.4"></circle><circle data-dc-tpl="42" cx="18" cy="6" r="2.4"></circle><circle data-dc-tpl="43" cx="18" cy="18" r="2.4"></circle><path data-dc-tpl="44" d="M8.2 11l7.6-4M8.2 13l7.6 4" stroke-linecap="round"></path></svg>
+        <span data-dc-tpl="45" style="flex: 1 1 0%;">Flows</span>
+      </button>
+      <button data-dc-tpl="46" data-tip="Histórico reproduzível de execuções e runs" style="display: flex; align-items: center; gap: 12px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: transparent; cursor: pointer; border-radius: 10px; padding: 10px 11px; font: 600 13.5px var(--font-sans); text-align: left; transition: background 0.12s; color: var(--fg-2);">
+        <svg data-dc-tpl="47" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle data-dc-tpl="48" cx="6" cy="7" r="1.4"></circle><circle data-dc-tpl="49" cx="6" cy="17" r="1.4"></circle><path data-dc-tpl="50" d="M11 7h8M11 12h8M11 17h8" stroke-linecap="round"></path><circle data-dc-tpl="51" cx="6" cy="12" r="1.4"></circle></svg>
+        <span data-dc-tpl="52" style="flex: 1 1 0%;">Sessões</span>
+      </button>
+      <button data-dc-tpl="53" data-tip="Provider do modelo, workspace e políticas" style="display: flex; align-items: center; gap: 12px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: transparent; cursor: pointer; border-radius: 10px; padding: 10px 11px; font: 600 13.5px var(--font-sans); text-align: left; transition: background 0.12s; color: var(--fg-2);">
+        <svg data-dc-tpl="54" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path data-dc-tpl="55" d="M4 8h9M17 8h3" stroke-linecap="round"></path><circle data-dc-tpl="56" cx="15" cy="8" r="2.3"></circle><path data-dc-tpl="57" d="M4 16h3M11 16h9" stroke-linecap="round"></path><circle data-dc-tpl="58" cx="9" cy="16" r="2.3"></circle></svg>
+        <span data-dc-tpl="59" style="flex: 1 1 0%;">Configuração</span>
+      </button>
+      <button data-dc-tpl="60" data-tip="Instale e crie agents, skills, plugins e servidores MCP" style="display: flex; align-items: center; gap: 12px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: transparent; cursor: pointer; border-radius: 10px; padding: 10px 11px; font: 600 13.5px var(--font-sans); text-align: left; transition: background 0.12s; color: var(--fg-2);">
+        <svg data-dc-tpl="61" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect data-dc-tpl="62" x="4" y="4" width="7" height="7" rx="2"></rect><rect data-dc-tpl="63" x="13" y="4" width="7" height="7" rx="2"></rect><rect data-dc-tpl="64" x="4" y="13" width="7" height="7" rx="2"></rect><path data-dc-tpl="65" d="M16.5 14.5v4M14.5 16.5h4" stroke-linecap="round"></path></svg>
+        <span data-dc-tpl="66" style="flex: 1 1 0%;">Extensões</span>
+      </button>
+    </nav>
+
+    <div data-dc-tpl="67" style="flex: 1 1 0%;"></div>
+
+    <button data-dc-tpl="68" data-tip="Abrir a configuração do provider e do modelo" class="scp0" style="width: 100%; text-align: left; font-family: var(--font-sans); border: 1px solid var(--line); border-radius: 12px; padding: 12px; background: var(--bg-3); margin-bottom: 12px; cursor: pointer;">
+      <div data-dc-tpl="69" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px;">
+        <span data-dc-tpl="70" style="font-size: 11px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--fg-3);">Provider</span>
+        <span data-dc-tpl="71" style="width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 3px var(--success-tint);"></span>
+      </div>
+      <div data-dc-tpl="72" style="display: flex; align-items: center; gap: 9px;">
+        <div data-dc-tpl="73" style="width: 26px; height: 26px; border-radius: 7px; background: var(--bg-2); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; font: 600 12px var(--font-mono); color: var(--accent);">◇</div>
+        <div data-dc-tpl="74" style="line-height: 1.15; flex: 1 1 0%; min-width: 0px;">
+          <div data-dc-tpl="75" style="font-size: 12.5px; font-weight: 600;"><span class="sc-interp">Ollama</span></div>
+          <div data-dc-tpl="76" style="font-size: 11px; color: var(--fg-3); font-family: var(--font-mono);"><span class="sc-interp">qwen2.5-coder:14b</span></div>
+        </div>
+        <span data-dc-tpl="77" style="color: var(--fg-3); font-size: 13px;">→</span>
+      </div>
+    </button>
+
+    <button data-dc-tpl="78" data-tip="Alterna entre tema claro e escuro" style="display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; border: 1px solid var(--line); background: var(--bg-2); color: var(--fg-2); border-radius: 10px; padding: 9px; cursor: pointer; font: 600 12.5px var(--font-sans);">
+      <span data-dc-tpl="79"><span class="sc-interp">◐</span></span><span data-dc-tpl="80"><span class="sc-interp">Modo escuro</span></span>
+    </button>
+  </aside>
+
+  
+  <main data-dc-tpl="81" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column; overflow: hidden;">
+    
+    <header data-dc-tpl="82" style="height: 64px; flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 0px 28px; border-bottom: 1px solid var(--line); background: var(--bg);">
+      <div data-dc-tpl="83" style="display: flex; align-items: center; gap: 14px; min-width: 0px;">
+        <div data-dc-tpl="84" style="line-height: 1.15; min-width: 0px;">
+          <div data-dc-tpl="85" style="font: 600 17px/1.15 var(--font-sans); letter-spacing: -0.015em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><span class="sc-interp">Chat de execução</span></div>
+          <div data-dc-tpl="86" style="font-size: 12.5px; color: var(--fg-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><span class="sc-interp">Converse com os agentes · patches com aprovação humana</span></div>
+        </div>
+      </div>
+      <div data-dc-tpl="87" style="display: flex; align-items: center; gap: 10px; flex: 0 0 auto;">
+        <div data-dc-tpl="88" style="display: flex; align-items: center; gap: 7px; padding: 6px 11px; border: 1px solid var(--line); border-radius: 9px; font-size: 12px; color: var(--fg-2); font-family: var(--font-mono);">
+          <span data-dc-tpl="89" style="width: 6px; height: 6px; border-radius: 50%; background: var(--fg-3);"></span>acpguedes/autodev · main
+        </div>
+        
+        <button data-dc-tpl="91" data-tip="Mostra ou oculta o painel de execução ao vivo" style="display: flex; align-items: center; gap: 7px; border: 1px solid var(--accent-line); background: var(--accent-tint); color: var(--accent); border-radius: 9px; padding: 7px 12px; cursor: pointer; font: 600 12.5px var(--font-sans);">
+          <svg data-dc-tpl="92" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect data-dc-tpl="93" x="3" y="4" width="18" height="16" rx="3"></rect><path data-dc-tpl="94" d="M15 4v16" stroke-linecap="round"></path></svg>
+          <span class="sc-interp">Ocultar execução</span>
+        </button>
+        
+        <button data-dc-tpl="95" data-tip="Cria uma nova sessão de trabalho limpa" style="display: flex; align-items: center; gap: 7px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: var(--accent); color: var(--accent-fg); border-radius: 9px; padding: 8px 14px; cursor: pointer; font: 600 13px var(--font-sans); box-shadow: none !important; filter: drop-shadow(rgba(28, 27, 25, 0.05) 0px 1px 2px) !important;">
+          <span data-dc-tpl="96" style="font-size: 15px; line-height: 1;">+</span> Nova sessão
+        </button>
+      </div>
+    </header>
+
+    
+    
+    <div data-dc-tpl="98" style="flex: 1 1 0%; min-height: 0px; display: flex;">
+      
+      <section data-dc-tpl="99" style="flex: 1 1 0%; min-width: 0px; display: flex; flex-direction: column;">
+        <div data-dc-tpl="100" class="ad-scroll" style="flex: 1 1 0%; min-height: 0px; overflow: hidden auto;">
+          <div data-dc-tpl="101" style="max-width: 720px; margin: 0px auto; padding: 32px 32px 8px;">
+
+            
+            <div data-dc-tpl="103" style="padding: 48px 0px 8px; animation: 0.4s ease 0s 1 normal none running ad-rise;">
+              <div data-dc-tpl="104" style="display: inline-flex; align-items: center; gap: 8px; padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 99px; background: var(--accent-tint); color: var(--accent); font-size: 12px; font-weight: 600; margin-bottom: 22px;">
+                <span data-dc-tpl="105" style="width: 6px; height: 6px; border-radius: 50%; background: var(--accent);"></span> Sessão pronta
+              </div>
+              <h1 data-dc-tpl="106" style="font-family: var(--font-serif); font-weight: 400; font-size: 38px; line-height: 1.1; letter-spacing: -0.02em; margin: 0px 0px 12px; color: var(--fg);">O que vamos<br data-dc-tpl="107">construir hoje?</h1>
+              <p data-dc-tpl="108" style="font-size: 15.5px; line-height: 1.65; color: var(--fg-2); max-width: 520px; margin: 0px 0px 30px;">Descreva a tarefa. O AutoDev planeja em etapas, analisa o repositório e propõe patches auditáveis — <strong data-dc-tpl="109" style="color: var(--fg); font-weight: 600;">nada é escrito no disco sem a sua aprovação.</strong></p>
+              <div data-dc-tpl="110" style="font-size: 11px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--fg-3); margin-bottom: 12px;">Começar com</div>
+              <div data-dc-tpl="111" style="display: flex; flex-direction: column; gap: 9px;">
+                
+                  <button data-dc-tpl="113" data-tip="Usa esta sugestão como instrução inicial" class="scp0" style="display: flex; align-items: center; gap: 13px; text-align: left; border: 1px solid var(--line); background: var(--bg-2); color: var(--fg); border-radius: 12px; padding: 14px 16px; cursor: pointer; font-family: var(--font-sans); box-shadow: none !important; transition: border-color 0.12s; filter: drop-shadow(rgba(28, 27, 25, 0.05) 0px 1px 2px) !important;">
+                    <span data-dc-tpl="114" style="width: 28px; height: 28px; flex: 0 0 auto; border-radius: 8px; background: var(--accent-tint); color: var(--accent); display: flex; align-items: center; justify-content: center;"><span class="sc-interp">⇥</span></span>
+                    <span data-dc-tpl="115" style="flex: 1 1 0%; font-size: 14px; font-weight: 500;"><span class="sc-interp">Adicionar rate limiting à API</span></span>
+                    <span data-dc-tpl="116" style="color: var(--fg-3); font-size: 16px;">→</span>
+                  </button>
+                
+                  <button data-dc-tpl="113" data-tip="Usa esta sugestão como instrução inicial" class="scp0" style="display: flex; align-items: center; gap: 13px; text-align: left; border: 1px solid var(--line); background: var(--bg-2); color: var(--fg); border-radius: 12px; padding: 14px 16px; cursor: pointer; font-family: var(--font-sans); box-shadow: none !important; transition: border-color 0.12s; filter: drop-shadow(rgba(28, 27, 25, 0.05) 0px 1px 2px) !important;">
+                    <span data-dc-tpl="114" style="width: 28px; height: 28px; flex: 0 0 auto; border-radius: 8px; background: var(--accent-tint); color: var(--accent); display: flex; align-items: center; justify-content: center;"><span class="sc-interp">✓</span></span>
+                    <span data-dc-tpl="115" style="flex: 1 1 0%; font-size: 14px; font-weight: 500;"><span class="sc-interp">Escrever testes para o orchestrator</span></span>
+                    <span data-dc-tpl="116" style="color: var(--fg-3); font-size: 16px;">→</span>
+                  </button>
+                
+                  <button data-dc-tpl="113" data-tip="Usa esta sugestão como instrução inicial" class="scp0" style="display: flex; align-items: center; gap: 13px; text-align: left; border: 1px solid var(--line); background: var(--bg-2); color: var(--fg); border-radius: 12px; padding: 14px 16px; cursor: pointer; font-family: var(--font-sans); box-shadow: none !important; transition: border-color 0.12s; filter: drop-shadow(rgba(28, 27, 25, 0.05) 0px 1px 2px) !important;">
+                    <span data-dc-tpl="114" style="width: 28px; height: 28px; flex: 0 0 auto; border-radius: 8px; background: var(--accent-tint); color: var(--accent); display: flex; align-items: center; justify-content: center;"><span class="sc-interp">⇄</span></span>
+                    <span data-dc-tpl="115" style="flex: 1 1 0%; font-size: 14px; font-weight: 500;"><span class="sc-interp">Refatorar a camada de persistência</span></span>
+                    <span data-dc-tpl="116" style="color: var(--fg-3); font-size: 16px;">→</span>
+                  </button>
+                
+                  <button data-dc-tpl="113" data-tip="Usa esta sugestão como instrução inicial" class="scp0" style="display: flex; align-items: center; gap: 13px; text-align: left; border: 1px solid var(--line); background: var(--bg-2); color: var(--fg); border-radius: 12px; padding: 14px 16px; cursor: pointer; font-family: var(--font-sans); box-shadow: none !important; transition: border-color 0.12s; filter: drop-shadow(rgba(28, 27, 25, 0.05) 0px 1px 2px) !important;">
+                    <span data-dc-tpl="114" style="width: 28px; height: 28px; flex: 0 0 auto; border-radius: 8px; background: var(--accent-tint); color: var(--accent); display: flex; align-items: center; justify-content: center;"><span class="sc-interp">¶</span></span>
+                    <span data-dc-tpl="115" style="flex: 1 1 0%; font-size: 14px; font-weight: 500;"><span class="sc-interp">Gerar documentação dos endpoints v2</span></span>
+                    <span data-dc-tpl="116" style="color: var(--fg-3); font-size: 16px;">→</span>
+                  </button>
+                
+              </div>
+            </div>
+            
+
+            
+
+            
+
+          </div>
+        </div>
+
+        
+        <div data-dc-tpl="142" style="flex: 0 0 auto; padding: 14px 32px 22px; border-top: 1px solid var(--line); background: var(--bg);">
+          <div data-dc-tpl="143" style="max-width: 720px; margin: 0px auto;">
+            <div data-dc-tpl="144" style="border: 1px solid var(--line-strong); border-radius: 16px; background: var(--bg-2); box-shadow: none !important; overflow: hidden; filter: drop-shadow(rgba(28, 27, 25, 0.04) 0px 1px 2px) drop-shadow(rgba(28, 27, 25, 0.07) 0px 10px 28px) !important;">
+              <textarea data-dc-tpl="145" placeholder="Descreva a mudança que você quer fazer…" rows="2" style="width: 100%; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; outline: none; resize: none; background: transparent; color: var(--fg); font-family: var(--font-sans); font-size: 15px; line-height: 1.55; padding: 16px 18px 4px;"></textarea>
+              <div data-dc-tpl="146" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px 10px;">
+                <div data-dc-tpl="147" style="display: flex; align-items: center; gap: 8px;">
+                  <button data-dc-tpl="148" style="display: flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: var(--bg-3); color: var(--fg-2); border-radius: 9px; padding: 6px 10px; cursor: pointer; font: 600 12px var(--font-sans);">
+                    <span data-dc-tpl="149" style="color: var(--accent);">◇</span> <span class="sc-interp">Ollama</span>
+                  </button>
+                  <button data-dc-tpl="150" style="border: 1px solid var(--line); background: transparent; color: var(--fg-3); border-radius: 9px; padding: 6px 10px; cursor: pointer; font: 600 12px var(--font-sans);">@ contexto</button>
+                </div>
+                <button data-dc-tpl="151" data-tip="Envia a instrução ao orquestrador (Enter)" style="display: flex; align-items: center; gap: 8px; border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; border-radius: 11px; padding: 9px 16px; cursor: pointer; font: 600 13.5px var(--font-sans); background: var(--accent); color: var(--accent-fg); opacity: 1; box-shadow: none !important; filter: drop-shadow(rgba(28, 27, 25, 0.05) 0px 1px 2px) !important;">
+                  <span data-dc-tpl="152"><span class="sc-interp">Enviar</span></span>
+                  <svg data-dc-tpl="153" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path data-dc-tpl="154" d="M5 12h13M13 6l6 6-6 6" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                </button>
+              </div>
+            </div>
+            <div data-dc-tpl="155" style="text-align: center; font-size: 11.5px; color: var(--fg-3); margin-top: 10px;">Enter envia · Shift+Enter quebra linha · patches sempre passam por aprovação</div>
+          </div>
+        </div>
+      </section>
+
+      
+      
+      <aside data-dc-tpl="157" style="width: 400px; flex: 0 0 auto; border-left: 1px solid var(--line); background: var(--bg-2); display: flex; flex-direction: column; overflow: hidden;">
+        <div data-dc-tpl="158" style="height: 52px; flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 0px 18px; border-bottom: 1px solid var(--line);">
+          <div data-dc-tpl="159" style="display: flex; align-items: center; gap: 9px;">
+            <span data-dc-tpl="160" style="width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; background: var(--fg-3);"></span>
+            <span data-dc-tpl="161" style="font-weight: 600; font-size: 13.5px;">Execução</span>
+            <span data-dc-tpl="162" style="font-size: 12px; color: var(--fg-3);"><span class="sc-interp">ociosa</span></span>
+          </div>
+          <button data-dc-tpl="163" data-tip="Fecha o painel — reabra pelo botão Execução no topo" style="border-width: medium; border-style: none; border-color: currentcolor; border-image: initial; background: transparent; color: var(--fg-3); cursor: pointer; font-size: 17px; padding: 4px; line-height: 1;">✕</button>
+        </div>
+        <div data-dc-tpl="164" class="ad-scroll" style="flex: 1 1 0%; min-height: 0px; overflow-y: auto; padding: 18px;">
+          
+            <div data-dc-tpl="166" style="padding: 40px 12px; text-align: center; color: var(--fg-3);">
+              <div data-dc-tpl="167" style="width: 44px; height: 44px; margin: 0px auto 14px; border-radius: 12px; border: 1px solid var(--line); display: flex; align-items: center; justify-content: center;">
+                <svg data-dc-tpl="168" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--fg-3)" stroke-width="1.7"><circle data-dc-tpl="169" cx="12" cy="12" r="8"></circle><path data-dc-tpl="170" d="M12 8v4l2.5 1.5" stroke-linecap="round"></path></svg>
+              </div>
+              <div data-dc-tpl="171" style="font-size: 13px; line-height: 1.5; max-width: 220px; margin: 0px auto;">O timeline de planejamento, análise, patch e validação aparece aqui em tempo real.</div>
+            </div>
+          
+          
+        </div>
+        
+      </aside>
+      
+    </div>
+    
+
+    
+    
+
+    
+    
+
+    
+    
+
+    
+    
+
+    
+    
+
+    
+    
+
+  </main>
+
+  
+
+  </div></div></div>
+<script type="text/x-dc" data-dc-script="" data-props="{&quot;$preview&quot;:{&quot;width&quot;:&quot;100%&quot;,&quot;height&quot;:&quot;100%&quot;},&quot;startTheme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;light&quot;,&quot;dark&quot;],&quot;default&quot;:&quot;light&quot;,&quot;tsType&quot;:&quot;&#39;light&#39;|&#39;dark&#39;&quot;,&quot;section&quot;:&quot;Aparência&quot;},&quot;startView&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;chat&quot;,&quot;plans&quot;,&quot;patches&quot;,&quot;flows&quot;,&quot;sessions&quot;,&quot;config&quot;],&quot;default&quot;:&quot;chat&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Aparência&quot;},&quot;seedConversation&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Conteúdo&quot;}}">
+class Component extends DCLogic {
+  SUGGESTIONS = [
+    { text: "Adicionar rate limiting à API", icon: "⇥" },
+    { text: "Escrever testes para o orchestrator", icon: "✓" },
+    { text: "Refatorar a camada de persistência", icon: "⇄" },
+    { text: "Gerar documentação dos endpoints v2", icon: "¶" },
+  ];
+  SEED_TASKS = [
+    { id:"t1", title:"Criar middleware de rate limiting (token bucket)", desc:"Novo módulo com limitador configurável por rota, isolado e testável.", file:"rate_limit.py", status:"pending" },
+    { id:"t2", title:"Registrar o middleware no app FastAPI", desc:"Conectar o limitador em backend/api/main.py atrás de uma flag de ambiente.", file:"main.py", status:"pending" },
+    { id:"t3", title:"Expor os limites na configuração", desc:"Adicionar a seção rate_limit em settings e no config de exemplo.", file:"config.json", status:"pending" },
+    { id:"t4", title:"Cobrir o limitador com testes", desc:"Cenários de burst, refil de tokens e resposta 429 com headers corretos.", file:"test_rate_limit.py", status:"pending" },
+  ];
+  SEED_SESSIONS = [
+    { id:"sess-8f2a", goal:"Adicionar rate limiting à API", status:"running", when:"agora", runs:2 },
+    { id:"sess-71b0", goal:"Migrar sessões para PostgreSQL", status:"done", when:"há 2h", runs:5 },
+    { id:"sess-5c39", goal:"Cobertura de testes do orchestrator", status:"done", when:"ontem", runs:3 },
+    { id:"sess-2d14", goal:"Corrigir headers de segurança CSP", status:"failed", when:"ontem", runs:1 },
+  ];
+  NODES = [
+    { id:"planner", label:"Planner", badge:"P", role:"Decompõe o objetivo em etapas com gates de aprovação.", tools:"none", x:40, y:110 },
+    { id:"navigator", label:"Navigator", badge:"N", role:"Localiza símbolos e arquivos relevantes via tree-sitter + FTS.", tools:"fs.read", x:250, y:110 },
+    { id:"analyzer", label:"Analyzer", badge:"A", role:"Avalia impacto, riscos e dependências antes de mudar código.", tools:"fs.read", x:460, y:110 },
+    { id:"coder", label:"Coder", badge:"C", role:"Gera patches mínimos em diff unificado, sempre em dry-run.", tools:"fs.read", x:360, y:270 },
+    { id:"validator", label:"Validator", badge:"V", role:"Roda testes, lint, typecheck e build num sandbox isolado.", tools:"exec", x:150, y:270 },
+  ];
+  PATCHES = [
+    { name:"backend/api/middleware/rate_limit.py", adds:38, dels:0, lines:[
+      {t:"add",text:"from __future__ import annotations"},
+      {t:"add",text:"import time"},
+      {t:"add",text:"from dataclasses import dataclass, field"},
+      {t:"add",text:""},
+      {t:"add",text:"@dataclass"},
+      {t:"add",text:"class TokenBucket:"},
+      {t:"add",text:"    rate: float          # tokens por segundo"},
+      {t:"add",text:"    capacity: int"},
+      {t:"add",text:"    _tokens: float = field(default=0.0)"},
+      {t:"add",text:"    _updated: float = field(default_factory=time.monotonic)"},
+      {t:"add",text:""},
+      {t:"add",text:"    def allow(self, cost: int = 1) -> bool:"},
+      {t:"add",text:"        now = time.monotonic()"},
+      {t:"add",text:"        self._tokens = min("},
+      {t:"add",text:"            self.capacity,"},
+      {t:"add",text:"            self._tokens + (now - self._updated) * self.rate,"},
+      {t:"add",text:"        )"},
+      {t:"add",text:"        self._updated = now"},
+      {t:"add",text:"        if self._tokens >= cost:"},
+      {t:"add",text:"            self._tokens -= cost"},
+      {t:"add",text:"            return True"},
+      {t:"add",text:"        return False"},
+    ]},
+    { name:"backend/api/main.py", adds:6, dels:1, lines:[
+      {t:"ctx",text:"from backend.api.security_headers import SecurityHeaders"},
+      {t:"add",text:"from backend.api.middleware.rate_limit import RateLimitMiddleware"},
+      {t:"ctx",text:""},
+      {t:"ctx",text:'app = FastAPI(title="AutoDev Architect")'},
+      {t:"ctx",text:"app.add_middleware(SecurityHeaders)"},
+      {t:"del",text:"# TODO: proteger endpoints contra abuso"},
+      {t:"add",text:"if settings.rate_limit.enabled:"},
+      {t:"add",text:"    app.add_middleware("},
+      {t:"add",text:"        RateLimitMiddleware,"},
+      {t:"add",text:"        rate=settings.rate_limit.rate,"},
+      {t:"add",text:"        capacity=settings.rate_limit.burst,"},
+      {t:"add",text:"    )"},
+    ]},
+    { name:"autodev.config.example.json", adds:5, dels:1, lines:[
+      {t:"ctx",text:'  "llm": { "provider": "stub" },'},
+      {t:"del",text:'  "repository": { "project_root": "." }'},
+      {t:"add",text:'  "repository": { "project_root": "." },'},
+      {t:"add",text:'  "rate_limit": {'},
+      {t:"add",text:'    "enabled": true,'},
+      {t:"add",text:'    "rate": 5.0,'},
+      {t:"add",text:'    "burst": 20'},
+      {t:"add",text:"  }"},
+    ]},
+  ];
+  PROVIDERS = [
+    { id:"stub", label:"Stub (offline)", model:"deterministic-stub" },
+    { id:"ollama", label:"Ollama", model:"qwen2.5-coder:14b" },
+    { id:"openai", label:"OpenAI", model:"gpt-4o-mini" },
+  ];
+
+  PALETTE_AGENTS = [
+    { key:"planner", label:"Planner", badge:"P" },
+    { key:"navigator", label:"Navigator", badge:"N" },
+    { key:"analyzer", label:"Analyzer", badge:"A" },
+    { key:"coder", label:"Coder", badge:"C" },
+    { key:"validator", label:"Validator", badge:"V" },
+    { key:"reviewer", label:"Reviewer", badge:"R" },
+    { key:"docs", label:"Docs", badge:"D" },
+    { key:"security", label:"Security", badge:"S" },
+  ];
+  CONTROLS = [
+    { type:"prompt", label:"Prompt / Step", glyph:"✎", tip:"Injeta um prompt para o próximo agente, com ou sem o output anterior" },
+    { type:"cond", label:"Condicional", glyph:"◈", tip:"Ramifica o fluxo (sim/não) por uma condição" },
+    { type:"loop", label:"Loop", glyph:"↻", tip:"Repete um trecho até uma condição ou máx. iterações" },
+    { type:"human", label:"Aprovação humana", glyph:"✋", tip:"Pausa e aguarda aprovação de uma pessoa" },
+    { type:"parallel", label:"Paralelo", glyph:"⇉", tip:"Executa ramos em paralelo e junta os resultados" },
+    { type:"start", label:"Início", glyph:"▶", tip:"Ponto de entrada do flow" },
+    { type:"end", label:"Fim", glyph:"■", tip:"Ponto de saída do flow" },
+  ];
+  FLOW_SEED_NODES = [
+    { id:"start", type:"start", label:"Início", x:150, y:40 },
+    { id:"plan", type:"agent", agent:"planner", label:"Planner", x:150, y:150 },
+    { id:"nav", type:"agent", agent:"navigator", label:"Navigator", x:150, y:260 },
+    { id:"ana", type:"agent", agent:"analyzer", label:"Analyzer", x:150, y:370 },
+    { id:"cond", type:"cond", label:"Precisa mudar código?", x:150, y:480, cfg:{ expr:"analysis.needs_change == true" } },
+    { id:"code", type:"agent", agent:"coder", label:"Coder", x:430, y:600 },
+    { id:"loop", type:"loop", label:"Repetir até validar", x:430, y:710, cfg:{ max:3 } },
+    { id:"val", type:"agent", agent:"validator", label:"Validator", x:430, y:820 },
+    { id:"hum", type:"human", label:"Aprovar patch", x:430, y:930, cfg:{ approvers:"@voce" } },
+    { id:"end", type:"end", label:"Fim", x:150, y:600 },
+  ];
+  FLOW_SEED_EDGES = [
+    { from:"start", to:"plan" }, { from:"plan", to:"nav" }, { from:"nav", to:"ana" }, { from:"ana", to:"cond" },
+    { from:"cond", to:"code", label:"sim" }, { from:"cond", to:"end", label:"não" },
+    { from:"code", to:"loop" }, { from:"loop", to:"val" }, { from:"val", to:"hum" }, { from:"hum", to:"end" },
+  ];
+  FLOWS_LIBRARY = [
+    { id:"lib1", name:"revisao-com-patch", desc:"Plano → análise → patch → validação → aprovação", nodes:this.FLOW_SEED_NODES, edges:this.FLOW_SEED_EDGES },
+    { id:"lib2", name:"analise-somente", desc:"Inspeção read-only, sem escrever patches",
+      nodes:[ {id:"s",type:"start",label:"Início",x:180,y:60}, {id:"n1",type:"agent",agent:"navigator",label:"Navigator",x:180,y:170}, {id:"a1",type:"agent",agent:"analyzer",label:"Analyzer",x:180,y:280}, {id:"p1",type:"prompt",label:"Resumo do impacto",x:180,y:390,cfg:{prompt:"Resuma o impacto e os riscos das mudanças analisadas.",includePrev:true}}, {id:"e",type:"end",label:"Fim",x:180,y:510} ],
+      edges:[ {from:"s",to:"n1"}, {from:"n1",to:"a1"}, {from:"a1",to:"p1"}, {from:"p1",to:"e"} ] },
+    { id:"lib3", name:"docs-e-testes", desc:"Documentação e testes gerados em paralelo",
+      nodes:[ {id:"s",type:"start",label:"Início",x:200,y:50}, {id:"pl",type:"agent",agent:"planner",label:"Planner",x:200,y:160}, {id:"par",type:"parallel",label:"Paralelo",x:200,y:270,cfg:{branches:"2"}}, {id:"d",type:"agent",agent:"docs",label:"Docs",x:60,y:390}, {id:"c",type:"agent",agent:"coder",label:"Coder (testes)",x:340,y:390}, {id:"v",type:"agent",agent:"validator",label:"Validator",x:200,y:510}, {id:"e",type:"end",label:"Fim",x:200,y:620} ],
+      edges:[ {from:"s",to:"pl"}, {from:"pl",to:"par"}, {from:"par",to:"d",label:"ramo 1"}, {from:"par",to:"c",label:"ramo 2"}, {from:"d",to:"v"}, {from:"c",to:"v"}, {from:"v",to:"e"} ] },
+  ];
+  EXT_TABS = [ { id:"agents", label:"Agentes" }, { id:"skills", label:"Skills" }, { id:"plugins", label:"Plugins" }, { id:"mcp", label:"MCP" } ];
+  EXT_SEED = [
+    { id:"a1", kind:"agents", name:"agent-coder", meta:"agent.yaml · v1.2.0", desc:"Agente de referência que gera patches mínimos em diff unificado.", enabled:true, cfg:{ model:"qwen2.5-coder:14b", tools:"fs.read", instruction:"Você é um engenheiro cuidadoso. Gere o menor diff possível que resolva a tarefa, preservando o estilo do repositório. Nunca escreva fora dos arquivos relevantes." } },
+    { id:"a2", kind:"agents", name:"security", meta:"agent.yaml · v0.9.0", desc:"Revisa mudanças em busca de vulnerabilidades e segredos expostos.", enabled:true, cfg:{ model:"qwen2.5-coder:14b", tools:"fs.read", instruction:"Analise o diff em busca de vulnerabilidades, segredos e mau uso de APIs. Seja objetivo e cite linhas." } },
+    { id:"a3", kind:"agents", name:"refactor", meta:"agent.yaml · v0.8.1", desc:"Propõe refatorações seguras preservando o comportamento observável.", enabled:false, cfg:{ model:"qwen2.5-coder:14b", tools:"fs.read", instruction:"Refatore preservando o comportamento. Justifique cada mudança e mantenha os testes passando." } },
+    { id:"a4", kind:"agents", name:"docs", meta:"agent.yaml · v0.7.0", desc:"Gera e atualiza documentação a partir do código e dos diffs.", enabled:true, cfg:{ model:"qwen2.5-coder:14b", tools:"fs.read", instruction:"Escreva documentação clara e concisa a partir do código, com exemplos quando útil." } },
+    { id:"s1", kind:"skills", name:"apply-patch", meta:"skill · builtin", desc:"Aplica um diff unificado no workspace (dry-run por padrão).", enabled:true, cfg:{ desc:"Aplica um diff unificado no workspace (dry-run por padrão).", inputs:"diff: string" } },
+    { id:"s2", kind:"skills", name:"summarize-llm", meta:"skill · llm", desc:"Resume arquivos ou diffs usando o provider configurado.", enabled:true, cfg:{ desc:"Resume arquivos ou diffs usando o provider configurado.", inputs:"text: string" } },
+    { id:"s3", kind:"skills", name:"run-tests", meta:"skill · exec", desc:"Roda a suíte de testes no sandbox e coleta os resultados.", enabled:false, cfg:{ desc:"Roda a suíte de testes no sandbox e coleta os resultados.", inputs:"paths: string[]" } },
+    { id:"p1", kind:"plugins", name:"agent-coder", meta:"plugin.yaml · fs.read", desc:"Empacota o agente coder como plugin instalável e versionado.", enabled:true, cfg:{ source:"registry://autodev/agent-coder", perms:"fs.read" } },
+    { id:"p2", kind:"plugins", name:"github-pr", meta:"plugin.yaml · net", desc:"Abre pull requests a partir dos patches aprovados.", enabled:false, cfg:{ source:"registry://community/github-pr", perms:"net, fs.read" } },
+    { id:"m1", kind:"mcp", name:"filesystem", meta:"stdio · local", desc:"Servidor MCP de leitura/escrita no sistema de arquivos.", enabled:true, cfg:{ transport:"stdio", endpoint:"npx @modelcontextprotocol/server-filesystem" } },
+    { id:"m2", kind:"mcp", name:"github", meta:"http · remoto", desc:"Expõe issues, pull requests e repositórios via MCP.", enabled:false, cfg:{ transport:"http", endpoint:"https://mcp.github.com" } },
+  ];
+  MODAL_CFG = {
+    agents:{ title:"Criar agente", subtitle:"Novo agent.yaml versionado com IO tipado e budgets.", submit:"Criar agente", fields:[ {key:"name",label:"Nome",ph:"ex: reviewer"}, {key:"model",label:"Modelo",ph:"qwen2.5-coder:14b"}, {key:"tools",label:"Tools permitidas",ph:"fs.read, exec"}, {key:"instruction",label:"Instrução do agente (system prompt)",ph:"Você é um agente que...",area:true} ] },
+    skills:{ title:"Criar skill", subtitle:"Registro discover/invoke com contrato determinístico.", submit:"Criar skill", fields:[ {key:"name",label:"Nome",ph:"ex: search-symbols"}, {key:"desc",label:"Descrição",ph:"o que a skill faz"}, {key:"inputs",label:"Entradas",ph:"query: string"} ] },
+    plugins:{ title:"Instalar plugin", subtitle:"Manifesto plugin.yaml com permissões default-deny.", submit:"Instalar", fields:[ {key:"name",label:"Nome",ph:"ex: github-pr"}, {key:"source",label:"Origem",ph:"registry:// ou URL"}, {key:"perms",label:"Permissões",ph:"net, fs.read"} ] },
+    mcp:{ title:"Adicionar servidor MCP", subtitle:"Conecte ferramentas externas via Model Context Protocol.", submit:"Adicionar", fields:[ {key:"name",label:"Nome",ph:"ex: postgres"}, {key:"transport",label:"Transporte",ph:"stdio ou http"}, {key:"endpoint",label:"Comando / URL",ph:"npx mcp-postgres"} ] },
+  };
+
+  constructor(props){
+    super(props);
+    const seed = props && props.seedConversation;
+    this.state = {
+      theme: (props && props.startTheme) || "light",
+      view: (props && props.startView) || "chat",
+      input: "",
+      messages: seed ? this._seedMessages() : [],
+      planTasks: this.SEED_TASKS.map(t=>({...t})),
+      steps: seed ? this._finalSteps() : [],
+      streaming: false,
+      consoleOpen: true,
+      patchFile: 0,
+      patchMode: "diff",
+      patchEdits: {},
+      provider: "ollama",
+      flowNode: "coder",
+      tip: { show:false, text:"", x:0, y:0, transform:"translateX(-50%)" },
+      flowName: "revisao-com-patch",
+      fnodes: this.FLOW_SEED_NODES.map(n=>({ ...n, cfg:{ ...(n.cfg||{}) } })),
+      fedges: this.FLOW_SEED_EDGES.map(e=>({ ...e })),
+      selFNode: null, connectFrom: null, flowSaved: false,
+      extItems: this.EXT_SEED.map(x=>({ ...x })),
+      extTab: "agents", modalOpen: false, modalDraft: {}, modalMode:"create", modalEditId:null, activeFlowId:"lib1",
+    };
+    this._timers = [];
+    this._nid = 100;
+  }
+  componentWillUnmount(){ this._timers.forEach(clearTimeout); clearTimeout(this._tipTimer); if(this._onOver){ document.removeEventListener("mouseover", this._onOver, true); } if(this._onMove){ document.removeEventListener("mousemove", this._onMove); document.removeEventListener("mouseup", this._onUp); } }
+  componentDidMount(){
+    this._onOver = (e)=>{
+      const el = e.target && e.target.closest ? e.target.closest("[data-tip]") : null;
+      if(el === this._tipEl) return;
+      this._tipEl = el;
+      clearTimeout(this._tipTimer);
+      if(this.state.tip.show) this.setState({ tip:{ show:false, text:"", x:0, y:0, transform:"translateX(-50%)" } });
+      if(el){
+        this._tipTimer = setTimeout(()=>{
+          const r = el.getBoundingClientRect();
+          const m = 132;
+          const cx = Math.max(m, Math.min(window.innerWidth - m, r.left + r.width/2));
+          const below = r.bottom < window.innerHeight - 74;
+          const ty = below ? Math.round(r.bottom + 9) : Math.round(r.top - 9);
+          const tf = below ? "translateX(-50%)" : "translate(-50%,-100%)";
+          this.setState({ tip:{ show:true, text: el.getAttribute("data-tip"), x: Math.round(cx), y: ty, transform: tf } });
+        }, 1000);
+      }
+    };
+    document.addEventListener("mouseover", this._onOver, true);
+    this._onMove = (e)=>{ if(!this._drag) return; const dx=e.clientX-this._drag.ox, dy=e.clientY-this._drag.oy; this.setState(st=>({ fnodes: st.fnodes.map(n=> n.id===this._drag.id ? {...n, x:this._drag.nx+dx, y:this._drag.ny+dy} : n) })); };
+    this._onUp = ()=>{ this._drag = null; };
+    document.addEventListener("mousemove", this._onMove);
+    document.addEventListener("mouseup", this._onUp);
+  }
+
+  _seedMessages(){
+    return [
+      { role:"user", name:"Você", text:"Adicione rate limiting à API antes que a gente exponha em produção." },
+      { role:"assistant", name:"Planner", tag:"plano", text:"Certo — dividi isso em 4 etapas com um gate de aprovação. Você revisa o plano e os diffs antes de qualquer escrita no repositório." },
+      { role:"assistant", name:"Coder", tag:"patch", text:"Patch proposto em 3 arquivos (+49 / −2). Nada foi escrito no disco — revise em Patches e aprove para aplicar." },
+    ];
+  }
+  _finalSteps(){
+    return [
+      { label:"Plano criado", status:"done", out:"4 etapas · gates de aprovação ativos" },
+      { label:"Repositório analisado", status:"done", out:"12 arquivos candidatos · 3 relevantes" },
+      { label:"Patch gerado", status:"done", out:"backend/api/middleware/rate_limit.py\nbackend/api/main.py  (+49 / −2)" },
+      { label:"Validação concluída", status:"done", out:"41 passed · 0 failed · ruff ok · 0.9s" },
+    ];
+  }
+
+  setView(v){ this.setState({ view:v, modalOpen:false }); }
+  toggleTheme(){ this.setState(s=>({ theme: s.theme==="light"?"dark":"light" })); }
+  toggleConsole(){ this.setState(s=>({ consoleOpen: !s.consoleOpen })); }
+  setTask(id, status){ this.setState(s=>({ planTasks: s.planTasks.map(t=> t.id===id?{...t,status}:t) })); }
+  setTaskField(id, field, v){ this.setState(s=>({ planTasks: s.planTasks.map(t=> t.id===id?{...t,[field]:v}:t) })); }
+  addTask(){ this.setState(s=>({ planTasks:[...s.planTasks, { id:"t"+Date.now(), title:"Nova etapa", desc:"Descreva o que esta etapa deve fazer.", file:"—", status:"pending" }] })); }
+  removeTask(id){ this.setState(s=>({ planTasks: s.planTasks.filter(t=>t.id!==id) })); }
+  setProvider(id){ this.setState({ provider:id }); }
+  setPatchEdit(v){ this.setState(st=>({ patchEdits:{ ...st.patchEdits, [st.patchFile]: v } })); }
+  addFlowNode(spec){
+    this._nid = (this._nid||100) + 1;
+    const id = "n"+this._nid;
+    const sel = this.state.selFNode;
+    let x=170, y=120;
+    const nodes = this.state.fnodes;
+    if(sel){ const p=nodes.find(n=>n.id===sel); if(p){ x=p.x; y=p.y+112; } }
+    else if(nodes.length){ const last=nodes[nodes.length-1]; x=last.x+30; y=last.y+30; }
+    const node = { id, x, y, cfg:{}, ...spec };
+    this.setState(st=>({ fnodes:[...st.fnodes, node], fedges: sel?[...st.fedges,{from:sel,to:id}]:st.fedges, selFNode:id, connectFrom:null }));
+  }
+  nodeMouseDown(id, e){
+    const n=this.state.fnodes.find(x=>x.id===id);
+    this.setState({ selFNode:id });
+    if(n) this._drag = { id, ox:e.clientX, oy:e.clientY, nx:n.x, ny:n.y };
+  }
+  connectDot(toId, side, e){ if(e&&e.stopPropagation) e.stopPropagation(); const from=this.state.selFNode; if(!from || from===toId) return; this.setState(st=>({ fedges:[...st.fedges, { from, to:toId, toSide:side }] })); }
+  removeFlowNode(id){ this.setState(st=>({ fnodes:st.fnodes.filter(n=>n.id!==id), fedges:st.fedges.filter(e=>e.from!==id&&e.to!==id), selFNode:null, connectFrom:null })); }
+  setFNodeLabel(id, v){ this.setState(st=>({ fnodes:st.fnodes.map(n=>n.id===id?{...n, label:v}:n) })); }
+  setFNodeField(id, key, v){ this.setState(st=>({ fnodes:st.fnodes.map(n=>n.id===id?{...n, cfg:{...n.cfg, [key]:v}}:n) })); }
+  clearFlow(){ this.setState({ fnodes:[], fedges:[], selFNode:null, connectFrom:null }); }
+  saveFlow(){ this.setState({ flowSaved:true }); this._timers.push(setTimeout(()=>this.setState({flowSaved:false}), 1900)); }
+  loadFlow(id){ const f=this.FLOWS_LIBRARY.find(x=>x.id===id); if(!f) return; this.setState({ fnodes:f.nodes.map(n=>({...n, cfg:{...(n.cfg||{})}})), fedges:f.edges.map(e=>({...e})), flowName:f.name, activeFlowId:id, selFNode:null }); }
+  newFlow(){ this._nid=(this._nid||100)+1; const id="n"+this._nid; this.setState({ fnodes:[{ id, type:"start", label:"Início", x:200, y:90, cfg:{} }], fedges:[], flowName:"novo-flow", activeFlowId:null, selFNode:id }); }
+  setExtTab(id){ this.setState({ extTab:id }); }
+  openCreate(){ this.setState({ modalOpen:true, modalMode:"create", modalEditId:null, modalDraft:{} }); }
+  openEdit(id){ const it=this.state.extItems.find(x=>x.id===id); if(!it) return; this.setState({ modalOpen:true, modalMode:"edit", modalEditId:id, extTab:it.kind, modalDraft:{ name:it.name, desc:it.desc, ...(it.cfg||{}) } }); }
+  closeModal(){ this.setState({ modalOpen:false }); }
+  setDraft(key, v){ this.setState(st=>({ modalDraft:{...st.modalDraft, [key]:v} })); }
+  toggleExt(id){ this.setState(st=>({ extItems:st.extItems.map(x=>x.id===id?{...x, enabled:!x.enabled}:x) })); }
+  submitModal(){
+    const tab=this.state.extTab, d=this.state.modalDraft;
+    const name=(d.name||"").trim(); if(!name){ this.setState({modalOpen:false}); return; }
+    if(this.state.modalMode==="edit" && this.state.modalEditId){
+      const id=this.state.modalEditId;
+      this.setState(st=>({ extItems:st.extItems.map(x=> x.id===id ? {...x, name, desc:(d.desc||x.desc), cfg:{...x.cfg, ...d}} : x), modalOpen:false }));
+      return;
+    }
+    const meta={ agents:"agent.yaml · v0.1.0", skills:"skill · custom", plugins:"plugin.yaml · "+(d.perms||"default-deny"), mcp:(d.transport||"stdio")+" · custom" }[tab];
+    const item={ id:"ext"+Date.now(), kind:tab, name, meta, desc:(d.desc||"Extensão criada neste workspace."), enabled:true, cfg:{...d} };
+    this.setState(st=>({ extItems:[item, ...st.extItems], modalOpen:false }));
+  }
+
+  executePlan(){
+    this.setState(s=>({ planTasks: s.planTasks.map(t=> t.status==="rejected"?t:{...t,status:"done"}) , view:"plans" }));
+  }
+
+  send(){
+    const text = this.state.input.trim();
+    if(!text || this.state.streaming) return;
+    this.setState(s=>({
+      messages:[...s.messages, { role:"user", name:"Você", text }],
+      input:"", streaming:true, consoleOpen:true, planTasks:[],
+      steps:[{ label:"Planejando execução", status:"running", out:"analisando objetivo e contexto do repositório" }],
+    }));
+    const T=(ms,fn)=>this._timers.push(setTimeout(fn,ms));
+    T(650, ()=>this.setState(s=>({
+      messages:[...s.messages, { role:"assistant", name:"Planner", tag:"plano", text:"Certo — dividi isso em 4 etapas com um gate de aprovação. Você revisa o plano e os diffs antes de qualquer escrita no repositório." }],
+      planTasks:this.SEED_TASKS.map(t=>({...t})),
+      steps:[
+        { label:"Plano criado", status:"done", out:"4 etapas · gates de aprovação ativos" },
+        { label:"Analisando repositório", status:"running", out:"tree-sitter · 128 símbolos indexados" },
+      ],
+    })));
+    T(1600, ()=>this.setState(s=>({
+      steps:[
+        { label:"Plano criado", status:"done", out:"4 etapas · gates de aprovação ativos" },
+        { label:"Repositório analisado", status:"done", out:"12 arquivos candidatos · 3 relevantes" },
+        { label:"Gerando patch", status:"running", out:"diff unificado · dry-run" },
+      ],
+    })));
+    T(2700, ()=>this.setState(s=>({
+      messages:[...s.messages, { role:"assistant", name:"Coder", tag:"patch", text:"Patch proposto em 3 arquivos (+49 / −2). Nada foi escrito no disco — revise em Patches e aprove para aplicar." }],
+      steps:[
+        { label:"Plano criado", status:"done", out:"4 etapas · gates de aprovação ativos" },
+        { label:"Repositório analisado", status:"done", out:"12 arquivos candidatos · 3 relevantes" },
+        { label:"Patch gerado", status:"done", out:"backend/api/middleware/rate_limit.py\nbackend/api/main.py  (+49 / −2)" },
+        { label:"Validando (testes + lint)", status:"running", out:"pytest -q · ruff · mypy" },
+      ],
+    })));
+    T(3900, ()=>this.setState(s=>({
+      streaming:false,
+      messages:[...s.messages, { role:"assistant", name:"Validator", tag:"ok", text:"Validação concluída: 41 testes ok, lint limpo. O plano está pronto para aprovação." }],
+      steps:this._finalSteps(),
+    })));
+  }
+
+  renderVals(){
+    const s = this.state;
+    const active = "background:var(--accent-tint);color:var(--accent);box-shadow:inset 3px 0 0 var(--accent);";
+    const idle = "color:var(--fg-2);";
+    const nav = {};
+    ["chat","plans","patches","flows","sessions","config","ext"].forEach(v=>{ nav[v] = s.view===v ? active : idle; });
+
+    const badgeBase = "display:none;";
+    const badgeOn = "font:700 10.5px var(--font-mono);background:var(--bg-4);color:var(--fg-2);border-radius:6px;padding:1px 6px;min-width:18px;text-align:center;";
+    const plansN = s.planTasks.length;
+    const badge = {
+      plans: plansN ? badgeOn : badgeBase,
+      patches: (s.messages.some(m=>m.tag==="patch")) ? badgeOn : badgeBase,
+    };
+    const counts = { plans: plansN||4, patches: 3 };
+
+    const pill = (st)=>{
+      const base = "font:600 11px var(--font-sans);border-radius:99px;padding:3px 10px;white-space:nowrap;flex:none;";
+      const map = {
+        pending:"color:var(--warn);background:var(--warn-tint);",
+        approved:"color:var(--success);background:var(--success-tint);",
+        rejected:"color:var(--danger);background:var(--danger-tint);",
+        done:"color:var(--success);background:var(--success-tint);",
+        running:"color:var(--accent);background:var(--accent-tint);",
+        failed:"color:var(--danger);background:var(--danger-tint);",
+      };
+      return base + (map[st]||"");
+    };
+    const statusLabel = { pending:"Aguardando", approved:"Aprovado", rejected:"Rejeitado", done:"Concluído", running:"Em execução", failed:"Falhou" };
+
+    // messages
+    const messages = s.messages.map(m=>{
+      const isUser = m.role==="user";
+      const tagMap = { plano:"Planejamento", patch:"Patch proposto", ok:"Validação" };
+      return {
+        ...m,
+        avatar: isUser ? "V" : m.name[0],
+        avatarStyle: isUser ? "background:var(--bg-3);color:var(--fg-2);" : "background:var(--accent);color:var(--accent-fg);",
+        nameStyle: isUser ? "color:var(--fg-2);" : "color:var(--accent);",
+        tag: m.tag ? (tagMap[m.tag]||m.tag) : "",
+        tagStyle: m.tag ? "font:600 10.5px var(--font-sans);letter-spacing:.04em;text-transform:uppercase;color:var(--fg-3);border:1px solid var(--line);border-radius:6px;padding:1px 7px;" : "display:none;",
+      };
+    });
+
+    // steps
+    const steps = s.steps.map((st,i,arr)=>{
+      const isLast = i===arr.length-1;
+      const dotColor = st.status==="done"?"var(--success)":st.status==="running"?"var(--accent)":st.status==="error"?"var(--danger)":"var(--line-strong)";
+      return {
+        ...st,
+        spin: st.status==="running",
+        hasOut: !!st.out,
+        dotStyle:`width:13px;height:13px;border-radius:50%;background:${dotColor};box-shadow:0 0 0 4px color-mix(in srgb, ${dotColor} 18%, transparent);flex:none;margin-top:3px;`,
+        lineStyle: isLast ? "width:0;" : "width:2px;flex:1;background:var(--line);margin:5px 0;min-height:14px;",
+        labelStyle: st.status==="pending" ? "color:var(--fg-3);" : "color:var(--fg);",
+      };
+    });
+
+    // plan tasks
+    const tasks = s.planTasks.map((t,i)=>{
+      const approved = t.status==="approved"||t.status==="done";
+      const rejected = t.status==="rejected";
+      return {
+        ...t, n:i+1,
+        pill: pill(t.status), statusLabel: statusLabel[t.status],
+        cardStyle:`border:1px solid ${approved?"var(--accent-line)":"var(--line)"};border-radius:14px;padding:16px 18px;background:var(--bg-2);box-shadow:var(--shadow-sm);${rejected?"opacity:.55;":""}`,
+        approveBtn:`border:1px solid ${approved?"var(--success)":"var(--line-strong)"};background:${approved?"var(--success-tint)":"transparent"};color:${approved?"var(--success)":"var(--fg-2)"};border-radius:9px;padding:6px 13px;cursor:pointer;font:600 12.5px var(--font-sans);`,
+        rejectBtn:`border:1px solid ${rejected?"var(--danger)":"var(--line-strong)"};background:${rejected?"var(--danger-tint)":"transparent"};color:${rejected?"var(--danger)":"var(--fg-3)"};border-radius:9px;padding:6px 13px;cursor:pointer;font:600 12.5px var(--font-sans);`,
+        approve:()=>this.setTask(t.id,"approved"),
+        reject:()=>this.setTask(t.id,"rejected"),
+        onTitle:(e)=>this.setTaskField(t.id,"title",e.target.value),
+        onDesc:(e)=>this.setTaskField(t.id,"desc",e.target.value),
+        remove:()=>this.removeTask(t.id),
+      };
+    });
+    const approvedCount = s.planTasks.filter(t=>t.status==="approved"||t.status==="done").length;
+    const planPreview = tasks.slice(0,4);
+
+    // patches
+    const files = this.PATCHES.map((f,i)=>{
+      const parts = f.name.split("/");
+      const base = parts.pop();
+      return {
+        ...f, i, base, dir: parts.length?parts.join("/")+"/":"raiz",
+        select:()=>this.setState({patchFile:i}),
+        tabStyle:`display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:1px solid ${i===s.patchFile?"var(--accent-line)":"transparent"};background:${i===s.patchFile?"var(--accent-tint)":"transparent"};border-radius:10px;padding:9px 11px;cursor:pointer;margin-bottom:3px;font-family:var(--font-sans);color:var(--fg);`,
+      };
+    });
+    const cur = this.PATCHES[s.patchFile] || this.PATCHES[0];
+    let addN=0, delN=0;
+    const diffLines = cur.lines.map(l=>{
+      if(l.t==="add") addN++; if(l.t==="del") delN++;
+      const gutter = l.t==="del" ? "" : (l.t==="add" ? (delN+addN) : (delN+addN));
+      return {
+        ...l,
+        sign: l.t==="add"?"+":l.t==="del"?"−":"",
+        gutter: String(l.t==="del"? "" : (addN+delN)),
+        rowStyle:`display:flex;font-family:var(--font-mono);font-size:12.5px;line-height:1.7;padding:0 14px;${l.t==="add"?"background:var(--add-bg);":l.t==="del"?"background:var(--del-bg);":""}`,
+        signStyle:`color:${l.t==="add"?"var(--add-fg)":l.t==="del"?"var(--del-fg)":"var(--fg-3)"};font-weight:600;`,
+      };
+    });
+
+    // flows
+    const nodes = this.NODES.map(n=>({
+      ...n,
+      select:()=>this.setState({flowNode:n.id}),
+      style:`position:absolute;left:${n.x+40}px;top:${n.y+30}px;width:150px;text-align:left;border:1.5px solid ${s.flowNode===n.id?"var(--accent)":"var(--line-strong)"};background:var(--bg-2);color:var(--fg);border-radius:13px;padding:13px 14px;cursor:pointer;box-shadow:${s.flowNode===n.id?"var(--shadow)":"var(--shadow-sm)"};font-family:var(--font-sans);`,
+    }));
+    const node = this.NODES.find(n=>n.id===s.flowNode) || this.NODES[0];
+
+    // sessions
+    const sessions = this.SEED_SESSIONS.map(x=>({
+      ...x, pill:pill(x.status), statusLabel:statusLabel[x.status],
+      dot:`width:10px;height:10px;border-radius:50%;flex:none;background:${x.status==="running"?"var(--accent)":x.status==="done"?"var(--success)":"var(--danger)"};box-shadow:0 0 0 4px color-mix(in srgb, ${x.status==="running"?"var(--accent)":x.status==="done"?"var(--success)":"var(--danger)"} 16%, transparent);`,
+    }));
+
+    const patchNew = cur.lines.filter(l=>l.t!=="del").map(l=>l.text).join("\n");
+    const editValue = (s.patchEdits[s.patchFile] !== undefined) ? s.patchEdits[s.patchFile] : patchNew;
+    const segBtn = (a)=>`border:none;background:${a?"var(--bg-3)":"transparent"};color:${a?"var(--fg)":"var(--fg-3)"};border-radius:6px;padding:4px 12px;cursor:pointer;font:600 12px var(--font-sans);`;
+
+    // providers
+    const provObj = this.PROVIDERS.find(p=>p.id===s.provider) || this.PROVIDERS[0];
+    const providers = this.PROVIDERS.map(p=>({
+      ...p, select:()=>this.setProvider(p.id),
+      style:`flex:1;border:1px solid ${p.id===s.provider?"var(--accent)":"var(--line-strong)"};background:${p.id===s.provider?"var(--accent-tint)":"transparent"};color:${p.id===s.provider?"var(--accent)":"var(--fg-2)"};border-radius:10px;padding:10px;cursor:pointer;font:600 13px var(--font-sans);`,
+    }));
+
+    // ---------- flow builder ----------
+    const NW = 168;
+    const tcol = { agent:"var(--accent)", cond:"var(--warn)", loop:"var(--accent-2)", human:"var(--success)", parallel:"var(--fg-2)", prompt:"var(--accent-2)", start:"var(--success)", end:"var(--fg-2)" };
+    const ttint = { agent:"var(--accent-tint)", cond:"var(--warn-tint)", loop:"var(--accent-tint)", human:"var(--success-tint)", parallel:"var(--bg-3)", prompt:"var(--accent-tint)", start:"var(--success-tint)", end:"var(--bg-3)" };
+    const tlabel = { agent:"Agente", cond:"Condicional", loop:"Loop", human:"Aprovação humana", parallel:"Paralelo", prompt:"Prompt / Step", start:"Início", end:"Fim" };
+    const cglyph = { cond:"◈", loop:"↻", human:"✋", parallel:"⇉", prompt:"✎", start:"▶", end:"■" };
+    const glyphOf = (n)=> n.type==="agent" ? ((n.agent||n.label||"A")[0].toUpperCase()) : (cglyph[n.type]||"•");
+    const subOf = (n)=> n.type==="agent" ? ("agent://"+(n.agent||"custom"))
+      : n.type==="cond" ? ((n.cfg&&n.cfg.expr) ? n.cfg.expr : "condição")
+      : n.type==="loop" ? ("máx "+((n.cfg&&n.cfg.max)||3)+" iterações")
+      : n.type==="human" ? "aguarda aprovação"
+      : n.type==="prompt" ? ((n.cfg&&n.cfg.prompt) ? String(n.cfg.prompt).slice(0,26) : "prompt ao próximo agente")
+      : n.type==="parallel" ? "ramos em paralelo" : "";
+    const hOf = (n)=> subOf(n) ? 62 : 44;
+    const byId = {}; s.fnodes.forEach(n=>{ byId[n.id]=n; });
+    const selId = s.selFNode;
+    const dotStyle=(side)=>{ const base="position:absolute;width:14px;height:14px;border-radius:50%;background:var(--accent);border:2px solid var(--bg-2);box-shadow:0 0 0 1.5px var(--accent);cursor:pointer;z-index:14;"; const pos={ top:"left:50%;top:-8px;transform:translateX(-50%);", bottom:"left:50%;bottom:-8px;transform:translateX(-50%);", left:"left:-8px;top:50%;transform:translateY(-50%);", right:"right:-8px;top:50%;transform:translateY(-50%);" }[side]; return base+pos; };
+    const fnodesView = s.fnodes.map(n=>{
+      const isSel = n.id===selId;
+      const col = tcol[n.type]||"var(--accent)"; const tint = ttint[n.type]||"var(--accent-tint)";
+      const sub = subOf(n);
+      return { id:n.id, label:n.label, glyph:glyphOf(n), sub, hasSub:!!sub,
+        boxStyle:`position:absolute;left:${n.x}px;top:${n.y}px;width:${NW}px;box-sizing:border-box;padding:11px 13px;border-radius:12px;background:var(--bg-2);border:1.5px solid ${isSel?col:"var(--line-strong)"};box-shadow:${isSel?"var(--shadow)":"var(--shadow-sm)"};cursor:grab;user-select:none;z-index:${isSel?10:2};`,
+        badgeStyle:`width:24px;height:24px;flex:none;border-radius:7px;background:${tint};color:${col};display:flex;align-items:center;justify-content:center;font:700 12px var(--font-mono);`,
+        showDots: !!selId && n.id!==selId,
+        dots: ["top","bottom","left","right"].map(side=>({ style:dotStyle(side), onDown:(e)=>this.connectDot(n.id, side, e) })),
+        onDown:(e)=>this.nodeMouseDown(n.id,e),
+      };
+    });
+    const sidePt=(n,side)=>{ const h=hOf(n), w=NW; if(side==="top") return {x:n.x+w/2,y:n.y}; if(side==="bottom") return {x:n.x+w/2,y:n.y+h}; if(side==="left") return {x:n.x,y:n.y+h/2}; if(side==="right") return {x:n.x+w,y:n.y+h/2}; return {x:n.x+w/2,y:n.y+h}; };
+    const offP=(p,side,k)=>({ top:{x:p.x,y:p.y-k}, bottom:{x:p.x,y:p.y+k}, left:{x:p.x-k,y:p.y}, right:{x:p.x+k,y:p.y} }[side] || {x:p.x,y:p.y});
+    const autoSide=(A,B)=>{ const dx=(B.x+NW/2)-(A.x+NW/2), dy=(B.y+hOf(B)/2)-(A.y+hOf(A)/2); if(Math.abs(dy)>=Math.abs(dx)) return dy>=0?"bottom":"top"; return dx>=0?"right":"left"; };
+    const edgeGeom=(e)=>{ const A=byId[e.from], B=byId[e.to]; if(!A||!B) return null; const fs=e.fromSide||autoSide(A,B); const ts=e.toSide||"top"; const a=sidePt(A,fs), b=sidePt(B,ts); const cA=offP(a,fs,46), cB=offP(b,ts,46); return { path:`M ${a.x} ${a.y} C ${cA.x} ${cA.y}, ${cB.x} ${cB.y}, ${b.x} ${b.y}`, mx:(a.x+b.x)/2, my:(a.y+b.y)/2 }; };
+    const fedgesView = s.fedges.map(e=>{ const g=edgeGeom(e); return { path: g?g.path:"" }; });
+    const fedgeLabels = s.fedges.filter(e=>e.label).map(e=>{ const g=edgeGeom(e)||{mx:0,my:0}; return { label:e.label, style:`position:absolute;left:${g.mx}px;top:${g.my}px;transform:translate(-50%,-50%);background:var(--bg);border:1px solid var(--line-strong);color:var(--fg-2);font:600 10.5px var(--font-mono);padding:2px 7px;border-radius:6px;z-index:5;pointer-events:none;` }; });
+    const selNode = s.fnodes.find(n=>n.id===selId);
+    const fieldCfg = {
+      agent:{label:"Modelo do agente",key:"model",def:provObj.model,hint:"O agente executa com este modelo e o budget definido no seu agent.yaml."},
+      prompt:{label:"",key:"prompt",def:"",hint:"Este step injeta um prompt no contexto do próximo agente do fluxo."},
+      cond:{label:"Expressão da condição",key:"expr",def:"result.ok == true",hint:"Se verdadeira, segue pelo ramo “sim”; caso contrário, pelo ramo “não”."},
+      loop:{label:"Máximo de iterações",key:"max",def:"3",hint:"Repete o trecho conectado até a condição passar ou atingir o limite."},
+      human:{label:"Aprovadores",key:"approvers",def:"@voce",hint:"O flow pausa e aguarda aprovação humana antes de continuar."},
+      parallel:{label:"Nº de ramos",key:"branches",def:"2",hint:"Executa os nós conectados em paralelo e junta os resultados."},
+      start:{label:"Gatilho",key:"trigger",def:"manual",hint:"Define como o flow é iniciado."},
+      end:{label:"Saída",key:"output",def:"summary",hint:"Artefato retornado ao final do flow."},
+    };
+    let selView = null;
+    if(selNode){
+      const col=tcol[selNode.type]||"var(--accent)", tint=ttint[selNode.type]||"var(--accent-tint)";
+      const fc = fieldCfg[selNode.type] || fieldCfg.agent;
+      const cv = selNode.cfg && selNode.cfg[fc.key];
+      const inc = !!(selNode.cfg && selNode.cfg.includePrev);
+      const hasPrev = s.fedges.some(e=>e.to===selNode.id);
+      selView = {
+        typeLabel: tlabel[selNode.type]||"Nó", glyph:glyphOf(selNode), label:selNode.label,
+        sub2: subOf(selNode) || (tlabel[selNode.type]||""),
+        badgeStyle:`width:38px;height:38px;flex:none;border-radius:11px;background:${tint};color:${col};display:flex;align-items:center;justify-content:center;font:700 15px var(--font-mono);`,
+        hasField: selNode.type!=="prompt",
+        fieldLabel: fc.label, fieldValue: (cv!==undefined&&cv!=="")?cv:fc.def, hint:fc.hint,
+        onLabel:(e)=>this.setFNodeLabel(selNode.id, e.target.value),
+        onField:(e)=>this.setFNodeField(selNode.id, fc.key, e.target.value),
+        isPrompt: selNode.type==="prompt",
+        promptValue: (selNode.cfg && selNode.cfg.prompt) || "",
+        onPrompt:(e)=>this.setFNodeField(selNode.id, "prompt", e.target.value),
+        hasPrev,
+        toggleIncludePrev:()=>this.setFNodeField(selNode.id, "includePrev", !inc),
+        includeBtnStyle:`display:flex;align-items:center;gap:9px;width:100%;margin-top:10px;box-sizing:border-box;border:1px solid ${inc?"var(--accent)":"var(--line-strong)"};background:${inc?"var(--accent-tint)":"transparent"};color:${inc?"var(--accent)":"var(--fg-2)"};border-radius:9px;padding:9px 11px;cursor:pointer;font:600 12.5px var(--font-sans);`,
+        includeDot:`width:15px;height:15px;border-radius:4px;flex:none;border:1.5px solid ${inc?"var(--accent)":"var(--line-strong)"};background:${inc?"var(--accent)":"transparent"};`,
+        remove:()=>this.removeFlowNode(selNode.id),
+      };
+    }
+    const paletteAgents = this.PALETTE_AGENTS.map(a=>({ label:a.label, badge:a.badge, add:()=>this.addFlowNode({type:"agent",agent:a.key,label:a.label}) }));
+    const paletteControls = this.CONTROLS.map(c=>({ label:c.label, glyph:c.glyph, tip:c.tip,
+      iconStyle:`width:22px;height:22px;flex:none;border-radius:6px;background:${ttint[c.type]};color:${tcol[c.type]};display:flex;align-items:center;justify-content:center;font-size:12px;`,
+      add:()=>this.addFlowNode({type:c.type,label:c.label}) }));
+    const flowLib = this.FLOWS_LIBRARY.map(f=>({ name:f.name, desc:f.desc, active:s.activeFlowId===f.id, load:()=>this.loadFlow(f.id),
+      style:`display:flex;flex-direction:column;gap:3px;width:100%;box-sizing:border-box;text-align:left;border:1px solid ${s.activeFlowId===f.id?"var(--accent-line)":"var(--line)"};background:${s.activeFlowId===f.id?"var(--accent-tint)":"var(--bg)"};color:var(--fg);border-radius:9px;padding:8px 10px;cursor:pointer;font-family:var(--font-sans);` }));
+
+    // ---------- extensions ----------
+    const kglyph = { agents:"◆", skills:"✦", plugins:"⧉", mcp:"⇌" };
+    const addLabelMap = { agents:"Criar agente", skills:"Criar skill", plugins:"Instalar plugin", mcp:"Adicionar MCP" };
+    const extTabsView = this.EXT_TABS.map(t=>{
+      const cnt = s.extItems.filter(x=>x.kind===t.id).length; const a = s.extTab===t.id;
+      return { label:t.label, count:cnt, select:()=>this.setExtTab(t.id),
+        style:`display:flex;align-items:center;gap:7px;border:none;background:${a?"var(--bg)":"transparent"};color:${a?"var(--fg)":"var(--fg-2)"};border-radius:8px;padding:7px 14px;cursor:pointer;font:600 13px var(--font-sans);box-shadow:${a?"var(--shadow-sm)":"none"};`,
+        countStyle:`font:700 10.5px var(--font-mono);background:${a?"var(--accent-tint)":"var(--bg-3)"};color:${a?"var(--accent)":"var(--fg-3)"};border-radius:6px;padding:1px 6px;` };
+    });
+    const extItemsView = s.extItems.filter(x=>x.kind===s.extTab).map(it=>({
+      name:it.name, meta:it.meta, desc:it.desc, glyph:kglyph[it.kind]||"•",
+      iconStyle:`width:34px;height:34px;flex:none;border-radius:9px;background:var(--accent-tint);color:var(--accent);display:flex;align-items:center;justify-content:center;font-size:15px;`,
+      statusLabel: it.enabled?"Ativo":"Inativo",
+      pill:`font:600 11px var(--font-sans);border-radius:99px;padding:3px 10px;flex:none;${it.enabled?"color:var(--success);background:var(--success-tint);":"color:var(--fg-3);background:var(--bg-3);"}`,
+      open:()=>this.openEdit(it.id),
+      toggle:(e)=>{ if(e&&e.stopPropagation) e.stopPropagation(); this.toggleExt(it.id); }, toggleLabel: it.enabled?"Desativar":"Ativar",
+      toggleStyle:`border:1px solid ${it.enabled?"var(--line-strong)":"var(--accent)"};background:${it.enabled?"transparent":"var(--accent-tint)"};color:${it.enabled?"var(--fg-2)":"var(--accent)"};border-radius:9px;padding:7px 12px;cursor:pointer;font:600 12px var(--font-sans);`,
+    }));
+    const mcfg = this.MODAL_CFG[s.extTab] || this.MODAL_CFG.agents;
+    const editing = s.modalMode==="edit";
+    const editKindLabel = { agents:"agente", skills:"skill", plugins:"plugin", mcp:"servidor MCP" }[s.extTab] || "extensão";
+    const modalView = { title: editing?("Editar "+editKindLabel):mcfg.title, subtitle:mcfg.subtitle, submitLabel: editing?"Salvar alterações":mcfg.submit,
+      fields: mcfg.fields.map(f=>({ label:f.label, placeholder:f.ph, area:!!f.area, input:!f.area, value:(s.modalDraft[f.key]||""), onChange:(e)=>this.setDraft(f.key, e.target.value) })) };
+
+    // topbar meta
+    const metaMap = {
+      chat:{title:"Chat de execução", subtitle:"Converse com os agentes · patches com aprovação humana"},
+      plans:{title:"Planos", subtitle:"Etapas com gates de aprovação antes da aplicação"},
+      patches:{title:"Review de patches", subtitle:"Diff unificado em dry-run · nada escrito sem aprovar"},
+      flows:{title:"Construtor de flows", subtitle:"Monte o pipeline arrastando blocos · loop e condicionais"},
+      ext:{title:"Extensões", subtitle:"Agents, skills, plugins e servidores MCP"},
+      sessions:{title:"Sessões", subtitle:"Histórico reproduzível de execuções"},
+      config:{title:"Configuração", subtitle:"Provider, workspace e políticas"},
+    };
+
+    const runStatus = s.streaming ? "running" : (s.steps.length ? "done" : "idle");
+
+    return {
+      theme:s.theme, view:s.view,
+      tipShow:s.tip.show, tipText:s.tip.text, tipX:s.tip.x, tipY:s.tip.y, tipTransform:s.tip.transform,
+      isChat:s.view==="chat", isPlans:s.view==="plans", isPatches:s.view==="patches",
+      isFlows:s.view==="flows", isSessions:s.view==="sessions", isConfig:s.view==="config",
+      nav, badge, counts,
+      go:{
+        chat:()=>this.setView("chat"), plans:()=>this.setView("plans"),
+        patches:()=>this.setView("patches"), flows:()=>this.setView("flows"),
+        sessions:()=>this.setView("sessions"), config:()=>this.setView("config"), ext:()=>this.setView("ext"),
+        workspace:()=>this.setView("sessions"),
+      },
+      toggleTheme:()=>this.toggleTheme(),
+      themeLabel: s.theme==="light"?"Modo escuro":"Modo claro",
+      themeIcon: s.theme==="light"?"◐":"◑",
+      meta: metaMap[s.view]||metaMap.chat,
+      providerLabel: provObj.label, providerModel: provObj.model,
+      // chat
+      messages, showEmpty: s.messages.length===0,
+      suggestions: this.SUGGESTIONS.map(x=>({...x, pick:()=>{ this.setState({input:x.text}); this._timers.push(setTimeout(()=>this.send(),120)); } })),
+      input:s.input,
+      onInput:(e)=>this.setState({input:e.target.value}),
+      onKey:(e)=>{ if(e.key==="Enter" && !e.shiftKey){ e.preventDefault(); this.send(); } },
+      send:()=>this.send(),
+      streaming:s.streaming,
+      sendLabel: s.streaming?"Executando":"Enviar",
+      sendStyle:`display:flex;align-items:center;gap:8px;border:none;border-radius:11px;padding:9px 16px;cursor:${s.streaming?"default":"pointer"};font:600 13.5px var(--font-sans);background:var(--accent);color:var(--accent-fg);opacity:${s.streaming?".6":"1"};box-shadow:var(--shadow-sm);`,
+      hasPlan: plansN>0,
+      showPlanPreview: plansN>0 && (s.messages.length>0 || s.steps.length>0),
+      planPreview,
+      // console
+      consoleOpen:s.consoleOpen, toggleConsole:()=>this.toggleConsole(),
+      consoleBtnLabel: s.consoleOpen?"Ocultar execução":"Execução",
+      consoleBtnStyle:`display:flex;align-items:center;gap:7px;border:1px solid ${s.consoleOpen?"var(--accent-line)":"var(--line)"};background:${s.consoleOpen?"var(--accent-tint)":"transparent"};color:${s.consoleOpen?"var(--accent)":"var(--fg-2)"};border-radius:9px;padding:7px 12px;cursor:pointer;font:600 12.5px var(--font-sans);`,
+      steps, stepsEmpty: s.steps.length===0,
+      runStatusLabel: runStatus==="running"?"em andamento":runStatus==="done"?"concluída":"ociosa",
+      runDotStyle:`width:9px;height:9px;border-radius:50%;flex:none;background:${runStatus==="running"?"var(--accent)":runStatus==="done"?"var(--success)":"var(--fg-3)"};${runStatus==="running"?"animation:ad-pulse 1s infinite;":""}`,
+      // plans
+      tasks, approvedCount,
+      addTask:()=>this.addTask(),
+      executePlan:()=>this.executePlan(),
+      executeLabel: approvedCount>0?"Executar plano aprovado":"Aprovar etapas para executar",
+      executeStyle:`flex:none;border:none;border-radius:11px;padding:11px 18px;cursor:${approvedCount>0?"pointer":"default"};font:600 13.5px var(--font-sans);background:${approvedCount>0?"var(--accent)":"var(--bg-3)"};color:${approvedCount>0?"var(--accent-fg)":"var(--fg-3)"};box-shadow:var(--shadow-sm);`,
+      // patches
+      files, diffLines, curFile: cur.name,
+      patchDiffMode:s.patchMode==="diff", patchEditMode:s.patchMode==="edit",
+      diffTabStyle:segBtn(s.patchMode==="diff"), editTabStyle:segBtn(s.patchMode==="edit"),
+      editValue, onEditPatch:(e)=>this.setPatchEdit(e.target.value),
+      setDiffMode:()=>this.setState({patchMode:"diff"}), setEditMode:()=>this.setState({patchMode:"edit"}),
+      // flows
+      nodes, node,
+      // sessions
+      sessions,
+      // config
+      providers,
+      // flow builder
+      flowName:s.flowName, onFlowName:(e)=>this.setState({flowName:e.target.value}),
+      fnodeCount:s.fnodes.length, fedgeCount:s.fedges.length,
+      fnodesView, fedgesView, fedgeLabels,
+      connecting:!!s.connectFrom, cancelConnect:()=>this.setState({connectFrom:null}),
+      clearFlow:()=>this.clearFlow(), saveFlow:()=>this.saveFlow(), flowSaved:s.flowSaved,
+      paletteAgents, paletteControls, flowLib, newFlow:()=>this.newFlow(),
+      hasSelNode:!!selView, noSelNode:!selView, sel:selView,
+      // extensions
+      isExt:s.view==="ext",
+      ext:{ tabs:extTabsView, items:extItemsView, openCreate:()=>this.openCreate(), addLabel:addLabelMap[s.extTab], addTip:"Cria uma nova extensão do tipo selecionado" },
+      modalOpen:s.modalOpen, modal:modalView, closeModal:()=>this.closeModal(), submitModal:()=>this.submitModal(), stop:(e)=>e.stopPropagation(),
+    };
+  }
+}
+</script>
+<script>
+(async () => {
+  if (!document.title || !document.title.trim()) document.title = "AutoDev Redesign";
+  // Prepend so page-supplied @page / break rules (deck-stage's margin:0,
+  // author CSS) keep source-order precedence over the baseline.
+  const baseCss = document.createElement('style');
+  baseCss.textContent = "@media print {\n  figure, table { break-inside: avoid; }\n  *, *::before, *::after {\n    print-color-adjust: exact; -webkit-print-color-adjust: exact;\n    backdrop-filter: none !important; -webkit-backdrop-filter: none !important;\n    animation-delay: -99s !important; animation-duration: .001s !important;\n    animation-iteration-count: 1 !important; animation-fill-mode: both !important;\n    animation-play-state: running !important; transition-duration: 0s !important;\n  }\n}";
+  document.head.prepend(baseCss);
+  if (document.readyState === 'loading') {
+    await new Promise((r) => document.addEventListener('DOMContentLoaded', r, { once: true }));
+  }
+  let ds = document.querySelector('deck-stage');
+  // whenDefined never resolves when nothing registers the element, so only
+  // await it when a <deck-stage> tag exists (and race a timeout regardless).
+  if (ds && !customElements.get('deck-stage')) {
+    try {
+      await Promise.race([
+        customElements.whenDefined('deck-stage'),
+        new Promise((r) => setTimeout(r, 3000)),
+      ]);
+    } catch (e) {}
+    ds = document.querySelector('deck-stage');
+  }
+  // dc-runtime assigns window.DCLogic at init and mounts into #dc-root on
+  // DOMContentLoaded; settle on that subtree so React has rendered before
+  // print(). Non-DC pages fall through to weighing body.
+  const isDc = !ds && 'DCLogic' in window;
+  const settleRoot = ds || (isDc ? document.getElementById('dc-root') : null) || document.body;
+  if (settleRoot) {
+    // Weigh only content children — skip script/style/template so inline
+    // Babel/CSS doesn't register as stable "content" before the framework
+    // has mounted anything.
+    const MEDIA = 'img,svg,canvas,video,picture,iframe,embed,object';
+    const weigh = () => {
+      let text = 0, media = 0;
+      for (const c of settleRoot.children) {
+        const t = c.tagName;
+        if (t === 'SCRIPT' || t === 'STYLE' || t === 'TEMPLATE') continue;
+        text += (c.textContent || '').trim().length;
+        media += c.querySelectorAll(MEDIA).length + (c.matches(MEDIA) ? 1 : 0);
+      }
+      return text + media * 100;
+    };
+    // "Non-zero and stable" alone is not sufficient to mean rendered: generic
+    // body can carry a static shell while async main content is pending, and
+    // #dc-root can carry the root DC's static text while child refs are still
+    // .sc-placeholder boxes. Gate generic on readyState 'complete', and never
+    // accept stability while a dc-runtime placeholder is present.
+    const isGeneric = settleRoot === document.body;
+    const deadline = Date.now() + 15000;
+    let last = -1, stable = 0;
+    while (Date.now() < deadline) {
+      const n = weigh();
+      const ready =
+        (!isGeneric || document.readyState === 'complete') &&
+        !settleRoot.querySelector('.sc-placeholder');
+      if (n > 0 && n === last && ready) { if (++stable >= 2) break; } else { stable = 0; }
+      last = n;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+  // Project support.js may predate runtime default-seeding; push via bridge.
+  if (isDc && window.__dcSetProps && window.__dcRootName) {
+    try {
+      const dpEl = document.querySelector('script[data-dc-script]');
+      const meta = JSON.parse((dpEl && dpEl.getAttribute('data-props')) || '{}');
+      const bag = {};
+      for (const k in meta)
+        if (k[0] !== '$' && meta[k] && meta[k].default !== undefined)
+          bag[k] = meta[k].default;
+      if (Object.keys(bag).length) {
+        window.__dcSetProps(window.__dcRootName(), bag);
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    } catch (e) {}
+  }
+  // Reveal content gated on scroll or visibility before printing. Lazy <img>,
+  // IntersectionObserver fade-ins, and collapsed <details> don't render while
+  // off-screen, so a long page would print with them blank or closed. Open
+  // every <details>, force native-lazy images eager, and scroll the document
+  // through its full height to trip lazy-load + IO; then wait (bounded) for the
+  // newly-triggered images. Inert for deck-stage (slides aren't scroll-gated).
+  try {
+    for (const d of document.querySelectorAll('details')) d.open = true;
+    for (const img of document.querySelectorAll('img[loading="lazy"]'))
+      img.loading = 'eager';
+    const scroller = document.scrollingElement || document.documentElement;
+    const full = Math.max(scroller.scrollHeight, document.body.scrollHeight);
+    const step = window.innerHeight || 800;
+    for (let y = 0; y <= full; y += step) {
+      window.scrollTo(0, y);
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    window.scrollTo(0, 0);
+    await Promise.race([
+      Promise.all(
+        [...document.images].map((img) =>
+          img.complete
+            ? null
+            : new Promise((res) => {
+                img.addEventListener('load', res, { once: true });
+                img.addEventListener('error', res, { once: true });
+              })
+        )
+      ),
+      new Promise((r) => setTimeout(r, 4000)),
+    ]);
+  } catch (e) {}
+  try { await document.fonts.ready; } catch (e) {}
+  // Jump every animation to its end state so print() never captures a slide
+  // mid-entrance. Ordering matters: the 0s-transition style must be live
+  // BEFORE data-deck-active is set so attribute-keyed transitions don't
+  // start a (now-0s) run from the pre-active base.
+  const st = document.createElement('style');
+  st.textContent = '*,*::before,*::after{animation-delay:-99s !important;animation-duration:.001s !important;animation-iteration-count:1 !important;animation-fill-mode:both !important;animation-play-state:running !important;transition-duration:0s !important}';
+  document.head.appendChild(st);
+  for (const d of document.querySelectorAll('deck-stage')) {
+    for (const c of d.children) {
+      const t = c.tagName;
+      if (t === 'SCRIPT' || t === 'STYLE' || t === 'TEMPLATE') continue;
+      c.setAttribute('data-deck-active', '');
+    }
+  }
+  // Re-append deck-stage's @page last so no author @page can add a margin and
+  // spill each full-bleed slide onto two sheets. Backstop for old copies.
+  if (ds) {
+    let pg = document.getElementById('deck-stage-print-page');
+    if (!pg) {
+      pg = document.createElement('style');
+      pg.textContent = '@page{size:' + (+ds.getAttribute('width') || 1920) +
+        'px ' + (+ds.getAttribute('height') || 1080) + 'px;margin:0}';
+    }
+    document.body.appendChild(pg);
+  }
+  try {
+    const sweep = () => {
+      for (const a of document.getAnimations()) {
+        try { a.finish(); } catch (e) {
+          try { a.currentTime = (a.effect && a.effect.getComputedTiming().duration) || 0; a.pause(); } catch (e2) {}
+        }
+      }
+    };
+    sweep();
+    await new Promise((r) => requestAnimationFrame(r));
+    sweep();
+    await new Promise((r) => requestAnimationFrame(r));
+  } catch (e) {}
+  // Size the PDF page to the rendered design unless the file opted into
+  // standard paper via @page{size:letter|A4|…}. Decks own their own @page.
+  // Wrappers (body, …) lose padding+margin so the frame sits at (0,0); the
+  // frame itself loses only margin — its padding is INSIDE the measured
+  // rect and must stay, or content shifts and leaves a gap at bottom/right.
+  var __m = null;
+  try { __m = (() => {
+  var STAMP = true;
+  var docEl = document.documentElement;
+  var doc = { width: docEl.scrollWidth, height: docEl.scrollHeight };
+
+  var ds = document.querySelector('deck-stage');
+  if (ds) {
+    var dw = Number(ds.getAttribute('width')) || 1920;
+    var dh = Number(ds.getAttribute('height')) || 1080;
+    var n = typeof ds.length === 'number' ? ds.length : ds.children.length;
+    var idx = typeof ds.index === 'number' ? ds.index : 0;
+    var frames = [];
+    for (var i = 0; i < n; i++) frames.push({ left: 0, top: 0, width: dw, height: dh });
+    return { kind: 'deck', source: 'declared', doc: doc, frames: frames,
+      authored: frames.map(function(){return{width:true,height:true}}),
+      deck: { width: dw, height: dh, slideCount: n, index: idx },
+      signals: { paperPage: false, pxPage: false } };
+  }
+
+  // Declared kind: a doc-page tag names the kind outright, so no signal
+  // heuristics run (like the deck branch above, signals report false —
+  // they describe inferred classifications only). The tag alone is not
+  // trusted: the element must have upgraded (shadowRoot present), so a
+  // leftover tag whose script was deleted falls through to the heuristics
+  // that handle plain markup.
+  var stageSx = window.scrollX || 0, stageSy = window.scrollY || 0;
+  var dp = document.querySelector('doc-page');
+  if (dp && dp.shadowRoot) {
+    // Crop to the sheet, not the host — the desk around it is screen-only
+    // chrome that must not land in PNG exports.
+    var sheet = dp.shadowRoot.querySelector('.sheet');
+    var sr = (sheet || dp).getBoundingClientRect();
+    return { kind: 'paper-doc', source: 'declared', doc: doc,
+      frames: [{ left: sr.left + stageSx, top: sr.top + stageSy,
+        width: sr.width, height: sr.height }],
+      authored: [{ width: false, height: false }],
+      signals: { paperPage: false, pxPage: false } };
+  }
+  var paperPage = false, pxPage = false;
+  var eachRule = function (fn) {
+    for (var s = 0; s < document.styleSheets.length; s++) {
+      var rs; try { rs = document.styleSheets[s].cssRules; } catch (e) { continue; }
+      for (var r = 0; r < rs.length; r++) {
+        fn(rs[r]);
+        if (rs[r].cssRules) for (var n = 0; n < rs[r].cssRules.length; n++) fn(rs[r].cssRules[n]);
+      }
+    }
+  };
+  eachRule(function (r) {
+    if (r.type !== 6) return;
+    var m = /\bsize\s*:\s*([^;}]+)/i.exec(r.cssText || '');
+    if (!m) return;
+    if (/\b(letter|a[3-5]|legal|ledger)\b/i.test(m[1])) paperPage = true;
+    if (/\d+(?:\.\d+)?px\b/i.test(m[1])) pxPage = true;
+  });
+  var signals = { paperPage: paperPage, pxPage: pxPage };
+
+  var pxVal = function (v) {
+    var m = /^(\d+(?:\.\d+)?)px$/.exec(v || ''); return m ? +m[1] : 0;
+  };
+  var authoredPx = function (el, prop) {
+    if (pxVal(el.style[prop])) return true;
+    var attr = el.getAttribute(prop);
+    if (attr && /^\d+$/.test(attr)) return true;
+    var hit = false;
+    eachRule(function (r) {
+      if (hit || r.type !== 1 || !r.style) return;
+      try { if (el.matches(r.selectorText) && pxVal(r.style[prop])) hit = true; } catch (e) {}
+    });
+    return hit;
+  };
+
+  var el = document.body, rootPxW = false;
+  for (;;) {
+    var kids = [];
+    for (var c = 0; c < el.children.length; c++) {
+      var t = el.children[c].tagName;
+      if (t !== 'SCRIPT' && t !== 'STYLE' && t !== 'TEMPLATE') kids.push(el.children[c]);
+    }
+    if (kids.length !== 1 || !(kids[0] instanceof HTMLElement)) break;
+    if (STAMP) el.setAttribute('data-om-frame-wrap', '');
+    el = kids[0];
+    rootPxW = authoredPx(el, 'width');
+    if (rootPxW) break;
+  }
+  if (!rootPxW) rootPxW = authoredPx(el, 'width');
+
+  // @page{size:letter} alone is a flowing doc; with a px-width root it's a
+  // fixed sheet pretending to be paper — fall through and size to render.
+  if (paperPage && !rootPxW) {
+    return { kind: 'paper-doc', source: 'inferred', doc: doc, signals: signals,
+      frames: [{ left: 0, top: 0, width: doc.width, height: doc.height }],
+      authored: [{ width: false, height: false }] };
+  }
+
+  var sx = window.scrollX || 0, sy = window.scrollY || 0;
+  var rectOf = function (e) {
+    var r = e.getBoundingClientRect();
+    var oy; try { oy = getComputedStyle(e).overflowY; } catch (err) {}
+    var h = oy === 'visible' ? Math.max(r.height, e.scrollHeight || 0) : r.height;
+    return { left: r.left + sx, top: r.top + sy, width: r.width, height: h };
+  };
+
+  // Multi-frame: off unless the page opts in via data-om-multi-frame on the
+  // stop element — the explicit opt-in is what guards against card grids
+  // and pricing tables that match the geometry but aren't separate
+  // canvases. Two ways to name the frames, explicit first:
+  // 1. Descendants marked data-om-frame-export (the social-frames starter
+  //    marks each asset frame; shells/panels around them are presentation,
+  //    so nesting is expected). Document order.
+  // 2. Fallback, no marked descendants: direct children with an authored px
+  //    width AND height (the original geometry heuristic).
+  // Frames may be different sizes (a gallery mixes 1080×1920 stories with
+  // 728×90 banners); data-om-frame-label rides along for export filenames.
+  if (el.hasAttribute('data-om-multi-frame')) {
+    var visOk = function (e) {
+      var cs; try { cs = getComputedStyle(e); } catch (err) { return false; }
+      return cs.display !== 'none' && cs.visibility !== 'hidden' && cs.position !== 'fixed';
+    };
+    // A frame's crop is its VISUAL box — never the scrollHeight-inflated
+    // rect that rectOf computes for page roots. Shadow-DOM hover controls
+    // (image-slot's Replace bar parks 29px below its host) and similar
+    // escaping UI contribute scrollable overflow to the frame, and the
+    // inflated height both squashes the nominal-size resize and drags
+    // content below the frame into the crop. Zoom-independent; bit every
+    // slot-bearing frame.
+    var frameRectOf = function (e) {
+      var r = e.getBoundingClientRect();
+      return { left: r.left + sx, top: r.top + sy, width: r.width, height: r.height };
+    };
+    var pushCand = function (list, e) {
+      if (!visOk(e)) return;
+      var rc = frameRectOf(e);
+      if (rc.width < 2 || rc.height < 2) return;
+      var lbl = e.getAttribute('data-om-frame-label');
+      if (lbl) rc.label = lbl;
+      list.push(rc);
+    };
+    var cands = [];
+    var marked = el.querySelectorAll('[data-om-frame-export]');
+    if (marked.length) {
+      for (var mk = 0; mk < marked.length; mk++) pushCand(cands, marked[mk]);
+    } else {
+      for (var k = 0; k < el.children.length; k++) {
+        var ch = el.children[k];
+        if (!authoredPx(ch, 'width') || !authoredPx(ch, 'height')) continue;
+        pushCand(cands, ch);
+      }
+    }
+    if (cands.length >= 2) {
+      return { kind: 'multi-frame', source: 'inferred', doc: doc, signals: signals,
+        frames: cands, authored: cands.map(function(){return{width:true,height:true}}) };
+    }
+  }
+
+  if (STAMP) el.setAttribute('data-om-frame', '');
+  return { kind: 'single-canvas', source: 'inferred', doc: doc, signals: signals,
+    frames: [rectOf(el)],
+    authored: [{ width: rootPxW, height: authoredPx(el, 'height') }] };
+})(); } catch (e) {}
+  var frame = null;
+  if (__m && __m.kind === 'single-canvas') {
+    var f = __m.frames && __m.frames[0];
+    if (f && f.width >= 200 && f.height >= 200) {
+      frame = f;
+      var fst = document.createElement('style');
+      fst.textContent = '@media print{@page{size:' + Math.ceil(f.width) + 'px ' +
+        Math.ceil(f.height) + 'px;margin:0}' +
+        'html,body,[data-om-frame-wrap]{padding:0!important;margin:0!important;background:none!important}' +
+        '[data-om-frame]{margin:0!important}}';
+      document.body.appendChild(fst);
+    }
+  }
+  // Relax break-inside on oversized elements. An element taller than a
+  // printable page can't honor break-inside: avoid — browsers either overflow
+  // it or push it whole to the next page, leaving a blank gap, then break it
+  // anyway at an arbitrary point. After the final layout (content revealed,
+  // animations jumped), find elements taller than a page that still compute
+  // break-inside: avoid and reset them to auto, so the browser breaks them at
+  // their children's boundaries instead (children keep their own avoid). PAGE_PX
+  // is a conservative portrait estimate at 96 CSS px/in — Letter/A4 usable
+  // height minus our 0.5in margins — so only clearly-oversized elements are
+  // touched and under-page elements still stay whole. Skipped for decks (slides
+  // are sized to the page) and for fixed-size canvases (frame set, or an author
+  // px-based @page) — runs as before for flowing docs on letter/A4.
+  try {
+    if (!ds && !frame && !(__m && __m.signals && __m.signals.pxPage)) {
+      const PAGE_PX = 1024;
+      // Our print defaults add a real @page margin only when the source has
+      // no @page of its own; computed style can't tell us (it reports screen
+      // media), so read the injected rule directly.
+      const defaults = document.querySelector('style[data-omelette-print-defaults]');
+      const pageInset = /@page\s*\{[^}]*margin/.test(defaults ? defaults.textContent || '' : '');
+      const SEL = 'section,article,figure,table,pre,blockquote,[class~="card" i],[class~="page" i],[class~="sheet" i]';
+      for (const el of document.body.querySelectorAll(SEL)) {
+        if (el instanceof HTMLElement && el.offsetHeight > PAGE_PX) {
+          el.setAttribute('data-om-oversized', '');
+          // Fake-paged docs simulate sheets with over-tall break-after:page
+          // boxes; honoring the break spills half-blank pages and ends a
+          // colored box mid-sheet. Flow them, and (only when we own the page
+          // inset) drop the redundant padding/background via the rule below.
+          const cs = getComputedStyle(el);
+          if (cs.breakAfter === 'page' || cs.pageBreakAfter === 'always') {
+            el.setAttribute('data-om-fakepage', '');
+          }
+        }
+      }
+      const ost = document.createElement('style');
+      ost.textContent = '@media print{' +
+        '[data-om-oversized]{break-inside:auto !important;page-break-inside:auto !important}' +
+        '[data-om-fakepage]{break-after:auto !important;page-break-after:auto !important}' +
+        (pageInset ? '[data-om-fakepage]{padding:0 !important;background:none !important}' : '') +
+        '}';
+      document.head.appendChild(ost);
+    }
+  } catch (e) {}
+  // macOS Preview renders Skia-PDF Luminosity soft-masks as opaque grey boxes;
+  // swap the CSS that triggers them for Preview-safe forms.
+  try {
+    for (const el of document.body.querySelectorAll('*')) {
+      const cs = getComputedStyle(el);
+
+      if (cs.boxShadow !== 'none' && cs.filter === 'none') {
+        const outs = [], kept = [];
+        for (const s of cs.boxShadow.split(/,(?![^(]*[)])/)) {
+          const t = s.trim();
+          const m = t.match(/^(rgba?[(][^)]+[)]) (-?[0-9.]+px) (-?[0-9.]+px) ([0-9.]+px) -?[0-9.]+px$/);
+          if (m && parseFloat(m[4]) > 0) outs.push('drop-shadow(' + m[2] + ' ' + m[3] + ' ' + m[4] + ' ' + m[1] + ')');
+          else kept.push(t);
+        }
+        if (outs.length) {
+          el.style.setProperty('filter', outs.join(' '), 'important');
+          el.style.setProperty('box-shadow', kept.join(', ') || 'none', 'important');
+        }
+      }
+
+      const mask = cs.maskImage && cs.maskImage !== 'none' ? cs.maskImage : cs.webkitMaskImage;
+      if (mask && mask !== 'none' && cs.filter === 'none') el.style.setProperty('filter', 'opacity(1)', 'important');
+    }
+  } catch (e) {}
+  setTimeout(() => { try { window.print(); } catch (e) {} }, 200);
+})();
+</script>
+
+
+<style>@media print{@page{size:1920px 911px;margin:0}html,body,[data-om-frame-wrap]{padding:0!important;margin:0!important;background:none!important}[data-om-frame]{margin:0!important}}</style></body></html>
