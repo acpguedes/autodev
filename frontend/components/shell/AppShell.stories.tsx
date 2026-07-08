@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import * as React from "react";
 
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { I18nProvider } from "@/lib/i18n";
 
 import { AppShell } from "./AppShell";
 import { ShellProvider, useExecutionPanel, useShellHeader } from "./ShellProvider";
@@ -67,9 +68,11 @@ const meta: Meta<typeof AppShell> = {
   decorators: [
     (Story) => (
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
-        <ShellProvider>
-          <Story />
-        </ShellProvider>
+        <I18nProvider>
+          <ShellProvider>
+            <Story />
+          </ShellProvider>
+        </I18nProvider>
       </ThemeProvider>
     ),
   ],

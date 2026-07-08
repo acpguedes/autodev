@@ -1,0 +1,41 @@
+{
+  "chat": {
+    "pageTitle": "Chat",
+    "pageSubtitle": "Plan, analyze, and propose auditable patches with the agents.",
+    "sessionLabel": "Active session",
+    "heading": "Execution-focused chat",
+    "description": "A cleaner interface for talking to the agents, without the dashboard visual.",
+    "executePlan": "Run plan",
+    "executingPlan": "Running...",
+    "workspaceUnconfigured": "Workspace not configured",
+    "sessionsCount": "Sessions: {{count}}",
+    "sessionMeta": "Session: {{sessionId}} · Root: {{projectRoot}}",
+    "sessionNotStarted": "not started",
+    "rootNotConfigured": "not configured",
+    "nextSteps": "Next steps",
+    "taskCount": "{{count}} tasks",
+    "noTasksPrompt": "Send an instruction in the chat to generate an executable backlog.",
+    "messagePlaceholder": "Describe the change you want to make...",
+    "send": "Send",
+    "sending": "Sending...",
+    "currentPlan": "Current plan",
+    "initialPlanMessage": "Initial plan created for the goal: {{goal}}",
+    "errors": {
+      "loadWorkspace": "Could not load the chat workspace.",
+      "sendMessage": "Could not send the message to the orchestrator.",
+      "createSession": "Could not create a new session.",
+      "executePlan": "Could not run the generated plan."
+    }
+  },
+  "executionConsole": {
+    "sectionLabel": "Execution",
+    "title": "Side panel",
+    "statusBusy": "Running",
+    "statusReady": "Ready",
+    "descriptionBusy": "Showing the latest activity, derived commands, and recorded output.",
+    "descriptionIdle": "Once there is activity, the executed history appears here in chronological order.",
+    "emptyState": "No commands or output recorded for this session yet.",
+    "runTypePlanExecution": "Execution",
+    "runTypeAgent": "Agent"
+  }
+}

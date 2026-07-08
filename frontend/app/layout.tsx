@@ -5,6 +5,7 @@ import { AppShell } from "@/components/shell/AppShell";
 import { ShellProvider } from "@/components/shell/ShellProvider";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { Toaster } from "@/components/ui/toaster";
+import { I18nProvider } from "@/lib/i18n";
 
 /**
  * Design tokens v2 typefaces (E15-S1), self-hosted at build time via
@@ -54,10 +55,12 @@ export default function RootLayout({
           defaultTheme="light"
           enableSystem={false}
         >
-          <ShellProvider>
-            <AppShell>{children}</AppShell>
-          </ShellProvider>
-          <Toaster />
+          <I18nProvider>
+            <ShellProvider>
+              <AppShell>{children}</AppShell>
+            </ShellProvider>
+            <Toaster />
+          </I18nProvider>
         </ThemeProvider>
       </body>
     </html>

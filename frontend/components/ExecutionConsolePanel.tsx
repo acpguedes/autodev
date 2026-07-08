@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { useTranslations } from "@/lib/i18n";
 
 import type { RunResponse } from "../lib/api";
 
@@ -11,7 +12,7 @@ type ExecutionConsolePanelProps = {
 
 type ConsoleEntry = {
   id: string;
-  label: string;
+  labelKey: "executionConsole.runTypePlanExecution" | "executionConsole.runTypeAgent";
   command: string;
   output: string;
   status: string;
@@ -37,7 +38,10 @@ function buildConsoleEntries(runs: RunResponse[]): ConsoleEntry[] {
 
       return {
         id: `${run.run_id}-${index}`,
-        label: run.run_type === "plan_execution" ? "Execução" : "Agente",
+        labelKey:
+          run.run_type === "plan_execution"
+            ? ("executionConsole.runTypePlanExecution" as const)
+            : ("executionConsole.runTypeAgent" as const),
         command:
           run.run_type === "plan_execution"
             ? `${category}: ${taskTitle}`
@@ -50,6 +54,7 @@ function buildConsoleEntries(runs: RunResponse[]): ConsoleEntry[] {
 }
 
 export function ExecutionConsolePanel({ runs, isBusy }: ExecutionConsolePanelProps) {
+  const { t } = useTranslations();
   const entries = buildConsoleEntries(runs);
 
   return (
@@ -59,29 +64,29 @@ export function ExecutionConsolePanel({ runs, isBusy }: ExecutionConsolePanelPro
       <div className="flex items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">
-            Execução
+            {t("executionConsole.sectionLabel")}
           </p>
-          <h2 className="font-serif text-lg font-semibold text-ds-fg">Painel lateral</h2>
+          <h2 className="font-serif text-lg font-semibold text-ds-fg">
+            {t("executionConsole.title")}
+          </h2>
         </div>
         <Badge
           variant="secondary"
           className={isBusy ? "bg-ds-accent/15 text-ds-accent-strong" : undefined}
         >
-          {isBusy ? "Executando" : "Pronto"}
+          {isBusy ? t("executionConsole.statusBusy") : t("executionConsole.statusReady")}
         </Badge>
       </div>
 
       <p className="text-sm text-ds-fg-3">
         {isBusy
-          ? "Mostrando a atividade mais recente, comandos derivados e saídas registradas."
-          : "Quando houver atividade, o histórico executado aparece aqui em ordem cronológica."}
+          ? t("executionConsole.descriptionBusy")
+          : t("executionConsole.descriptionIdle")}
       </p>
 
       {entries.length === 0 ? (
         <div className="rounded-ds-md border border-dashed border-ds-line bg-ds-bg-3 p-4">
-          <p className="text-sm text-ds-fg-3">
-            Ainda não há comandos ou saídas registrados para esta sessão.
-          </p>
+          <p className="text-sm text-ds-fg-3">{t("executionConsole.emptyState")}</p>
         </div>
       ) : (
         <div className="flex flex-col gap-3 overflow-y-auto">
@@ -92,7 +97,7 @@ export function ExecutionConsolePanel({ runs, isBusy }: ExecutionConsolePanelPro
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">
-                  {entry.label}
+                  {t(entry.labelKey)}
                 </span>
                 <Badge variant="secondary">{entry.status}</Badge>
               </div>
