@@ -9,7 +9,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 type ChatLayoutProps = {
   sidebar?: ReactNode;
   children: ReactNode;
-  currentView?: "dashboard" | "config" | "agents" | "plans" | "skills" | "patches";
+  currentView?: "dashboard" | "config" | "agents" | "plans" | "skills" | "patches" | "panels";
   layoutMode?: "sidebar" | "focus";
 };
 
@@ -20,6 +20,7 @@ const NAV_ITEMS: Array<{ view: ChatLayoutProps["currentView"]; href: Route; labe
   { view: "plans", href: "/plans", label: "Plans" },
   { view: "skills", href: "/skills", label: "Skills" },
   { view: "patches", href: "/patches", label: "Patches" },
+  { view: "panels", href: "/panels" as Route, label: "Panels" },
 ];
 
 export function ChatLayout({
