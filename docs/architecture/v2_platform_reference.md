@@ -5791,6 +5791,244 @@ the full phase doc.)*
 
 ---
 
+#### 18.7.9 E15 — Frontend Redesign: Design Language & App Shell
+
+*(New epic, authored in English — prototype reference:
+`layout_prototype_brainstorm/Autodev Redesing.html`,
+`layout_prototype_brainstorm/AutoDev - Project Description.pdf`, and
+screenshots in `Frontend redesign proposal.zip` (`shots/`). UI language:
+English by default, pt-BR via i18n — see RFC-006.)*
+
+| Field | Description |
+| --- | --- |
+| **Objective** | Establish the "Execution Control Center" visual language (tokens, typography, app shell) from the redesign prototype as the new UI foundation, migrate legacy-styled screens onto it, and lay an i18n foundation — without touching the Control Plane API surface. |
+| **Key result** | `styles/globals.css` and `tailwind.config.ts` express the prototype's token set and pass WCAG 2.2 AA; the 3-region app shell (sidebar rail / contextual header / dismissible execution panel) renders consistently; legacy-styled pages are migrated onto the shared token/Radix kit; UI copy is externalized behind `en` (default) / `pt-BR` locales. |
+
+##### Story E15-S1 — Design tokens v2: prototype design language
+
+- **E15-S1-T1**: Token set — warm-paper light (`#faf8f4`) / charcoal dark (`#100f12`) surfaces, iris accent (`#5a4fe0` light / `#8e88ff` dark), low-saturation success/warning/danger, and diff-tint (addition/removal) tokens.
+- **E15-S1-T2**: Typography scale — Newsreader (display/serif), Instrument Sans (UI sans), JetBrains Mono (code/diff) — extending `styles/globals.css` and `tailwind.config.ts`.
+- **E15-S1-T3**: Update `frontend/docs/design-tokens.md` and Storybook token stories; verify WCAG 2.2 AA contrast for both themes.
+
+| Item | Content |
+| --- | --- |
+| **CF** | Applying the new tokens renders the warm-paper light theme and charcoal dark theme with the specified accent/status/diff colors; Storybook exposes the updated type scale (Newsreader/Instrument Sans/JetBrains Mono). |
+| **CNF** | All token pairs meet WCAG 2.2 AA contrast in both themes; token changes are additive (no removal of tokens still consumed by existing E10 screens) until E15-S3 migrates them. |
+| **DoR** | E10-S1 (base Design System tokens) available; prototype reference (`layout_prototype_brainstorm/Autodev Redesing.html`) reviewed. |
+| **DoD** | Contrast-ratio test for token pairs; `frontend/docs/design-tokens.md` updated; Storybook token stories updated. |
+| **Dependencies** | E10-S1 |
+
+##### Story E15-S2 — Execution Control Center shell
+
+- **E15-S2-T1**: 250px sidebar rail — brand, workspace switcher, primary nav (Chat/Plans/Patches/Flows/Sessions/Config/Extensions) with count badges, provider status card, theme toggle.
+- **E15-S2-T2**: 64px contextual header — title/subtitle, repo chip, execution-panel toggle, "+ New session" action.
+- **E15-S2-T3**: Dismissible 400px right execution panel wired to the header toggle.
+
+| Item | Content |
+| --- | --- |
+| **CF** | The shell renders the sidebar rail, contextual header, and execution panel exactly per the prototype's 3-region layout; toggling the header control shows/hides the 400px panel; nav badges reflect live counts; the provider status card and theme toggle are present in the rail. |
+| **CNF** | WCAG 2.2 AA; shell layout is responsive down to the documented minimum viewport; panel state persists across navigation within a session. |
+| **DoR** | E15-S1 (tokens) available; E10-S2 (base screens/navigation) reviewed for continuity. |
+| **DoD** | Shell a11y audit; visual regression baseline vs. the prototype; shell layout documented. |
+| **Dependencies** | E15-S1, E10-S2 |
+
+##### Story E15-S3 — Legacy CSS migration
+
+- **E15-S3-T1**: Inventory legacy-styled pages (dashboard, config, plans, patches, agents, skills) and their legacy shell tokens.
+- **E15-S3-T2**: Migrate each page onto the token/Radix kit established in E15-S1/E15-S2, preserving existing functionality.
+- **E15-S3-T3**: Remove now-unused legacy shell tokens and legacy CSS entry points.
+
+| Item | Content |
+| --- | --- |
+| **CF** | Every listed legacy-styled page renders using only the new token/Radix kit; no legacy shell token remains referenced in the codebase. |
+| **CNF** | No regression in existing page functionality during migration; bundle size does not regress beyond an agreed threshold. |
+| **DoR** | E15-S1 and E15-S2 available; inventory of legacy-styled pages confirmed against E10-S1/E10-S2 output. |
+| **DoD** | Per-page migration checklist complete; legacy token removal verified by grep/lint; docs updated. |
+| **Dependencies** | E15-S1, E15-S2, E10-S1, E10-S2 |
+
+##### Story E15-S4 — i18n foundation
+
+- **E15-S4-T1**: i18n library/provider setup with `en` as the default locale and `pt-BR` as a supported locale.
+- **E15-S4-T2**: Externalize all UI copy introduced by E10/E15 screens into locale resource files.
+- **E15-S4-T3**: Language-switch mechanism (settings/theme area) and fallback-to-`en` behavior for missing keys.
+
+| Item | Content |
+| --- | --- |
+| **CF** | Switching locale to pt-BR re-renders UI copy in pt-BR; a missing pt-BR key falls back to the English string without breaking the UI. |
+| **CNF** | No hardcoded UI copy remains in migrated components; locale switch requires no full page reload. |
+| **DoR** | RFC-006 (i18n strategy) available; E10-S2 screens reviewed for copy inventory. |
+| **DoD** | i18n coverage check (lint rule or script) over migrated components; docs note on supported locales. |
+| **Dependencies** | E10-S2; RFC-006 |
+
+---
+
+#### 18.7.10 E16 — Frontend Redesign: Control-Plane API Enablement
+
+*(New epic, authored in English — API-first rule (§2.13): these `/v2`
+contracts ship before or alongside the E17 screens that consume them. Each
+story below is an adjustment to a prior epic (E1–E9), cited as its origin.)*
+
+| Field | Description |
+| --- | --- |
+| **Objective** | Expose the `/v2` Control Plane endpoints required by the redesigned screens — chat/execution timeline, step-gated plans, patch review/apply, and extensions/provider config — before or alongside any UI work, replacing remaining root-relative/legacy endpoints those screens would otherwise depend on. |
+| **Key result** | Each of chat, plans, patches, and extensions has a versioned `/v2` contract (request/response schema and, where relevant, an event taxonomy) that E17's screens consume exclusively; no new UI in E17 talks to a non-`/v2` endpoint or the State Store directly. |
+
+##### Story E16-S1 — /v2 chat & execution timeline contract
+
+- **E16-S1-T1**: Run-event taxonomy (planning → analysis → patch → validation) with a per-step output payload shape.
+- **E16-S1-T2**: `/v2` chat/execution-timeline endpoints (extending the E9-S2 streaming transport) emitting and serving the taxonomy.
+- **E16-S1-T3**: Replace the legacy root-relative `chat` endpoint with the `/v2` contract; document the migration for existing consumers.
+
+| Item | Content |
+| --- | --- |
+| **CF** | A chat/execution request against `/v2` returns a timeline whose events follow the planning → analysis → patch → validation taxonomy with per-step output; the legacy root-relative `chat` endpoint has a documented `/v2` replacement. |
+| **CNF** | API-first (§2.13) — no UI reads chat/timeline data outside `/v2`; streaming start < 1 s (inherited from E9-S2). |
+| **DoR** | E9-S2 (streaming transport) and E3 (flow/step model) available. |
+| **DoD** | Contract test for the event taxonomy; OpenAPI schema updated; migration note for the replaced legacy endpoint. |
+| **Dependencies** | E9-S2, E3, E2 |
+
+##### Story E16-S2 — /v2 plans with step-level approval gates
+
+- **E16-S2-T1**: List/edit endpoints for plans and their steps under `/v2`.
+- **E16-S2-T2**: Per-step approve/reject endpoints plus an execute-approved action, backed by an explicit state machine.
+- **E16-S2-T3**: Emit plan/step approval events consumable by the E17 plans screen.
+
+| Item | Content |
+| --- | --- |
+| **CF** | A plan's steps can be listed, edited, approved/rejected individually, and executed once approved, entirely via `/v2`; state transitions follow the documented state machine. |
+| **CNF** | Illegal state transitions (e.g., executing an unapproved step) are rejected; every transition is event-logged. |
+| **DoR** | E3 (flow/step model) and E9-S1 (base `/v2` API) available; E14 governance model (approval semantics) reviewed. |
+| **DoD** | State-machine transition tests; contract test for approve/reject/execute-approved; OpenAPI schema updated. |
+| **Dependencies** | E3, E9-S1, E14 |
+
+##### Story E16-S3 — /v2 patches review & apply
+
+- **E16-S3-T1**: Endpoint returning the file list with +/− stats and the unified diff for a patch.
+- **E16-S3-T2**: Edited-content override endpoint allowing a reviewer to modify a hunk/file before apply.
+- **E16-S3-T3**: Apply endpoint defaulting to dry-run, with explicit opt-in for a real apply, and a discard action.
+
+| Item | Content |
+| --- | --- |
+| **CF** | A patch's file list (+/− stats) and unified diff are retrievable via `/v2`; an apply request defaults to dry-run and only mutates the workspace when explicitly requested; discard removes the pending patch. |
+| **CNF** | Apply is never silently non-dry-run; edited-content overrides are validated against the same path guard as E14-S4's patch runner. |
+| **DoR** | E0 (patch model precursor) and E9-S1 available; E14 patch runner contract reviewed. |
+| **DoD** | Contract test for dry-run-by-default; apply/discard integration test; OpenAPI schema updated. |
+| **Dependencies** | E0, E9-S1, E14 |
+
+##### Story E16-S4 — /v2 extensions & provider config
+
+- **E16-S4-T1**: Unified catalog endpoint covering agents/skills/plugins/MCP with enable/disable per item.
+- **E16-S4-T2**: Create/edit endpoints for catalog items, including an agent's system prompt.
+- **E16-S4-T3**: Provider configuration endpoints (Stub/Ollama/OpenAI-class providers) with live status reporting.
+
+| Item | Content |
+| --- | --- |
+| **CF** | The catalog endpoint returns agents/skills/plugins/MCP entries with enable/disable state; an agent's system prompt can be created/edited via `/v2`; provider config changes are reflected in a live status check. |
+| **CNF** | Provider secrets are never returned in list responses; status checks do not block the catalog listing call. |
+| **DoR** | E1, E2, E6 (plugin/agent/skills models) and E9-S4 (MCP) available; E5 (provider routing) reviewed for status semantics. |
+| **DoD** | Contract test per catalog type; provider live-status integration test; OpenAPI schema updated. |
+| **Dependencies** | E1, E2, E6, E9-S4, E5 |
+
+---
+
+#### 18.7.11 E17 — Frontend Redesign: Control Center Screens
+
+*(New epic, authored in English — prototype reference:
+`layout_prototype_brainstorm/Autodev Redesing.html`,
+`layout_prototype_brainstorm/AutoDev - Project Description.pdf`, and
+screenshots in `Frontend redesign proposal.zip` (`shots/`).)*
+
+| Field | Description |
+| --- | --- |
+| **Objective** | Rebuild the key operator-facing screens (chat, plans, patches, sessions/config, extensions, flow builder) inside the E15 shell, consuming exclusively the E16 `/v2` contracts, so the product matches the Execution Control Center prototype end to end. |
+| **Key result** | Every screen listed in this epic's stories renders inside the E15 shell, reads/writes only through `/v2` (per E16), and matches the prototype's interaction model (approval gates, diff review, live status) documented in `layout_prototype_brainstorm/`. |
+
+##### Story E17-S1 — Chat execution view
+
+- **E17-S1-T1**: Editorial column layout with an empty-state suggestions view for a fresh session.
+- **E17-S1-T2**: Agent-role message stream and composer with provider chip and `@context` reference support.
+- **E17-S1-T3**: Live SSE timeline panel driven by the E16-S1 event taxonomy.
+
+| Item | Content |
+| --- | --- |
+| **CF** | A new chat session shows the empty-state suggestions; sending a message renders an agent-role stream and a live timeline panel reflecting planning → analysis → patch → validation events. |
+| **CNF** | WCAG 2.2 AA; the timeline panel streams updates without a full re-render of the message column. |
+| **DoR** | E15-S2 (shell) and E16-S1 (`/v2` chat/timeline contract) available. |
+| **DoD** | End-to-end chat-to-timeline UI test; a11y audit; docs. |
+| **Dependencies** | E15-S2, E16-S1, E9-S2 |
+
+##### Story E17-S2 — Plans screen with approval gates
+
+- **E17-S2-T1**: Stat cards summarizing plan/step counts and approval status.
+- **E17-S2-T2**: Inline step editing and approve/reject pills per step.
+- **E17-S2-T3**: Execute-approved footer action, gated on all required approvals being present.
+
+| Item | Content |
+| --- | --- |
+| **CF** | The plans screen lists steps with approve/reject pills wired to `/v2`; the execute-approved action is disabled until required approvals are in place and, once enabled, triggers execution. |
+| **CNF** | WCAG 2.2 AA; step edits are optimistic with rollback on `/v2` rejection. |
+| **DoR** | E15-S2 (shell) and E16-S2 (`/v2` plans contract) available. |
+| **DoD** | End-to-end approve/reject/execute-approved UI test; a11y audit; docs. |
+| **Dependencies** | E15-S2, E16-S2, E3 |
+
+##### Story E17-S3 — Patches review screen
+
+- **E17-S3-T1**: File panel showing +/− stat counts per changed file.
+- **E17-S3-T2**: Diff/Edit segmented viewer toggling between the unified diff and an editable view.
+- **E17-S3-T3**: Dry-run badge and apply/discard actions wired to E16-S3.
+
+| Item | Content |
+| --- | --- |
+| **CF** | Selecting a file shows its +/− stats and diff; the Diff/Edit toggle switches views without losing an in-progress edit; apply defaults to dry-run (visible via the badge) and discard removes the patch. |
+| **CNF** | WCAG 2.2 AA; edited content is validated client-side before the E16-S3 override call. |
+| **DoR** | E15-S2 (shell) and E16-S3 (`/v2` patches contract) available. |
+| **DoD** | End-to-end review/apply/discard UI test; a11y audit; docs. |
+| **Dependencies** | E15-S2, E16-S3, E0 |
+
+##### Story E17-S4 — Sessions & Config screens
+
+- **E17-S4-T1**: Session list with a status glow indicator and a reopen-as-chat action.
+- **E17-S4-T2**: Provider configuration screen covering Stub/Ollama/OpenAI-class providers.
+- **E17-S4-T3**: Live provider status surfaced consistently between the sidebar status card (E15-S2) and the config screen.
+
+| Item | Content |
+| --- | --- |
+| **CF** | The session list shows a status glow per session and reopen-as-chat navigates into E17-S1's chat view with the session loaded; the config screen edits provider settings and reflects live status changes. |
+| **CNF** | WCAG 2.2 AA; provider secrets are masked in the config form. |
+| **DoR** | E15-S2 (shell) and E16-S4 (`/v2` extensions & provider contract) available. |
+| **DoD** | End-to-end reopen-as-chat UI test; provider status live-update UI test; a11y audit; docs. |
+| **Dependencies** | E15-S2, E16-S4, E8-S1, E5 |
+
+##### Story E17-S5 — Extensions hub screen
+
+- **E17-S5-T1**: Tabbed layout (Agents/Skills/Plugins/MCP) backed by the E16-S4 catalog endpoint.
+- **E17-S5-T2**: Cards with a status pill and enable/disable toggle per catalog item.
+- **E17-S5-T3**: Create/edit modal, including an agent's system-prompt field.
+
+| Item | Content |
+| --- | --- |
+| **CF** | Switching tabs lists the corresponding catalog type; toggling a card's switch enables/disables the item via `/v2`; the create/edit modal persists a new or updated agent including its system prompt. |
+| **CNF** | WCAG 2.2 AA; toggle actions are optimistic with rollback on `/v2` rejection. |
+| **DoR** | E15-S2 (shell) and E16-S4 (`/v2` extensions contract) available. |
+| **DoD** | End-to-end toggle/create/edit UI test; a11y audit; docs. |
+| **Dependencies** | E15-S2, E16-S4, E1, E2, E6, E9-S4 |
+
+##### Story E17-S6 — Flow builder alignment
+
+- **E17-S6-T1**: Palette/canvas/inspector layout matching the prototype, inside the E15 shell.
+- **E17-S6-T2**: Branch-labeled edges reflecting flow-engine branching semantics.
+- **E17-S6-T3**: `flow.yaml` export consistent with the E3-S6 flow-definition format.
+
+| Item | Content |
+| --- | --- |
+| **CF** | The flow builder renders palette/canvas/inspector inside the E15 shell; branch edges show their labels; exporting produces a `flow.yaml` that round-trips through the E3 flow engine. |
+| **CNF** | WCAG 2.2 AA; canvas remains usable (pan/zoom/drag) at the prototype's reference viewport sizes. |
+| **DoR** | E15-S2 (shell) and E3-S6 (flow definition/export) available. |
+| **DoD** | Round-trip export/import test; a11y audit; docs. |
+| **Dependencies** | E15-S2, E3-S6, E10-S3 |
+
+---
+
 ### 18.8 Dependências entre épicos
 
 A tabela abaixo consolida as dependências de nível de épico (predecessores diretos).
@@ -5812,6 +6050,9 @@ A tabela abaixo consolida as dependências de nível de épico (predecessores di
 | **E12 — Qualidade & Evals** | E0, E1–E6, E5 | Gates de CI; contract tests; agent evals. |
 | **E13 — Marketplace & GA** | E1, E12-S2, E11-S4, E0–E12 | Publicação/instalação verificada; prontidão de GA. |
 | **E14 — Real Task Execution & Governed Autonomy** *(new, English)* | E2, E3, E9-S1, E11-S4 | Anchors the Beta exit criterion (real plan→code→patch→validate→evaluate flow, §18.9); E14-S5 additionally consumes E10. |
+| **E15 — Frontend Redesign: Design Language & App Shell** *(new, English)* | E10 | Enables E16, E17, E14-S5 (governed-execution UI reuses the E15 shell). |
+| **E16 — Frontend Redesign: Control-Plane API Enablement** *(new, English)* | E9, E3, E8-S1 | Enables E17, E14-S5; API-first (§2.13) — ships `/v2` contracts ahead of the E17 screens. |
+| **E17 — Frontend Redesign: Control Center Screens** *(new, English)* | E15, E16 | Enables E14-S5 (governed-execution Web UX renders inside these screens). |
 
 #### Diagrama de sequenciamento
 
@@ -5889,8 +6130,8 @@ O sequenciamento é entregue em três ondas cumulativas. Cada onda tem **conteú
 | Item | Descrição |
 | --- | --- |
 | **Objetivo** | Completar capacidades de inteligência, contexto, dados, API, UI, segurança e qualidade para operação real controlada. |
-| **Entra** | **E4** (Reasoning); **E5** (Router & Selector + Evaluation Service); **E6** (Skills v2); **E7** (Context & RAG com pgvector e recuperação híbrida); **E8-S3/E8-S4** (artefatos + backup/RPO/RTO); **E9-S2/S3/S4** (streaming, catálogo de eventos, MCP); **E10** (Design System, telas-chave, editor visual de fluxos, painéis plugáveis); **E11** (OpenTelemetry, RBAC, multi-tenant, quotas/budgets, runbooks); **E12-S2/S3/S4** (contract tests completos, agent evals, quality gates); **E14** (real task execution, permission/approval policy engine with approval/auto/hybrid modes, governed sandbox runners, Web UX for approval, governed interactive shell, `autodev` CLI install — *new epic, English*). |
-| **Critérios de saída** | (1) Fluxo real planejar→codificar→aplicar patch→validar em sandbox→avaliar executa com RBAC, budgets que falham fechado e traços fim a fim; (2) recuperação híbrida atinge p95 < 300 ms e recall baseline; (3) streaming de run inicia < 1 s; (4) todos os pontos de extensão com contract test verde e quality gates bloqueando merge; (5) UI WCAG 2.2 AA nas telas-chave e editor de fluxos com round-trip; (6) backup/restore validado (RPO ≤ 5 min, RTO ≤ 30 min) em staging. |
+| **Entra** | **E4** (Reasoning); **E5** (Router & Selector + Evaluation Service); **E6** (Skills v2); **E7** (Context & RAG com pgvector e recuperação híbrida); **E8-S3/E8-S4** (artefatos + backup/RPO/RTO); **E9-S2/S3/S4** (streaming, catálogo de eventos, MCP); **E10** (Design System, telas-chave, editor visual de fluxos, painéis plugáveis); **E11** (OpenTelemetry, RBAC, multi-tenant, quotas/budgets, runbooks); **E12-S2/S3/S4** (contract tests completos, agent evals, quality gates); **E14** (real task execution, permission/approval policy engine with approval/auto/hybrid modes, governed sandbox runners, Web UX for approval, governed interactive shell, `autodev` CLI install — *new epic, English*); **E15/E16/E17** (redesign do frontend — linguagem de design v2 e app shell do Execution Control Center, habilitação da API `/v2` para chat/plans/patches/extensions, e telas do Control Center alinhadas ao protótipo — *new epics, English*). |
+| **Critérios de saída** | (1) Fluxo real planejar→codificar→aplicar patch→validar em sandbox→avaliar executa com RBAC, budgets que falham fechado e traços fim a fim; (2) recuperação híbrida atinge p95 < 300 ms e recall baseline; (3) streaming de run inicia < 1 s; (4) todos os pontos de extensão com contract test verde e quality gates bloqueando merge; (5) UI WCAG 2.2 AA nas telas-chave e editor de fluxos com round-trip; (6) backup/restore validado (RPO ≤ 5 min, RTO ≤ 30 min) em staging; (7) linguagem de design v2 (tokens, tipografia) e o app shell do Execution Control Center (E15) adotados, com páginas legadas migradas para o kit de tokens/Radix; (8) paridade de API `/v2` (E16) para chat/execution timeline, plans com gates de aprovação, patches (review/apply) e extensions/provider config, consumida exclusivamente pelas novas telas; (9) telas do Control Center (E17: chat, plans, patches, sessions/config, extensions, flow builder) implementadas dentro do shell E15 e correspondendo ao protótipo em `layout_prototype_brainstorm/`. |
 
 #### v2.0-GA — "disponibilidade geral"
 
