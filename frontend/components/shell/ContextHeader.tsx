@@ -37,7 +37,7 @@ export function ContextHeader(): React.JSX.Element {
             {header.title}
           </h1>
           {header.subtitle ? (
-            <p className="truncate text-[12px] text-ds-fg-3">{header.subtitle}</p>
+            <p className="truncate text-[12px] text-ds-fg-2">{header.subtitle}</p>
           ) : null}
         </div>
       </div>

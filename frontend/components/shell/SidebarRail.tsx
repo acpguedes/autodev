@@ -81,7 +81,7 @@ function NavLink({
       <span
         aria-disabled="true"
         title="Extensions arrive in a later release"
-        className={`${base} cursor-not-allowed text-ds-fg-3 opacity-70`}
+        className={`${base} cursor-not-allowed text-ds-fg-2 opacity-70`}
       >
         {label}
       </span>
@@ -164,12 +164,12 @@ export function SidebarRail(): React.JSX.Element {
           <span className="block truncate text-[13px] font-semibold text-ds-fg">
             {repositoryLabel}
           </span>
-          <span className="block truncate text-[11px] text-ds-fg-3">main · workspace</span>
+          <span className="block truncate text-[11px] text-ds-fg-2">main · workspace</span>
         </span>
       </Link>
 
       <nav aria-label="Workspace" className="flex flex-col gap-2">
-        <p className="px-2.5 text-[10.5px] font-bold uppercase tracking-[0.11em] text-ds-fg-3">
+        <p className="px-2.5 text-[10.5px] font-bold uppercase tracking-[0.11em] text-ds-fg-2">
           Workspace
         </p>
         <div className="flex flex-col gap-0.5">
@@ -185,7 +185,7 @@ export function SidebarRail(): React.JSX.Element {
       </nav>
 
       <nav aria-label="Legacy" className="flex flex-col gap-2">
-        <p className="px-2.5 text-[10.5px] font-bold uppercase tracking-[0.11em] text-ds-fg-3">
+        <p className="px-2.5 text-[10.5px] font-bold uppercase tracking-[0.11em] text-ds-fg-2">
           Legacy
         </p>
         <div className="flex flex-col gap-0.5">
@@ -203,7 +203,7 @@ export function SidebarRail(): React.JSX.Element {
       <div className="mt-auto flex flex-col gap-3">
         <div className="rounded-ds-lg border border-ds-line bg-ds-bg-3 p-3">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold uppercase tracking-[0.09em] text-ds-fg-3">
+            <span className="text-[11px] font-bold uppercase tracking-[0.09em] text-ds-fg-2">
               Provider
             </span>
             <span
@@ -222,7 +222,7 @@ export function SidebarRail(): React.JSX.Element {
               <span className="block truncate text-[13px] font-semibold text-ds-fg">
                 {provider}
               </span>
-              <span className="block truncate font-mono text-[11px] text-ds-fg-3">{model}</span>
+              <span className="block truncate font-mono text-[11px] text-ds-fg-2">{model}</span>
             </span>
           </div>
         </div>

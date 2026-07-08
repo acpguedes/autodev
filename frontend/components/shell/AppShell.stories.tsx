@@ -59,7 +59,11 @@ function DemoPageWithPanel(): React.JSX.Element {
 const meta: Meta<typeof AppShell> = {
   title: "Shell/AppShell",
   component: AppShell,
-  parameters: { layout: "fullscreen" },
+  // `ShellProvider` calls `next/navigation`'s `useRouter`, which needs the App
+  // Router mock (`AppRouterContext`), not Storybook's default Pages Router
+  // mock — without this the story throws "invariant expected app router to
+  // be mounted".
+  parameters: { layout: "fullscreen", nextjs: { appDirectory: true } },
   decorators: [
     (Story) => (
       <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>

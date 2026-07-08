@@ -64,7 +64,7 @@ export function ExecutionPanelSlot(): React.JSX.Element | null {
             >
               ◇
             </span>
-            <p className="max-w-[220px] text-[13px] leading-relaxed text-ds-fg-3">
+            <p className="max-w-[220px] text-[13px] leading-relaxed text-ds-fg-2">
               The planning, analysis, patch and validation timeline appears here in real time.
             </p>
           </div>
