@@ -22,7 +22,7 @@ export default function PlansPage() {
   }
 
   return (
-    <ChatLayout currentView="dashboard">
+    <ChatLayout currentView="plans">
       <section className="hero-card">
         <div>
           <p className="eyebrow">Plans</p>

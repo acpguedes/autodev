@@ -1,14 +1,26 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
 import { ReactNode } from "react";
+
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 type ChatLayoutProps = {
   sidebar?: ReactNode;
   children: ReactNode;
-  currentView?: "dashboard" | "config";
+  currentView?: "dashboard" | "config" | "agents" | "plans" | "skills" | "patches";
   layoutMode?: "sidebar" | "focus";
 };
+
+const NAV_ITEMS: Array<{ view: ChatLayoutProps["currentView"]; href: Route; label: string }> = [
+  { view: "dashboard", href: "/", label: "Dashboard" },
+  { view: "config", href: "/config", label: "Config" },
+  { view: "agents", href: "/agents", label: "Agents" },
+  { view: "plans", href: "/plans", label: "Plans" },
+  { view: "skills", href: "/skills", label: "Skills" },
+  { view: "patches", href: "/patches", label: "Patches" },
+];
 
 export function ChatLayout({
   sidebar,
@@ -29,6 +41,7 @@ export function ChatLayout({
             <Link className="secondary-button secondary-button--link" href="/config">
               Configuração
             </Link>
+            <ThemeToggle />
           </nav>
         </header>
         <main className="chat-layout__main">{children}</main>
@@ -40,28 +53,26 @@ export function ChatLayout({
     <div className="chat-layout">
       <aside className="chat-layout__sidebar">
         <div className="sidebar-shell">
-          <div className="sidebar-brand">
-            <p className="eyebrow">AutoDev Architect</p>
-            <h1>Control Center</h1>
+          <div className="sidebar-brand" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.75rem" }}>
+            <div>
+              <p className="eyebrow">AutoDev Architect</p>
+              <h1>Control Center</h1>
+            </div>
+            <ThemeToggle />
           </div>
 
           <nav className="sidebar-nav" aria-label="Primary">
-            <Link
-              className={`sidebar-nav__link ${
-                currentView === "dashboard" ? "sidebar-nav__link--active" : ""
-              }`}
-              href="/"
-            >
-              Dashboard
-            </Link>
-            <Link
-              className={`sidebar-nav__link ${
-                currentView === "config" ? "sidebar-nav__link--active" : ""
-              }`}
-              href="/config"
-            >
-              Config
-            </Link>
+            {NAV_ITEMS.map((item) => (
+              <Link
+                key={item.href}
+                className={`sidebar-nav__link ${
+                  currentView === item.view ? "sidebar-nav__link--active" : ""
+                }`}
+                href={item.href}
+              >
+                {item.label}
+              </Link>
+            ))}
           </nav>
 
           {sidebar}

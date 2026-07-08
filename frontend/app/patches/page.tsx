@@ -25,7 +25,7 @@ export default function PatchesPage() {
   }
 
   return (
-    <ChatLayout currentView="dashboard">
+    <ChatLayout currentView="patches">
       <section className="hero-card">
         <div>
           <p className="eyebrow">Patches</p>
