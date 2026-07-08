@@ -81,6 +81,9 @@ class Settings(BaseSettings):
     autodev_minio_secret_key: str = ""
     autodev_minio_secure: bool = False
 
+    # --- MCP (Model Context Protocol) ---
+    autodev_mcp_exposed_skills: str = ""
+
     # --- observability ---
     otel_service_name: str = "autodev-backend"
     otel_exporter_otlp_endpoint: str = ""
@@ -201,6 +204,22 @@ class Settings(BaseSettings):
             origin.strip()
             for origin in self.autodev_cors_origins.split(",")
             if origin.strip()
+        ]
+
+    def mcp_exposed_skills(self) -> list[str]:
+        """Parse the comma-separated ``autodev_mcp_exposed_skills`` field into a list.
+
+        Empty by default, so no skill is exposed through the MCP server
+        (:class:`backend.mcp.server.McpServer`) until explicitly allowlisted
+        (E9-S4-T3 least-privilege mapping).
+
+        Returns:
+            The configured MCP-exposed skill ids, with blanks removed.
+        """
+        return [
+            skill_id.strip()
+            for skill_id in self.autodev_mcp_exposed_skills.split(",")
+            if skill_id.strip()
         ]
 
     def redacted_model_dump(self) -> dict[str, Any]:
