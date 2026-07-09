@@ -20,6 +20,24 @@
     "sending": "Enviando...",
     "currentPlan": "Plano atual",
     "initialPlanMessage": "Plano inicial criado para o objetivo: {{goal}}",
+    "timeline": {
+      "planning": "Planejamento",
+      "analysis": "Análise",
+      "patch": "Patch",
+      "validation": "Validação",
+      "statusIdle": "Aguardando",
+      "statusRunning": "Executando",
+      "statusDone": "Concluído",
+      "statusFailed": "Falhou",
+      "idleHint": "Envie uma mensagem para iniciar uma execução e acompanhar as etapas aqui."
+    },
+    "provider": {
+      "label": "Provedor",
+      "healthy": "{{name}} · {{model}}",
+      "unhealthy": "{{name}} indisponível",
+      "unconfigured": "Provedor não configurado",
+      "loading": "Verificando provedor..."
+    },
     "errors": {
       "loadWorkspace": "Não foi possível carregar o workspace de chat.",
       "sendMessage": "Não foi possível enviar a mensagem para o orquestrador.",

@@ -162,6 +162,105 @@ export function runEventsStreamUrl(
 }
 
 // ---------------------------------------------------------------------------
+// Chat turns (/v2/sessions/{id}/turns, /v2/turns/{id}) — E16-S1
+// ---------------------------------------------------------------------------
+
+/**
+ * One chat turn: a user message plus the run it triggered. `turnId` doubles
+ * as the run id, so it can be passed to {@link runEventsStreamUrl}.
+ */
+export type TurnV2 = {
+  schemaVersion: string;
+  turnId: string;
+  sessionId: string;
+  message: string;
+  status: string;
+  runType: string;
+  currentState: string;
+  createdAt: string;
+  history: HistoryItemV2[];
+  results: AgentExecutionV2[];
+  steps: RunStepV2[];
+};
+
+/** Paginated collection of turns, oldest first. */
+export type TurnListV2 = {
+  schemaVersion: string;
+  items: TurnV2[];
+  page: PageMetaV2;
+};
+
+/**
+ * Create a turn: send a user message into a session and execute a run.
+ *
+ * @param sessionId - Session receiving the message.
+ * @param message - The user message driving this turn.
+ * @returns The completed turn, including agent results and trace steps.
+ * @throws Error when the request fails (including 404 for unknown session).
+ */
+export async function createTurnV2(sessionId: string, message: string): Promise<TurnV2> {
+  return requestJson<TurnV2>(`v2/sessions/${encodeURIComponent(sessionId)}/turns`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
+}
+
+/**
+ * Fetch a single turn by its id.
+ *
+ * @param turnId - Turn (run) identifier.
+ * @returns The turn document.
+ * @throws Error when the request fails (including 404).
+ */
+export async function getTurnV2(turnId: string): Promise<TurnV2> {
+  return requestJson<TurnV2>(`v2/turns/${encodeURIComponent(turnId)}`);
+}
+
+/**
+ * List the turns recorded for a session, oldest first.
+ *
+ * @param sessionId - Session identifier.
+ * @param limit - Maximum number of turns to return.
+ * @param offset - Zero-based offset into the collection.
+ * @returns The paginated turn list.
+ * @throws Error when the request fails.
+ */
+export async function listSessionTurnsV2(
+  sessionId: string,
+  limit = 50,
+  offset = 0
+): Promise<TurnListV2> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  return requestJson<TurnListV2>(
+    `v2/sessions/${encodeURIComponent(sessionId)}/turns?${params.toString()}`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Provider status (/v2/provider-config/status) — E16-S4
+// ---------------------------------------------------------------------------
+
+/** Live provider status backing the composer's provider chip. */
+export type ProviderStatusV2 = {
+  schemaVersion: string;
+  name: string;
+  model: string;
+  configured: boolean;
+  healthy: boolean;
+};
+
+/**
+ * Fetch the active LLM provider's status (name, model, health).
+ *
+ * @returns The provider status document.
+ * @throws Error when the request fails.
+ */
+export async function getProviderStatusV2(): Promise<ProviderStatusV2> {
+  return requestJson<ProviderStatusV2>("v2/provider-config/status");
+}
+
+// ---------------------------------------------------------------------------
 // Catalogs (/v2/agents, /v2/skills, /v2/plugins)
 // ---------------------------------------------------------------------------
 
