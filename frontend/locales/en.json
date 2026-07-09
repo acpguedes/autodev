@@ -20,6 +20,24 @@
     "sending": "Sending...",
     "currentPlan": "Current plan",
     "initialPlanMessage": "Initial plan created for the goal: {{goal}}",
+    "timeline": {
+      "planning": "Planning",
+      "analysis": "Analysis",
+      "patch": "Patch",
+      "validation": "Validation",
+      "statusIdle": "Waiting",
+      "statusRunning": "Running",
+      "statusDone": "Done",
+      "statusFailed": "Failed",
+      "idleHint": "Send a message to start a run and follow its stages here."
+    },
+    "provider": {
+      "label": "Provider",
+      "healthy": "{{name}} · {{model}}",
+      "unhealthy": "{{name}} unavailable",
+      "unconfigured": "Provider not configured",
+      "loading": "Checking provider..."
+    },
     "errors": {
       "loadWorkspace": "Could not load the chat workspace.",
       "sendMessage": "Could not send the message to the orchestrator.",
