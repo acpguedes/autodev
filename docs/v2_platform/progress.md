@@ -7,17 +7,23 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-09 (**E17 — Frontend Redesign: Control Center Screens epic
+**Last updated:** 2026-07-09 (**E18 — Control Center Front Door & Run Experience epic
+complete (5/5)** on `epic/e18-front-door`: **S1** `GET /` service descriptor
+(JSON for API clients, CSP-clean HTML pointer page for browsers, `AUTODEV_UI_URL`
+setting, `/` public like `/health`); **S2** self-hosted Swagger UI `/docs` (vendored
+`swagger-ui-dist` 5.32.8, zero inline script/CDN, works offline, CSP untouched);
+**S3** single-command run (`make run` via `scripts/run_dev.sh`, compose `full`
+profile + `make container-up-full`, `check-compose` gate, README quickstart now leads
+with the UI); **S4** shell chrome i18n (`shell.*` namespace en + pt-BR, navModel
+`labelKey`, key-parity test, shell components under the eslint i18n `error` gate);
+**S5** docs hygiene (README troubleshooting entry, `frontend/chat-ui/` placeholder
+removed, this tracker updated). The visual-parity audit remains deferred as proposed
+**E19**. Previous entry: **E17 — Frontend Redesign: Control Center Screens epic
 complete (6/6)** on `epic/e17-control-center-screens`, merged to `main` via PR #78 —
 all seven prototype views (chat execution, plans with approval gates, patches review,
 sessions, config, extensions hub, flow builder) now live on the E15 shell against the
 E16 `/v2` endpoints; one known fast-follow recorded in the phase doc (S1↔S4
-reopen-session-as-chat query-param consumption). **E18 — Control Center Front Door &
-Run Experience** opened as the next epic (planning only, `epic/e18-front-door`,
-`phases/e18_front_door_run_experience.md`): backend `GET /` service descriptor,
-self-hosted `/docs` under the strict CSP, single-command `make run`, shell i18n
-leftovers, and docs hygiene — motivated by a 2026-07-09 field report where the
-backend-only path (`:8000`) showed 404/`raw JSON`/blank `/docs` instead of the UI.
+reopen-session-as-chat query-param consumption).
 Previous entry: **E16 — Frontend Redesign: Control-Plane API Enablement
 epic complete (4/4)** on `epic/e16-redesign-api-enablement`, merged to `main`. Backend-only:
 four additive `/v2` surfaces the E17 Control Center screens will consume — **E16-S1**
@@ -86,12 +92,13 @@ complete and verified (flow suite 38/38 green); its only open story, **E3-S6**
 complete; E9-S3's event catalog unblocks E8-S2). The frontend redesign epics **E15** (done) → **E16** → **E17** (Execution Control Center prototype)
 are planned to run before the E11 kickoff; **E15**, **E16**, and **E17** are now
 complete — the redesigned Control Center is implemented end to end. **E18** (Control
-Center Front Door & Run Experience) follows as a short DX epic making that UI the
-platform's front door (root service descriptor, self-hosted `/docs` under CSP,
-single-command run); a visual-parity audit of the screens against the prototype is
-deferred as a proposed **E19**. **Next action: E18 stories, plus E8-S2 (Event
-Store) and E12-S1; follow `agent_guide.md` §1-4 quality rules (mandatory from
-E3 onward).**
+Center Front Door & Run Experience, also complete) made that UI the platform's front
+door: root service descriptor, self-hosted `/docs` under the strict CSP, and
+single-command `make run`. A visual-parity audit of the screens against the prototype
+(fonts, tokens, spacing, per-screen interaction details, per-screen checklist derived
+from ADR-012 and the prototype `shots/`) remains deferred as a proposed **E19**.
+**Next action: E8-S2 (Event Store) and E12-S1; follow `agent_guide.md` §1-4 quality
+rules (mandatory from E3 onward).**
 
 ## Epic status
 
@@ -115,9 +122,9 @@ E3 onward).**
 | E15 | Frontend Redesign: Design Language & App Shell | Beta | Done | 4/4 | E10 | [phases/e15_design_language_shell.md](phases/e15_design_language_shell.md) |
 | E16 | Frontend Redesign: Control-Plane API Enablement | Beta | Done | 4/4 | E9, E3, E8-S1 | [phases/e16_redesign_api_enablement.md](phases/e16_redesign_api_enablement.md) |
 | E17 | Frontend Redesign: Control Center Screens | Beta | Done | 6/6 | E15, E16 | [phases/e17_control_center_screens.md](phases/e17_control_center_screens.md) |
-| E18 | Control Center Front Door & Run Experience | Beta | Not started | 0/5 | E15, E16, E17 | [phases/e18_front_door_run_experience.md](phases/e18_front_door_run_experience.md) |
+| E18 | Control Center Front Door & Run Experience | Beta | Done | 5/5 | E15, E16, E17 | [phases/e18_front_door_run_experience.md](phases/e18_front_door_run_experience.md) |
 
-Total: **45/90 stories complete** across 19 epics.
+Total: **50/90 stories complete** across 19 epics.
 
 \* **E8-S1 is now complete (2026-07-06)**: on top of the scoped tenancy/
 reversible-migration slice landed as an E7 prerequisite (ADR-010:
@@ -208,6 +215,33 @@ Add a dated entry every time a story/epic/wave status changes.
   link emitted by `SessionRow` is not yet consumed by the chat screen. This entry also
   corrects the tracker itself — the table previously still showed E17 as "Not started"
   after the merge.
+
+- **2026-07-09** — **E18 — Control Center Front Door & Run Experience epic complete
+  (5/5)** on `epic/e18-front-door`, merged to `main` via PR. **S1**: `GET /` now
+  serves a content-negotiated service descriptor — JSON (`name`, `version`,
+  `ui_url`, `docs_url`, `health_url`, `openapi_url`, `api.v2_base`) for API clients,
+  a CSP-clean HTML pointer page for browsers; `AUTODEV_UI_URL` defaults to the first
+  default CORS origin so the two cannot drift; `/` joined `_PUBLIC_PATHS` mirroring
+  `/health`. **S2**: `/docs` is a hand-written page loading vendored
+  `swagger-ui-dist` **5.32.8** from `/static/swagger/` (provenance + Apache-2.0
+  license committed) — zero inline script, zero CDN, works offline, the global CSP
+  untouched; `/redoc` removed; Starlette mounts bypassing the app-level token gate
+  is documented and pinned by test. **S3**: `make run` (alias `dev`) starts both
+  servers via `scripts/run_dev.sh` (prefixed logs, process-group cleanup on Ctrl-C,
+  shellcheck-clean); compose `frontend` moved to a `full` profile
+  (`make container-up-full`; `container-up` stays backend-only); `check-compose`
+  added to `make check`; README quickstart leads with `make run` → `:3000` plus a
+  ports table. Deviation from the spec recorded: `NEXT_PUBLIC_API_URL` stays
+  `http://localhost:8000` (it is a browser-side variable; a service-name URL would
+  break UI→API calls). **S4**: shell chrome strings routed through the i18n layer —
+  new `shell.*` namespace in `frontend/locales/{en,pt-BR}.json` (the spec's
+  `lib/i18n/locales.ts` pointer was stale), `navModel` labels became `labelKey`
+  dot-paths, runtime key-parity test added, `components/shell/**` promoted to the
+  eslint `i18next/no-literal-string` **error** gate, and a Storybook play test
+  asserts the en/pt-BR chrome through the locale switcher. **S5**: README
+  troubleshooting entry for the ":8000 shows JSON/404/blank docs" symptom, empty
+  `frontend/chat-ui/` placeholder removed, tracker updated (0/5 → 5/5, 45 → 50
+  stories).
 
 - **2026-07-09** — Added DX epic **E18 — Control Center Front Door & Run Experience**
   (planning only, 0/5, `epic/e18-front-door`,

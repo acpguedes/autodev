@@ -388,6 +388,21 @@ the product UI is the separate Next.js app on `:3000`. Browsing
 pointer page for browsers) — not the product UI — and the interactive API
 reference lives at `http://localhost:8000/docs`.
 
+### Troubleshooting: "I opened localhost:8000 and see JSON / 404 / a blank /docs"
+
+AutoDev is two processes: the FastAPI **API** on `:8000` and the Next.js
+**Control Center UI** on `:3000`. Seeing raw JSON on `:8000` means the API is
+healthy — the product UI simply lives at <http://localhost:3000>. Start both
+with `make run` (or `make container-up-full`).
+
+Symptoms on **older checkouts** (fixed by E18 — `git pull` and rerun):
+
+- `GET /` returned **404** — there was no root route; it now serves a service
+  descriptor that links to the UI, `/docs`, and `/health`.
+- `GET /docs` rendered a **blank page** — Swagger UI was loaded from a CDN
+  with an inline script, both blocked by the strict Content-Security-Policy;
+  the docs are now self-hosted and CSP-clean (and work fully offline).
+
 Every artifact these targets produce is git-ignored, so `make install`/`make
 test`/`make build` never dirty your working tree. Full instructions for
 testing, coverage, linting, CI parity, and cleanup live in
