@@ -40,10 +40,13 @@ export interface PlanV2 {
 }
 
 /** States in which a step's content may still be edited (`backend/plans/step_state.py::EDITABLE_STATES`). */
-export const EDITABLE_STEP_STATES: ReadonlySet<PlanStepState> = new Set(["draft", "under_review"]);
+export const EDITABLE_STEP_STATES: ReadonlySet<PlanStepState> = new Set<PlanStepState>([
+  "draft",
+  "under_review",
+]);
 
 /** States in which a step may be removed (`backend/plans/step_state.py::REMOVABLE_STATES`). */
-export const REMOVABLE_STEP_STATES: ReadonlySet<PlanStepState> = new Set([
+export const REMOVABLE_STEP_STATES: ReadonlySet<PlanStepState> = new Set<PlanStepState>([
   "draft",
   "under_review",
   "rejected",

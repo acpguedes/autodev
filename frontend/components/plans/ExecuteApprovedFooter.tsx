@@ -32,7 +32,7 @@ export function ExecuteApprovedFooter({
 
   return (
     <div className="sticky bottom-0 z-10 flex items-center justify-between gap-4 border-t border-ds-line bg-ds-bg-2/95 px-4 py-3 shadow-ds-sm backdrop-blur">
-      <p className="text-sm text-ds-fg-3">{approvedCount === 0 ? needsApprovalLabel : null}</p>
+      <p className="text-sm text-ds-fg-2">{approvedCount === 0 ? needsApprovalLabel : null}</p>
       <Button className="ml-auto" onClick={onExecute} disabled={disabled}>
         {executing ? executingLabel : label}
       </Button>

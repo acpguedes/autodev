@@ -18,8 +18,12 @@ const fieldClass =
   "w-full rounded-ds-md border border-ds-line bg-ds-bg px-2 py-1 text-sm text-ds-fg shadow-sm placeholder:text-ds-fg-3 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ds-accent";
 
 function cardToneClass(state: PlanStepV2["state"]): string {
+  // Note: rejected steps are visually de-emphasized via the muted `bg-ds-bg-3`
+  // surface below rather than CSS `opacity`, which would dim descendant text
+  // and badge colors below the WCAG 2.2 AA contrast threshold (axe-core
+  // computes contrast against the blended, post-opacity color).
   if (state === "rejected") {
-    return "border-ds-line bg-ds-bg-2 opacity-60 shadow-ds-sm";
+    return "border-ds-line bg-ds-bg-3 shadow-ds-sm";
   }
   if (state === "approved" || state === "executing" || state === "completed") {
     return "border-ds-accent/50 bg-ds-bg-2 shadow-ds-sm";
@@ -36,9 +40,9 @@ export interface StepCardProps {
   busy: boolean;
   /** Persists edited content for this step. Resolves to whether the save succeeded. */
   onSave: (content: string) => Promise<boolean>;
-  /** Approves the step. Only rendered while the step is under review. */
+  /** Approves the step. Rendered while the step is a draft or under review. */
   onApprove: () => void;
-  /** Rejects the step. Only rendered while the step is under review. */
+  /** Rejects the step. Rendered while the step is a draft or under review. */
   onReject: () => void;
   /** Removes the step. Only rendered while the step is removable. */
   onRemove: () => void;
@@ -62,7 +66,12 @@ export function StepCard({ index, step, busy, onSave, onApprove, onReject, onRem
 
   const editable = EDITABLE_STEP_STATES.has(step.state);
   const removable = REMOVABLE_STEP_STATES.has(step.state);
-  const pendingDecision = step.state === "under_review";
+  // Drafts accept approve/reject too: the backend auto-promotes a `draft`
+  // step to `under_review` before applying the decision (see
+  // `_ensure_under_review` in `backend/api/routers/plan_approval_v2.py`), so
+  // a freshly added step must offer the same actions instead of dead-ending
+  // until the next full reload.
+  const pendingDecision = step.state === "draft" || step.state === "under_review";
 
   function startEditing() {
     setTitle(savedTitle);
@@ -126,7 +135,7 @@ export function StepCard({ index, step, busy, onSave, onApprove, onReject, onRem
             />
           </div>
         ) : (
-          savedDescription && <p className="text-sm text-ds-fg-3">{savedDescription}</p>
+          savedDescription && <p className="text-sm text-ds-fg-2">{savedDescription}</p>
         )}
 
         <div className="flex flex-wrap items-center gap-2">

@@ -61,6 +61,15 @@ export default function PlansPage() {
     setStepBusy((current) => ({ ...current, [stepIndex]: busy }));
   }, []);
 
+  /** Drops a step's `stepBusy` entry entirely, instead of leaving a stale
+   * `true` flag behind once the step itself has been removed from the plan. */
+  const clearBusy = useCallback((stepIndex: number) => {
+    setStepBusy((current) => {
+      const { [stepIndex]: _removed, ...rest } = current;
+      return rest;
+    });
+  }, []);
+
   const loadPlan = useCallback(
     async (targetSessionId: string) => {
       setLoading(true);
@@ -155,12 +164,13 @@ export default function PlansPage() {
       try {
         const updatedPlan = await removePlanStepV2(sessionId, stepIndex);
         setPlan(updatedPlan);
+        clearBusy(stepIndex);
       } catch {
         setError(t("plans.errors.removeStep"));
         setBusy(stepIndex, false);
       }
     },
-    [sessionId, setBusy, t],
+    [sessionId, setBusy, clearBusy, t],
   );
 
   const handleAddStep = useCallback(async () => {
@@ -208,7 +218,7 @@ export default function PlansPage() {
     <div className="flex h-full flex-col">
       <div className="flex flex-1 flex-col gap-6 overflow-y-auto p-8">
         <header className="flex flex-col gap-2">
-          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-2">
             {t("plans.pageTitle")}
           </p>
           <h2 className="font-serif text-2xl font-semibold text-ds-fg">{t("plans.pageSubtitle")}</h2>
@@ -233,7 +243,7 @@ export default function PlansPage() {
         )}
 
         {!plan ? (
-          <p className="text-sm text-ds-fg-3">{t("plans.empty")}</p>
+          <p className="text-sm text-ds-fg-2">{t("plans.empty")}</p>
         ) : (
           <>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -244,7 +254,7 @@ export default function PlansPage() {
 
             <div className="flex flex-col gap-3">
               {plan.steps.length === 0 ? (
-                <p className="text-sm text-ds-fg-3">{t("plans.emptySteps")}</p>
+                <p className="text-sm text-ds-fg-2">{t("plans.emptySteps")}</p>
               ) : (
                 plan.steps.map((step, position) => (
                   <StepCard
@@ -264,7 +274,7 @@ export default function PlansPage() {
                 type="button"
                 onClick={handleAddStep}
                 disabled={addingStep}
-                className="rounded-ds-md border border-dashed border-ds-line px-4 py-3 text-sm font-medium text-ds-fg-3 transition-colors hover:border-ds-accent hover:text-ds-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ds-accent disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-ds-md border border-dashed border-ds-line px-4 py-3 text-sm font-medium text-ds-fg-2 transition-colors hover:border-ds-accent hover:text-ds-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ds-accent disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {addingStep ? t("plans.addingStep") : `+ ${t("plans.addStep")}`}
               </button>

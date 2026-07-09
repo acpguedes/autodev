@@ -13,7 +13,7 @@ export interface StatCardProps {
 export function StatCard({ label, value }: StatCardProps) {
   return (
     <div className="flex flex-col gap-1 rounded-ds-md border border-ds-line bg-ds-bg-2 p-4 shadow-ds-sm">
-      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3">{label}</p>
+      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-2">{label}</p>
       <p className="font-serif text-3xl font-semibold text-ds-fg">{value}</p>
     </div>
   );
