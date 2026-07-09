@@ -1,7 +1,8 @@
 # E17 — Frontend Redesign: Control Center Screens
 
 **Wave:** Beta
-**Status:** Not started (0/6 complete)
+**Status:** Done (6/6 complete — merged to `main` via PR #78; S1↔S4
+reopen-as-chat fast-follow tracked below)
 **Depends on:** E15, E16
 **Enables:** E14-S5
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.7.11
