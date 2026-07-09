@@ -319,6 +319,30 @@ branching and quality workflow for new work.
 
 ## Running the first durable stage
 
+### Quickstart (UI + API)
+
+The fastest way to run the whole product — the Control Center UI plus the
+control-plane API — is a single command:
+
+```bash
+make install   # once: create .venv, install backend + frontend dependencies
+make run       # backend on :8000 + frontend on :3000; Ctrl-C stops both
+```
+
+Then open **<http://localhost:3000>** — that is the AutoDev Control Center.
+Prefer containers? `make container-up-full` boots the same pair with Docker
+Compose.
+
+| Port | Service | What you get |
+| --- | --- | --- |
+| 3000 | Frontend (Next.js) | The product UI — the Control Center |
+| 8000 | Backend (FastAPI) | The `/v2` API, `GET /` service descriptor, `/docs` |
+| 8001 | Backend (prod profile) | Optional `backend-prod` compose service |
+| 5432 / 6379 / 9000-9001 | Postgres / Redis / MinIO | Optional compose profiles |
+
+The backend origin (`:8000`) is **API only**: browsing it shows a service
+descriptor that points at the UI — it never renders the product interface.
+
 ### Container-first quickstart
 
 E0 v2 platform work runs backend tests and CLI commands inside the backend
@@ -348,12 +372,21 @@ to activate it by hand:
 ```bash
 make install        # create .venv, install backend + frontend dependencies
 make test           # run the full backend (pytest) + frontend (vitest) suites
-make run-backend    # FastAPI on http://localhost:8000 (separate terminal)
-make run-frontend   # Next.js on http://localhost:3000
+make run            # backend (:8000) + frontend (:3000) together (alias: make dev)
 make build          # production build of the frontend
 make clean          # remove all generated artifacts (git tree stays clean)
 make help           # list every target
 ```
+
+#### API only / headless
+
+If you only need the control-plane API (scripts, MCP clients, curl), start the
+backend alone with `make run-backend` (or `uvicorn backend.api.main:app
+--reload`). Keep the model in mind: the backend serves the **API** on `:8000`;
+the product UI is the separate Next.js app on `:3000`. Browsing
+`http://localhost:8000/` returns a service descriptor (JSON for API clients, a
+pointer page for browsers) — not the product UI — and the interactive API
+reference lives at `http://localhost:8000/docs`.
 
 Every artifact these targets produce is git-ignored, so `make install`/`make
 test`/`make build` never dirty your working tree. Full instructions for
