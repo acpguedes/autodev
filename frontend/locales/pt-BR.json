@@ -55,5 +55,54 @@
     "emptyState": "Ainda não há comandos ou saídas registrados para esta sessão.",
     "runTypePlanExecution": "Execução",
     "runTypeAgent": "Agente"
+  },
+  "plans": {
+    "pageTitle": "Planos",
+    "pageSubtitle": "Plano de execução editável com gates de aprovação por etapa.",
+    "sessionLabel": "Sessão",
+    "sessionPlaceholder": "Informe um id de sessão",
+    "load": "Carregar",
+    "loading": "Carregando...",
+    "stats": {
+      "steps": "Etapas",
+      "approved": "Aprovadas",
+      "pending": "Aguardando revisão"
+    },
+    "status": {
+      "draft": "Rascunho",
+      "under_review": "Aguardando revisão",
+      "approved": "Aprovada",
+      "rejected": "Rejeitada",
+      "executing": "Executando",
+      "completed": "Concluída"
+    },
+    "step": {
+      "defaultTitle": "Nova etapa",
+      "titlePlaceholder": "Título da etapa",
+      "descriptionPlaceholder": "Descreva esta etapa...",
+      "approve": "Aprovar",
+      "reject": "Rejeitar",
+      "edit": "Editar",
+      "save": "Salvar",
+      "cancel": "Cancelar",
+      "remove": "Remover etapa",
+      "removeLabel": "Remover etapa {{index}}"
+    },
+    "addStep": "Adicionar etapa",
+    "addingStep": "Adicionando...",
+    "executeApproved": "Executar plano aprovado",
+    "executingApproved": "Executando...",
+    "needsApproval": "Aprove ao menos uma etapa para executar",
+    "empty": "Informe um id de sessão para carregar o plano.",
+    "emptySteps": "Ainda não há etapas neste plano. Adicione uma para começar.",
+    "errors": {
+      "loadPlan": "Não foi possível carregar o plano dessa sessão.",
+      "updateStep": "Não foi possível salvar a etapa.",
+      "approveStep": "Não foi possível aprovar a etapa.",
+      "rejectStep": "Não foi possível rejeitar a etapa.",
+      "addStep": "Não foi possível adicionar uma nova etapa.",
+      "removeStep": "Não foi possível remover a etapa.",
+      "executePlan": "Não foi possível executar as etapas aprovadas."
+    }
   }
 }

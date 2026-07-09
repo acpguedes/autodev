@@ -27,24 +27,26 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field
 
 from backend.api.rbac_v2 import require_v2_principal
-from backend.api.v2_common import SCHEMA_VERSION_V2, v2_error
-from backend.events.runtime import emit_event
-from backend.persistence.tenancy import DEFAULT_TENANT_ID
-from backend.plans.step_state import PlanStepRecord, StepApprovalStore, StepState, rollup_plan_state
+from backend.api.routers.plan_approval_v2_models import (
+    ExecuteApprovedRequestV2,
+    PlanStepV2,
+    PlanV2,
+    StepContentUpdateRequestV2,
+    StepCreateRequestV2,
+    StepDecisionRequestV2,
+)
+from backend.api.routers.plan_approval_v2_events import emit_mutation, emit_transition
+from backend.api.v2_common import v2_error
+from backend.plans.step_state import (
+    PlanStepRecord,
+    StepApprovalStore,
+    StepState,
+    rollup_plan_state,
+)
 
 router = APIRouter(prefix="/v2/plans", tags=["plan-approval"], dependencies=[Depends(require_v2_principal)])
-
-_TRANSITION_EVENT: dict[StepState, str] = {
-    StepState.UNDER_REVIEW: "plan.step.reviewing",
-    StepState.APPROVED: "plan.step.approved",
-    StepState.REJECTED: "plan.step.rejected",
-    StepState.EXECUTING: "plan.step.executing",
-    StepState.COMPLETED: "plan.step.completed",
-}
-"""Maps a step's new state to the ``plan.step.*`` event type it emits."""
 
 
 def _legacy_plan_store() -> Any:
@@ -80,52 +82,6 @@ def get_step_store() -> StepApprovalStore:
         A new :class:`StepApprovalStore`.
     """
     return StepApprovalStore()
-
-
-class PlanStepV2(BaseModel):
-    """A single plan step and its current approval state."""
-
-    schemaVersion: str = SCHEMA_VERSION_V2
-    session_id: str
-    step_index: int
-    content: str
-    state: str
-    updated_at: str
-
-
-class PlanV2(BaseModel):
-    """A session's plan, rolled up from its steps' individual states."""
-
-    schemaVersion: str = SCHEMA_VERSION_V2
-    session_id: str
-    status: str
-    steps: list[PlanStepV2]
-
-
-class StepContentUpdateRequestV2(BaseModel):
-    """Request body for ``PUT /v2/plans/{session_id}/steps/{step_index}``."""
-
-    content: str = Field(..., min_length=1, description="New content for the step.")
-
-
-class StepDecisionRequestV2(BaseModel):
-    """Request body for the ``approve``/``reject`` step actions."""
-
-    actor: str = "anonymous"
-    note: str = ""
-
-
-class ExecuteApprovedRequestV2(BaseModel):
-    """Request body for ``POST /v2/plans/{session_id}/execute-approved``.
-
-    When ``step_indices`` is omitted, every currently-``approved`` step is
-    executed. When given explicitly, every listed index must already be
-    ``approved`` — attempting to execute a ``rejected`` or still-pending
-    step is denied as an illegal transition (E16-S2-T2).
-    """
-
-    step_indices: Optional[list[int]] = None
-    actor: str = "anonymous"
 
 
 def _to_step_v2(record: PlanStepRecord) -> PlanStepV2:
@@ -184,33 +140,27 @@ def _seeded_records(store: StepApprovalStore, session_id: str) -> list[PlanStepR
     return store.ensure_steps(session_id, plan.steps)
 
 
-def _emit_transition(
-    session_id: str, previous_state: StepState, record: PlanStepRecord, actor: str
-) -> None:
-    """Emit the ``plan.step.*`` event for one state-machine transition.
+def _sync_legacy_plan(session_id: str, store: StepApprovalStore) -> list[PlanStepRecord]:
+    """Mirror the tracked step list back onto the legacy plan document.
 
-    Best-effort: :func:`~backend.events.runtime.emit_event` never raises, so
-    a bus failure cannot block an approval decision from taking effect.
+    Structural add/remove operations only mutate :class:`StepApprovalStore`;
+    this keeps the legacy :class:`~backend.plans.PlanDocument` (read by
+    ``backend/api/routers/plans.py`` and ``sessions_v2.py``) in sync so both
+    surfaces agree on step count, content, and order. Without this, a later
+    call to :meth:`StepApprovalStore.ensure_steps` (seeded from the stale
+    legacy list) could resurrect a removed step at a freed-up index.
 
     Args:
         session_id: The owning session.
-        previous_state: The step's state before the transition.
-        record: The step's record after the transition.
-        actor: Who (or what) triggered the transition.
+        store: The step-approval store.
+
+    Returns:
+        Every tracked step for the session after the sync, ordered by index.
     """
-    emit_event(
-        _TRANSITION_EVENT[record.state],
-        tenant_id=DEFAULT_TENANT_ID,
-        partition_key=session_id,
-        data={
-            "sessionId": session_id,
-            "stepIndex": record.step_index,
-            "fromState": previous_state.value,
-            "toState": record.state.value,
-            "actor": actor,
-        },
-        subject={"sessionId": session_id, "stepIndex": str(record.step_index)},
-    )
+    records = store.list_steps(session_id)
+    plan_store = _legacy_plan_store()
+    plan_store.upsert_plan(session_id, [record.content for record in records])
+    return records
 
 
 def _transition(
@@ -239,7 +189,7 @@ def _transition(
         v2_error(404, str(exc))
     except ValueError as exc:
         v2_error(400, str(exc))
-    _emit_transition(session_id, previous_state, record, actor)
+    emit_transition(session_id, previous_state, record, actor)
     return record
 
 
@@ -464,13 +414,82 @@ def execute_approved_steps_v2(
     return _to_plan_v2(session_id, final_records)
 
 
+@router.post("/{session_id}/steps", response_model=PlanV2, status_code=201)
+def add_plan_step_v2(
+    session_id: str,
+    body: StepCreateRequestV2,
+    store: StepApprovalStore = Depends(get_step_store),
+) -> PlanV2:
+    """Append a new ``draft`` step to the end of a session's plan.
+
+    Args:
+        session_id: Identifier of the session.
+        body: The new step's content and actor.
+        store: Step-approval store dependency.
+
+    Returns:
+        The plan after the step is appended.
+
+    Raises:
+        HTTPException: 404 if no plan document exists for the session.
+    """
+    _seeded_records(store, session_id)
+    record = store.append_step(session_id, body.content)
+    _sync_legacy_plan(session_id, store)
+    emit_mutation(session_id, record.step_index, "added", body.actor)
+    final_records = store.list_steps(session_id)
+    return _to_plan_v2(session_id, final_records)
+
+
+@router.delete("/{session_id}/steps/{step_index}", response_model=PlanV2)
+def remove_plan_step_v2(
+    session_id: str,
+    step_index: int,
+    actor: str = "anonymous",
+    store: StepApprovalStore = Depends(get_step_store),
+) -> PlanV2:
+    """Remove a step and reindex subsequent steps to stay contiguous.
+
+    Only steps in :data:`~backend.plans.step_state.REMOVABLE_STATES`
+    (``draft``/``under_review``/``rejected``) can be removed — once a step
+    is approved it is part of the execution record and can only be
+    rejected, not deleted.
+
+    Args:
+        session_id: Identifier of the session.
+        step_index: Zero-based step position to remove.
+        actor: Who (or what) triggered the removal.
+        store: Step-approval store dependency.
+
+    Returns:
+        The plan after the step is removed and remaining steps reindexed.
+
+    Raises:
+        HTTPException: 404 if the plan or the step does not exist; 400 if
+            the step is not in a removable state.
+    """
+    _seeded_records(store, session_id)
+    try:
+        store.delete_step(session_id, step_index)
+    except KeyError as exc:
+        v2_error(404, str(exc))
+    except ValueError as exc:
+        v2_error(400, str(exc))
+    _sync_legacy_plan(session_id, store)
+    emit_mutation(session_id, step_index, "removed", actor)
+    final_records = store.list_steps(session_id)
+    return _to_plan_v2(session_id, final_records)
+
+
 __all__ = [
+    "add_plan_step_v2",
     "approve_plan_step_v2",
     "execute_approved_steps_v2",
     "get_plan_step_v2",
     "get_plan_v2",
     "get_step_store",
     "reject_plan_step_v2",
+    "remove_plan_step_v2",
     "router",
     "update_plan_step_v2",
 ]

@@ -55,5 +55,54 @@
     "emptyState": "No commands or output recorded for this session yet.",
     "runTypePlanExecution": "Execution",
     "runTypeAgent": "Agent"
+  },
+  "plans": {
+    "pageTitle": "Plans",
+    "pageSubtitle": "Editable execution plan with per-step approval gates.",
+    "sessionLabel": "Session",
+    "sessionPlaceholder": "Enter a session id",
+    "load": "Load",
+    "loading": "Loading...",
+    "stats": {
+      "steps": "Steps",
+      "approved": "Approved",
+      "pending": "Pending review"
+    },
+    "status": {
+      "draft": "Draft",
+      "under_review": "Awaiting review",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "executing": "Executing",
+      "completed": "Completed"
+    },
+    "step": {
+      "defaultTitle": "New step",
+      "titlePlaceholder": "Step title",
+      "descriptionPlaceholder": "Describe this step...",
+      "approve": "Approve",
+      "reject": "Reject",
+      "edit": "Edit",
+      "save": "Save",
+      "cancel": "Cancel",
+      "remove": "Remove step",
+      "removeLabel": "Remove step {{index}}"
+    },
+    "addStep": "Add step",
+    "addingStep": "Adding...",
+    "executeApproved": "Execute approved plan",
+    "executingApproved": "Executing...",
+    "needsApproval": "Approve at least one step to execute",
+    "empty": "Enter a session id to load its plan.",
+    "emptySteps": "No steps in this plan yet. Add one to get started.",
+    "errors": {
+      "loadPlan": "Could not load the plan for that session.",
+      "updateStep": "Could not save the step.",
+      "approveStep": "Could not approve the step.",
+      "rejectStep": "Could not reject the step.",
+      "addStep": "Could not add a new step.",
+      "removeStep": "Could not remove the step.",
+      "executePlan": "Could not execute the approved steps."
+    }
   }
 }

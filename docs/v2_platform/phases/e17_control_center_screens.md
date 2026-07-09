@@ -72,6 +72,43 @@ Subtasks:
 
 Origin: E10-S2, E3.
 
+#### Implementation notes (E17-S2)
+
+- **Endpoint wiring.** The screen reads/writes exclusively through the E16-S2
+  `/v2/plans` control-plane endpoints via the typed client
+  `frontend/lib/plans_v2.ts`: `GET /v2/plans/{sessionId}` (`getPlanV2`) loads
+  the plan; `PUT .../steps/{stepIndex}` (`updatePlanStepV2`) saves inline
+  title/description edits; `POST .../steps/{stepIndex}/approve` and
+  `.../reject` (`approvePlanStepV2` / `rejectPlanStepV2`) toggle the approval
+  gate; `POST .../steps` (`addPlanStepV2`) and `DELETE .../steps/{stepIndex}`
+  (`removePlanStepV2`) manage steps; and `POST .../execute-approved`
+  (`executeApprovedStepsV2`) drives the sticky footer. No screen state exists
+  that is not derived from a `/v2` response.
+- **Session selection.** Plans are keyed by session, so the screen starts
+  with a session-ID input and loads the plan on submit — there is no
+  "current session" ambient state in the shell yet, keeping the screen
+  self-contained and directly deep-linkable later.
+- **Step-state gating.** Which steps are editable/removable is centralized in
+  `EDITABLE_STEP_STATES` / `REMOVABLE_STEP_STATES`
+  (`ReadonlySet<PlanStepState>` in `frontend/lib/plans_v2.ts`) rather than
+  scattered per-component conditionals, so backend state-machine changes only
+  need a one-place update.
+- **Components.** `StatCard` (step count / approved count / file impact),
+  `StepCard` (inline title/description edit + approve/reject pills + remove),
+  `StepStatusBadge`, and `ExecuteApprovedFooter` (enabled once ≥1 step is
+  approved) each ship a Storybook story alongside the component under
+  `frontend/components/plans/`.
+- **Per-step busy tracking.** Mutations track in-flight state per step index
+  (`stepBusy: Record<number, boolean>`); successful removals delete the
+  entry outright (`clearBusy`) instead of leaving a stale `true` entry behind
+  the shifted indices.
+- **E2E strategy.** `frontend/e2e/plans-approval-gates.spec.ts` intercepts
+  `**/v2/plans/**` with Playwright's `page.route()` and serves a stateful
+  in-memory plan fixture (mirroring `sessions-config.spec.ts` /
+  `shell-navigation.spec.ts`), covering load, inline edit, approve, reject,
+  add step, remove step, and execute-approved — fast and non-flaky, with no
+  seeded backend required.
+
 ### E17-S3 — Patches review screen
 
 Subtasks:
