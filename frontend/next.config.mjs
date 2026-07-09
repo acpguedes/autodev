@@ -5,6 +5,11 @@ const isDev = process.env.NODE_ENV === "development";
 /**
  * Escape hatch: set HEADERLESS=1 to disable all security headers (e.g. when
  * debugging locally behind proxies/tooling that the CSP would block).
+ *
+ * NOTE: `headers()` is evaluated when the config loads. With `next dev` the
+ * env var takes effect at server startup (HEADERLESS=1 npm run dev). With
+ * `next start` the headers are baked into routes-manifest.json at build time,
+ * so the flag must be present during `next build`, not at `next start`.
  */
 const headerless =
   process.env.HEADERLESS === "1" || process.env.NEXT_PUBLIC_HEADERLESS === "1";
