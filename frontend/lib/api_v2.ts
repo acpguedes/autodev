@@ -238,8 +238,74 @@ export async function listSessionTurnsV2(
 }
 
 // ---------------------------------------------------------------------------
-// Provider status (/v2/provider-config/status) — E16-S4
+// Runtime config & provider status (/v2/config, /v2/provider-config)
 // ---------------------------------------------------------------------------
+
+/** LLM provider settings within the runtime configuration document. */
+export type LLMSettingsV2 = {
+  provider: string;
+  model: string;
+  base_url: string;
+  temperature: number;
+  api_key: string;
+};
+
+/** Repository/workspace settings within the runtime configuration document. */
+export type RepositorySettingsV2 = {
+  project_root: string;
+  repository_label: string;
+  default_goal: string;
+};
+
+/** The full runtime configuration document (llm + repository). */
+export type RuntimeConfigV2 = {
+  version: number;
+  llm: LLMSettingsV2;
+  repository: RepositorySettingsV2;
+};
+
+/** Operator-facing guidance on how the runtime configuration is sourced. */
+export type RuntimeInstructionsV2 = {
+  config_path: string;
+  config_file_example: string;
+  env_file_example: string;
+  notes: string[];
+};
+
+/** Response envelope for GET/PUT /v2/config. */
+export type RuntimeConfigResponseV2 = {
+  schemaVersion: string;
+  config: RuntimeConfigV2;
+  instructions: RuntimeInstructionsV2;
+};
+
+/**
+ * Fetch the current runtime configuration (redacted secrets) and the
+ * operator instructions for how it is sourced.
+ *
+ * @returns The runtime configuration document.
+ * @throws Error when the request fails.
+ */
+export async function getRuntimeConfigV2(): Promise<RuntimeConfigResponseV2> {
+  return requestJson<RuntimeConfigResponseV2>("v2/config");
+}
+
+/**
+ * Persist an updated runtime configuration.
+ *
+ * @param config - The full configuration document to save.
+ * @returns The saved (redacted) configuration document.
+ * @throws Error when the request fails, e.g. on validation errors.
+ */
+export async function updateRuntimeConfigV2(
+  config: RuntimeConfigV2
+): Promise<RuntimeConfigResponseV2> {
+  return requestJson<RuntimeConfigResponseV2>("v2/config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ config }),
+  });
+}
 
 /** Live provider status backing the composer's provider chip. */
 export type ProviderStatusV2 = {
@@ -251,7 +317,7 @@ export type ProviderStatusV2 = {
 };
 
 /**
- * Fetch the active LLM provider's status (name, model, health).
+ * Fetch the live configured/healthy status of the active LLM provider.
  *
  * @returns The provider status document.
  * @throws Error when the request fails.

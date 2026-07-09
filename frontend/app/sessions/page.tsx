@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import * as React from "react";
 
 import { useShellHeader } from "@/components/shell/ShellProvider";
-import { Badge } from "@/components/ui/badge";
+import { SessionRow } from "@/components/sessions/SessionRow";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -18,18 +17,42 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
-  TableCell,
   TableHead,
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "@/lib/use-toast";
-import { createSessionV2, listSessionsV2, type SessionV2 } from "@/lib/api_v2";
-import { statusVariant } from "@/lib/utils";
+import { createSessionV2, listSessionRunsV2, listSessionsV2, type SessionV2 } from "@/lib/api_v2";
+
+/** Per-session run summary (count + last-run time) keyed by session id. */
+type RunSummary = { runCount: number; lastRunAt: string | null };
 
 /**
- * Sessions screen: lists control-plane sessions with search, status badges,
- * and a create form; each row links to the session/run detail screen.
+ * Fetch the most recent run for a session to derive its run count and
+ * last-run timestamp. Backend `list_runs` implementations order results
+ * newest-first, so `items[0]` is the most recent run and `page.total` is
+ * the total run count — a single page-1 request is sufficient per session.
+ *
+ * @param sessionId - Session identifier.
+ * @returns The run count and last-run timestamp, or a zeroed summary if the
+ *   request fails (e.g. the session has no runs yet).
+ */
+async function fetchRunSummary(sessionId: string): Promise<RunSummary> {
+  try {
+    const runs = await listSessionRunsV2(sessionId, 1, 0);
+    return {
+      runCount: runs.page.total,
+      lastRunAt: runs.items[0]?.created_at ?? null,
+    };
+  } catch {
+    return { runCount: 0, lastRunAt: null };
+  }
+}
+
+/**
+ * Sessions screen: lists control-plane sessions with search, run counts,
+ * relative last-run time, live status, and a create form; each row links to
+ * the session detail screen and offers a "reopen as chat" action.
  *
  * @returns The sessions list page.
  */
@@ -40,6 +63,7 @@ export default function SessionsPage() {
   });
 
   const [sessions, setSessions] = React.useState<SessionV2[] | null>(null);
+  const [runSummaries, setRunSummaries] = React.useState<Record<string, RunSummary>>({});
   const [error, setError] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   const [goal, setGoal] = React.useState("");
@@ -50,6 +74,14 @@ export default function SessionsPage() {
       const list = await listSessionsV2();
       setSessions(list.items);
       setError(null);
+      setRunSummaries({});
+      const entries = await Promise.all(
+        list.items.map(async (session) => {
+          const summary = await fetchRunSummary(session.session_id);
+          return [session.session_id, summary] as const;
+        })
+      );
+      setRunSummaries(Object.fromEntries(entries));
     } catch {
       setSessions([]);
       setError("Sessions endpoint unavailable. Start the backend to load sessions.");
@@ -160,28 +192,26 @@ export default function SessionsPage() {
                   <TableRow>
                     <TableHead>Goal</TableHead>
                     <TableHead>Session id</TableHead>
-                    <TableHead>Plan steps</TableHead>
+                    <TableHead>Runs</TableHead>
+                    <TableHead>Last run</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Reopen</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((session) => (
-                    <TableRow key={session.session_id}>
-                      <TableCell className="max-w-md truncate font-medium">
-                        <Link
-                          className="underline-offset-4 hover:underline focus-visible:underline"
-                          href={`/sessions/${session.session_id}`}
-                        >
-                          {session.goal || "(no goal)"}
-                        </Link>
-                      </TableCell>
-                      <TableCell className="font-mono text-xs">{session.session_id}</TableCell>
-                      <TableCell>{session.plan.length}</TableCell>
-                      <TableCell>
-                        <Badge variant={statusVariant(session.status)}>{session.status}</Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {filtered.map((session) => {
+                    const summary = runSummaries[session.session_id];
+                    return (
+                      <SessionRow
+                        key={session.session_id}
+                        sessionId={session.session_id}
+                        goal={session.goal}
+                        status={session.status}
+                        runCount={summary ? summary.runCount : null}
+                        lastRunAt={summary ? summary.lastRunAt : null}
+                      />
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}

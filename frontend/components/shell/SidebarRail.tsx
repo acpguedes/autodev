@@ -5,9 +5,15 @@ import { usePathname } from "next/navigation";
 import * as React from "react";
 import useSWR from "swr";
 
+import { StatusGlowDot } from "@/components/StatusGlowDot";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { getRuntimeConfig } from "@/lib/api";
-import { getAgentCatalogV2, getSkillCatalogV2, listSessionsV2 } from "@/lib/api_v2";
+import {
+  getAgentCatalogV2,
+  getProviderStatusV2,
+  getRuntimeConfigV2,
+  getSkillCatalogV2,
+  listSessionsV2,
+} from "@/lib/api_v2";
 
 import { LocaleSwitcher } from "./LocaleSwitcher";
 import {
@@ -116,7 +122,10 @@ export function SidebarRail(): React.JSX.Element {
   const pathname = usePathname() ?? "/";
   const { activeNav, setActiveNav } = useShell();
   const counts = useNavBadgeCounts();
-  const config = useSWR("shell:runtime-config", getRuntimeConfig, {
+  const config = useSWR("shell:runtime-config-v2", getRuntimeConfigV2, {
+    shouldRetryOnError: false,
+  });
+  const providerStatus = useSWR("shell:provider-status", getProviderStatusV2, {
     shouldRetryOnError: false,
   });
 
@@ -130,8 +139,22 @@ export function SidebarRail(): React.JSX.Element {
   }, [resolved, activeNav, setActiveNav]);
 
   const repositoryLabel = config.data?.config.repository.repository_label || "workspace";
-  const provider = config.data?.config.llm.provider || "unconfigured";
-  const model = config.data?.config.llm.model || "—";
+  const provider = providerStatus.data?.name || config.data?.config.llm.provider || "unconfigured";
+  const model = providerStatus.data?.model || config.data?.config.llm.model || "—";
+  const providerTone = !providerStatus.data
+    ? "neutral"
+    : providerStatus.data.healthy
+      ? "success"
+      : providerStatus.data.configured
+        ? "warn"
+        : "danger";
+  const providerStatusLabel = !providerStatus.data
+    ? "Unknown"
+    : providerStatus.data.healthy
+      ? "Healthy"
+      : providerStatus.data.configured
+        ? "Unverified"
+        : "Offline";
 
   return (
     <aside
@@ -207,9 +230,10 @@ export function SidebarRail(): React.JSX.Element {
             <span className="text-[11px] font-bold uppercase tracking-[0.09em] text-ds-fg-2">
               Provider
             </span>
-            <span
-              aria-hidden="true"
-              className="h-[7px] w-[7px] rounded-full bg-ds-success shadow-[0_0_0_3px_hsl(var(--ds-success)/0.25)]"
+            <StatusGlowDot
+              tone={providerTone}
+              label={providerStatusLabel}
+              labelClassName="text-[11px]"
             />
           </div>
           <div className="mt-2 flex items-center gap-2.5">
