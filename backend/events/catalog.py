@@ -128,6 +128,21 @@ class PatchAppliedData(BaseModel):
     deletions: int
 
 
+class PatchChangedFilesListedData(BaseModel):
+    """Payload of ``patch.changedfiles.listed`` (E16-S3)."""
+
+    sessionId: str
+    fileCount: int
+
+
+class PatchDiscardedData(BaseModel):
+    """Payload of ``patch.discarded`` (E16-S3)."""
+
+    sessionId: str
+    patchId: str
+    path: str
+
+
 class ValidationGateData(BaseModel):
     """Shared payload of ``validation.gate.passed`` / ``validation.gate.failed``."""
 
@@ -198,6 +213,8 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition("plugin.removed", "Plugin Host", "tenantId", PluginLifecycleData),
     EventDefinition("agent.registered", "Registries", "tenantId", RegistryEntryData),
     EventDefinition("skill.registered", "Registries", "tenantId", RegistryEntryData),
+    EventDefinition("patch.changedfiles.listed", "Control Plane API", "runId", PatchChangedFilesListedData),
+    EventDefinition("patch.discarded", "Control Plane API", "runId", PatchDiscardedData),
 )
 
 
