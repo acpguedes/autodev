@@ -24,6 +24,11 @@ _SECRET_FIELDS = {
     "autodev_minio_secret_key",
 }
 
+# Shared defaults so the UI URL and the CORS allowlist can never drift: the
+# default UI URL is, by definition, the first default CORS origin.
+_DEFAULT_CORS_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
+_DEFAULT_UI_URL = _DEFAULT_CORS_ORIGINS.split(",")[0]
+
 
 class Settings(BaseSettings):
     """Application settings sourced from environment variables and an optional JSON file."""
@@ -49,7 +54,8 @@ class Settings(BaseSettings):
     # --- workspace ---
     autodev_project_root: str = ""
     autodev_config_path: str = ""
-    autodev_cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    autodev_cors_origins: str = _DEFAULT_CORS_ORIGINS
+    autodev_ui_url: str = _DEFAULT_UI_URL
     autodev_api_token: str = ""
     autodev_enable_hsts: bool = False
     autodev_host: str = "127.0.0.1"
