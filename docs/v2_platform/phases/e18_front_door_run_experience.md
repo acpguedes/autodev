@@ -1,7 +1,7 @@
 # E18 — Control Center Front Door & Run Experience
 
 **Wave:** Beta
-**Status:** Not started (0/5 complete)
+**Status:** Done (5/5 complete, 2026-07-09)
 **Depends on:** E15, E16, E17
 **Enables:** first-run onboarding for self-hosters; unblocks the proposed E19 visual-parity audit
 **Canonical source:** this document (DX epic; not part of the E0–E13 reference
@@ -85,7 +85,9 @@ Subtasks:
 - `E18-S1-T4`: auth interaction — mirror whatever exemption treatment
   `/health` has today with respect to `require_api_token`
   (`backend/api/security.py`); record the chosen behavior here and pin it
-  with a test.
+  with a test. **Decision (implemented):** `/` was added to `_PUBLIC_PATHS`,
+  exactly like `/health` — the descriptor is discovery metadata and leaks no
+  secrets; pinned by `test_root_is_public_when_token_configured`.
 
 | Item | Content |
 | --- | --- |
@@ -225,14 +227,21 @@ in compose, and ReDoc.
 
 ## Epic exit checklist
 
-- [ ] All 5 stories meet the global DoD (`../templates/dod_checklist.md`)
+- [x] All 5 stories meet the global DoD (`../templates/dod_checklist.md`)
       plus their story-specific DoD above.
-- [ ] Full `make check` green (backend lint + typecheck + pytest including
+- [x] Full `make check` green (backend lint + typecheck + pytest including
       `test_api_front_door.py` and `test_api_docs_selfhosted.py`; frontend
       lint + typecheck + vitest + build).
-- [ ] `shellcheck scripts/run_dev.sh` and
+- [x] `shellcheck scripts/run_dev.sh` (via the dockerized
+      `koalaman/shellcheck:stable`) and
       `docker compose -f infrastructure/docker-compose.yml config` pass.
-- [ ] Recorded manual smoke in the epic PR description: screenshot of the
-      Control Center at `:3000` reached via `make run`, plus `curl` output of
-      `GET :8000/` (JSON + HTML variants) and a rendered `GET :8000/docs`.
-- [ ] `docs/v2_platform/progress.md` updated.
+- [x] Recorded manual smoke in the epic PR description: Control Center at
+      `:3000` reached via `make run`, plus `curl` output of `GET :8000/`
+      (JSON + HTML variants) and the `/docs` page with same-origin assets.
+- [x] `docs/v2_platform/progress.md` updated.
+
+Implementation deviations (recorded in the PR): `NEXT_PUBLIC_API_URL` kept as
+`http://localhost:8000` in compose (browser-side variable — a service-name URL
+would break UI→API calls); the S4 dictionary edits landed in
+`frontend/locales/{en,pt-BR}.json` (this doc's `lib/i18n/locales.ts` pointer
+predates the dictionary split).
