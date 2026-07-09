@@ -4,9 +4,17 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import ExecutionConsolePanel from "../components/ExecutionConsolePanel";
 import MessageList, { type Message } from "../components/MessageList";
+import RunTimelinePanel from "@/components/chat/RunTimelinePanel";
 import { useExecutionPanel, useShell, useShellHeader } from "@/components/shell/ShellProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  type ProviderStatusV2,
+  type TurnV2,
+  createTurnV2,
+  getProviderStatusV2,
+  listSessionTurnsV2,
+} from "@/lib/api_v2";
 import { useTranslations } from "@/lib/i18n";
 import {
   type ExecutionPlanResponse,
@@ -19,7 +27,6 @@ import {
   listRuns,
   listSessions,
   requestPlan,
-  sendChatMessage,
 } from "../lib/api";
 
 const textareaClass =
@@ -42,9 +49,24 @@ function ExecutionControlCenter() {
   const [sessions, setSessions] = useState<SessionResponse[]>([]);
   const [runs, setRuns] = useState<RunResponse[]>([]);
   const [executionPlan, setExecutionPlan] = useState<ExecutionPlanResponse | null>(null);
+  const [activeTurn, setActiveTurn] = useState<TurnV2 | null>(null);
+  const [providerStatus, setProviderStatus] = useState<ProviderStatusV2 | null>(null);
+  const [providerLoading, setProviderLoading] = useState(true);
   const { setPanelOpen } = useShell();
 
   useEffect(() => {
+    // The provider chip is independent of session bootstrap: a provider
+    // outage must not block the chat from loading (E16-S4).
+    async function loadProviderStatus() {
+      try {
+        setProviderStatus(await getProviderStatusV2());
+      } catch {
+        setProviderStatus(null);
+      } finally {
+        setProviderLoading(false);
+      }
+    }
+
     async function bootstrap() {
       try {
         const runtime = await getRuntimeConfig();
@@ -60,6 +82,14 @@ function ExecutionControlCenter() {
           setMessages(mapHistoryToMessages(latestSession.history));
           setRuns(await listRuns(latestSession.session_id));
           setExecutionPlan(await getExecutionPlan(latestSession.session_id));
+          // Seed the execution timeline from the session's most recent turn,
+          // if any. Missing turns are fine — the panel stays idle.
+          try {
+            const turns = await listSessionTurnsV2(latestSession.session_id);
+            setActiveTurn(turns.items.at(-1) ?? null);
+          } catch {
+            setActiveTurn(null);
+          }
         } else {
           const planResponse = await requestPlan(runtime.config.repository.default_goal);
           setSessionId(planResponse.session_id);
@@ -92,11 +122,24 @@ function ExecutionControlCenter() {
   const hasConsoleEntries = runs.some((run) => run.results.length > 0);
   const nextTasks = executionPlan?.tasks.slice(0, 3) ?? [];
 
-  // Surface the execution console in the shell's right panel and auto-open it
-  // whenever there is live activity or recorded output to show.
+  // Keep the seed steps referentially stable per turn so the timeline
+  // hook's effect only re-runs when the turn actually changes.
+  const seedSteps = useMemo(() => activeTurn?.steps ?? [], [activeTurn]);
+
+  // Surface the execution timeline and console in the shell's right panel
+  // and auto-open it whenever there is live activity or output to show.
   const consoleContent = useMemo(
-    () => <ExecutionConsolePanel runs={runs} isBusy={isBusy} />,
-    [runs, isBusy]
+    () => (
+      <div className="flex flex-col gap-4">
+        <RunTimelinePanel
+          runId={activeTurn?.turnId ?? null}
+          seedSteps={seedSteps}
+          pending={isLoading}
+        />
+        <ExecutionConsolePanel runs={runs} isBusy={isBusy} />
+      </div>
+    ),
+    [activeTurn, seedSteps, isLoading, runs, isBusy]
   );
   useExecutionPanel(consoleContent);
 
@@ -126,8 +169,11 @@ function ExecutionControlCenter() {
     setMessages((current) => [...current, userMessage]);
 
     try {
-      const response = await sendChatMessage(sessionId, pendingMessage);
-      setMessages(mapHistoryToMessages(response.history));
+      // E16-S1 turns contract: the turn id doubles as the run id, which
+      // feeds the execution timeline's SSE subscription (E17-S1-T3).
+      const turn = await createTurnV2(sessionId, pendingMessage);
+      setActiveTurn(turn);
+      setMessages(mapHistoryToMessages(turn.history));
       await refreshSessionState(sessionId);
     } catch {
       setError(t("chat.errors.sendMessage"));
@@ -149,6 +195,7 @@ function ExecutionControlCenter() {
       setSessionId(response.session_id);
       setPlan(response.plan);
       setRuns([]);
+      setActiveTurn(null);
       setMessages([
         {
           author: "Planner",
@@ -224,6 +271,26 @@ function ExecutionControlCenter() {
             </Badge>
             <Badge variant="outline" className="text-ds-fg-2">
               {t("chat.sessionsCount", { count: sessions.length })}
+            </Badge>
+            <Badge
+              variant="outline"
+              className={
+                providerStatus?.configured && providerStatus.healthy
+                  ? "text-ds-fg-2"
+                  : "text-ds-danger"
+              }
+              title={t("chat.provider.label")}
+            >
+              {providerLoading
+                ? t("chat.provider.loading")
+                : !providerStatus?.configured
+                  ? t("chat.provider.unconfigured")
+                  : providerStatus.healthy
+                    ? t("chat.provider.healthy", {
+                        name: providerStatus.name,
+                        model: providerStatus.model,
+                      })
+                    : t("chat.provider.unhealthy", { name: providerStatus.name })}
             </Badge>
           </div>
           <p className="text-xs text-ds-fg-3">

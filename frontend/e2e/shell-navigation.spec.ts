@@ -17,8 +17,7 @@ const ROUTES: ReadonlyArray<{ path: string; navLabel: string }> = [
   { path: "/flows", navLabel: "Flows" },
   { path: "/sessions", navLabel: "Sessions" },
   { path: "/config", navLabel: "Config" },
-  { path: "/agents", navLabel: "Agents" },
-  { path: "/skills", navLabel: "Skills" },
+  { path: "/extensions", navLabel: "Extensions" },
   { path: "/panels", navLabel: "Panels" },
 ];
 

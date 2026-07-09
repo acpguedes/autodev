@@ -20,6 +20,24 @@
     "sending": "Sending...",
     "currentPlan": "Current plan",
     "initialPlanMessage": "Initial plan created for the goal: {{goal}}",
+    "timeline": {
+      "planning": "Planning",
+      "analysis": "Analysis",
+      "patch": "Patch",
+      "validation": "Validation",
+      "statusIdle": "Waiting",
+      "statusRunning": "Running",
+      "statusDone": "Done",
+      "statusFailed": "Failed",
+      "idleHint": "Send a message to start a run and follow its stages here."
+    },
+    "provider": {
+      "label": "Provider",
+      "healthy": "{{name}} · {{model}}",
+      "unhealthy": "{{name}} unavailable",
+      "unconfigured": "Provider not configured",
+      "loading": "Checking provider..."
+    },
     "errors": {
       "loadWorkspace": "Could not load the chat workspace.",
       "sendMessage": "Could not send the message to the orchestrator.",
@@ -37,5 +55,54 @@
     "emptyState": "No commands or output recorded for this session yet.",
     "runTypePlanExecution": "Execution",
     "runTypeAgent": "Agent"
+  },
+  "plans": {
+    "pageTitle": "Plans",
+    "pageSubtitle": "Editable execution plan with per-step approval gates.",
+    "sessionLabel": "Session",
+    "sessionPlaceholder": "Enter a session id",
+    "load": "Load",
+    "loading": "Loading...",
+    "stats": {
+      "steps": "Steps",
+      "approved": "Approved",
+      "pending": "Pending review"
+    },
+    "status": {
+      "draft": "Draft",
+      "under_review": "Awaiting review",
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "executing": "Executing",
+      "completed": "Completed"
+    },
+    "step": {
+      "defaultTitle": "New step",
+      "titlePlaceholder": "Step title",
+      "descriptionPlaceholder": "Describe this step...",
+      "approve": "Approve",
+      "reject": "Reject",
+      "edit": "Edit",
+      "save": "Save",
+      "cancel": "Cancel",
+      "remove": "Remove step",
+      "removeLabel": "Remove step {{index}}"
+    },
+    "addStep": "Add step",
+    "addingStep": "Adding...",
+    "executeApproved": "Execute approved plan",
+    "executingApproved": "Executing...",
+    "needsApproval": "Approve at least one step to execute",
+    "empty": "Enter a session id to load its plan.",
+    "emptySteps": "No steps in this plan yet. Add one to get started.",
+    "errors": {
+      "loadPlan": "Could not load the plan for that session.",
+      "updateStep": "Could not save the step.",
+      "approveStep": "Could not approve the step.",
+      "rejectStep": "Could not reject the step.",
+      "addStep": "Could not add a new step.",
+      "removeStep": "Could not remove the step.",
+      "executePlan": "Could not execute the approved steps."
+    }
   }
 }

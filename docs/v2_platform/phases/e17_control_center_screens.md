@@ -72,6 +72,43 @@ Subtasks:
 
 Origin: E10-S2, E3.
 
+#### Implementation notes (E17-S2)
+
+- **Endpoint wiring.** The screen reads/writes exclusively through the E16-S2
+  `/v2/plans` control-plane endpoints via the typed client
+  `frontend/lib/plans_v2.ts`: `GET /v2/plans/{sessionId}` (`getPlanV2`) loads
+  the plan; `PUT .../steps/{stepIndex}` (`updatePlanStepV2`) saves inline
+  title/description edits; `POST .../steps/{stepIndex}/approve` and
+  `.../reject` (`approvePlanStepV2` / `rejectPlanStepV2`) toggle the approval
+  gate; `POST .../steps` (`addPlanStepV2`) and `DELETE .../steps/{stepIndex}`
+  (`removePlanStepV2`) manage steps; and `POST .../execute-approved`
+  (`executeApprovedStepsV2`) drives the sticky footer. No screen state exists
+  that is not derived from a `/v2` response.
+- **Session selection.** Plans are keyed by session, so the screen starts
+  with a session-ID input and loads the plan on submit — there is no
+  "current session" ambient state in the shell yet, keeping the screen
+  self-contained and directly deep-linkable later.
+- **Step-state gating.** Which steps are editable/removable is centralized in
+  `EDITABLE_STEP_STATES` / `REMOVABLE_STEP_STATES`
+  (`ReadonlySet<PlanStepState>` in `frontend/lib/plans_v2.ts`) rather than
+  scattered per-component conditionals, so backend state-machine changes only
+  need a one-place update.
+- **Components.** `StatCard` (step count / approved count / file impact),
+  `StepCard` (inline title/description edit + approve/reject pills + remove),
+  `StepStatusBadge`, and `ExecuteApprovedFooter` (enabled once ≥1 step is
+  approved) each ship a Storybook story alongside the component under
+  `frontend/components/plans/`.
+- **Per-step busy tracking.** Mutations track in-flight state per step index
+  (`stepBusy: Record<number, boolean>`); successful removals delete the
+  entry outright (`clearBusy`) instead of leaving a stale `true` entry behind
+  the shifted indices.
+- **E2E strategy.** `frontend/e2e/plans-approval-gates.spec.ts` intercepts
+  `**/v2/plans/**` with Playwright's `page.route()` and serves a stateful
+  in-memory plan fixture (mirroring `sessions-config.spec.ts` /
+  `shell-navigation.spec.ts`), covering load, inline edit, approve, reject,
+  add step, remove step, and execute-approved — fast and non-flaky, with no
+  seeded backend required.
+
 ### E17-S3 — Patches review screen
 
 Subtasks:
@@ -113,6 +150,41 @@ Subtasks:
 | Dependencies | E16-S4, E15-S2 |
 
 Origin: E10-S2, E8-S1, E5.
+
+#### Implementation notes (E17-S4)
+
+- **Endpoint wiring.** The config screen reads/writes the entire provider +
+  repository form through the two E16-S4 endpoints already exposed by
+  `backend/api/routers/config_v2.py` and
+  `backend/api/routers/provider_config_v2.py`: `GET/PUT /v2/config`
+  (`getRuntimeConfigV2` / `updateRuntimeConfigV2` in `frontend/lib/api_v2.ts`)
+  covers the full form (provider, model, base URL, temperature, API key,
+  repository label, project directory, default goal) in one round trip, and
+  `GET /v2/provider-config/status` (`getProviderStatusV2`) supplies the live
+  healthy/configured badge shown in both the config screen and the shell's
+  sidebar provider card. No separate PUT-per-field endpoint was needed.
+- **Reopen-as-chat contract.** `SessionRow`'s "Open chat" action links to
+  `/?sessionId=<sessionId>` (query param name `sessionId`, URI-encoded). This
+  is the exact contract E17-S1's chat screen depends on to resume an existing
+  session instead of starting a new one — the session's **goal** cell links
+  elsewhere, to `/sessions/<sessionId>` (this story's own detail screen), so
+  the two links intentionally target different routes.
+- **Repository-intelligence panel dropped.** The prototype sketches hint at a
+  repository-intelligence side panel on the config screen, but no
+  `/v2/repository` (or equivalent) endpoint exists yet in E16. Per the
+  API-first rule, that panel was left out of this story rather than backed by
+  a stub; it can be added once a corresponding `/v2` endpoint lands.
+- **E2E strategy.** `frontend/e2e/sessions-config.spec.ts` intercepts
+  `http://localhost:8000/v2/**` with Playwright's `page.route()` and serves
+  deterministic fixtures, rather than depending on a live/seeded backend —
+  this satisfies the "assert real rendered state" DoD while keeping the spec
+  fast and non-flaky. It runs alongside the pre-existing
+  `frontend/e2e/shell-navigation.spec.ts`, which already covers `/sessions`
+  and `/config` inside the three-region shell.
+- **Integration gap (S1↔S4).** The reopen-as-chat link emitted by `SessionRow.tsx`
+  (`/?sessionId=<id>`) is not yet consumed by E17-S1's `frontend/app/page.tsx`;
+  that screen needs `useSearchParams`/`sessionId` handling to resume the session
+  and complete the end-to-end flow. To be resolved at epic merge or as a fast-follow.
 
 ### E17-S5 — Extensions hub screen
 

@@ -2,9 +2,18 @@ import { defineConfig, devices } from "playwright/test";
 
 // End-to-end tests for the Execution Control Center shell (E15-S2 DoD).
 // Runs against the Next.js dev server; Playwright starts it when it is not
-// already listening on :3000. Kept separate from Vitest: the `unit` and
-// `storybook` projects in vitest.config.ts only match *.test.ts and
-// *.stories.tsx, while e2e specs live in e2e/**/*.spec.ts.
+// already listening on the target port. Kept separate from Vitest: the
+// `unit` and `storybook` projects in vitest.config.ts only match *.test.ts
+// and *.stories.tsx, while e2e specs live in e2e/**/*.spec.ts.
+//
+// The port defaults to 3000 but can be overridden with PLAYWRIGHT_PORT —
+// useful when multiple git worktrees each run their own `npm run dev` on
+// the same host and would otherwise collide on the default port (in which
+// case `reuseExistingServer` would silently attach to a sibling worktree's
+// server instead of this one).
+const PORT = process.env.PLAYWRIGHT_PORT ?? "3000";
+const BASE_URL = `http://localhost:${PORT}`;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -12,13 +21,13 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL: BASE_URL,
     trace: "on-first-retry",
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: "npm run dev",
-    url: "http://localhost:3000",
+    command: `npm run dev -- -p ${PORT}`,
+    url: BASE_URL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
