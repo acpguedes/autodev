@@ -122,11 +122,15 @@ export function ExtensionsHub(): React.JSX.Element {
         }
       );
       toast({ title: nextEnabled ? "Enabled" : "Disabled", description: item.name });
-      setDetailItem((current) =>
-        current && current.kind === item.kind && current.id === item.id
-          ? { ...current, enabled: nextEnabled }
-          : current
-      );
+      // Mirrors AgentFormDialog's close-after-save pattern: a successful
+      // enable/disable from the read-only detail dialog closes it. When the
+      // toggle came from a card's inline switch instead, the detail dialog
+      // is already closed, so these are no-ops.
+      const isOpenDetailItem = detailItem?.kind === item.kind && detailItem?.id === item.id;
+      if (isOpenDetailItem) {
+        setDetailOpen(false);
+        setDetailItem(null);
+      }
     } catch {
       toast({
         title: "Action failed",
@@ -181,7 +185,7 @@ export function ExtensionsHub(): React.JSX.Element {
                 ))}
               </div>
             ) : (itemsByKind.get(kind)?.length ?? 0) === 0 ? (
-              <p className="text-sm text-ds-fg-3">
+              <p className="text-sm text-ds-fg-2">
                 No {EXTENSION_KIND_LABELS[kind].toLowerCase()} registered yet.
               </p>
             ) : (

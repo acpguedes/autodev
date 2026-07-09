@@ -122,7 +122,10 @@ async function mockExtensionsApi(page: Page): Promise<void> {
 
   await page.route(/\/v2\/extensions\/[^/]+\/[^/]+\/(enable|disable)/, async (route) => {
     const url = new URL(route.request().url());
-    const [, , kind, id, action] = url.pathname.split("/");
+    // pathname is "/v2/extensions/{kind}/{id}/{enable|disable}", which splits
+    // into ["", "v2", "extensions", kind, id, action] — three leading blanks,
+    // not two, must be skipped to land on the right slots.
+    const [, , , kind, id, action] = url.pathname.split("/");
     const item = ITEMS.find((candidate) => candidate.kind === kind && candidate.id === id);
     if (item) {
       item.enabled = action === "enable";
@@ -156,18 +159,26 @@ test.describe("Extensions hub", () => {
     await expect(tabs.getByRole("tab", { name: /MCP \(0\)/ })).toBeVisible();
 
     // Agents tab is active by default.
-    await expect(page.locator('[role="button"]').filter({ hasText: "Reviewer" })).toBeVisible();
-    await expect(page.locator('[role="button"]').filter({ hasText: "Planner" })).toBeVisible();
+    await expect(
+      page.locator('[data-testid="extension-card"]').filter({ hasText: "Reviewer" })
+    ).toBeVisible();
+    await expect(
+      page.locator('[data-testid="extension-card"]').filter({ hasText: "Planner" })
+    ).toBeVisible();
 
     await tabs.getByRole("tab", { name: /Skills/ }).click();
-    await expect(page.locator('[role="button"]').filter({ hasText: "Summarize diff" })).toBeVisible();
-    await expect(page.locator('[role="button"]').filter({ hasText: "Reviewer" })).toHaveCount(0);
+    await expect(
+      page.locator('[data-testid="extension-card"]').filter({ hasText: "Summarize diff" })
+    ).toBeVisible();
+    await expect(
+      page.locator('[data-testid="extension-card"]').filter({ hasText: "Reviewer" })
+    ).toHaveCount(0);
   });
 
   test("toggling a card's switch enables or disables it", async ({ page }) => {
     await page.goto("/extensions");
 
-    const plannerCard = page.locator('[role="button"]').filter({ hasText: "Planner" });
+    const plannerCard = page.locator('[data-testid="extension-card"]').filter({ hasText: "Planner" });
     const plannerToggle = plannerCard.getByRole("switch");
     await expect(plannerToggle).toHaveAttribute("aria-checked", "false");
 
@@ -192,14 +203,16 @@ test.describe("Extensions hub", () => {
     await expect(
       page.getByRole("tablist").getByRole("tab", { name: /Agents \(3\)/ })
     ).toBeVisible();
-    await expect(page.locator('[role="button"]').filter({ hasText: "team/triager" })).toBeVisible();
+    await expect(
+      page.locator('[data-testid="extension-card"]').filter({ hasText: "team/triager" })
+    ).toBeVisible();
   });
 
   test("clicking a skill card opens its read-only detail dialog", async ({ page }) => {
     await page.goto("/extensions");
     await page.getByRole("tablist").getByRole("tab", { name: /Skills/ }).click();
 
-    await page.locator('[role="button"]').filter({ hasText: "Summarize diff" }).click();
+    await page.locator('[data-testid="extension-card"]').filter({ hasText: "Summarize diff" }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("heading", { name: "Summarize diff" })).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Disable" })).toBeVisible();
