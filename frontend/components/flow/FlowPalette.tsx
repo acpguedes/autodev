@@ -20,26 +20,37 @@ export type FlowPaletteProps = {
   onInsertAgent: (item: AgentPaletteItem) => void;
   onInsertControl: (item: ControlPaletteItem) => void;
   onNewFlow: () => void;
+  /**
+   * Disables the "Agents"/"Flow control" insert buttons — set when the
+   * flow.yaml document does not currently parse, so there is no manifest to
+   * insert a node into (the canvas shows a matching placeholder in that
+   * state). "New blank flow" stays enabled as the recovery action.
+   */
+  insertDisabled?: boolean;
 };
 
 function PaletteButton({
   label,
   description,
   onClick,
+  disabled,
 }: {
   label: string;
   description: string;
   onClick: () => void;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       title={description}
       className={cn(
         "flex w-full flex-col items-start gap-0.5 rounded-ds-md border border-ds-line bg-ds-bg-2 px-3 py-2 text-left transition-colors",
         "hover:border-ds-accent hover:bg-ds-bg-3",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-accent"
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-accent",
+        "disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-ds-line disabled:hover:bg-ds-bg-2"
       )}
     >
       <span className="text-sm font-medium text-ds-fg">{label}</span>
@@ -66,9 +77,14 @@ export function FlowPalette({
   onInsertAgent,
   onInsertControl,
   onNewFlow,
+  insertDisabled,
 }: FlowPaletteProps) {
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto rounded-ds-lg border border-ds-line bg-ds-bg-2 p-3 shadow-ds-sm">
+    <div
+      role="group"
+      aria-label="Flow palette"
+      className="flex h-full flex-col gap-5 overflow-y-auto rounded-ds-lg border border-ds-line bg-ds-bg-2 p-3 shadow-ds-sm"
+    >
       <section className="flex flex-col gap-2">
         <h3 className="font-serif text-sm font-semibold text-ds-fg">Flows library</h3>
         <Button type="button" variant="secondary" size="sm" onClick={onNewFlow}>
@@ -99,7 +115,11 @@ export function FlowPalette({
       <section className="flex flex-col gap-2">
         <h3 className="font-serif text-sm font-semibold text-ds-fg">Agents</h3>
         <p className="text-xs text-ds-fg-2">
-          {selectedNodeId ? `Connects from "${selectedNodeId}".` : "Adds a standalone node."}
+          {insertDisabled
+            ? "Fix the flow.yaml parse errors to insert nodes."
+            : selectedNodeId
+              ? `Connects from "${selectedNodeId}".`
+              : "Adds a standalone node."}
         </p>
         <div className="flex flex-col gap-1.5">
           {AGENT_PALETTE_ITEMS.map((item) => (
@@ -108,6 +128,7 @@ export function FlowPalette({
               label={item.label}
               description={item.description}
               onClick={() => onInsertAgent(item)}
+              disabled={insertDisabled}
             />
           ))}
         </div>
@@ -122,6 +143,7 @@ export function FlowPalette({
               label={item.label}
               description={item.description}
               onClick={() => onInsertControl(item)}
+              disabled={insertDisabled}
             />
           ))}
         </div>

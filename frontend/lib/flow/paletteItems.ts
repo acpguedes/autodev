@@ -36,6 +36,12 @@ export type ControlPaletteItem = {
    * template ("include previous step output").
    */
   supportsPreviousOutput?: boolean;
+  /**
+   * When true, the new node is always inserted without an edge from the
+   * currently selected node — even if one is selected. Used by "Start",
+   * whose whole purpose is to be a flow entry node (no incoming edges).
+   */
+  preventIncomingEdge?: boolean;
 };
 
 export type PaletteItem = AgentPaletteItem | ControlPaletteItem;
@@ -150,6 +156,7 @@ export const CONTROL_PALETTE_ITEMS: ControlPaletteItem[] = [
     description: "Marks the entry point of the flow.",
     nodeType: "agent",
     defaults: { ref: "namespace/name" },
+    preventIncomingEdge: true,
   },
   {
     kind: "control",

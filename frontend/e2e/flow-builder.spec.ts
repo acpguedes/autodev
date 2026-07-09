@@ -14,12 +14,17 @@ test("renders the three-column flow builder: palette, canvas, inspector", async 
   await page.goto("/flows");
 
   // Palette (left column): Flows library, Agents, Flow control sections.
-  await expect(page.getByRole("heading", { name: "Flows library" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Agents", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Flow control" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "New blank flow" })).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Planner /i })).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Conditional /i })).toBeVisible();
+  // Scoped to the palette landmark — some canvas node labels (e.g. the
+  // sample flow's "quality-gate" conditional node) share a name prefix
+  // with palette entries ("Conditional …"), so an unscoped query would be
+  // ambiguous (strict-mode violation).
+  const palette = page.getByRole("group", { name: "Flow palette" });
+  await expect(palette.getByRole("heading", { name: "Flows library" })).toBeVisible();
+  await expect(palette.getByRole("heading", { name: "Agents", exact: true })).toBeVisible();
+  await expect(palette.getByRole("heading", { name: "Flow control" })).toBeVisible();
+  await expect(palette.getByRole("button", { name: "New blank flow" })).toBeVisible();
+  await expect(palette.getByRole("button", { name: /^Planner /i })).toBeVisible();
+  await expect(palette.getByRole("button", { name: /^Conditional /i })).toBeVisible();
 
   // Canvas (center column): the sample flow's first node is rendered.
   const canvas = page.getByRole("group", { name: "Flow graph canvas" });
@@ -37,12 +42,13 @@ test("inserting a Coder agent from the palette connects it to the selected node"
 }) => {
   await page.goto("/flows");
 
+  const palette = page.getByRole("group", { name: "Flow palette" });
   const canvas = page.getByRole("group", { name: "Flow graph canvas" });
   const planNode = canvas.getByRole("button", { name: /^agent node plan/i });
   await planNode.click();
   await expect(planNode).toHaveAttribute("aria-pressed", "true");
 
-  await page.getByRole("button", { name: /^Coder /i }).click();
+  await palette.getByRole("button", { name: /^Coder /i }).click();
 
   // A new "coder" node is inserted and auto-selected...
   const coderNode = canvas.getByRole("button", { name: /^agent node coder/i });
@@ -77,9 +83,11 @@ test("Save validates the manifest and reports the outcome via toast", async ({ p
   // Whether the /v2/flows/validate round-trip succeeds (export confirmed)
   // or fails (backend unavailable / server-side validation error), the
   // save action always surfaces its outcome as a toast — never a silent
-  // failure.
-  const toast = page.getByRole("status").or(page.getByRole("alert"));
-  await expect(toast).toContainText(
+  // failure. Scoped to the toaster stack (data-testid="toaster") since an
+  // unscoped role=alert query also matches Next.js's (empty) built-in
+  // route announcer, a strict-mode violation.
+  const toaster = page.getByTestId("toaster");
+  await expect(toaster).toContainText(
     /flow\.yaml exported|Could not validate flow\.yaml|Server validation failed/
   );
 });

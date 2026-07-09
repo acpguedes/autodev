@@ -276,10 +276,14 @@ export function FlowEditor({ initialYaml }: FlowEditorProps) {
   /**
    * Inserts a new node, connecting it from the currently selected node (if
    * any) — the palette's "connects from the selected node" interaction.
+   *
+   * @param node - The node to insert.
+   * @param preventIncomingEdge - When true, skip the auto-connect even if a
+   *   node is selected (e.g. "Start", which must have no incoming edges).
    */
-  const insertNode = (node: FlowNode) => {
+  const insertNode = (node: FlowNode, preventIncomingEdge = false) => {
     if (!manifest) return;
-    const fromId = selectedNodeId;
+    const fromId = preventIncomingEdge ? null : selectedNodeId;
     applyManifest({
       ...manifest,
       nodes: [...manifest.nodes, node],
@@ -295,17 +299,25 @@ export function FlowEditor({ initialYaml }: FlowEditorProps) {
 
   const insertControlItem = (item: ControlPaletteItem) => {
     if (!manifest) return;
-    const previousOutput =
+    const previousOutputInput =
       item.supportsPreviousOutput && selectedNodeId
-        ? { input: { previous: `{{ nodes.${selectedNodeId}.output }}` } }
-        : {};
-    insertNode({
-      id: nextNodeId(item.id),
-      type: item.nodeType,
-      label: item.label,
-      ...item.defaults,
-      ...previousOutput,
-    });
+        ? { previous: `{{ nodes.${selectedNodeId}.output }}` }
+        : undefined;
+    // Merge (rather than overwrite) `input`, so a future palette item that
+    // sets both `defaults.input` and `supportsPreviousOutput` keeps both.
+    const input = previousOutputInput
+      ? { ...(item.defaults.input as Record<string, unknown> | undefined), ...previousOutputInput }
+      : item.defaults.input;
+    insertNode(
+      {
+        id: nextNodeId(item.id),
+        type: item.nodeType,
+        label: item.label,
+        ...item.defaults,
+        ...(input !== undefined ? { input } : {}),
+      },
+      item.preventIncomingEdge
+    );
   };
 
   /** Starts a brand-new blank flow (palette's "Flows library" > New). */
@@ -403,6 +415,7 @@ export function FlowEditor({ initialYaml }: FlowEditorProps) {
             onInsertAgent={insertAgentItem}
             onInsertControl={insertControlItem}
             onNewFlow={startNewFlow}
+            insertDisabled={!manifest}
           />
         </div>
 

@@ -135,6 +135,10 @@ export function NodeInspector({
 
   return (
     <div className="flex flex-col gap-4">
+      <h4 className="font-serif text-sm font-semibold text-ds-fg">
+        Editing node <span className="font-mono">{node.id}</span>
+      </h4>
+
       <div className="flex flex-col gap-1">
         <FieldLabel htmlFor="node-id">Node id (kebab-case)</FieldLabel>
         <Input
