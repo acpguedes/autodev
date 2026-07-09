@@ -53,6 +53,10 @@ export type FlowNode = {
   type: NodeType;
   /** Required for agent | skill | tool | subflow | map. */
   ref?: string;
+  /** Display label shown on the canvas card and inspector (editor-only, non-schema). */
+  label?: string;
+  /** Agent model override, surfaced in the inspector for agent-type nodes (non-schema). */
+  model?: string;
   /** Input bindings ({{ ... }} templates over flow state). */
   input?: Record<string, unknown>;
   timeoutSec?: number;

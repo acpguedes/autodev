@@ -112,3 +112,21 @@ export const SAMPLE_FLOW: FlowManifest = {
 };
 
 export const SAMPLE_FLOW_YAML: string = serializeFlowYaml(SAMPLE_FLOW);
+
+/**
+ * Build a fresh, empty flow manifest for the palette's "New" action
+ * (Flows library section) — a minimal valid scaffold with no nodes/edges.
+ *
+ * @returns A new blank `FlowManifest`.
+ */
+export function createBlankFlow(): FlowManifest {
+  return {
+    schemaVersion: "1",
+    id: "autodev/flow-untitled",
+    version: "0.1.0",
+    name: "Untitled flow",
+    hostApi: ">=2.0 <3.0",
+    nodes: [],
+    edges: [],
+  };
+}

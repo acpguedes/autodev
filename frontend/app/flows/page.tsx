@@ -18,8 +18,8 @@ export default function FlowsPage() {
       />
       <section className="flex h-full flex-col gap-4 p-6">
         <header>
-          <h2 className="text-lg font-semibold text-foreground">Visual flow editor</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="font-serif text-lg font-semibold text-ds-fg">Visual flow editor</h2>
+          <p className="text-sm text-ds-fg-2">
             Create and edit <code className="font-mono">flow.yaml</code> manifests visually —
             nodes, conditional edges, sub-flows, map/reduce, and human checkpoints — with
             lossless YAML round-trip and immediate graph validation.
