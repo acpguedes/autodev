@@ -82,11 +82,17 @@ services:
 
   frontend:
     image: node:20
+    # Part of the "full" profile so `make container-up` stays backend-only;
+    # `make container-up-full` boots backend + frontend together.
+    profiles: ["full"]
     working_dir: /app
     command: sh -c "npm install && npm run dev"
     volumes:
       - ../frontend:/app
     environment:
+      # Consumed by the user's browser (NEXT_PUBLIC_*), which reaches the
+      # backend through the published host port — not the compose network —
+      # so this stays localhost rather than the backend service name.
       NEXT_PUBLIC_API_URL: http://localhost:8000
     ports:
       - "3000:3000"
