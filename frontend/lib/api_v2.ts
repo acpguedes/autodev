@@ -428,6 +428,149 @@ export async function getActivePluginsV2(): Promise<ActivePluginsV2> {
 }
 
 // ---------------------------------------------------------------------------
+// Extensions hub (/v2/extensions) — unified agent/skill/plugin/mcp catalog
+// ---------------------------------------------------------------------------
+
+/** The four extension kinds unified by the E16-S4 `/v2/extensions` catalog. */
+export type ExtensionKindV2 = "agent" | "skill" | "plugin" | "mcp";
+
+/** One entry in the unified extensions catalog, regardless of kind. */
+export type ExtensionItemV2 = {
+  kind: string;
+  id: string;
+  name: string;
+  enabled: boolean;
+  pluginId: string | null;
+  detail: Record<string, unknown>;
+};
+
+/** Paginated response from `GET /v2/extensions`. */
+export type ExtensionCatalogV2 = {
+  schemaVersion: string;
+  items: ExtensionItemV2[];
+  page: PageMetaV2;
+};
+
+/** Response from the enable/disable action endpoints. */
+export type ExtensionActionV2 = {
+  schemaVersion: string;
+  item: ExtensionItemV2;
+};
+
+/** Full agent extension detail, including its editable manifest fields. */
+export type AgentExtensionV2 = {
+  schemaVersion: string;
+  item: ExtensionItemV2;
+  systemPrompt: string;
+  model: string;
+  allowedTools: string[];
+};
+
+/** Body accepted by `PUT /v2/extensions/agents/{agentId}` to create or edit an agent. */
+export type AgentUpsertPayloadV2 = {
+  version?: string;
+  displayName?: string;
+  description?: string;
+  systemPrompt: string;
+  model: string;
+  allowedTools: string[];
+};
+
+/**
+ * Fetch the unified extensions catalog, optionally filtered to one kind.
+ *
+ * @param kind - Restrict results to `agent`, `skill`, `plugin`, or `mcp`.
+ * @param limit - Maximum number of items to return.
+ * @param offset - Zero-based offset into the collection.
+ * @returns The paginated extensions catalog document.
+ * @throws Error when the request fails.
+ */
+export async function listExtensionsV2(
+  kind?: ExtensionKindV2,
+  limit = 100,
+  offset = 0
+): Promise<ExtensionCatalogV2> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (kind) {
+    params.set("kind", kind);
+  }
+  return requestJson<ExtensionCatalogV2>(`v2/extensions?${params.toString()}`);
+}
+
+/**
+ * Enable an extension item.
+ *
+ * @param kind - The extension's kind.
+ * @param id - The extension's identifier (may contain slashes).
+ * @returns The updated extension item.
+ * @throws Error when the request fails (including a rejected transition).
+ */
+export async function enableExtensionV2(
+  kind: ExtensionKindV2,
+  id: string
+): Promise<ExtensionActionV2> {
+  return requestJson<ExtensionActionV2>(
+    `v2/extensions/${kind}/${encodeURIComponent(id)}/enable`,
+    { method: "POST" }
+  );
+}
+
+/**
+ * Disable an extension item.
+ *
+ * @param kind - The extension's kind.
+ * @param id - The extension's identifier (may contain slashes).
+ * @returns The updated extension item.
+ * @throws Error when the request fails (including a rejected transition).
+ */
+export async function disableExtensionV2(
+  kind: ExtensionKindV2,
+  id: string
+): Promise<ExtensionActionV2> {
+  return requestJson<ExtensionActionV2>(
+    `v2/extensions/${kind}/${encodeURIComponent(id)}/disable`,
+    { method: "POST" }
+  );
+}
+
+/**
+ * Fetch the full manifest detail (system prompt, model, allowed tools) for one agent.
+ *
+ * @param agentId - Agent identifier (may contain a `namespace/name` slash).
+ * @param version - Optional exact version to fetch; defaults to the latest.
+ * @returns The agent extension detail.
+ * @throws Error when the request fails (including 404).
+ */
+export async function getAgentExtensionV2(
+  agentId: string,
+  version?: string
+): Promise<AgentExtensionV2> {
+  const query = version ? `?${new URLSearchParams({ version }).toString()}` : "";
+  return requestJson<AgentExtensionV2>(
+    `v2/extensions/agents/${encodeURIComponent(agentId)}${query}`
+  );
+}
+
+/**
+ * Create or edit an agent extension.
+ *
+ * @param agentId - Agent identifier to create or edit (may contain a slash).
+ * @param payload - The agent's editable manifest fields.
+ * @returns The upserted agent extension detail.
+ * @throws Error when the request fails (including manifest validation errors).
+ */
+export async function upsertAgentExtensionV2(
+  agentId: string,
+  payload: AgentUpsertPayloadV2
+): Promise<AgentExtensionV2> {
+  return requestJson<AgentExtensionV2>(`v2/extensions/agents/${encodeURIComponent(agentId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Observability metrics (/metrics, Prometheus text-exposition format)
 // ---------------------------------------------------------------------------
 

@@ -12,6 +12,7 @@ import {
   getProviderStatusV2,
   getRuntimeConfigV2,
   getSkillCatalogV2,
+  listExtensionsV2,
   listSessionsV2,
 } from "@/lib/api_v2";
 
@@ -46,11 +47,15 @@ function useNavBadgeCounts(): Record<NavBadgeSource, number | undefined> {
   const skills = useSWR("shell:skills-count", () => getSkillCatalogV2(), {
     shouldRetryOnError: false,
   });
+  const extensions = useSWR("shell:extensions-count", () => listExtensionsV2(), {
+    shouldRetryOnError: false,
+  });
 
   return {
     sessions: sessions.data?.page.total,
     agents: agents.data?.agents.length,
     skills: skills.data?.skills.length,
+    extensions: extensions.data?.page.total,
   };
 }
 
