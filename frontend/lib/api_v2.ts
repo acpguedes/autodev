@@ -4,6 +4,7 @@
 // from lib/api_ext.ts so every client resolves the backend identically.
 
 import { buildUrl, requestJson } from "./api_ext";
+import type { FlowManifest } from "./flow/types";
 
 // ---------------------------------------------------------------------------
 // Sessions & runs (/v2/sessions)
@@ -260,6 +261,95 @@ export async function getSkillCatalogV2(): Promise<SkillCatalogV2> {
  */
 export async function getActivePluginsV2(): Promise<ActivePluginsV2> {
   return requestJson<ActivePluginsV2>("v2/plugins/active");
+}
+
+// ---------------------------------------------------------------------------
+// Flows (/v2/flows)
+// ---------------------------------------------------------------------------
+
+/** A trigger summary as returned in the flow catalog listing. */
+export type FlowTriggerSummaryV2 = {
+  type: string;
+  on?: string;
+  schedule?: string;
+};
+
+/** One flow registration in the flow catalog. */
+export type FlowCatalogItemV2 = {
+  id: string;
+  version: string;
+  name?: string;
+  description?: string;
+  hostApi: string;
+  triggers: FlowTriggerSummaryV2[];
+};
+
+/** The flow catalog document, GET /v2/flows. */
+export type FlowCatalogV2 = {
+  schemaVersion: string;
+  flows: FlowCatalogItemV2[];
+};
+
+/** Result of a non-mutating flow.yaml manifest validation. */
+export type FlowValidationResultV2 = {
+  schemaVersion: string;
+  valid: boolean;
+  errors: string[];
+};
+
+/** Result of registering (persisting) a new flow version. */
+export type FlowRegistrationV2 = {
+  schemaVersion: string;
+  id: string;
+  version: string;
+};
+
+/**
+ * List registered flows from the v2 control plane. Read-only metadata —
+ * there is no endpoint to fetch a full manifest by id, so this cannot be
+ * used to load a flow back into the canvas.
+ *
+ * @returns The flow catalog document.
+ * @throws Error when the request fails.
+ */
+export async function listFlowsV2(): Promise<FlowCatalogV2> {
+  return requestJson<FlowCatalogV2>("v2/flows");
+}
+
+/**
+ * Validate a flow.yaml manifest against the schema without persisting it.
+ *
+ * @param manifest - The flow manifest to validate.
+ * @returns The validation result (`valid` plus any `errors`).
+ * @throws Error when the request itself fails (network/HTTP error), not
+ *   when the manifest is merely invalid — an invalid manifest still
+ *   resolves with `valid: false`.
+ */
+export async function validateFlowV2(
+  manifest: FlowManifest
+): Promise<FlowValidationResultV2> {
+  return requestJson<FlowValidationResultV2>("v2/flows/validate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(manifest),
+  });
+}
+
+/**
+ * Register (persist) a new flow version.
+ *
+ * @param manifest - The flow manifest to register.
+ * @returns The registration confirmation (id and version).
+ * @throws Error when the request fails.
+ */
+export async function registerFlowV2(
+  manifest: FlowManifest
+): Promise<FlowRegistrationV2> {
+  return requestJson<FlowRegistrationV2>("v2/flows", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(manifest),
+  });
 }
 
 // ---------------------------------------------------------------------------

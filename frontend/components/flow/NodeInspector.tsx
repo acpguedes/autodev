@@ -38,11 +38,11 @@ const REF_NODE_TYPES: NodeType[] = ["agent", "skill", "tool", "subflow", "map"];
 const NO_GUARD = "unguarded";
 
 const fieldClass =
-  "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+  "flex w-full rounded-ds-md border border-ds-line bg-ds-bg px-3 py-2 text-sm text-ds-fg shadow-ds-sm placeholder:text-ds-fg-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-accent";
 
 function FieldLabel({ htmlFor, children }: { htmlFor: string; children: React.ReactNode }) {
   return (
-    <label htmlFor={htmlFor} className="text-xs font-medium text-muted-foreground">
+    <label htmlFor={htmlFor} className="text-xs font-medium text-ds-fg-2">
       {children}
     </label>
   );
@@ -82,7 +82,7 @@ function HumanPreview({
         <CardTitle className="text-sm">Human checkpoint preview</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <p className="text-sm text-foreground">{node.prompt ?? "(no prompt set)"}</p>
+        <p className="text-sm text-ds-fg">{node.prompt ?? "(no prompt set)"}</p>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Simulate decision">
           {decisionOptions(node).map((option) => (
             <Button
@@ -96,7 +96,7 @@ function HumanPreview({
             </Button>
           ))}
         </div>
-        <p className="text-xs text-muted-foreground" aria-live="polite">
+        <p className="text-xs text-ds-fg-2" aria-live="polite">
           {decision
             ? matched
               ? `Decision "${decision}" follows the edge to "${matched.edge.to}".`
@@ -151,6 +151,19 @@ export function NodeInspector({
       </div>
 
       <div className="flex flex-col gap-1">
+        <FieldLabel htmlFor="node-label">Label</FieldLabel>
+        <Input
+          id="node-label"
+          key={`${node.id}-label`}
+          defaultValue={node.label ?? ""}
+          placeholder={node.id}
+          onBlur={(event) =>
+            onUpdateNode(node.id, { label: event.target.value.trim() || undefined })
+          }
+        />
+      </div>
+
+      <div className="flex flex-col gap-1">
         <FieldLabel htmlFor="node-type">Type</FieldLabel>
         <Select
           value={node.type}
@@ -178,6 +191,20 @@ export function NodeInspector({
             placeholder="autodev/agent-coder@2.1.0"
             onChange={(event) =>
               onUpdateNode(node.id, { ref: event.target.value || undefined })
+            }
+          />
+        </div>
+      ) : null}
+
+      {node.type === "agent" ? (
+        <div className="flex flex-col gap-1">
+          <FieldLabel htmlFor="node-model">Model override</FieldLabel>
+          <Input
+            id="node-model"
+            value={node.model ?? ""}
+            placeholder="claude-sonnet-5"
+            onChange={(event) =>
+              onUpdateNode(node.id, { model: event.target.value || undefined })
             }
           />
         </div>
@@ -269,7 +296,7 @@ export function NodeInspector({
       {node.type === "human" ? <HumanPreview node={node} outgoing={outgoing} /> : null}
 
       <div className="flex flex-col gap-2">
-        <h3 className="text-xs font-medium text-muted-foreground">
+        <h3 className="text-xs font-medium text-ds-fg-2">
           Outgoing edges <Badge variant="secondary">{outgoing.length}</Badge>
         </h3>
         {outgoing.map(({ edge, index }) => {
@@ -277,7 +304,7 @@ export function NodeInspector({
           return (
             <div
               key={index}
-              className="flex flex-col gap-2 rounded-md border border-border p-2"
+              className="flex flex-col gap-2 rounded-ds-md border border-ds-line p-2"
             >
               <div className="flex items-center gap-2">
                 <Select

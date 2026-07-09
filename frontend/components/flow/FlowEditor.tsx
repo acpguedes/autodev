@@ -2,30 +2,24 @@
 
 import * as React from "react";
 
-import { FlowCanvas } from "@/components/flow/FlowCanvas";
+import { FlowCanvas, type CanvasPosition } from "@/components/flow/FlowCanvas";
+import { FlowPalette } from "@/components/flow/FlowPalette";
 import { NodeInspector } from "@/components/flow/NodeInspector";
 import { ValidationPanel } from "@/components/flow/ValidationPanel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { SAMPLE_FLOW_YAML } from "@/lib/flow/sample";
 import {
-  KEBAB_CASE,
-  NODE_TYPES,
-  type FlowEdge,
-  type FlowManifest,
-  type FlowNode,
-  type NodeType,
-} from "@/lib/flow/types";
+  listFlowsV2,
+  validateFlowV2,
+  type FlowCatalogItemV2,
+} from "@/lib/api_v2";
+import { createBlankFlow, SAMPLE_FLOW_YAML } from "@/lib/flow/sample";
+import type { AgentPaletteItem, ControlPaletteItem } from "@/lib/flow/paletteItems";
+import { KEBAB_CASE, type FlowEdge, type FlowManifest, type FlowNode } from "@/lib/flow/types";
 import { validateFlow, type ValidationIssue } from "@/lib/flow/validate";
 import { parseFlowYaml, serializeFlowYaml } from "@/lib/flow/yaml";
+import { toast } from "@/lib/use-toast";
 import { cn } from "@/lib/utils";
 
 type FlowEditorProps = {
@@ -65,22 +59,37 @@ function withPatch<T extends Record<string, unknown>>(base: T, patch: Partial<T>
   return next as T;
 }
 
-function defaultsForType(type: NodeType): Partial<FlowNode> {
-  switch (type) {
-    case "conditional":
-      return {};
-    case "human":
-      return { prompt: "Describe the decision the operator must make." };
-    case "map":
-      return { ref: "namespace/skill-name", over: "{{ flow.input.items }}" };
-    default:
-      return { ref: "namespace/name" };
+/** Drops a single key from a positions record, returning the same reference when absent. */
+function omitPosition(
+  positions: Record<string, CanvasPosition>,
+  nodeId: string
+): Record<string, CanvasPosition> {
+  if (!(nodeId in positions)) {
+    return positions;
   }
+  const next = { ...positions };
+  delete next[nodeId];
+  return next;
+}
+
+/** Triggers a browser download of the canonical `flow.yaml` document. */
+function downloadFlowYaml(yamlText: string): void {
+  const blob = new Blob([yamlText], { type: "text/yaml" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "flow.yaml";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
 /**
- * Visual flow editor (E10-S3): graph canvas + node inspector +
- * deterministic flow.yaml round-trip + real-time validation.
+ * Visual flow editor (E10-S3, realigned for E17-S6 into the "Execution
+ * Control Center" three-column shell): palette + graph canvas + node
+ * inspector, with deterministic flow.yaml round-trip and real-time
+ * validation.
  */
 export function FlowEditor({ initialYaml }: FlowEditorProps) {
   const [initial] = React.useState(() => {
@@ -96,8 +105,34 @@ export function FlowEditor({ initialYaml }: FlowEditorProps) {
     initial.parsed.ok ? [] : initial.parsed.errors
   );
   const [selectedNodeId, setSelectedNodeId] = React.useState<string | null>(null);
-  const [newNodeType, setNewNodeType] = React.useState<NodeType>("agent");
   const [activeTab, setActiveTab] = React.useState("inspector");
+  const [positions, setPositions] = React.useState<Record<string, CanvasPosition>>({});
+  const [saving, setSaving] = React.useState(false);
+  const [catalog, setCatalog] = React.useState<FlowCatalogItemV2[]>([]);
+  const [catalogLoading, setCatalogLoading] = React.useState(true);
+  const [catalogError, setCatalogError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    listFlowsV2()
+      .then((result) => {
+        if (!cancelled) {
+          setCatalog(result.flows);
+          setCatalogLoading(false);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setCatalogError(
+            error instanceof Error ? error.message : "Failed to load the flows library."
+          );
+          setCatalogLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const issues: ValidationIssue[] = React.useMemo(
     () => (manifest ? validateFlow(manifest) : []),
@@ -175,6 +210,11 @@ export function FlowEditor({ initialYaml }: FlowEditorProps) {
       })),
     };
     applyManifest(renamed);
+    setPositions((prev) => {
+      if (!(nodeId in prev)) return prev;
+      const { [nodeId]: value, ...rest } = prev;
+      return { ...rest, [nextId]: value };
+    });
     setSelectedNodeId(nextId);
   };
 
@@ -185,20 +225,8 @@ export function FlowEditor({ initialYaml }: FlowEditorProps) {
       nodes: manifest.nodes.filter((node) => node.id !== nodeId),
       edges: manifest.edges.filter((edge) => edge.from !== nodeId && edge.to !== nodeId),
     });
+    setPositions((prev) => omitPosition(prev, nodeId));
     setSelectedNodeId(null);
-  };
-
-  const addNode = () => {
-    if (!manifest) return;
-    let index = manifest.nodes.length + 1;
-    let id = `${newNodeType}-${index}`;
-    while (manifest.nodes.some((node) => node.id === id)) {
-      index += 1;
-      id = `${newNodeType}-${index}`;
-    }
-    const node: FlowNode = { id, type: newNodeType, ...defaultsForType(newNodeType) };
-    applyManifest({ ...manifest, nodes: [...manifest.nodes, node] });
-    selectNode(id);
   };
 
   const addEdge = (edge: FlowEdge) => {
@@ -224,45 +252,160 @@ export function FlowEditor({ initialYaml }: FlowEditorProps) {
     });
   };
 
+  const moveNode = (nodeId: string, position: CanvasPosition) => {
+    setPositions((prev) => ({ ...prev, [nodeId]: position }));
+  };
+
+  const connectNodes = (fromId: string, toId: string) => {
+    if (fromId === toId) return;
+    addEdge({ from: fromId, to: toId });
+  };
+
+  /** Generates a unique kebab-case node id from a palette item's base id. */
+  const nextNodeId = (base: string): string => {
+    if (!manifest) return base;
+    let candidate = base;
+    let suffix = 2;
+    while (manifest.nodes.some((node) => node.id === candidate)) {
+      candidate = `${base}-${suffix}`;
+      suffix += 1;
+    }
+    return candidate;
+  };
+
+  /**
+   * Inserts a new node, connecting it from the currently selected node (if
+   * any) — the palette's "connects from the selected node" interaction.
+   */
+  const insertNode = (node: FlowNode) => {
+    if (!manifest) return;
+    const fromId = selectedNodeId;
+    applyManifest({
+      ...manifest,
+      nodes: [...manifest.nodes, node],
+      edges: fromId ? [...manifest.edges, { from: fromId, to: node.id }] : manifest.edges,
+    });
+    selectNode(node.id);
+  };
+
+  const insertAgentItem = (item: AgentPaletteItem) => {
+    if (!manifest) return;
+    insertNode({ id: nextNodeId(item.id), type: "agent", ref: item.ref, label: item.label });
+  };
+
+  const insertControlItem = (item: ControlPaletteItem) => {
+    if (!manifest) return;
+    const previousOutput =
+      item.supportsPreviousOutput && selectedNodeId
+        ? { input: { previous: `{{ nodes.${selectedNodeId}.output }}` } }
+        : {};
+    insertNode({
+      id: nextNodeId(item.id),
+      type: item.nodeType,
+      label: item.label,
+      ...item.defaults,
+      ...previousOutput,
+    });
+  };
+
+  /** Starts a brand-new blank flow (palette's "Flows library" > New). */
+  const startNewFlow = () => {
+    applyManifest(createBlankFlow());
+    setPositions({});
+    setSelectedNodeId(null);
+    toast({
+      title: "New flow started",
+      description: "Blank canvas ready — insert nodes from the palette.",
+    });
+  };
+
+  /** Empties the current canvas without discarding the flow's identity. */
+  const clearCanvas = () => {
+    if (!manifest) return;
+    applyManifest({ ...manifest, nodes: [], edges: [] });
+    setPositions({});
+    setSelectedNodeId(null);
+    toast({ title: "Canvas cleared", description: "All nodes and edges were removed." });
+  };
+
+  /**
+   * Save action: gates on local validation, re-checks against the E16 `/v2`
+   * flows endpoint (non-mutating), then exports the canonical YAML.
+   */
+  const handleSave = async () => {
+    if (!manifest) return;
+    if (issueCount > 0) {
+      toast({
+        title: "Fix validation issues before saving",
+        description: `${issueCount} issue${issueCount === 1 ? "" : "s"} found — see the Issues tab.`,
+        variant: "destructive",
+      });
+      setActiveTab("issues");
+      return;
+    }
+    setSaving(true);
+    try {
+      const result = await validateFlowV2(manifest);
+      if (!result.valid) {
+        toast({
+          title: "Server validation failed",
+          description: result.errors.join("; ") || "The manifest did not pass validation.",
+          variant: "destructive",
+        });
+        return;
+      }
+      downloadFlowYaml(yamlText);
+      toast({
+        title: "flow.yaml exported",
+        description: `${manifest.id}@${manifest.version} downloaded.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Could not validate flow.yaml",
+        description:
+          error instanceof Error ? error.message : "Unexpected error contacting the control plane.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const selectedNode =
     manifest?.nodes.find((node) => node.id === selectedNodeId) ?? null;
 
   return (
     <div className="flex h-full flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-2">
-          <Select
-            value={newNodeType}
-            onValueChange={(value) => setNewNodeType(value as NodeType)}
-          >
-            <SelectTrigger aria-label="New node type" className="w-36">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {NODE_TYPES.map((type) => (
-                <SelectItem key={type} value={type}>
-                  {type}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button type="button" variant="secondary" size="sm" onClick={addNode} disabled={!manifest}>
-            Add node
+        <h2 className="font-serif text-sm font-semibold text-ds-fg">
+          {manifest ? `${manifest.id}@${manifest.version}` : "flow.yaml"}
+        </h2>
+        <Badge variant={issueCount === 0 ? "secondary" : "destructive"}>
+          {issueCount === 0 ? "valid" : `${issueCount} issue${issueCount === 1 ? "" : "s"}`}
+        </Badge>
+        <div className="ml-auto flex items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={clearCanvas} disabled={!manifest}>
+            Clear
           </Button>
-        </div>
-        <div className="ml-auto flex items-center gap-2" aria-live="polite">
-          {manifest ? (
-            <span className="text-sm text-muted-foreground">
-              {manifest.id}@{manifest.version}
-            </span>
-          ) : null}
-          <Badge variant={issueCount === 0 ? "secondary" : "destructive"}>
-            {issueCount === 0 ? "valid" : `${issueCount} issue${issueCount === 1 ? "" : "s"}`}
-          </Badge>
+          <Button type="button" size="sm" onClick={handleSave} disabled={!manifest || saving}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_380px]">
+      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[240px_minmax(0,1fr)_360px]">
+        <div className="min-h-[280px] lg:min-h-0">
+          <FlowPalette
+            catalog={catalog}
+            catalogLoading={catalogLoading}
+            catalogError={catalogError}
+            selectedNodeId={selectedNodeId}
+            onInsertAgent={insertAgentItem}
+            onInsertControl={insertControlItem}
+            onNewFlow={startNewFlow}
+          />
+        </div>
+
         <div className="min-h-[420px]">
           {manifest ? (
             <FlowCanvas
@@ -270,9 +413,12 @@ export function FlowEditor({ initialYaml }: FlowEditorProps) {
               selectedNodeId={selectedNodeId}
               errorNodeIds={errorNodeIds}
               onSelectNode={selectNode}
+              positions={positions}
+              onNodeMove={moveNode}
+              onConnectNodes={connectNodes}
             />
           ) : (
-            <div className="flex h-full items-center justify-center rounded-lg border border-border bg-muted/30 p-6 text-sm text-muted-foreground">
+            <div className="flex h-full items-center justify-center rounded-ds-lg border border-ds-line bg-ds-bg-2 p-6 text-sm text-ds-fg-2">
               The YAML document does not parse — fix it in the flow.yaml tab to
               render the canvas.
             </div>
@@ -300,9 +446,9 @@ export function FlowEditor({ initialYaml }: FlowEditorProps) {
                 onDeleteEdge={deleteEdge}
               />
             ) : (
-              <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-                Select a node on the canvas to edit its properties, guards, and
-                human checkpoints.
+              <p className="rounded-ds-md border border-ds-line bg-ds-bg-2 px-3 py-2 text-sm text-ds-fg-2">
+                Select a node on the canvas, or insert one from the palette, to
+                edit its properties, guards, and human checkpoints.
               </p>
             )}
           </TabsContent>
@@ -312,14 +458,14 @@ export function FlowEditor({ initialYaml }: FlowEditorProps) {
                 aria-label="flow.yaml source"
                 spellCheck={false}
                 className={cn(
-                  "h-[480px] w-full resize-y rounded-md border border-input bg-transparent px-3 py-2 font-mono text-xs shadow-sm",
-                  "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-                  parseErrors.length > 0 && "border-destructive"
+                  "h-[480px] w-full resize-y rounded-ds-md border border-ds-line bg-ds-bg px-3 py-2 font-mono text-xs text-ds-fg shadow-ds-sm",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-accent",
+                  parseErrors.length > 0 && "border-ds-danger"
                 )}
                 value={yamlText}
                 onChange={(event) => handleYamlChange(event.target.value)}
               />
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-ds-fg-2">
                 Edits sync to the canvas as soon as the document parses; visual
                 edits rewrite this document in canonical form (deterministic
                 round-trip).
