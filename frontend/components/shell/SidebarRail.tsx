@@ -7,7 +7,12 @@ import useSWR from "swr";
 
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { getRuntimeConfig } from "@/lib/api";
-import { getAgentCatalogV2, getSkillCatalogV2, listSessionsV2 } from "@/lib/api_v2";
+import {
+  getAgentCatalogV2,
+  getSkillCatalogV2,
+  listExtensionsV2,
+  listSessionsV2,
+} from "@/lib/api_v2";
 
 import { LocaleSwitcher } from "./LocaleSwitcher";
 import {
@@ -40,11 +45,15 @@ function useNavBadgeCounts(): Record<NavBadgeSource, number | undefined> {
   const skills = useSWR("shell:skills-count", () => getSkillCatalogV2(), {
     shouldRetryOnError: false,
   });
+  const extensions = useSWR("shell:extensions-count", () => listExtensionsV2(), {
+    shouldRetryOnError: false,
+  });
 
   return {
     sessions: sessions.data?.page.total,
     agents: agents.data?.agents.length,
     skills: skills.data?.skills.length,
+    extensions: extensions.data?.page.total,
   };
 }
 

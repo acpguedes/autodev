@@ -23,18 +23,17 @@ describe("nav model", () => {
     ]);
   });
 
-  it("renders Extensions as a disabled stub and only Sessions with a badge", () => {
+  it("renders Extensions as an enabled item with a live badge, alongside Sessions", () => {
     const extensions = SHELL_PRIMARY_NAV.find((item) => item.key === "extensions");
-    expect(extensions?.disabled).toBe(true);
+    expect(extensions?.disabled).toBeFalsy();
+    expect(extensions?.badge).toBe("extensions");
 
     const badged = SHELL_PRIMARY_NAV.filter((item) => item.badge).map((item) => item.key);
-    expect(badged).toEqual(["sessions"]);
+    expect(badged).toEqual(["sessions", "extensions"]);
   });
 
-  it("keeps agents/skills/panels under the Legacy group with the expected badges", () => {
-    expect(SHELL_LEGACY_NAV.map((item) => item.key)).toEqual(["agents", "skills", "panels"]);
-    expect(SHELL_LEGACY_NAV.find((item) => item.key === "agents")?.badge).toBe("agents");
-    expect(SHELL_LEGACY_NAV.find((item) => item.key === "skills")?.badge).toBe("skills");
+  it("keeps only Panels under the Legacy group, now that agents/skills moved to Extensions", () => {
+    expect(SHELL_LEGACY_NAV.map((item) => item.key)).toEqual(["panels"]);
     expect(SHELL_LEGACY_NAV.find((item) => item.key === "panels")?.badge).toBeUndefined();
   });
 });
@@ -48,11 +47,13 @@ describe("resolveActiveNav", () => {
     expect(resolveActiveNav("/plans")).toBe("plans");
     expect(resolveActiveNav("/sessions")).toBe("sessions");
     expect(resolveActiveNav("/sessions/abc-123")).toBe("sessions");
-    expect(resolveActiveNav("/agents")).toBe("agents");
+    expect(resolveActiveNav("/extensions")).toBe("extensions");
     expect(resolveActiveNav("/panels")).toBe("panels");
   });
 
-  it("falls back to Chat for unknown routes", () => {
+  it("falls back to Chat for unknown routes, including the redirect-only legacy /agents and /skills paths", () => {
     expect(resolveActiveNav("/does-not-exist")).toBe("chat");
+    expect(resolveActiveNav("/agents")).toBe("chat");
+    expect(resolveActiveNav("/skills")).toBe("chat");
   });
 });
