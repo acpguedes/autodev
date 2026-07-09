@@ -7,7 +7,18 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-08 (**E16 — Frontend Redesign: Control-Plane API Enablement
+**Last updated:** 2026-07-09 (**E17 — Frontend Redesign: Control Center Screens epic
+complete (6/6)** on `epic/e17-control-center-screens`, merged to `main` via PR #78 —
+all seven prototype views (chat execution, plans with approval gates, patches review,
+sessions, config, extensions hub, flow builder) now live on the E15 shell against the
+E16 `/v2` endpoints; one known fast-follow recorded in the phase doc (S1↔S4
+reopen-session-as-chat query-param consumption). **E18 — Control Center Front Door &
+Run Experience** opened as the next epic (planning only, `epic/e18-front-door`,
+`phases/e18_front_door_run_experience.md`): backend `GET /` service descriptor,
+self-hosted `/docs` under the strict CSP, single-command `make run`, shell i18n
+leftovers, and docs hygiene — motivated by a 2026-07-09 field report where the
+backend-only path (`:8000`) showed 404/`raw JSON`/blank `/docs` instead of the UI.
+Previous entry: **E16 — Frontend Redesign: Control-Plane API Enablement
 epic complete (4/4)** on `epic/e16-redesign-api-enablement`, merged to `main`. Backend-only:
 four additive `/v2` surfaces the E17 Control Center screens will consume — **E16-S1**
 chat/turn endpoints + `run.timeline.*` events + agent-role→step mapping; **E16-S2**
@@ -73,9 +84,12 @@ complete and verified (flow suite 38/38 green); its only open story, **E3-S6**
 (visual flow editor), was Beta-deferred behind **E10** (Design System, now
 **Done** — E3-S6 unblocked). Remaining Alpha anchor work: **E8-S2** and **E12-S1** (E9 is now
 complete; E9-S3's event catalog unblocks E8-S2). The frontend redesign epics **E15** (done) → **E16** → **E17** (Execution Control Center prototype)
-are planned to run before the E11 kickoff; **E15** and **E16** are now complete and
-**E17** (Control Center Screens) is next in that sequence — its `/v2` dependencies are
-now all satisfied. **Next action: E8-S2 (Event
+are planned to run before the E11 kickoff; **E15**, **E16**, and **E17** are now
+complete — the redesigned Control Center is implemented end to end. **E18** (Control
+Center Front Door & Run Experience) follows as a short DX epic making that UI the
+platform's front door (root service descriptor, self-hosted `/docs` under CSP,
+single-command run); a visual-parity audit of the screens against the prototype is
+deferred as a proposed **E19**. **Next action: E18 stories, plus E8-S2 (Event
 Store) and E12-S1; follow `agent_guide.md` §1-4 quality rules (mandatory from
 E3 onward).**
 
@@ -100,9 +114,10 @@ E3 onward).**
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 | E15 | Frontend Redesign: Design Language & App Shell | Beta | Done | 4/4 | E10 | [phases/e15_design_language_shell.md](phases/e15_design_language_shell.md) |
 | E16 | Frontend Redesign: Control-Plane API Enablement | Beta | Done | 4/4 | E9, E3, E8-S1 | [phases/e16_redesign_api_enablement.md](phases/e16_redesign_api_enablement.md) |
-| E17 | Frontend Redesign: Control Center Screens | Beta | Not started | 0/6 | E15, E16 | [phases/e17_control_center_screens.md](phases/e17_control_center_screens.md) |
+| E17 | Frontend Redesign: Control Center Screens | Beta | Done | 6/6 | E15, E16 | [phases/e17_control_center_screens.md](phases/e17_control_center_screens.md) |
+| E18 | Control Center Front Door & Run Experience | Beta | Not started | 0/5 | E15, E16, E17 | [phases/e18_front_door_run_experience.md](phases/e18_front_door_run_experience.md) |
 
-Total: **39/85 stories complete** across 18 epics.
+Total: **45/90 stories complete** across 19 epics.
 
 \* **E8-S1 is now complete (2026-07-06)**: on top of the scoped tenancy/
 reversible-migration slice landed as an E7 prerequisite (ADR-010:
@@ -182,6 +197,29 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-07-09** — **E17 — Frontend Redesign: Control Center Screens epic complete
+  (6/6)** on `epic/e17-control-center-screens`, merged to `main` via **PR #78**. All
+  seven prototype views rebuilt on the E15 shell against the E16 `/v2` endpoints:
+  chat execution view (S1), plans with per-step approval gates (S2), patches
+  diff/edit review (S3), sessions + config (S4), extensions hub with security
+  headers/CSP hardening (S5), and flow-builder realignment (S6). Known fast-follow
+  recorded in `phases/e17_control_center_screens.md`: the `/?sessionId=` reopen-as-chat
+  link emitted by `SessionRow` is not yet consumed by the chat screen. This entry also
+  corrects the tracker itself — the table previously still showed E17 as "Not started"
+  after the merge.
+
+- **2026-07-09** — Added DX epic **E18 — Control Center Front Door & Run Experience**
+  (planning only, 0/5, `epic/e18-front-door`,
+  `phases/e18_front_door_run_experience.md`), motivated by a field report: running
+  only the backend and browsing `:8000` yields `GET /` 404 (no root route), raw JSON,
+  and a blank `/docs` (the global `default-src 'self'` CSP from
+  `backend/api/security_headers.py` blocks FastAPI's CDN-loaded Swagger UI and its
+  inline init script). Stories: S1 root service descriptor (JSON + CSP-clean HTML
+  pointer), S2 self-hosted Swagger UI assets, S3 single-command `make run` + compose
+  full profile + README quickstart reshape, S4 shell string i18n, S5 docs/progress
+  hygiene. A visual-parity audit of the E17 screens vs the prototype is explicitly
+  deferred as a proposed **E19**.
 
 - **2026-07-08** — **E15 — Frontend Redesign: Design Language & App Shell epic
   complete (4/4)** on `epic/e15-design-language-shell`, merged into `main` via PR.
