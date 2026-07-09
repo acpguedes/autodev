@@ -171,6 +171,19 @@ class RunTimelineStepData(BaseModel):
     actorRole: str
     status: str
     output: str
+class PlanStepTransitionData(BaseModel):
+    """Shared payload of ``plan.step.*`` step-approval transition events (E16-S2).
+
+    One shared model covers every step in the ``draft -> under_review ->
+    approved | rejected -> executing -> completed`` state machine (§14.5);
+    ``fromState``/``toState`` disambiguate which edge fired.
+    """
+
+    sessionId: str
+    stepIndex: int
+    fromState: str
+    toState: str
+    actor: str
 
 
 @dataclass(frozen=True)
@@ -218,6 +231,11 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition("run.timeline.analysis", "Orchestration Engine", "runId", RunTimelineStepData),
     EventDefinition("run.timeline.patch", "Orchestration Engine", "runId", RunTimelineStepData),
     EventDefinition("run.timeline.validation", "Orchestration Engine", "runId", RunTimelineStepData),
+    EventDefinition("plan.step.reviewing", "Control Plane API", "tenantId", PlanStepTransitionData),
+    EventDefinition("plan.step.approved", "Control Plane API", "tenantId", PlanStepTransitionData),
+    EventDefinition("plan.step.rejected", "Control Plane API", "tenantId", PlanStepTransitionData),
+    EventDefinition("plan.step.executing", "Control Plane API", "tenantId", PlanStepTransitionData),
+    EventDefinition("plan.step.completed", "Control Plane API", "tenantId", PlanStepTransitionData),
 )
 
 
