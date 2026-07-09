@@ -23,7 +23,7 @@ from backend.config.settings import Settings
 # Paths that must stay reachable without a token so health checks and API
 # discovery continue to work when authentication is enabled.
 _PUBLIC_PATHS: frozenset[str] = frozenset(
-    {"/", "/health", "/docs", "/redoc", "/openapi.json"}
+    {"/", "/health", "/docs", "/openapi.json"}
 )
 
 _BEARER_PREFIX = "bearer "

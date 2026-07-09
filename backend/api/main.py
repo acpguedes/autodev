@@ -26,6 +26,7 @@ load_dotenv(_ENV_PATH, override="pytest" not in sys.modules)
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from backend.api.security import require_api_token
@@ -232,8 +233,24 @@ app = FastAPI(
     title=API_TITLE,
     version=API_VERSION,
     lifespan=lifespan,
+    # The default /docs loads Swagger UI from cdn.jsdelivr.net through an
+    # inline <script>, both blocked by the strict CSP (and broken offline).
+    # A self-hosted, CSP-clean /docs route is defined below instead.
+    docs_url=None,
+    redoc_url=None,
     # Global gate — a no-op unless AUTODEV_API_TOKEN is configured.
     dependencies=[Depends(require_api_token)],
+)
+
+# Vendored same-origin assets (Swagger UI — see static/swagger/VERSION).
+# Note: Starlette mounts are sub-applications, so the app-level
+# require_api_token dependency does NOT apply here — static assets stay
+# reachable when a token is configured, which /docs needs to render. This
+# behavior is pinned by backend/tests/test_api_docs_selfhosted.py.
+app.mount(
+    "/static",
+    StaticFiles(directory=str(Path(__file__).resolve().parent / "static")),
+    name="static",
 )
 
 
@@ -341,6 +358,40 @@ def service_descriptor(request: Request) -> Response:
             "api": {"v2_base": "/v2"},
         }
     )
+
+
+# Self-hosted Swagger UI page (E18-S2). Every reference is same-origin and
+# the only scripts are external files under /static, so the page renders
+# under the unchanged ``default-src 'self'`` CSP and with zero network egress.
+# fastapi.openapi.docs.get_swagger_ui_html is deliberately NOT used: it boots
+# through an inline <script>, which the CSP blocks.
+_SWAGGER_UI_HTML: Final[str] = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoDev Orchestrator — API docs</title>
+<link rel="stylesheet" href="/static/swagger/swagger-ui.css">
+<link rel="icon" type="image/png" href="/static/swagger/favicon-32x32.png">
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="/static/swagger/swagger-ui-bundle.js"></script>
+<script src="/static/swagger/swagger-ui-init.js"></script>
+</body>
+</html>
+"""
+
+
+@app.get("/docs", include_in_schema=False)
+def swagger_ui_page() -> HTMLResponse:
+    """Serve the self-hosted, CSP-compliant Swagger UI page.
+
+    Returns:
+        The static HTML shell that loads the vendored Swagger UI assets from
+        ``/static/swagger`` and points them at ``/openapi.json``.
+    """
+    return HTMLResponse(content=_SWAGGER_UI_HTML)
 
 
 @app.get("/health", tags=["meta"])
