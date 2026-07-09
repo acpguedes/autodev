@@ -2,6 +2,8 @@
 
 import * as React from "react";
 
+import { useTranslations } from "@/lib/i18n";
+
 import { ContextHeader } from "./ContextHeader";
 import { ExecutionPanelSlot } from "./ExecutionPanelSlot";
 import { SidebarRail } from "./SidebarRail";
@@ -19,13 +21,14 @@ const MAIN_CONTENT_ID = "shell-main-content";
  * @returns The full application shell.
  */
 export function AppShell({ children }: { children: React.ReactNode }): React.JSX.Element {
+  const { t } = useTranslations();
   return (
     <div className="flex h-screen w-full overflow-hidden bg-ds-bg font-sans text-ds-fg">
       <a
         href={`#${MAIN_CONTENT_ID}`}
         className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded-ds-md focus:bg-ds-accent focus:px-3 focus:py-2 focus:text-ds-accent-fg"
       >
-        Skip to main content
+        {t("shell.skipToContent")}
       </a>
 
       <SidebarRail />

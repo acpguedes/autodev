@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/nextjs-vite";
 import * as React from "react";
+import { expect, userEvent, within } from "storybook/test";
 
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { I18nProvider } from "@/lib/i18n";
@@ -106,4 +107,43 @@ export const ExecutionPanelOpen: Story = {
       <DemoPageWithPanel />
     </AppShell>
   ),
+};
+
+/**
+ * E18-S4 render assertions: all shell chrome strings come from the i18n
+ * dictionaries. The default (en) render shows the English strings; cycling
+ * the locale switcher translates the SidebarRail and ContextHeader chrome to
+ * pt-BR without a reload.
+ */
+export const TranslatedChrome: Story = {
+  render: () => (
+    <AppShell>
+      <DemoPage />
+    </AppShell>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    // Default locale (en): SidebarRail + ContextHeader chrome.
+    await expect(canvas.findByText("Workspace")).resolves.toBeInTheDocument();
+    await expect(canvas.findByText("Legacy")).resolves.toBeInTheDocument();
+    await expect(canvas.findByText("Theme")).resolves.toBeInTheDocument();
+    await expect(canvas.findByText("New session")).resolves.toBeInTheDocument();
+    await expect(canvas.findByText("Chat")).resolves.toBeInTheDocument();
+
+    // Cycle the locale switcher: en -> pt-BR.
+    await userEvent.click(
+      await canvas.findByRole("button", { name: /português/i })
+    );
+
+    await expect(canvas.findByText("Espaço de trabalho")).resolves.toBeInTheDocument();
+    await expect(canvas.findByText("Legado")).resolves.toBeInTheDocument();
+    await expect(canvas.findByText("Tema")).resolves.toBeInTheDocument();
+    await expect(canvas.findByText("Nova sessão")).resolves.toBeInTheDocument();
+    await expect(canvas.findByText("Sessões")).resolves.toBeInTheDocument();
+
+    // Return to en so the persisted locale does not leak into other stories.
+    await userEvent.click(await canvas.findByRole("button", { name: /english/i }));
+    await expect(canvas.findByText("Workspace")).resolves.toBeInTheDocument();
+  },
 };

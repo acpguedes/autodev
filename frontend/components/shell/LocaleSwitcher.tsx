@@ -14,7 +14,7 @@ import { LOCALE_LABELS, SUPPORTED_LOCALES, useTranslations } from "@/lib/i18n";
  * @returns The locale-switcher button.
  */
 export function LocaleSwitcher(): React.JSX.Element {
-  const { locale, setLocale } = useTranslations();
+  const { locale, setLocale, t } = useTranslations();
   const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => setMounted(true), []);
@@ -28,7 +28,7 @@ export function LocaleSwitcher(): React.JSX.Element {
       type="button"
       variant="outline"
       size="sm"
-      aria-label={`Switch language to ${LOCALE_LABELS[nextLocale]}`}
+      aria-label={t("shell.localeSwitcherLabel", { locale: LOCALE_LABELS[nextLocale] })}
       onClick={() => setLocale(nextLocale)}
       className="h-7 gap-1.5 px-2 text-[12.5px]"
     >

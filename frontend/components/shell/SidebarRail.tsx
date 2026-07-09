@@ -15,6 +15,7 @@ import {
   listExtensionsV2,
   listSessionsV2,
 } from "@/lib/api_v2";
+import { useTranslations } from "@/lib/i18n";
 
 import { LocaleSwitcher } from "./LocaleSwitcher";
 import {
@@ -78,9 +79,10 @@ function NavLink({
   active: boolean;
   count: number | undefined;
 }): React.JSX.Element {
+  const { t } = useTranslations();
   const label = (
     <>
-      <span className="truncate">{item.label}</span>
+      <span className="truncate">{t(item.labelKey)}</span>
       {typeof count === "number" ? <NavBadge count={count} /> : null}
     </>
   );
@@ -92,7 +94,7 @@ function NavLink({
     return (
       <span
         aria-disabled="true"
-        title="Extensions arrive in a later release"
+        title={t("shell.nav.extensionsTooltip")}
         className={`${base} cursor-not-allowed text-ds-fg-2 opacity-70`}
       >
         {label}
@@ -125,6 +127,7 @@ function NavLink({
  */
 export function SidebarRail(): React.JSX.Element {
   const pathname = usePathname() ?? "/";
+  const { t } = useTranslations();
   const { activeNav, setActiveNav } = useShell();
   const counts = useNavBadgeCounts();
   const config = useSWR("shell:runtime-config-v2", getRuntimeConfigV2, {
@@ -154,12 +157,12 @@ export function SidebarRail(): React.JSX.Element {
         ? "warn"
         : "danger";
   const providerStatusLabel = !providerStatus.data
-    ? "Unknown"
+    ? t("shell.sidebar.providerStatus.unknown")
     : providerStatus.data.healthy
-      ? "Healthy"
+      ? t("shell.sidebar.providerStatus.healthy")
       : providerStatus.data.configured
-        ? "Unverified"
-        : "Offline";
+        ? t("shell.sidebar.providerStatus.unverified")
+        : t("shell.sidebar.providerStatus.offline");
 
   return (
     <aside
@@ -175,7 +178,8 @@ export function SidebarRail(): React.JSX.Element {
           <span className="h-3 w-3 rotate-45 rounded-[4px] border-[2.4px] border-ds-accent-fg" />
         </span>
         <span className="font-serif text-[17px] font-semibold leading-tight text-ds-fg">
-          AutoDev
+          {/* Brand name — deliberately not translated. */}
+          {"AutoDev"}
         </span>
       </div>
 
@@ -193,13 +197,15 @@ export function SidebarRail(): React.JSX.Element {
           <span className="block truncate text-[13px] font-semibold text-ds-fg">
             {repositoryLabel}
           </span>
-          <span className="block truncate text-[11px] text-ds-fg-2">main · workspace</span>
+          <span className="block truncate text-[11px] text-ds-fg-2">
+            {t("shell.sidebar.workspaceMeta")}
+          </span>
         </span>
       </Link>
 
-      <nav aria-label="Workspace" className="flex flex-col gap-2">
+      <nav aria-label={t("shell.nav.groupWorkspace")} className="flex flex-col gap-2">
         <p className="px-2.5 text-[10.5px] font-bold uppercase tracking-[0.11em] text-ds-fg-2">
-          Workspace
+          {t("shell.nav.groupWorkspace")}
         </p>
         <div className="flex flex-col gap-0.5">
           {SHELL_PRIMARY_NAV.map((item) => (
@@ -213,9 +219,9 @@ export function SidebarRail(): React.JSX.Element {
         </div>
       </nav>
 
-      <nav aria-label="Legacy" className="flex flex-col gap-2">
+      <nav aria-label={t("shell.nav.groupLegacy")} className="flex flex-col gap-2">
         <p className="px-2.5 text-[10.5px] font-bold uppercase tracking-[0.11em] text-ds-fg-2">
-          Legacy
+          {t("shell.nav.groupLegacy")}
         </p>
         <div className="flex flex-col gap-0.5">
           {SHELL_LEGACY_NAV.map((item) => (
@@ -233,7 +239,7 @@ export function SidebarRail(): React.JSX.Element {
         <div className="rounded-ds-lg border border-ds-line bg-ds-bg-3 p-3">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold uppercase tracking-[0.09em] text-ds-fg-2">
-              Provider
+              {t("shell.sidebar.provider")}
             </span>
             <StatusGlowDot
               tone={providerTone}
@@ -246,7 +252,7 @@ export function SidebarRail(): React.JSX.Element {
               aria-hidden="true"
               className="flex h-[26px] w-[26px] items-center justify-center rounded-ds-sm border border-ds-line bg-ds-bg-2 font-mono text-[12px] text-ds-accent"
             >
-              ◇
+              {"◇"}
             </span>
             <span className="min-w-0 flex-1 leading-tight">
               <span className="block truncate text-[13px] font-semibold text-ds-fg">
@@ -258,12 +264,16 @@ export function SidebarRail(): React.JSX.Element {
         </div>
 
         <div className="flex items-center justify-between gap-2 rounded-ds-md border border-ds-line bg-ds-bg-2 px-2 py-1.5">
-          <span className="text-[12.5px] font-semibold text-ds-fg-2">Theme</span>
+          <span className="text-[12.5px] font-semibold text-ds-fg-2">
+            {t("shell.sidebar.theme")}
+          </span>
           <ThemeToggle />
         </div>
 
         <div className="flex items-center justify-between gap-2 rounded-ds-md border border-ds-line bg-ds-bg-2 px-2 py-1.5">
-          <span className="text-[12.5px] font-semibold text-ds-fg-2">Language</span>
+          <span className="text-[12.5px] font-semibold text-ds-fg-2">
+            {t("shell.sidebar.language")}
+          </span>
           <LocaleSwitcher />
         </div>
       </div>

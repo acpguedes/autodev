@@ -3,6 +3,8 @@
 import { X } from "lucide-react";
 import * as React from "react";
 
+import { useTranslations } from "@/lib/i18n";
+
 import { useShell } from "./ShellProvider";
 
 /**
@@ -15,6 +17,7 @@ import { useShell } from "./ShellProvider";
  * @returns The execution panel when open, otherwise `null`.
  */
 export function ExecutionPanelSlot(): React.JSX.Element | null {
+  const { t } = useTranslations();
   const { panelOpen, panelWidth, setPanelOpen, panelContent } = useShell();
 
   React.useEffect(() => {
@@ -36,19 +39,19 @@ export function ExecutionPanelSlot(): React.JSX.Element | null {
 
   return (
     <aside
-      aria-label="Execution panel"
+      aria-label={t("shell.panel.label")}
       style={{ width: panelWidth }}
       className="flex h-full shrink-0 flex-col border-l border-ds-line bg-ds-bg-2"
     >
       <div className="flex h-16 shrink-0 items-center justify-between border-b border-ds-line px-4">
         <div className="flex items-center gap-2">
           <span aria-hidden="true" className="h-[9px] w-[9px] rounded-full bg-ds-fg-3" />
-          <h2 className="text-[13px] font-semibold text-ds-fg">Execution</h2>
+          <h2 className="text-[13px] font-semibold text-ds-fg">{t("shell.panel.title")}</h2>
         </div>
         <button
           type="button"
           onClick={() => setPanelOpen(false)}
-          aria-label="Close execution panel"
+          aria-label={t("shell.panel.close")}
           className="rounded-ds-sm p-1 text-ds-fg-3 transition-colors hover:text-ds-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ds-accent"
         >
           <X className="h-[18px] w-[18px]" aria-hidden="true" />
@@ -62,10 +65,10 @@ export function ExecutionPanelSlot(): React.JSX.Element | null {
               aria-hidden="true"
               className="mb-3.5 flex h-11 w-11 items-center justify-center rounded-ds-lg border border-ds-line text-ds-fg-3"
             >
-              ◇
+              {"◇"}
             </span>
             <p className="max-w-[220px] text-[13px] leading-relaxed text-ds-fg-2">
-              The planning, analysis, patch and validation timeline appears here in real time.
+              {t("shell.panel.emptyState")}
             </p>
           </div>
         )}
