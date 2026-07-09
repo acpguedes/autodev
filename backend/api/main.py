@@ -10,9 +10,16 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List
 
+import sys
+
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
+# Pin the dotenv path to this repo's root so python-dotenv's upward search
+# cannot escape a nested git worktree into a parent checkout's .env. Under
+# pytest, do not override env vars already set by the harness (preserves test
+# isolation); production imports still refresh from .env.
+_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+load_dotenv(_ENV_PATH, override="pytest" not in sys.modules)
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
