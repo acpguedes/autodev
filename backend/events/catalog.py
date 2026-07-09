@@ -157,6 +157,21 @@ class RegistryEntryData(BaseModel):
     version: str
 
 
+class PlanStepTransitionData(BaseModel):
+    """Shared payload of ``plan.step.*`` step-approval transition events (E16-S2).
+
+    One shared model covers every step in the ``draft -> under_review ->
+    approved | rejected -> executing -> completed`` state machine (§14.5);
+    ``fromState``/``toState`` disambiguate which edge fired.
+    """
+
+    sessionId: str
+    stepIndex: int
+    fromState: str
+    toState: str
+    actor: str
+
+
 @dataclass(frozen=True)
 class EventDefinition:
     """Catalog entry describing one event type (§14.5 table).
@@ -198,6 +213,11 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition("plugin.removed", "Plugin Host", "tenantId", PluginLifecycleData),
     EventDefinition("agent.registered", "Registries", "tenantId", RegistryEntryData),
     EventDefinition("skill.registered", "Registries", "tenantId", RegistryEntryData),
+    EventDefinition("plan.step.reviewing", "Control Plane API", "tenantId", PlanStepTransitionData),
+    EventDefinition("plan.step.approved", "Control Plane API", "tenantId", PlanStepTransitionData),
+    EventDefinition("plan.step.rejected", "Control Plane API", "tenantId", PlanStepTransitionData),
+    EventDefinition("plan.step.executing", "Control Plane API", "tenantId", PlanStepTransitionData),
+    EventDefinition("plan.step.completed", "Control Plane API", "tenantId", PlanStepTransitionData),
 )
 
 

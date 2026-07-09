@@ -21,8 +21,13 @@ _NAME_RE = re.compile(r"^[a-z]+(\.[a-z]+){1,2}$")
 
 
 def test_catalog_covers_all_reference_types_with_valid_names() -> None:
-    """The catalog registers the 20 §14.5 types, keyed and named consistently."""
-    assert len(EVENT_CATALOG) == 20
+    """The catalog registers the 20 §14.5 types plus additive growth, keyed and named consistently.
+
+    The catalog is append-only (E9-S3-T1); this baseline started at the 20
+    §14.5 reference types and grew by 5 with E16-S2's ``plan.step.*``
+    step-approval transition events.
+    """
+    assert len(EVENT_CATALOG) == 25
     for name, definition in EVENT_CATALOG.items():
         assert name == definition.name
         assert _NAME_RE.fullmatch(name)
