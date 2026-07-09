@@ -157,6 +157,22 @@ class RegistryEntryData(BaseModel):
     version: str
 
 
+class RunTimelineStepData(BaseModel):
+    """Shared payload of the ``run.timeline.*`` live timeline events (E16-S1-T2).
+
+    Each ``run.timeline.*`` type (``planning``, ``analysis``, ``patch``,
+    ``validation``) represents one step of the redesigned UI's live timeline
+    for a turn. Every event carries the actor role that produced it
+    (E16-S1-T3, see :mod:`backend.api.timeline_roles`) and a monospace
+    stdout/log excerpt so the UI can render terminal-style output per step.
+    """
+
+    stepKey: str
+    actorRole: str
+    status: str
+    output: str
+
+
 @dataclass(frozen=True)
 class EventDefinition:
     """Catalog entry describing one event type (§14.5 table).
@@ -198,6 +214,10 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition("plugin.removed", "Plugin Host", "tenantId", PluginLifecycleData),
     EventDefinition("agent.registered", "Registries", "tenantId", RegistryEntryData),
     EventDefinition("skill.registered", "Registries", "tenantId", RegistryEntryData),
+    EventDefinition("run.timeline.planning", "Orchestration Engine", "runId", RunTimelineStepData),
+    EventDefinition("run.timeline.analysis", "Orchestration Engine", "runId", RunTimelineStepData),
+    EventDefinition("run.timeline.patch", "Orchestration Engine", "runId", RunTimelineStepData),
+    EventDefinition("run.timeline.validation", "Orchestration Engine", "runId", RunTimelineStepData),
 )
 
 
