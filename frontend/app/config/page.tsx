@@ -3,80 +3,123 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import PlanSidebar from "../../components/PlanSidebar";
+import { ProviderSelector, defaultModelFor, type ProviderId } from "@/components/ProviderSelector";
 import { useShellHeader } from "@/components/shell/ShellProvider";
-import { Badge } from "@/components/ui/badge";
+import { StatusGlowDot } from "@/components/StatusGlowDot";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
-  type RepositoryContextResponse,
-  type RuntimeConfig,
-  type RuntimeInstructions,
-  type SessionResponse,
-  getRepositoryContext,
-  getRuntimeConfig,
-  listSessions,
-  updateRuntimeConfig,
-} from "../../lib/api";
-
-const DEFAULT_REPOSITORY_QUERY = "configuração llm repositório projeto";
+  getProviderStatusV2,
+  getRuntimeConfigV2,
+  updateRuntimeConfigV2,
+  type ProviderStatusV2,
+  type RuntimeConfigV2,
+  type RuntimeInstructionsV2,
+} from "@/lib/api_v2";
+import { toast } from "@/lib/use-toast";
 
 const kickerClass = "text-[11px] font-bold uppercase tracking-[0.12em] text-ds-fg-3";
 const fieldLabel = "text-sm font-medium text-ds-fg-2";
-const selectClass =
-  "flex h-9 w-full rounded-md border border-ds-line bg-ds-bg-2 px-3 py-1 text-sm text-ds-fg shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ds-accent";
 const textareaClass =
   "min-h-[110px] w-full resize-y rounded-ds-md border border-ds-line bg-ds-bg-2 px-3 py-2 text-sm text-ds-fg shadow-sm transition-colors placeholder:text-ds-fg-3 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ds-accent";
 const codeBlockClass =
   "overflow-x-auto whitespace-pre-wrap rounded-ds-md border border-ds-line bg-ds-bg-3 p-4 font-mono text-[13px] text-ds-fg-2";
 
+/**
+ * Validate a configuration draft before it is submitted for save.
+ *
+ * Requires a non-empty provider, model, and project root, and (when a base
+ * URL is supplied) that it parses as an absolute URL — providers such as
+ * the offline stub may legitimately leave it blank.
+ *
+ * @param draft - The in-progress configuration draft.
+ * @returns The first validation error found, or `null` if the draft is valid.
+ */
+function validateConfigDraft(draft: RuntimeConfigV2): string | null {
+  if (!draft.llm.provider.trim()) {
+    return "Choose an LLM provider.";
+  }
+  if (!draft.llm.model.trim()) {
+    return "Model name is required.";
+  }
+  if (!draft.repository.project_root.trim()) {
+    return "Project directory is required.";
+  }
+  if (!draft.repository.default_goal.trim()) {
+    return "Default goal is required.";
+  }
+  const baseUrl = draft.llm.base_url.trim();
+  if (baseUrl) {
+    try {
+      // eslint-disable-next-line no-new -- validation only, result unused.
+      new URL(baseUrl);
+    } catch {
+      return "Base URL must be a valid absolute URL.";
+    }
+  }
+  return null;
+}
+
+/**
+ * Configuration screen: selects the active LLM provider, model, base URL,
+ * project directory, and default goal, wired to the E16 runtime-config and
+ * provider-status endpoints with client-side validation and optimistic save
+ * feedback.
+ *
+ * @returns The configuration page.
+ */
 export default function ConfigPage() {
   useShellHeader({
     title: "Config",
-    subtitle: "Repository and model settings.",
+    subtitle: "Provider and repository settings.",
   });
 
-  const [config, setConfig] = useState<RuntimeConfig | null>(null);
-  const [configDraft, setConfigDraft] = useState<RuntimeConfig | null>(null);
-  const [instructions, setInstructions] = useState<RuntimeInstructions | null>(null);
-  const [configStatus, setConfigStatus] = useState<string | null>(null);
+  const [config, setConfig] = useState<RuntimeConfigV2 | null>(null);
+  const [configDraft, setConfigDraft] = useState<RuntimeConfigV2 | null>(null);
+  const [instructions, setInstructions] = useState<RuntimeInstructionsV2 | null>(null);
+  const [providerStatus, setProviderStatus] = useState<ProviderStatusV2 | null>(null);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sessions, setSessions] = useState<SessionResponse[]>([]);
-  const [repositoryContext, setRepositoryContext] =
-    useState<RepositoryContextResponse | null>(null);
-  const [repositoryQuery, setRepositoryQuery] = useState(DEFAULT_REPOSITORY_QUERY);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   useEffect(() => {
     async function bootstrap() {
       try {
-        const runtime = await getRuntimeConfig();
+        const runtime = await getRuntimeConfigV2();
         setConfig(runtime.config);
         setConfigDraft(runtime.config);
         setInstructions(runtime.instructions);
-        const existingSessions = await listSessions();
-        setSessions(existingSessions);
-        setRepositoryContext(await getRepositoryContext(DEFAULT_REPOSITORY_QUERY));
       } catch {
-        setError("Failed to load configuration workspace.");
+        setError("Failed to load configuration.");
+      }
+      try {
+        setProviderStatus(await getProviderStatusV2());
+      } catch {
+        setProviderStatus(null);
       }
     }
 
     void bootstrap();
   }, []);
 
-  const activeSession = sessions[0];
   const canSaveConfig = useMemo(() => {
     if (!configDraft) {
       return false;
     }
-
-    return Boolean(
-      configDraft.repository.project_root.trim() &&
-        configDraft.repository.default_goal.trim() &&
-        configDraft.llm.provider.trim()
-    );
+    return validateConfigDraft(configDraft) === null;
   }, [configDraft]);
+
+  function handleProviderChange(providerId: ProviderId) {
+    if (!configDraft) {
+      return;
+    }
+    const nextModel = defaultModelFor(providerId) ?? configDraft.llm.model;
+    setConfigDraft({
+      ...configDraft,
+      llm: { ...configDraft.llm, provider: providerId, model: nextModel },
+    });
+  }
 
   async function handleSaveConfiguration(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -84,55 +127,54 @@ export default function ConfigPage() {
       return;
     }
 
-    setConfigStatus("Saving configuration...");
+    const validation = validateConfigDraft(configDraft);
+    if (validation) {
+      setValidationError(validation);
+      return;
+    }
+    setValidationError(null);
+
+    // Optimistic update: apply the draft immediately, then reconcile with the
+    // server response (or roll back on failure).
+    const previousConfig = config;
+    setConfig(configDraft);
+    setSaving(true);
     setError(null);
 
     try {
-      const response = await updateRuntimeConfig(configDraft);
+      const response = await updateRuntimeConfigV2(configDraft);
       setConfig(response.config);
       setConfigDraft(response.config);
       setInstructions(response.instructions);
-      setRepositoryContext(await getRepositoryContext(repositoryQuery || DEFAULT_REPOSITORY_QUERY));
-      setSessions(await listSessions());
-      setConfigStatus("Configuration saved to the runtime config file.");
+      toast({ title: "Configuration saved", description: "Runtime config updated." });
+      try {
+        setProviderStatus(await getProviderStatusV2());
+      } catch {
+        setProviderStatus(null);
+      }
     } catch {
-      setConfigStatus(null);
+      setConfig(previousConfig);
       setError("Unable to save runtime configuration.");
-    }
-  }
-
-  async function handleRepositorySearch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-
-    try {
-      setRepositoryContext(await getRepositoryContext(repositoryQuery || DEFAULT_REPOSITORY_QUERY));
-    } catch {
-      setError("Unable to load repository context for the configured project.");
+      toast({
+        title: "Could not save configuration",
+        description: "The control plane rejected the request or is unavailable.",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
     <div className="flex flex-col gap-6 p-8">
-      <PlanSidebar
-        plan={activeSession?.plan ?? []}
-        sessionId={activeSession?.session_id}
-        status={activeSession?.status ?? "idle"}
-        repositoryLabel={
-          configDraft?.repository.repository_label || config?.repository.repository_label
-        }
-        projectRoot={configDraft?.repository.project_root || config?.repository.project_root}
-      />
-
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-2">
-          <p className={kickerClass}>Configuration workspace</p>
+          <p className={kickerClass}>Configuration</p>
           <h1 className="font-serif text-2xl font-semibold text-ds-fg">
-            Repository + model settings
+            Provider + repository settings
           </h1>
           <p className="max-w-2xl text-sm text-ds-fg-3">
-            Move runtime configuration into a dedicated area while keeping repository context and
-            environment instructions close to the active workspace.
+            Choose the LLM provider, model, and project workspace used for new sessions.
           </p>
         </div>
         <Button asChild variant="outline">
@@ -146,33 +188,35 @@ export default function ConfigPage() {
             <div className="flex flex-col gap-1">
               <p className={kickerClass}>Runtime configuration</p>
               <h2 className="font-serif text-lg font-semibold text-ds-fg">
-                LLM + repository setup
+                Provider + repository setup
               </h2>
             </div>
-            {configStatus ? <p className="text-sm text-ds-fg-3">{configStatus}</p> : null}
+            {providerStatus ? (
+              <StatusGlowDot
+                tone={providerStatus.healthy ? "success" : providerStatus.configured ? "warn" : "danger"}
+                label={
+                  providerStatus.healthy
+                    ? `${providerStatus.name} healthy`
+                    : providerStatus.configured
+                      ? `${providerStatus.name} not verified`
+                      : `${providerStatus.name} not configured`
+                }
+              />
+            ) : null}
           </CardHeader>
           <CardContent>
             {configDraft ? (
               <form className="flex flex-col gap-4" onSubmit={handleSaveConfiguration}>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="flex flex-col gap-1.5">
-                    <span className={fieldLabel}>LLM provider</span>
-                    <select
-                      className={selectClass}
-                      value={configDraft.llm.provider}
-                      onChange={(event) =>
-                        setConfigDraft({
-                          ...configDraft,
-                          llm: { ...configDraft.llm, provider: event.target.value },
-                        })
-                      }
-                    >
-                      <option value="stub">stub</option>
-                      <option value="openai">openai</option>
-                      <option value="ollama">ollama</option>
-                    </select>
-                  </label>
+                <div className="flex flex-col gap-1.5">
+                  <span className={fieldLabel}>LLM provider</span>
+                  <ProviderSelector
+                    value={configDraft.llm.provider}
+                    onChange={handleProviderChange}
+                    disabled={saving}
+                  />
+                </div>
 
+                <div className="grid gap-4 sm:grid-cols-2">
                   <label className="flex flex-col gap-1.5">
                     <span className={fieldLabel}>Model</span>
                     <Input
@@ -220,7 +264,7 @@ export default function ConfigPage() {
                     />
                   </label>
 
-                  <label className="flex flex-col gap-1.5 sm:col-span-2">
+                  <label className="flex flex-col gap-1.5">
                     <span className={fieldLabel}>API key</span>
                     <Input
                       type="password"
@@ -252,7 +296,7 @@ export default function ConfigPage() {
                   </label>
 
                   <label className="flex flex-col gap-1.5">
-                    <span className={fieldLabel}>Project root</span>
+                    <span className={fieldLabel}>Project directory</span>
                     <Input
                       value={configDraft.repository.project_root}
                       onChange={(event) =>
@@ -268,7 +312,7 @@ export default function ConfigPage() {
                   </label>
 
                   <label className="flex flex-col gap-1.5 sm:col-span-2">
-                    <span className={fieldLabel}>Default planning goal</span>
+                    <span className={fieldLabel}>Default goal</span>
                     <textarea
                       className={textareaClass}
                       value={configDraft.repository.default_goal}
@@ -285,9 +329,15 @@ export default function ConfigPage() {
                   </label>
                 </div>
 
+                {validationError ? (
+                  <p role="alert" className="text-sm text-ds-danger">
+                    {validationError}
+                  </p>
+                ) : null}
+
                 <div className="flex justify-end">
-                  <Button type="submit" disabled={!canSaveConfig}>
-                    Save configuration
+                  <Button type="submit" disabled={!canSaveConfig || saving}>
+                    {saving ? "Saving…" : "Save configuration"}
                   </Button>
                 </div>
               </form>
@@ -338,57 +388,6 @@ export default function ConfigPage() {
           </CardContent>
         </Card>
       </div>
-
-      <Card className="border-ds-line bg-ds-bg-2 shadow-ds-sm">
-        <CardHeader>
-          <p className={kickerClass}>Repository intelligence</p>
-          <h2 className="font-serif text-lg font-semibold text-ds-fg">
-            Context preview for the active project
-          </h2>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <form className="flex flex-wrap items-center gap-3" onSubmit={handleRepositorySearch}>
-            <Input
-              className="min-w-[240px] flex-1"
-              value={repositoryQuery}
-              onChange={(event) => setRepositoryQuery(event.target.value)}
-              placeholder="Search the configured repository context"
-            />
-            <Button type="submit" variant="outline">
-              Refresh context
-            </Button>
-          </form>
-
-          {repositoryContext ? (
-            <div className="flex flex-col gap-3">
-              <p className="text-xs text-ds-fg-3">
-                Root: {repositoryContext.root} · Files: {repositoryContext.total_files}
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {repositoryContext.top_directories.map((directory) => (
-                  <Badge variant="outline" className="text-ds-fg-2" key={directory}>
-                    {directory}
-                  </Badge>
-                ))}
-              </div>
-              <div className="flex flex-col gap-3">
-                {repositoryContext.candidate_files.map((file) => (
-                  <article
-                    className="flex flex-col gap-1 rounded-ds-md border border-ds-line bg-ds-bg-3 p-3"
-                    key={file.path}
-                  >
-                    <strong className="font-mono text-[13px] text-ds-fg">{file.path}</strong>
-                    <p className="text-xs text-ds-fg-3">score {file.score}</p>
-                    <p className="text-xs text-ds-fg-3">{file.reasons.join(" · ")}</p>
-                  </article>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-ds-fg-3">Loading repository context...</p>
-          )}
-        </CardContent>
-      </Card>
 
       {error ? (
         <p

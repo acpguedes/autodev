@@ -114,6 +114,37 @@ Subtasks:
 
 Origin: E10-S2, E8-S1, E5.
 
+#### Implementation notes (E17-S4)
+
+- **Endpoint wiring.** The config screen reads/writes the entire provider +
+  repository form through the two E16-S4 endpoints already exposed by
+  `backend/api/routers/config_v2.py` and
+  `backend/api/routers/provider_config_v2.py`: `GET/PUT /v2/config`
+  (`getRuntimeConfigV2` / `updateRuntimeConfigV2` in `frontend/lib/api_v2.ts`)
+  covers the full form (provider, model, base URL, temperature, API key,
+  repository label, project directory, default goal) in one round trip, and
+  `GET /v2/provider-config/status` (`getProviderStatusV2`) supplies the live
+  healthy/configured badge shown in both the config screen and the shell's
+  sidebar provider card. No separate PUT-per-field endpoint was needed.
+- **Reopen-as-chat contract.** `SessionRow`'s "Open chat" action links to
+  `/?sessionId=<sessionId>` (query param name `sessionId`, URI-encoded). This
+  is the exact contract E17-S1's chat screen depends on to resume an existing
+  session instead of starting a new one — the session's **goal** cell links
+  elsewhere, to `/sessions/<sessionId>` (this story's own detail screen), so
+  the two links intentionally target different routes.
+- **Repository-intelligence panel dropped.** The prototype sketches hint at a
+  repository-intelligence side panel on the config screen, but no
+  `/v2/repository` (or equivalent) endpoint exists yet in E16. Per the
+  API-first rule, that panel was left out of this story rather than backed by
+  a stub; it can be added once a corresponding `/v2` endpoint lands.
+- **E2E strategy.** `frontend/e2e/sessions-config.spec.ts` intercepts
+  `http://localhost:8000/v2/**` with Playwright's `page.route()` and serves
+  deterministic fixtures, rather than depending on a live/seeded backend —
+  this satisfies the "assert real rendered state" DoD while keeping the spec
+  fast and non-flaky. It runs alongside the pre-existing
+  `frontend/e2e/shell-navigation.spec.ts`, which already covers `/sessions`
+  and `/config` inside the three-region shell.
+
 ### E17-S5 — Extensions hub screen
 
 Subtasks:
