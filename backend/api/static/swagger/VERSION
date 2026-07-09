@@ -1,0 +1,7 @@
+swagger-ui-dist 5.32.8
+Source: https://registry.npmjs.org/swagger-ui-dist/-/swagger-ui-dist-5.32.8.tgz
+Tarball sha256: 064988afedf5a645906aed016079895ebe07e86cce5ba6d8942e231dd088b8cb
+Vendored files: swagger-ui-bundle.js, swagger-ui.css, favicon-32x32.png, LICENSE
+Vendored on: 2026-07-09 (E18-S2)
+License: Apache-2.0 (see LICENSE in this directory)
+Note: swagger-ui-init.js is hand-written in this repo, not part of the dist.
