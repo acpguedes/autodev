@@ -7,7 +7,17 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-08 (**E15 — Frontend Redesign: Design Language & App Shell
+**Last updated:** 2026-07-08 (**E16 — Frontend Redesign: Control-Plane API Enablement
+epic complete (4/4)** on `epic/e16-redesign-api-enablement`, merged to `main`. Backend-only:
+four additive `/v2` surfaces the E17 Control Center screens will consume — **E16-S1**
+chat/turn endpoints + `run.timeline.*` events + agent-role→step mapping; **E16-S2**
+per-step plan approval state machine (`draft→under_review→approved|rejected→executing→completed`)
++ `plan.step.*` events; **E16-S3** patch review/apply (changed-files, per-file diff,
+edited-content override, dry-run-default apply/discard reusing the E0 patch engine) +
+`patch.*` events; **E16-S4** unified extensions catalog (agents/skills/plugins/MCP) with
+delegated enable/disable + agent create/edit + live provider config/status. Routers
+auto-discovered; event catalog grew append-only 20 → 31 types; contract tests green per
+story. Previous entry: **E15 — Frontend Redesign: Design Language & App Shell
 epic complete (4/4)** on `epic/e15-design-language-shell`, merged to `main`. **E15-S1**:
 additive `--ds-*` warm-paper/charcoal token layer, redesign typefaces,
 `--ds-token-version` 2.0.0. **E15-S2**: three-region app shell (250px rail / 64px
@@ -63,8 +73,9 @@ complete and verified (flow suite 38/38 green); its only open story, **E3-S6**
 (visual flow editor), was Beta-deferred behind **E10** (Design System, now
 **Done** — E3-S6 unblocked). Remaining Alpha anchor work: **E8-S2** and **E12-S1** (E9 is now
 complete; E9-S3's event catalog unblocks E8-S2). The frontend redesign epics **E15** (done) → **E16** → **E17** (Execution Control Center prototype)
-are planned to run before the E11 kickoff; **E15** is now complete and **E16** is next
-in that sequence. **Next action: E8-S2 (Event
+are planned to run before the E11 kickoff; **E15** and **E16** are now complete and
+**E17** (Control Center Screens) is next in that sequence — its `/v2` dependencies are
+now all satisfied. **Next action: E8-S2 (Event
 Store) and E12-S1; follow `agent_guide.md` §1-4 quality rules (mandatory from
 E3 onward).**
 
@@ -88,7 +99,7 @@ E3 onward).**
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 | E15 | Frontend Redesign: Design Language & App Shell | Beta | Done | 4/4 | E10 | [phases/e15_design_language_shell.md](phases/e15_design_language_shell.md) |
-| E16 | Frontend Redesign: Control-Plane API Enablement | Beta | Not started | 0/4 | E9, E3, E8-S1 | [phases/e16_redesign_api_enablement.md](phases/e16_redesign_api_enablement.md) |
+| E16 | Frontend Redesign: Control-Plane API Enablement | Beta | Done | 4/4 | E9, E3, E8-S1 | [phases/e16_redesign_api_enablement.md](phases/e16_redesign_api_enablement.md) |
 | E17 | Frontend Redesign: Control Center Screens | Beta | Not started | 0/6 | E15, E16 | [phases/e17_control_center_screens.md](phases/e17_control_center_screens.md) |
 
 Total: **39/85 stories complete** across 18 epics.
