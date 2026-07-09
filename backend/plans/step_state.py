@@ -48,6 +48,16 @@ class StepState(StrEnum):
 EDITABLE_STATES: frozenset[StepState] = frozenset({StepState.DRAFT, StepState.UNDER_REVIEW})
 """States in which a step's content may still be edited (E16-S2-T1)."""
 
+REMOVABLE_STATES: frozenset[StepState] = frozenset(
+    {StepState.DRAFT, StepState.UNDER_REVIEW, StepState.REJECTED}
+)
+"""States from which a step may be structurally removed (E17-S2).
+
+Once a step is ``approved``/``executing``/``completed`` it is part of the
+execution record and can no longer be deleted outright — only rejected
+(which keeps it, dimmed, out of execution) or left as-is.
+"""
+
 _LEGAL_TRANSITIONS: dict[StepState, dict[str, StepState]] = {
     StepState.DRAFT: {"review": StepState.UNDER_REVIEW},
     StepState.UNDER_REVIEW: {
@@ -296,6 +306,88 @@ class StepApprovalStore:
             conn.commit()
             return PlanStepRecord(session_id, step_index, content, current.state, now)
 
+    def append_step(self, session_id: str, content: str) -> PlanStepRecord:
+        """Append a new ``draft`` step to the end of a session's tracked plan.
+
+        Args:
+            session_id: The owning session.
+            content: The new step's content.
+
+        Returns:
+            The newly created step record, in the ``draft`` state.
+        """
+        now = self._now()
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(MAX(step_index), -1) AS max_index FROM plan_step_state "
+                "WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            next_index = row["max_index"] + 1
+            conn.execute(
+                """
+                INSERT INTO plan_step_state (session_id, step_index, content, state, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (session_id, next_index, content, StepState.DRAFT.value, now),
+            )
+            conn.commit()
+        return PlanStepRecord(session_id, next_index, content, StepState.DRAFT, now)
+
+    def delete_step(self, session_id: str, step_index: int) -> list[PlanStepRecord]:
+        """Remove a step and reindex subsequent steps to stay contiguous.
+
+        Args:
+            session_id: The owning session.
+            step_index: Zero-based position of the step to remove.
+
+        Returns:
+            Every remaining tracked step for the session, ordered by index.
+
+        Raises:
+            KeyError: If the step is not tracked.
+            ValueError: If the step is not in :data:`REMOVABLE_STATES` (only
+                ``draft``/``under_review``/``rejected`` steps may be removed).
+        """
+        with self._lock, self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM plan_step_state WHERE session_id = ? AND step_index = ?",
+                (session_id, step_index),
+            ).fetchone()
+            if row is None:
+                raise KeyError(f"Step {step_index} not found for session {session_id!r}.")
+            current = self._row_to_record(row)
+            if current.state not in REMOVABLE_STATES:
+                raise ValueError(
+                    f"Cannot remove step {step_index} in state {current.state.value!r}; "
+                    "only draft/under_review/rejected steps can be removed."
+                )
+            conn.execute(
+                "DELETE FROM plan_step_state WHERE session_id = ? AND step_index = ?",
+                (session_id, step_index),
+            )
+            remaining_rows = conn.execute(
+                "SELECT * FROM plan_step_state WHERE session_id = ? ORDER BY step_index",
+                (session_id,),
+            ).fetchall()
+            now = self._now()
+            reindexed: list[PlanStepRecord] = []
+            # Ascending order guarantees each target slot is already vacated
+            # by the time we reach it, so no PRIMARY KEY collision occurs
+            # within this single transaction.
+            for new_index, remaining_row in enumerate(remaining_rows):
+                record = self._row_to_record(remaining_row)
+                if record.step_index != new_index:
+                    conn.execute(
+                        "UPDATE plan_step_state SET step_index = ?, updated_at = ? "
+                        "WHERE session_id = ? AND step_index = ?",
+                        (new_index, now, session_id, record.step_index),
+                    )
+                    record = PlanStepRecord(session_id, new_index, record.content, record.state, now)
+                reindexed.append(record)
+            conn.commit()
+        return reindexed
+
     def transition(
         self, session_id: str, step_index: int, action: str
     ) -> tuple[StepState, PlanStepRecord]:
@@ -339,6 +431,7 @@ class StepApprovalStore:
 
 __all__ = [
     "EDITABLE_STATES",
+    "REMOVABLE_STATES",
     "PlanStepRecord",
     "StepApprovalStore",
     "StepState",

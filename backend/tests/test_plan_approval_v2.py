@@ -217,3 +217,93 @@ class TestStateMachine:
         }
         assert envelopes[1].data["fromState"] == "under_review"
         assert envelopes[1].data["toState"] == "approved"
+
+
+class TestStepAddAndRemove:
+    """E17-S2: add/remove steps and keep the legacy plan document in sync."""
+
+    def test_add_step_appends_draft_step_with_next_index(self, client: TestClient) -> None:
+        _seed_plan(client, "s15", ["Step A"])
+        response = client.post("/v2/plans/s15/steps", json={"content": "Step B", "actor": "alice"})
+        assert response.status_code == 201
+        body = response.json()
+        assert body["schemaVersion"] == "2.0"
+        assert len(body["steps"]) == 2
+        assert body["steps"][1]["step_index"] == 1
+        assert body["steps"][1]["content"] == "Step B"
+        assert body["steps"][1]["state"] == "draft"
+
+    def test_add_step_syncs_legacy_plan_document(self, client: TestClient) -> None:
+        _seed_plan(client, "s16", ["Step A"])
+        client.post("/v2/plans/s16/steps", json={"content": "Step B", "actor": "alice"})
+        legacy = client.get("/plans/s16")
+        assert legacy.status_code == 200
+        assert legacy.json()["steps"] == ["Step A", "Step B"]
+
+    def test_add_step_unknown_session_returns_404(self, client: TestClient) -> None:
+        response = client.post("/v2/plans/no-such-session/steps", json={"content": "Step"})
+        assert response.status_code == 404
+        assert response.json()["detail"]["schemaVersion"] == "2.0"
+
+    def test_add_step_emits_plan_step_added_event(self, client: TestClient) -> None:
+        _seed_plan(client, "s17", ["Step A"])
+        client.post("/v2/plans/s17/steps", json={"content": "Step B", "actor": "alice"})
+        envelopes = get_event_bus().replay("s17")
+        assert envelopes[-1].type == "plan.step.added"
+        assert envelopes[-1].data == {"sessionId": "s17", "stepIndex": 1, "actor": "alice"}
+
+    def test_remove_draft_step_reindexes_remaining_steps(self, client: TestClient) -> None:
+        _seed_plan(client, "s18", ["Step A", "Step B", "Step C"])
+        response = client.delete("/v2/plans/s18/steps/1")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["schemaVersion"] == "2.0"
+        assert [step["content"] for step in body["steps"]] == ["Step A", "Step C"]
+        assert [step["step_index"] for step in body["steps"]] == [0, 1]
+
+    def test_remove_step_syncs_legacy_plan_document(self, client: TestClient) -> None:
+        _seed_plan(client, "s19", ["Step A", "Step B"])
+        client.delete("/v2/plans/s19/steps/0")
+        legacy = client.get("/plans/s19")
+        assert legacy.status_code == 200
+        assert legacy.json()["steps"] == ["Step B"]
+
+    def test_remove_under_review_step_succeeds(self, client: TestClient) -> None:
+        _seed_plan(client, "s20", ["Step A", "Step B"])
+        client.get("/v2/plans/s20")  # auto-promote both steps to under_review
+        response = client.delete("/v2/plans/s20/steps/0")
+        assert response.status_code == 200
+        assert [step["content"] for step in response.json()["steps"]] == ["Step B"]
+
+    def test_remove_rejected_step_succeeds(self, client: TestClient) -> None:
+        _seed_plan(client, "s21", ["Step A", "Step B"])
+        client.post("/v2/plans/s21/steps/0/reject", json={"actor": "bob"})
+        response = client.delete("/v2/plans/s21/steps/0")
+        assert response.status_code == 200
+        assert [step["content"] for step in response.json()["steps"]] == ["Step B"]
+
+    def test_remove_approved_step_is_denied(self, client: TestClient) -> None:
+        _seed_plan(client, "s22", ["Step A"])
+        client.post("/v2/plans/s22/steps/0/approve", json={"actor": "alice"})
+        response = client.delete("/v2/plans/s22/steps/0")
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert detail["schemaVersion"] == "2.0"
+        assert detail["error"]["code"] == 400
+
+    def test_remove_unknown_step_returns_404(self, client: TestClient) -> None:
+        _seed_plan(client, "s23", ["Only step"])
+        response = client.delete("/v2/plans/s23/steps/5")
+        assert response.status_code == 404
+
+    def test_remove_step_unknown_session_returns_404(self, client: TestClient) -> None:
+        response = client.delete("/v2/plans/no-such-session/steps/0")
+        assert response.status_code == 404
+        assert response.json()["detail"]["schemaVersion"] == "2.0"
+
+    def test_remove_step_emits_plan_step_removed_event(self, client: TestClient) -> None:
+        _seed_plan(client, "s24", ["Step A", "Step B"])
+        client.delete("/v2/plans/s24/steps/1", params={"actor": "carol"})
+        envelopes = get_event_bus().replay("s24")
+        assert envelopes[-1].type == "plan.step.removed"
+        assert envelopes[-1].data == {"sessionId": "s24", "stepIndex": 1, "actor": "carol"}

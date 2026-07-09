@@ -201,6 +201,19 @@ class PlanStepTransitionData(BaseModel):
     actor: str
 
 
+class PlanStepMutationData(BaseModel):
+    """Shared payload of ``plan.step.added``/``plan.step.removed`` events (E17-S2).
+
+    Emitted when a step is structurally added to or removed from a plan —
+    distinct from :class:`PlanStepTransitionData`, which covers approval
+    state-machine transitions of an existing step.
+    """
+
+    sessionId: str
+    stepIndex: int
+    actor: str
+
+
 @dataclass(frozen=True)
 class EventDefinition:
     """Catalog entry describing one event type (§14.5 table).
@@ -251,6 +264,8 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition("plan.step.rejected", "Control Plane API", "tenantId", PlanStepTransitionData),
     EventDefinition("plan.step.executing", "Control Plane API", "tenantId", PlanStepTransitionData),
     EventDefinition("plan.step.completed", "Control Plane API", "tenantId", PlanStepTransitionData),
+    EventDefinition("plan.step.added", "Control Plane API", "tenantId", PlanStepMutationData),
+    EventDefinition("plan.step.removed", "Control Plane API", "tenantId", PlanStepMutationData),
     EventDefinition("patch.changedfiles.listed", "Control Plane API", "runId", PatchChangedFilesListedData),
     EventDefinition("patch.discarded", "Control Plane API", "runId", PatchDiscardedData),
 )
