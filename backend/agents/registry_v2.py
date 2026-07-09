@@ -184,6 +184,36 @@ class AgentRegistry:
             )
         )
 
+    def activate(self, agent_id: str, version: str) -> None:
+        """Clear the deprecated flag on a specific agent version and emit a plugin event.
+
+        The inverse of :meth:`deprecate`, reusing the same ``deprecated``
+        column as the activation signal instead of introducing a second,
+        parallel activation store (E16-S4).
+
+        Args:
+            agent_id: Fully qualified agent id.
+            version: Exact SemVer version to activate.
+        """
+        placeholder = "%s" if self._is_postgres else "?"
+        with self._store.connect() as conn:
+            conn.execute(
+                f"""
+                UPDATE agent_registry
+                SET deprecated = 0, deprecation_reason = '', updated_at = CURRENT_TIMESTAMP
+                WHERE agent_id = {placeholder} AND version = {placeholder}
+                """,
+                (agent_id, version),
+            )
+            conn.commit()
+        self._plugin_store.append_event(
+            PluginEvent(
+                name="agent.version.activated",
+                plugin_id=agent_id,
+                payload={"version": version},
+            )
+        )
+
     def list_agents(self, *, agent_id: str | None = None) -> list[AgentRef]:
         """List registered agent versions, optionally filtered by agent id.
 

@@ -160,6 +160,36 @@ class SkillRegistry:
             )
         )
 
+    def activate(self, skill_id: str, version: str) -> None:
+        """Clear the deprecated flag on a specific skill version and emit a plugin event.
+
+        The inverse of :meth:`deprecate`, reusing the same ``deprecated``
+        column as the activation signal instead of introducing a second,
+        parallel activation store (E16-S4).
+
+        Args:
+            skill_id: Fully qualified skill id.
+            version: Exact SemVer version to activate.
+        """
+        placeholder = "%s" if self._is_postgres else "?"
+        with self._store.connect() as conn:
+            conn.execute(
+                f"""
+                UPDATE skill_registry
+                SET deprecated = 0, deprecation_reason = '', updated_at = CURRENT_TIMESTAMP
+                WHERE skill_id = {placeholder} AND version = {placeholder}
+                """,
+                (skill_id, version),
+            )
+            conn.commit()
+        self._plugin_store.append_event(
+            PluginEvent(
+                name="skill.version.activated",
+                plugin_id=skill_id,
+                payload={"version": version},
+            )
+        )
+
     def list_skills(self, *, skill_id: str | None = None) -> list[SkillRef]:
         """List registered skill versions, optionally filtered by skill id.
 
