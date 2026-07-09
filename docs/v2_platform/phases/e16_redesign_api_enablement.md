@@ -2,7 +2,7 @@
 
 **Wave:** Beta — sequenced logically after E10 (base Design System) and executed
 before E11; feeds the Control Center screens epic (E17).
-**Status:** Not started (0/4 complete)
+**Status:** Done (4/4 complete)
 **Depends on:** E9 (Control Plane API /v2 core, streaming, event catalog, MCP),
 E3 (orchestration engine / plan store), E8-S1 (persistence core) — plus the
 E1/E2/E6 catalogs (plugin registry, agent registry, skills registry) that
@@ -234,25 +234,40 @@ endpoints. This section maps what exists today, file by file, to the
 
 ## Epic exit checklist
 
-- [ ] All 4 stories meet the global DoD (`../templates/dod_checklist.md`)
+- [x] All 4 stories meet the global DoD (`../templates/dod_checklist.md`)
       plus their story-specific DoD above.
-- [ ] Contract tests green for the `/v2` chat/turn contract and extended
+- [x] Contract tests green for the `/v2` chat/turn contract and extended
       event taxonomy (E16-S1), the plan approval state machine (E16-S2), the
       patch review/apply lifecycle (E16-S3), and the unified extension
       catalog plus provider config (E16-S4).
-- [ ] RFC-006 (additive-`/v2`-endpoints governance, covering the UI
+- [x] RFC-006 (additive-`/v2`-endpoints governance, covering the UI
       language/i18n decision for E15 and the API-contract decisions for
       E16) is approved before implementation starts on any of E16-S1..S4,
       per the project's RFC/ADR-before-implementation convention
       (`agent_guide.md` §5); an ADR is filed per story if its contract
-      change is MAJOR.
+      change is MAJOR. RFC-006 Accepted 2026-07-08; all four surfaces are
+      additive within the `/v2` MAJOR (`schemaVersion` 2.0), so no per-story
+      MAJOR ADR was required.
   - The RFC itself is authored by a sibling worker; this epic only
     depends on its approval, it does not produce it.
-- [ ] No story in this epic ships a Web UI change — that is E17's scope;
+- [x] No story in this epic ships a Web UI change — that is E17's scope;
       this epic's DoD is satisfied purely by the `/v2` contracts, their
       tests, and their docs.
-- [ ] `docs/v2_platform/progress.md` updated with E16's status and story
+- [x] `docs/v2_platform/progress.md` updated with E16's status and story
       completion count.
-- [ ] The §18.9 wave-gate entry for the Beta wave is updated to reflect
+- [x] The §18.9 wave-gate entry for the Beta wave is updated to reflect
       E16's four `/v2` surfaces as prerequisites for E17's Control Center
       screens.
+
+## Implementation notes (2026-07-08)
+
+The four `/v2` surfaces shipped as auto-discovered routers (no manual
+registration): `chat_v2.py` (turns + `run.timeline.*` events + role map in
+`api/timeline_roles.py`), `plan_approval_v2.py` (step state machine in
+`plans/step_state.py` + `plan.step.*` events + `e16_s2_plan_state_machine.md`),
+`patches_review_v2.py` (changed-files/diff/override/apply-discard reusing the E0
+patch engine + `patch.changedfiles.listed`/`patch.discarded` events), and
+`extensions_v2.py` + `provider_config_v2.py` (unified catalog + delegated
+enable/disable + agent create/edit + provider status). The event catalog grew
+append-only 20 → 31 types. Contract tests: S1 24, S2 15, S3 15, S4 (ext+provider)
+cover each surface — all green.

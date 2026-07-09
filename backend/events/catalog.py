@@ -128,6 +128,21 @@ class PatchAppliedData(BaseModel):
     deletions: int
 
 
+class PatchChangedFilesListedData(BaseModel):
+    """Payload of ``patch.changedfiles.listed`` (E16-S3)."""
+
+    sessionId: str
+    fileCount: int
+
+
+class PatchDiscardedData(BaseModel):
+    """Payload of ``patch.discarded`` (E16-S3)."""
+
+    sessionId: str
+    patchId: str
+    path: str
+
+
 class ValidationGateData(BaseModel):
     """Shared payload of ``validation.gate.passed`` / ``validation.gate.failed``."""
 
@@ -155,6 +170,35 @@ class RegistryEntryData(BaseModel):
 
     id: str
     version: str
+
+
+class RunTimelineStepData(BaseModel):
+    """Shared payload of the ``run.timeline.*`` live timeline events (E16-S1-T2).
+
+    Each ``run.timeline.*`` type (``planning``, ``analysis``, ``patch``,
+    ``validation``) represents one step of the redesigned UI's live timeline
+    for a turn. Every event carries the actor role that produced it
+    (E16-S1-T3, see :mod:`backend.api.timeline_roles`) and a monospace
+    stdout/log excerpt so the UI can render terminal-style output per step.
+    """
+
+    stepKey: str
+    actorRole: str
+    status: str
+    output: str
+class PlanStepTransitionData(BaseModel):
+    """Shared payload of ``plan.step.*`` step-approval transition events (E16-S2).
+
+    One shared model covers every step in the ``draft -> under_review ->
+    approved | rejected -> executing -> completed`` state machine (§14.5);
+    ``fromState``/``toState`` disambiguate which edge fired.
+    """
+
+    sessionId: str
+    stepIndex: int
+    fromState: str
+    toState: str
+    actor: str
 
 
 @dataclass(frozen=True)
@@ -198,6 +242,17 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition("plugin.removed", "Plugin Host", "tenantId", PluginLifecycleData),
     EventDefinition("agent.registered", "Registries", "tenantId", RegistryEntryData),
     EventDefinition("skill.registered", "Registries", "tenantId", RegistryEntryData),
+    EventDefinition("run.timeline.planning", "Orchestration Engine", "runId", RunTimelineStepData),
+    EventDefinition("run.timeline.analysis", "Orchestration Engine", "runId", RunTimelineStepData),
+    EventDefinition("run.timeline.patch", "Orchestration Engine", "runId", RunTimelineStepData),
+    EventDefinition("run.timeline.validation", "Orchestration Engine", "runId", RunTimelineStepData),
+    EventDefinition("plan.step.reviewing", "Control Plane API", "tenantId", PlanStepTransitionData),
+    EventDefinition("plan.step.approved", "Control Plane API", "tenantId", PlanStepTransitionData),
+    EventDefinition("plan.step.rejected", "Control Plane API", "tenantId", PlanStepTransitionData),
+    EventDefinition("plan.step.executing", "Control Plane API", "tenantId", PlanStepTransitionData),
+    EventDefinition("plan.step.completed", "Control Plane API", "tenantId", PlanStepTransitionData),
+    EventDefinition("patch.changedfiles.listed", "Control Plane API", "runId", PatchChangedFilesListedData),
+    EventDefinition("patch.discarded", "Control Plane API", "runId", PatchDiscardedData),
 )
 
 
