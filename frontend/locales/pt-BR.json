@@ -104,5 +104,47 @@
       "removeStep": "Não foi possível remover a etapa.",
       "executePlan": "Não foi possível executar as etapas aprovadas."
     }
+  },
+  "shell": {
+    "nav": {
+      "groupWorkspace": "Espaço de trabalho",
+      "groupLegacy": "Legado",
+      "items": {
+        "chat": "Chat",
+        "plans": "Planos",
+        "patches": "Patches",
+        "flows": "Fluxos",
+        "sessions": "Sessões",
+        "config": "Configuração",
+        "extensions": "Extensões",
+        "panels": "Painéis"
+      },
+      "extensionsTooltip": "Extensões chegam em uma versão futura"
+    },
+    "sidebar": {
+      "workspaceMeta": "main · espaço de trabalho",
+      "provider": "Provedor",
+      "providerStatus": {
+        "unknown": "Desconhecido",
+        "healthy": "Saudável",
+        "unverified": "Não verificado",
+        "offline": "Offline"
+      },
+      "theme": "Tema",
+      "language": "Idioma"
+    },
+    "header": {
+      "repositoryBranch": "{{repository}} · main",
+      "execution": "Execução",
+      "newSession": "Nova sessão"
+    },
+    "panel": {
+      "label": "Painel de execução",
+      "title": "Execução",
+      "close": "Fechar painel de execução",
+      "emptyState": "A linha do tempo de planejamento, análise, patches e validação aparece aqui em tempo real."
+    },
+    "skipToContent": "Pular para o conteúdo principal",
+    "localeSwitcherLabel": "Mudar idioma para {{locale}}"
   }
 }

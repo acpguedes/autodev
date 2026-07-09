@@ -17,8 +17,8 @@ export interface ShellNavItem {
   key: string;
   /** Route the item links to. */
   href: Route;
-  /** Visible label. */
-  label: string;
+  /** i18n dictionary key of the visible label (resolved at render time). */
+  labelKey: string;
   /** Endpoint whose count is rendered as a badge, when one exists. */
   badge?: NavBadgeSource;
   /** When true, the item is a non-navigable stub (Extensions until E17). */
@@ -33,13 +33,13 @@ export interface ShellNavItem {
  * endpoints added).
  */
 export const SHELL_PRIMARY_NAV: readonly ShellNavItem[] = [
-  { key: "chat", href: "/", label: "Chat" },
-  { key: "plans", href: "/plans" as Route, label: "Plans" },
-  { key: "patches", href: "/patches" as Route, label: "Patches" },
-  { key: "flows", href: "/flows" as Route, label: "Flows" },
-  { key: "sessions", href: "/sessions" as Route, label: "Sessions", badge: "sessions" },
-  { key: "config", href: "/config" as Route, label: "Config" },
-  { key: "extensions", href: "/extensions" as Route, label: "Extensions", badge: "extensions" },
+  { key: "chat", href: "/", labelKey: "shell.nav.items.chat" },
+  { key: "plans", href: "/plans" as Route, labelKey: "shell.nav.items.plans" },
+  { key: "patches", href: "/patches" as Route, labelKey: "shell.nav.items.patches" },
+  { key: "flows", href: "/flows" as Route, labelKey: "shell.nav.items.flows" },
+  { key: "sessions", href: "/sessions" as Route, labelKey: "shell.nav.items.sessions", badge: "sessions" },
+  { key: "config", href: "/config" as Route, labelKey: "shell.nav.items.config" },
+  { key: "extensions", href: "/extensions" as Route, labelKey: "shell.nav.items.extensions", badge: "extensions" },
 ];
 
 /**
@@ -48,7 +48,7 @@ export const SHELL_PRIMARY_NAV: readonly ShellNavItem[] = [
  * is rehomed.
  */
 export const SHELL_LEGACY_NAV: readonly ShellNavItem[] = [
-  { key: "panels", href: "/panels" as Route, label: "Panels" },
+  { key: "panels", href: "/panels" as Route, labelKey: "shell.nav.items.panels" },
 ];
 
 /**
