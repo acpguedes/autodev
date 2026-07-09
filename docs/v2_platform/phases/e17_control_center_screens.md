@@ -144,6 +144,10 @@ Origin: E10-S2, E8-S1, E5.
   fast and non-flaky. It runs alongside the pre-existing
   `frontend/e2e/shell-navigation.spec.ts`, which already covers `/sessions`
   and `/config` inside the three-region shell.
+- **Integration gap (S1↔S4).** The reopen-as-chat link emitted by `SessionRow.tsx`
+  (`/?sessionId=<id>`) is not yet consumed by E17-S1's `frontend/app/page.tsx`;
+  that screen needs `useSearchParams`/`sessionId` handling to resume the session
+  and complete the end-to-end flow. To be resolved at epic merge or as a fast-follow.
 
 ### E17-S5 — Extensions hub screen
 
