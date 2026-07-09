@@ -4,8 +4,9 @@ Authentication is *opt-in*: when the ``AUTODEV_API_TOKEN`` environment variable
 is empty or unset the API stays fully open (preserving the local-first,
 zero-config developer experience and the existing test suite). Once a token is
 configured, every request must carry ``Authorization: Bearer <token>`` — except
-unauthenticated liveness probes (``/health``) and the OpenAPI/docs endpoints,
-which remain reachable so orchestration health checks keep working.
+unauthenticated liveness probes (``/health``), the service descriptor at ``/``,
+and the OpenAPI/docs endpoints, which remain reachable so orchestration health
+checks and API discovery keep working.
 
 The token comparison uses :func:`hmac.compare_digest` to avoid leaking the
 secret through timing side-channels.
@@ -22,7 +23,7 @@ from backend.config.settings import Settings
 # Paths that must stay reachable without a token so health checks and API
 # discovery continue to work when authentication is enabled.
 _PUBLIC_PATHS: frozenset[str] = frozenset(
-    {"/health", "/docs", "/redoc", "/openapi.json"}
+    {"/", "/health", "/docs", "/openapi.json"}
 )
 
 _BEARER_PREFIX = "bearer "

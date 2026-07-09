@@ -112,10 +112,12 @@ def seeded_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[
 
     agent_result = validate_agent_manifest(_agent_manifest_raw())
     assert agent_result.valid, agent_result.errors
+    assert agent_result.manifest is not None
     agent_registry.register(agent_result.manifest, plugin_id="acme/plugin")
 
     skill_result = validate_skill_manifest(_skill_manifest_raw())
     assert skill_result.valid, skill_result.errors
+    assert skill_result.manifest is not None
     skill_registry.register(skill_result.manifest, plugin_id="acme/plugin")
 
     plugin_dir = _write_plugin(tmp_path)

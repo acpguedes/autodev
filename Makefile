@@ -138,9 +138,14 @@ openapi-v2: ## Generate docs/api/openapi_v2.json from the live /v2 FastAPI route
 # --------------------------------------------------------------------------
 # Run (development servers)
 # --------------------------------------------------------------------------
-.PHONY: run-backend run-frontend
+.PHONY: run dev run-backend run-frontend
 
-run-backend: ## Start the FastAPI backend with autoreload
+run: ## Start backend (:8000) + frontend (:3000) together; Ctrl-C stops both
+	HOST=$(HOST) PORT=$(PORT) bash scripts/run_dev.sh
+
+dev: run ## Alias for run
+
+run-backend: ## Start the FastAPI backend with autoreload (API only, no UI)
 	$(PY) -m uvicorn $(APP) --reload --host $(HOST) --port $(PORT)
 
 run-frontend: ## Start the Next.js dev server
@@ -149,13 +154,16 @@ run-frontend: ## Start the Next.js dev server
 # --------------------------------------------------------------------------
 # Container-first E0 workflow
 # --------------------------------------------------------------------------
-.PHONY: container-build container-up container-shell container-test container-check container-down container-logs docker-up docker-down run_secret_scanning security-scan
+.PHONY: container-build container-up container-up-full container-shell container-test container-check container-down container-logs docker-up docker-down run_secret_scanning security-scan
 
 container-build: ## Build the backend dev/test container
 	$(COMPOSE) build backend
 
 container-up: ## Boot the backend container for E0 development
 	$(COMPOSE) up --build backend
+
+container-up-full: ## Boot backend + frontend containers (full dev stack)
+	$(COMPOSE) --profile full up --build
 
 container-shell: ## Open a shell inside the backend dev/test container
 	$(COMPOSE) run --rm backend sh
@@ -189,9 +197,16 @@ docker-down: container-down ## Alias for container-down
 # --------------------------------------------------------------------------
 # CI parity: everything the pipelines run
 # --------------------------------------------------------------------------
-.PHONY: check check-backend check-frontend
+.PHONY: check check-backend check-frontend check-compose
 
-check: check-backend check-frontend ## Run lint + typecheck + tests + build (CI parity)
+check: check-backend check-frontend check-compose ## Run lint + typecheck + tests + build (CI parity)
+
+check-compose: ## Validate the Docker Compose file (skips when docker is absent)
+	@if command -v docker >/dev/null 2>&1; then \
+		$(COMPOSE) config -q && echo "compose config OK"; \
+	else \
+		echo "docker not found; skipping compose check"; \
+	fi
 
 check-backend: lint-backend typecheck-backend test-backend ## Backend CI checks
 

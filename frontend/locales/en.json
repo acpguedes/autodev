@@ -104,5 +104,47 @@
       "removeStep": "Could not remove the step.",
       "executePlan": "Could not execute the approved steps."
     }
+  },
+  "shell": {
+    "nav": {
+      "groupWorkspace": "Workspace",
+      "groupLegacy": "Legacy",
+      "items": {
+        "chat": "Chat",
+        "plans": "Plans",
+        "patches": "Patches",
+        "flows": "Flows",
+        "sessions": "Sessions",
+        "config": "Config",
+        "extensions": "Extensions",
+        "panels": "Panels"
+      },
+      "extensionsTooltip": "Extensions arrive in a later release"
+    },
+    "sidebar": {
+      "workspaceMeta": "main · workspace",
+      "provider": "Provider",
+      "providerStatus": {
+        "unknown": "Unknown",
+        "healthy": "Healthy",
+        "unverified": "Unverified",
+        "offline": "Offline"
+      },
+      "theme": "Theme",
+      "language": "Language"
+    },
+    "header": {
+      "repositoryBranch": "{{repository}} · main",
+      "execution": "Execution",
+      "newSession": "New session"
+    },
+    "panel": {
+      "label": "Execution panel",
+      "title": "Execution",
+      "close": "Close execution panel",
+      "emptyState": "The planning, analysis, patch and validation timeline appears here in real time."
+    },
+    "skipToContent": "Skip to main content",
+    "localeSwitcherLabel": "Switch language to {{locale}}"
   }
 }

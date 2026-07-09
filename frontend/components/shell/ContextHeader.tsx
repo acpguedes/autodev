@@ -6,6 +6,7 @@ import useSWR from "swr";
 
 import { Button } from "@/components/ui/button";
 import { getRuntimeConfig } from "@/lib/api";
+import { useTranslations } from "@/lib/i18n";
 
 import { useShell } from "./ShellProvider";
 
@@ -20,6 +21,7 @@ const HEADER_HEIGHT = 64;
  * @returns The contextual header.
  */
 export function ContextHeader(): React.JSX.Element {
+  const { t } = useTranslations();
   const { header, panelOpen, togglePanel, triggerNewSession } = useShell();
   const config = useSWR("shell:runtime-config", getRuntimeConfig, {
     shouldRetryOnError: false,
@@ -46,7 +48,9 @@ export function ContextHeader(): React.JSX.Element {
         {repositoryLabel ? (
           <span className="hidden items-center gap-2 rounded-ds-md border border-ds-line bg-ds-bg-2 px-2.5 py-1.5 text-[12px] text-ds-fg-2 sm:flex">
             <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-ds-fg-3" />
-            <span className="max-w-[16rem] truncate">{repositoryLabel} · main</span>
+            <span className="max-w-[16rem] truncate">
+              {t("shell.header.repositoryBranch", { repository: repositoryLabel })}
+            </span>
           </span>
         ) : null}
 
@@ -59,12 +63,12 @@ export function ContextHeader(): React.JSX.Element {
           className="gap-1.5"
         >
           <PanelRight className="h-4 w-4" aria-hidden="true" />
-          <span className="hidden sm:inline">Execution</span>
+          <span className="hidden sm:inline">{t("shell.header.execution")}</span>
         </Button>
 
         <Button type="button" size="sm" onClick={triggerNewSession} className="gap-1.5">
           <Plus className="h-4 w-4" aria-hidden="true" />
-          New session
+          {t("shell.header.newSession")}
         </Button>
       </div>
     </header>

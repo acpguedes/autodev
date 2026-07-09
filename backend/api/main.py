@@ -4,11 +4,13 @@
 
 from __future__ import annotations
 
+import html as _html
+
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, Final, List
 
 import sys
 
@@ -21,8 +23,10 @@ from dotenv import load_dotenv
 _ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
 load_dotenv(_ENV_PATH, override="pytest" not in sys.modules)
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from backend.api.security import require_api_token
@@ -220,12 +224,33 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     yield
 
 
+# Single source of truth for the API name/version, shared between the FastAPI
+# metadata (OpenAPI ``info``) and the ``GET /`` service descriptor.
+API_TITLE: Final[str] = "AutoDev Orchestrator"
+API_VERSION: Final[str] = "0.3.0"
+
 app = FastAPI(
-    title="AutoDev Orchestrator",
-    version="0.3.0",
+    title=API_TITLE,
+    version=API_VERSION,
     lifespan=lifespan,
+    # The default /docs loads Swagger UI from cdn.jsdelivr.net through an
+    # inline <script>, both blocked by the strict CSP (and broken offline).
+    # A self-hosted, CSP-clean /docs route is defined below instead.
+    docs_url=None,
+    redoc_url=None,
     # Global gate — a no-op unless AUTODEV_API_TOKEN is configured.
     dependencies=[Depends(require_api_token)],
+)
+
+# Vendored same-origin assets (Swagger UI — see static/swagger/VERSION).
+# Note: Starlette mounts are sub-applications, so the app-level
+# require_api_token dependency does NOT apply here — static assets stay
+# reachable when a token is configured, which /docs needs to render. This
+# behavior is pinned by backend/tests/test_api_docs_selfhosted.py.
+app.mount(
+    "/static",
+    StaticFiles(directory=str(Path(__file__).resolve().parent / "static")),
+    name="static",
 )
 
 
@@ -252,6 +277,121 @@ try:
 except Exception:
     import logging as _logging
     _logging.getLogger(__name__).exception("Router auto-loader failed — continuing without plugin routers")
+
+
+# CSP-clean pointer page for humans who browse the API origin directly: no
+# script, no style, no external assets — only same-origin links plus the UI
+# URL, so it renders under the unchanged ``default-src 'self'`` policy. This
+# is deliberately not a product UI (v2 reference §2.13): the backend only
+# describes and points to the real frontend.
+_FRONT_DOOR_HTML_TEMPLATE: Final[str] = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+</head>
+<body>
+<h1>{title}</h1>
+<p>This origin serves the AutoDev control-plane API, not the product UI.
+Open the <a href="{ui_url}">Control Center</a> to use AutoDev, browse the
+<a href="/docs">API documentation</a>, or check the
+<a href="/health">health endpoint</a>.</p>
+</body>
+</html>
+"""
+
+
+def _prefers_html(accept_header: str) -> bool:
+    """Return ``True`` when the ``Accept`` header asks for an HTML document.
+
+    Uses a deliberately small heuristic instead of full RFC 9110 content
+    negotiation: the header is split on commas and each media type is compared
+    (ignoring ``q=`` and other parameters) against the HTML types browsers
+    send. API clients sending ``*/*`` or ``application/json`` get JSON.
+
+    Args:
+        accept_header: Raw ``Accept`` header value (may be empty).
+
+    Returns:
+        ``True`` if ``text/html`` or ``application/xhtml+xml`` is offered.
+    """
+    offered = {part.split(";")[0].strip().lower() for part in accept_header.split(",")}
+    return bool(offered & {"text/html", "application/xhtml+xml"})
+
+
+@app.get("/", tags=["meta"], response_model=None, include_in_schema=True)
+def service_descriptor(request: Request) -> Response:
+    """Describe the service and point clients at the UI, docs, and health.
+
+    Content-negotiated front door for the API origin: API clients receive a
+    JSON service descriptor, while browsers (``Accept: text/html``) receive a
+    minimal CSP-clean pointer page linking to the Control Center UI.
+
+    Args:
+        request: Incoming request, used for ``Accept``-header negotiation.
+
+    Returns:
+        A ``JSONResponse`` descriptor or an ``HTMLResponse`` pointer page.
+    """
+    # Read settings per-request so AUTODEV_UI_URL overrides (and test cache
+    # resets) take effect without a process restart.
+    ui_url = get_settings().autodev_ui_url
+    if _prefers_html(request.headers.get("accept", "")):
+        page = _FRONT_DOOR_HTML_TEMPLATE.format(
+            title=_html.escape(API_TITLE),
+            ui_url=_html.escape(ui_url, quote=True),
+        )
+        return HTMLResponse(content=page)
+    return JSONResponse(
+        content={
+            "name": API_TITLE,
+            "version": API_VERSION,
+            "description": (
+                "API-first control plane for AutoDev. The product UI is a "
+                "separate Next.js app served at ui_url."
+            ),
+            "ui_url": ui_url,
+            "docs_url": "/docs",
+            "health_url": "/health",
+            "openapi_url": "/openapi.json",
+            "api": {"v2_base": "/v2"},
+        }
+    )
+
+
+# Self-hosted Swagger UI page (E18-S2). Every reference is same-origin and
+# the only scripts are external files under /static, so the page renders
+# under the unchanged ``default-src 'self'`` CSP and with zero network egress.
+# fastapi.openapi.docs.get_swagger_ui_html is deliberately NOT used: it boots
+# through an inline <script>, which the CSP blocks.
+_SWAGGER_UI_HTML: Final[str] = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoDev Orchestrator — API docs</title>
+<link rel="stylesheet" href="/static/swagger/swagger-ui.css">
+<link rel="icon" type="image/png" href="/static/swagger/favicon-32x32.png">
+</head>
+<body>
+<div id="swagger-ui"></div>
+<script src="/static/swagger/swagger-ui-bundle.js"></script>
+<script src="/static/swagger/swagger-ui-init.js"></script>
+</body>
+</html>
+"""
+
+
+@app.get("/docs", include_in_schema=False)
+def swagger_ui_page() -> HTMLResponse:
+    """Serve the self-hosted, CSP-compliant Swagger UI page.
+
+    Returns:
+        The static HTML shell that loads the vendored Swagger UI assets from
+        ``/static/swagger`` and points them at ``/openapi.json``.
+    """
+    return HTMLResponse(content=_SWAGGER_UI_HTML)
 
 
 @app.get("/health", tags=["meta"])

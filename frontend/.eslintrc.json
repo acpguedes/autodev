@@ -7,7 +7,11 @@
   },
   "overrides": [
     {
-      "files": ["app/page.tsx", "components/ExecutionConsolePanel.tsx"],
+      "files": [
+        "app/page.tsx",
+        "components/ExecutionConsolePanel.tsx",
+        "components/shell/**/*.tsx"
+      ],
       "rules": {
         "i18next/no-literal-string": "error"
       }
