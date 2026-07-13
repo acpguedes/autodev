@@ -107,7 +107,7 @@ Harness & loop engineering:
   agents; browser-in-the-loop evidence.
 - **Ralph loop** (G. Huntley) — fresh context per iteration, all state
   re-hydrated from disk, an *external validator* gates success.
-  <https://ghuntley.com/ralph/>
+  <https://ghuntley.com/loop/>
 - **OSS references** — OpenHands (controller/event-stream, Docker per task)
   <https://github.com/All-Hands-AI/OpenHands>; SWE-agent (Agent-Computer
   Interface: interface design moves resolution at fixed model capability)
@@ -213,6 +213,56 @@ in the E22 ADR).
 4. **Wave** — delivered as **v2.1 — Spec & Harness** (§18.9), after the
    v2.0 GA gate; E20-S1/S2 (contracts + registry) may start earlier since
    they touch no v2.0 exit criterion.
+
+## References (research annex)
+
+Consolidated sources from the July 2026 research pass, beyond those cited
+inline above.
+
+Harness engineering & platform teardowns:
+
+- Anthropic — Effective harnesses for long-running agents:
+  <https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents>
+- Anthropic — Building a C compiler with a team of parallel Claudes:
+  <https://www.anthropic.com/engineering/building-c-compiler>
+- Claude Agent SDK — How the agent loop works:
+  <https://code.claude.com/docs/en/agent-sdk/agent-loop>
+- Claude Code — Parallel sessions with worktrees:
+  <https://code.claude.com/docs/en/worktrees>
+- OpenAI — Harness engineering: <https://openai.com/index/harness-engineering/>
+- OpenAI — Unrolling the Codex agent loop:
+  <https://openai.com/index/unrolling-the-codex-agent-loop/>
+- Cursor — Introducing Cursor 2.0 and Composer:
+  <https://cursor.com/blog/2-0>
+- Google Antigravity: <https://antigravity.google/> and
+  <https://developers.googleblog.com/build-with-google-antigravity-our-new-agentic-development-platform/>
+- LangChain — The Anatomy of an Agent Harness:
+  <https://www.langchain.com/blog/the-anatomy-of-an-agent-harness>
+
+Harness taxonomy & evaluation discipline:
+
+- Agent Harness Engineering: A Survey (OpenReview, ETCLOVG taxonomy):
+  <https://openreview.net/pdf?id=eONq7FdiHa>
+- Stop Comparing LLM Agents Without Disclosing the Harness (arXiv):
+  <https://arxiv.org/pdf/2605.23950>
+- From Question Answering to Task Completion — Agent System and Harness
+  Design (arXiv): <https://arxiv.org/html/2606.20683v1>
+
+Loop engineering:
+
+- vercel-labs/ralph-loop-agent:
+  <https://github.com/vercel-labs/ralph-loop-agent>
+- Loop-engineering design patterns (2026):
+  <https://datasciencedojo.com/blog/loop-engineering-design-patterns/>
+- Ralph loops & ruthless context resets (LinearB/HumanLayer):
+  <https://linearb.io/blog/dex-horthy-humanlayer-rpi-methodology-ralph-loop>
+
+Worktree-isolation gotchas to design around (E23-S4):
+
+- git config lock contention across parallel worktrees:
+  <https://github.com/anthropics/claude-code/issues/34645>
+- per-worktree access isolation:
+  <https://github.com/anthropics/claude-code/issues/34370>
 
 ## Open questions
 
