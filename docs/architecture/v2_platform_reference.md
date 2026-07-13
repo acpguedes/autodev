@@ -40,6 +40,7 @@ componentes seguem o glossário da seção 3.
 - [19. Governança, Versionamento e Compatibilidade](#19-governança-versionamento-e-compatibilidade)
 - [20. Métricas de Sucesso e KPIs](#20-métricas-de-sucesso-e-kpis)
 - [21. Apêndices — Templates e Checklists](#21-apêndices--templates-e-checklists)
+- [22. Spec & Harness Layer (v2.1)](#22-spec--harness-layer-v21)
 
 ---
 
@@ -6029,6 +6030,117 @@ screenshots in `Frontend redesign proposal.zip` (`shots/`).)*
 
 ---
 
+#### 18.7.12 E20 — Spec Core: Constitution, Spec Artifacts & Registry
+
+*(New epic, wave "v2.1 — Spec & Harness", authored in English — architecture
+narrative in §22.1–§22.3; full story/subtask detail in
+`docs/v2_platform/phases/e20_spec_core.md`; layer proposal in RFC-007. E18 —
+Control Center Front Door — and the proposed E19 — visual-parity audit — are
+tracked in `docs/v2_platform/` only, hence the numbering gap in this section.)*
+
+| Field | Description |
+| --- | --- |
+| **Objective** | Make specifications first-class, versioned platform objects: a project-wide constitution (durable steering principles) plus per-feature `spec.yaml` documents (requirements in EARS grammar with stable IDs, design, acceptance scenarios, task refs) in a tenant-scoped Spec Registry with an immutable-published lifecycle, a requirement-scoped delta/change-proposal model for brownfield edits, a `/v2/specs` API, and a "Spine" Context Provider delivering scoped spec bundles to agents. |
+| **Key result** | A spec is authored, validated against a published schema, versioned, and queried through `/v2/specs`; parallel change proposals touching different requirements do not conflict; agent runs receive the Spine bundle through the E7 `ContextComposer`. |
+
+Stories (detail in the phase doc):
+
+- **E20-S1 — `spec.yaml` contract & constitution model** (deps: E1-S1, RFC-007)
+- **E20-S2 — Spec Registry & lifecycle** (`draft→under_review→approved→published`, `spec.*` events; deps: E20-S1, E8-S1, E9-S3)
+- **E20-S3 — Delta / change-proposal model** (ADDED/MODIFIED/REMOVED, propose→apply→sync→archive; deps: E20-S2)
+- **E20-S4 — `/v2/specs` API, MCP exposure & constitution interop** (`AGENTS.md` export; deps: E20-S2/S3, E9-S1, E9-S4)
+- **E20-S5 — Spec Context Provider ("the Spine")** (deps: E20-S2, E7-S4)
+
+#### 18.7.13 E21 — Spec Compiler: Scoping, Decomposition & Traceability
+
+*(New epic, wave "v2.1 — Spec & Harness", authored in English — §22.4;
+`docs/v2_platform/phases/e21_spec_compiler.md`; RFC-007.)*
+
+| Field | Description |
+| --- | --- |
+| **Objective** | A governed, inspectable path from intent to executable work: project intake/scoping (greenfield vs. brownfield, pre-spec prototype escape hatch), a Spec Compiler decomposing approved requirements into an approvable design + task dependency graph scheduled in waves, compilation of tasks into ordinary `flow.yaml` runs, and a persisted requirement↔task↔run↔patch↔test↔eval traceability graph. |
+| **Key result** | From an approved spec the platform produces a reviewable task graph (every task carries its requirement IDs), executes it as Flow Engine runs with Selector-chosen agents, and answers via API which runs/patches/tests implement a requirement and which requirements a patch touches. |
+
+Stories (detail in the phase doc):
+
+- **E21-S1 — Project intake & scoping artifact** (deps: E20-S2, E7)
+- **E21-S2 — Spec Compiler: requirements → design → tasks** (dependency graph + waves, multi-variant; deps: E20-S2, E16-S2 pattern, E2)
+- **E21-S3 — Task-to-flow compilation & agent binding** (deps: E21-S2, E3, E5)
+- **E21-S4 — Traceability graph & queries** (`GET /v2/specs/{id}/trace`; deps: E21-S3, E8-S1)
+
+#### 18.7.14 E22 — Spec Verification: Executable Acceptance & Drift Enforcement
+
+*(New epic, wave "v2.1 — Spec & Harness", authored in English — §22.5;
+`docs/v2_platform/phases/e22_spec_verification.md`; RFC-007.)*
+
+| Field | Description |
+| --- | --- |
+| **Objective** | Keep the spec authoritative mechanically: acceptance criteria compiled to runnable sandbox tests, requirement-targeted evals (additive `eval.yaml` extension), Intent-Graph-vs-Evidence-Graph drift detection as a blocking `validation_gate`, same-change spec+code coupling with HARD/SOFT/AUTO tiers, and human-legible verification-evidence bundles. |
+| **Key result** | "Requirement satisfied" is a computed, evidence-backed state (scenarios pass in the sandbox, eval thresholds hold, no open drift), and a patch changing spec'd behavior without a matching spec delta is blocked or explicitly waived. |
+
+Stories (detail in the phase doc):
+
+- **E22-S1 — Acceptance-criteria compiler** (Given/When/Then → sandbox tests, generation stamps; deps: E20-S1, E21-S4, E14-S4)
+- **E22-S2 — Spec-linked evals** (`target: requirement`; deps: E20-S1, E21-S4, E12, E5-S3/S4)
+- **E22-S3 — Drift detection: Intent Graph vs Evidence Graph** (deps: E20-S1, E7-S1, E12-S2)
+- **E22-S4 — Same-change spec+code coupling & gate tiers** (deps: E22-S3, E20-S3, E14-S1/S4)
+- **E22-S5 — Verification artifacts** (evidence bundles, optional browser-in-the-loop; deps: E22-S1, E8-S3, E14-S4)
+
+#### 18.7.15 E23 — Harness Engine & Loop Engineering
+
+*(New epic, wave "v2.1 — Spec & Harness", authored in English — §22.6;
+`docs/v2_platform/phases/e23_harness_engine.md`; RFC-007.)*
+
+| Field | Description |
+| --- | --- |
+| **Objective** | The agent harness as a named, governed, reusable unit: `harness.yaml` binding spec + flow + loop policy + verification gates + budgets with typed result states; pluggable loop policies (evaluator-optimizer, fresh-context, circuit-breaker, heartbeat); durable loop state (gate checklist + progress journal) with resume/fork; parallel isolation with task claiming and a candidate-race pattern; `/v2/harnesses` observability. |
+| **Key result** | A harness run iterates plan→execute→verify against spec-derived gates until an external validator declares success or a typed stop state is reached; the run is crash-resumable, forkable, and every iteration's cost, trace, and evidence are inspectable. |
+
+Stories (detail in the phase doc):
+
+- **E23-S1 — `harness.yaml` contract** (typed result states, `harness.*` events; deps: E20-S1, E22)
+- **E23-S2 — Loop policies (pluggable)** (new `loop_policy` extension point; deps: E23-S1, E3, E4, E14)
+- **E23-S3 — Durable loop state & session lifecycle** (checklist/journal, resume/fork; deps: E23-S2, E3-S3, E8)
+- **E23-S4 — Parallel isolation, task claiming & candidate race** (deps: E23-S2/S3, E14-S4, E0-S6, E5)
+- **E23-S5 — Harness observability & `/v2/harnesses` API** (deps: E23-S1, E9-S1, E9-S2)
+
+#### 18.7.16 E24 — Spec Studio: AI-Assisted Spec Builder (UI)
+
+*(New epic, wave "v2.1 — Spec & Harness", authored in English — §22.7;
+`docs/v2_platform/phases/e24_spec_studio.md`; RFC-007.)*
+
+| Field | Description |
+| --- | --- |
+| **Objective** | The operator surface of the spec-driven layer inside the Control Center: constitution wizard, AI-assisted spec editor (EARS assist, clarify loop, multi-variant comparison), task board with dependency graph/waves and approval gates, traceability/drift/evidence dashboards, and a visual harness composer — all exclusively over `/v2`. |
+| **Key result** | An operator takes a project from empty to executing without leaving the UI, with authoring itself assisted by platform agents. |
+
+Stories (detail in the phase doc):
+
+- **E24-S1 — Constitution wizard & steering editor** (deps: E20-S1/S4, E15, E17)
+- **E24-S2 — Spec editor: EARS assist & clarify loop** (deps: E20-S2, E21-S2, E17)
+- **E24-S3 — Task board: dependency graph, waves & approval gates** (deps: E21, E16-S2, E17)
+- **E24-S4 — Traceability, drift & evidence dashboards** (deps: E21-S4, E22-S3/S4/S5, E17)
+- **E24-S5 — Harness composer** (deps: E23, E17-S6)
+
+#### 18.7.17 E25 — Extension Studio: AI-Assisted Agent/Skill/Plugin Development
+
+*(New epic, wave "v2.1 — Spec & Harness", authored in English — §22.8;
+`docs/v2_platform/phases/e25_extension_studio.md`; RFC-007.)*
+
+| Field | Description |
+| --- | --- |
+| **Objective** | Build the platform's own extensions (agents, skills, plugins, flows, evals) inside the platform, assisted by AI and governed by the spec/harness machinery: `/v2`-exposed SDK scaffolding, spec-driven authoring where a builder harness generates manifest + code + contract tests, activation gated on contract tests/evals/sandboxed runs, and a publish path to the local registry (marketplace via E13). |
+| **Key result** | From a described need to a published, gate-evidenced extension without leaving the platform — the extension only activates after its gates pass in the sandbox. |
+
+Stories (detail in the phase doc):
+
+- **E25-S1 — Scaffolding service & templates** (deps: E1-S4, E9-S1, E17-S5)
+- **E25-S2 — Spec-driven extension authoring (dogfooding)** (deps: E20, E22-S1, E23)
+- **E25-S3 — Activation gates** (deps: E25-S2, E12-S2, E14-S4, E1-S3)
+- **E25-S4 — Publish path** (deps: E25-S3, E1-S5; marketplace half gated on E13)
+
+---
+
 ### 18.8 Dependências entre épicos
 
 A tabela abaixo consolida as dependências de nível de épico (predecessores diretos).
@@ -6053,6 +6165,12 @@ A tabela abaixo consolida as dependências de nível de épico (predecessores di
 | **E15 — Frontend Redesign: Design Language & App Shell** *(new, English)* | E10 | Enables E16, E17, E14-S5 (governed-execution UI reuses the E15 shell). |
 | **E16 — Frontend Redesign: Control-Plane API Enablement** *(new, English)* | E9, E3, E8-S1 | Enables E17, E14-S5; API-first (§2.13) — ships `/v2` contracts ahead of the E17 screens. |
 | **E17 — Frontend Redesign: Control Center Screens** *(new, English)* | E15, E16 | Enables E14-S5 (governed-execution Web UX renders inside these screens). |
+| **E20 — Spec Core: Constitution, Spec Artifacts & Registry** *(new, English, wave v2.1)* | E1, E8-S1, E9, E16-S2 (pattern) | First epic of the "v2.1 — Spec & Harness" wave; enables E21–E25. |
+| **E21 — Spec Compiler: Scoping, Decomposition & Traceability** *(new, English, wave v2.1)* | E20, E3, E5, E7 | Enables E22 (verification targets), E23 (harness runs compiled flows), E24-S3. |
+| **E22 — Spec Verification: Executable Acceptance & Drift Enforcement** *(new, English, wave v2.1)* | E20, E21, E12, E14-S1–S4, E7-S1 | Verification gates are the harness's reward signal (E23) and feed the E24-S4 dashboards. |
+| **E23 — Harness Engine & Loop Engineering** *(new, English, wave v2.1)* | E3, E4, E14, E20, E22 | Enables E24-S5 (composer) and E25-S2 (builder harness). |
+| **E24 — Spec Studio (UI)** *(new, English, wave v2.1)* | E15–E17, E20–E23 | Operator surface of the v2.1 wave. |
+| **E25 — Extension Studio** *(new, English, wave v2.1)* | E1, E6, E12-S2, E20, E23; E13 (publish half) | AI-assisted extension development; feeds the E13 marketplace. |
 
 #### Diagrama de sequenciamento
 
@@ -6140,6 +6258,14 @@ O sequenciamento é entregue em três ondas cumulativas. Cada onda tem **conteú
 | **Objetivo** | Abrir o Marketplace e declarar disponibilidade geral com garantias de SLO, segurança e suporte a upgrade. |
 | **Entra** | **E13** completo (publicação/instalação, assinatura/verificação, prontidão de GA); hardening final; migração de upgrade da v1; notas de release. |
 | **Critérios de saída** | (1) Publicação e instalação de plugin verificado (assinatura + SBOM) end-to-end; (2) SLO 99.9% do Control Plane e p95 de leitura < 300 ms sob teste de carga (≥ 100 runs concorrentes por nó de referência); (3) RPO ≤ 5 min / RTO ≤ 30 min comprovados em produção; (4) checklist de GA assinado (SLOs, segurança, docs, backups, evals); (5) caminho de upgrade v1→v2 documentado e testado; (6) release GA publicado com notas. |
+
+#### v2.1 — "Spec & Harness" *(new wave, authored in English)*
+
+| Item | Descrição |
+| --- | --- |
+| **Objetivo** | Add the spec-driven development + agent-harness layer on top of the GA platform: specs as first-class governed artifacts, a compiler from requirements to executable work, mechanical verification (executable acceptance + drift enforcement), the harness as a named loop-engineering unit, and the two Studio surfaces (spec authoring, extension building). See §22 and RFC-007. |
+| **Entra** | **E20** (Spec Core: constitution, `spec.yaml`, registry, deltas, `/v2/specs`, Spine context provider); **E21** (Spec Compiler: scoping, requirements→design→tasks with waves, task-to-flow compilation, traceability graph); **E22** (Spec Verification: acceptance compiler, requirement-targeted evals, drift gate, spec+code coupling tiers, evidence bundles); **E23** (Harness Engine: `harness.yaml`, loop policies, durable loop state, parallel isolation/race, `/v2/harnesses`); **E24** (Spec Studio UI); **E25** (Extension Studio). E20-S1/S2 may start before the GA gate (additive, no v2.0 exit criterion touched); E22/E23 execution-dependent stories are gated on **E14** and **E12** landing first. |
+| **Critérios de saída** | (1) A spec authored (or imported) through `/v2/specs` compiles to an approved task graph and executes end to end as Flow Engine runs with full requirement↔task↔run↔patch traceability; (2) acceptance scenarios of a reference project run as real sandbox tests and gate "requirement satisfied" (no model self-approval anywhere); (3) the drift gate blocks a patch that changes spec'd behavior without a matching spec delta (HARD tier) and records waivers; (4) a harness run demonstrates every typed result state, crash-resume, and a candidate race with a gate/eval-chosen winner; (5) an extension is built from an extension spec to a published, gate-evidenced version entirely inside the platform; (6) every new extension point (`loop_policy`, spec context provider profile) has a green mandatory contract test; (7) both Studios operate exclusively over `/v2` (API-first, §2.13) and meet WCAG 2.2 AA. |
 
 ---
 
@@ -7153,3 +7279,184 @@ Todos os itens aplicáveis devem estar marcados para o item ser considerado conc
 ## Métricas de sucesso
 - <Métrica de produto/técnica que valida o item, ex.: taxa de sucesso de runs, redução de p95, score de eval ≥ threshold>.
 ```
+
+---
+
+## 22. Spec & Harness Layer (v2.1)
+
+*(New section, authored in English per the convention for post-§18.6 additions.
+This is the architecture narrative for the "v2.1 — Spec & Harness" wave — epics
+E20–E25, roadmap entries §18.7.12–§18.7.17, wave definition §18.9, layer
+proposal RFC-007. It is additive: nothing here modifies the contracts defined
+in §5–§14.)*
+
+### 22.1 Purpose and posture
+
+The v2.0 platform executes work (flows, budgets, checkpoints, approvals,
+patches, sandbox validation) but has no first-class representation of
+**intent**. This layer adds it: **specifications** (what the system shall do,
+in a testable grammar) and **harnesses** (how agents iterate until the
+specification is mechanically satisfied) become governed platform artifacts
+with the same discipline as flows and evals — SemVer, published schemas,
+registries, contract tests, `/v2` surfaces, and append-only events.
+
+Posture (RFC-007): **spec-anchored, code-coupled, drift-enforced**. Code
+remains the executable source of truth; the spec is a verified contract kept
+authoritative by three mechanisms — executable acceptance criteria, a blocking
+drift gate, and same-change spec+code coupling. The layer explicitly rejects
+spec-first (specs that go stale after kickoff) and spec-as-source (code as a
+generated artifact) postures.
+
+Two design laws govern the layer:
+
+1. **External validation gates "done".** A harness run reaches `success` only
+   through gate verdicts computed by the platform (tests, evals, drift
+   checks) — never through model self-assessment.
+2. **Reuse, don't reinvent.** The Flow Engine (§7) is the loop runtime, the
+   Evaluation Service (§9.4) is the scoring engine, the E14 runners execute
+   verification, the E16-S2 state machine gates approvals, and the E7
+   `ContextComposer` delivers spec context. The layer adds contracts and
+   policy on top of these seams, not parallel runtimes.
+
+### 22.2 Constitution and `spec.yaml` (E20)
+
+- **Constitution** — a project-scoped, versioned document of durable steering
+  principles (stack choices, conventions, non-negotiables), size-bounded and
+  written as imperatives. It sits *above* any feature spec, is injected into
+  agent context, and is exported as `AGENTS.md`/`CLAUDE.md` so external agents
+  (Cursor, Claude Code, Codex) natively read the same rules.
+- **`spec.yaml`** — a per-feature document: `requirements[]` in a constrained
+  EARS grammar (`WHEN <condition> THE SYSTEM SHALL <behavior>`, one behavior
+  per clause, stable IDs `R-<n>`); `design` split into **public contract**
+  (visible to dependents) and **internal design** (private — Parnas
+  information hiding, which later scopes the drift boundary); `acceptance[]`
+  Given/When/Then scenarios bound to requirement IDs; and `tasks[]` refs
+  filled by the compiler.
+
+Both are validated against published JSON schemas and exported through the
+SDK, exactly like `flow.yaml`/`eval.yaml`.
+
+### 22.3 Spec Registry, lifecycle and deltas (E20)
+
+Specs live in a tenant-scoped **Spec Registry** (State Store, dual-backend,
+RLS) with the lifecycle `draft → under_review → approved → published`;
+published versions are **immutable** (a change is a new SemVer version), and
+`spec.*` events extend the catalog append-only. Brownfield iteration uses a
+**change-proposal** artifact: requirement-scoped deltas marked
+ADDED/MODIFIED/REMOVED with a `propose → apply → sync → archive` lifecycle;
+two in-flight proposals conflict only when they touch the same requirement ID.
+A **Spec Context Provider** ("the Spine") assembles the scoped bundle an agent
+actually needs — target spec + one hop of dependency public contracts +
+constitution slices — instead of whole-corpus dumps.
+
+### 22.4 Spec Compiler and traceability (E21)
+
+Intake starts with a **scoping artifact** (greenfield/brownfield, constraints,
+explicit out-of-scope, optional time-boxed pre-spec prototype — SDD is
+execution, not discovery). The **Spec Compiler** then turns approved
+requirements into an approvable design and a **task dependency graph**: every
+task declares the requirement IDs it implements, cycles are rejected,
+uncovered requirements are reported at compile time, and independent tasks are
+scheduled concurrently within sequential **waves**. Approved graphs compile to
+ordinary `flow.yaml` runs (the Flow Engine is untouched); the Router/Selector
+(§9) binds agents per task, and every run carries `spec_id`/`task_id`
+correlation. The **traceability graph** persists
+requirement↔task↔run↔patch↔test↔eval edges append-only and answers coverage
+("which requirements are unsatisfied?") and impact ("which requirements does
+this patch touch?") queries through `GET /v2/specs/{id}/trace`.
+
+### 22.5 Mechanical verification (E22)
+
+Four mechanisms keep spec and code aligned without relying on discipline:
+
+- **Acceptance compiler** — `acceptance[]` scenarios compile to runnable tests
+  (pluggable per stack; Python/pytest first) executed by the E14-S4 validation
+  runner in the sandbox; emitted files carry generation stamps so hand edits
+  are detectable.
+- **Requirement-targeted evals** — `eval.yaml` gains the additive target
+  `{type: requirement, ref: <spec>#R-<n>}`; "requirement satisfied" requires
+  its eval thresholds to hold, scored by the existing Evaluation Service.
+- **Drift gate** — an **Intent Graph** (components, public contracts, declared
+  dependencies — derived from specs) is compared with an **Evidence Graph**
+  (modules, exported symbols, import edges — derived via the E7 tree-sitter
+  registry); orphan code, ghost specs, undeclared dependencies, and
+  boundary-crossing imports are findings, enforced by a `validation_gate`
+  plugin.
+- **Same-change coupling with tiers** — a patch touching spec-owned code
+  requires the matching spec delta in the same change, enforced at
+  **HARD/SOFT/AUTO** tiers by blast radius (public contract / internal design
+  / leaf), with recorded, auditable waivers. The AUTO tier is the anti-ceremony
+  escape hatch for trivial changes — bypass is a waiver, never silence.
+
+Verification produces **evidence bundles** (diffs, test results, eval scores,
+drift findings, optional browser-in-the-loop screenshots/recordings via the
+Artifact Store) — the human review surface, replacing raw-log reading.
+
+### 22.6 Harness Engine (E23)
+
+A **harness** is a named, versioned unit binding
+`{spec, flow, loop policy, gates[], budgets, context strategy}` with **typed
+result states**: `success | max_iterations | max_budget | stalled |
+needs_human | error`. Each iteration is an ordinary Flow Engine run
+(checkpointed, budgeted, traced); the harness layer decides only whether and
+how to start the next iteration.
+
+- **Loop policies** (new `loop_policy` extension point): *evaluator-optimizer*
+  (a second agent returns structured feedback), *fresh-context* (each
+  iteration starts clean and re-hydrates from durable state — no hidden
+  conversational memory), *circuit-breaker* (no gate progress across N
+  iterations → `stalled`), *heartbeat* (wake on schedule/event). Loop policies
+  are the **outer** loop; §8's reasoning strategies remain the **inner** loop
+  (boundary fixed in the E23 ADR, mirroring ADR-007/ADR-008 discipline).
+- **Durable loop state** — a gate/feature checklist where every item starts
+  *failing* (only external verification flips it) plus an append-only progress
+  journal; a mandatory session-init sequence (checklist + journal tail + repo
+  state) precedes any new work; runs resume after crashes and can be forked.
+- **Parallelism** — per-task worktree/container isolation with lock-based task
+  claiming (no duplicate work), and the **candidate race**: the same task run
+  as N candidates (different agent/model/strategy via the Selector) with the
+  winner chosen by gate/eval score, decision traced.
+- **Observability** — `/v2/harnesses` (registry, runs, per-iteration
+  breakdown), per-iteration OTel traces and cost metrics, `harness.*` events
+  streamed over the E9-S2 transport.
+
+### 22.7 Spec Studio (E24)
+
+The operator surface of the layer inside the Control Center (E15–E17 shell and
+patterns): constitution wizard and steering editor; an AI-assisted spec editor
+(free-text intent → well-formed EARS clauses, a **clarify loop** that resolves
+ambiguities before review, multi-variant design comparison); the task board
+(dependency DAG, waves, phase approvals via the E16-S2 machine); traceability,
+drift, and evidence dashboards; and a visual **harness composer** extending the
+flow builder. Authoring agents are ordinary traced platform agents — the
+platform dogfoods its own agent framework to write its specs. Everything
+operates exclusively over `/v2` (§2.13).
+
+### 22.8 Extension Studio (E25)
+
+AI-assisted development of the platform's own extensions, governed by the same
+machinery: SDK scaffolding exposed via `/v2`; an **extension-spec** profile
+whose EARS requirements describe the extension's typed IO behavior and whose
+acceptance scenarios become its contract tests; a packaged **builder harness**
+that iterates generate → test-in-sandbox until gates pass or a typed stop
+state; **activation gates** (schema validation → contract tests → sandboxed
+test-run → optional evals, plus explicit human review of requested
+permissions) that fail closed; and a publish path to the tenant registry now
+and the E13 marketplace (signing/SBOM) when it lands.
+
+### 22.9 Composition summary and layer acceptance criteria
+
+| This layer adds | It composes with (unchanged) |
+| --- | --- |
+| `constitution`, `spec.yaml`, change proposals, Spec Registry, `/v2/specs`, `spec.*` events | State Store/tenancy (§13, ADR-010), event catalog (E9-S3), approval state machine (E16-S2) |
+| Spec Compiler, task graph, waves, traceability edges, `/v2/specs/{id}/trace` | Flow Engine (§7), Router/Selector (§9), plan/patch workflows (E16) |
+| Acceptance compiler (`skill`), requirement-targeted evals, drift `validation_gate`, coupling tiers, evidence bundles | Evaluation Service (§9.4, RFC-005), E14 runners/sandbox, tree-sitter registry (E7), Artifact Store (E8-S3) |
+| `harness.yaml`, `loop_policy` extension point, durable loop state, race, `/v2/harnesses`, `harness.*` events | Flow Engine runs/checkpoints (E3), reasoning strategies (§8), budgets (ADR-006), streaming (E9-S2) |
+| Spec Studio + Extension Studio screens | E15 shell, E17 screens/flow builder, E16 `/v2` enablement, SDK scaffolding (E1-S4), Plugin Host gates (E1/E12) |
+
+The wave-level acceptance criteria live in §18.9 (v2.1). At the layer level,
+the platform claim this section exists to make true is: **an operator can
+define intent as governed specs, compile it to work, and let harnessed agents
+iterate until the intent is mechanically verified — with every step
+API-first, traced, replayable, and reviewable through human-legible
+evidence.**

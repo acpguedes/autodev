@@ -7,7 +7,13 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-09 (**E18 — Control Center Front Door & Run Experience epic
+**Last updated:** 2026-07-12 (**Planning-only: added the "v2.1 — Spec & Harness"
+wave — epics E20–E25** (spec-driven development + agent-harness layer: Spec Core,
+Spec Compiler, Spec Verification, Harness Engine, Spec Studio, Extension Studio),
+specified in reference §22 + §18.7.12–§18.7.17 + §18.9, proposed in **RFC-007**
+(Draft), with phase docs `phases/e20_*.md`–`phases/e25_*.md`. No implementation.
+E19 remains reserved for the proposed visual-parity audit. Previous entry:
+**E18 — Control Center Front Door & Run Experience epic
 complete (5/5)** on `epic/e18-front-door`: **S1** `GET /` service descriptor
 (JSON for API clients, CSP-clean HTML pointer page for browsers, `AUTODEV_UI_URL`
 setting, `/` public like `/health`); **S2** self-hosted Swagger UI `/docs` (vendored
@@ -123,8 +129,15 @@ rules (mandatory from E3 onward).**
 | E16 | Frontend Redesign: Control-Plane API Enablement | Beta | Done | 4/4 | E9, E3, E8-S1 | [phases/e16_redesign_api_enablement.md](phases/e16_redesign_api_enablement.md) |
 | E17 | Frontend Redesign: Control Center Screens | Beta | Done | 6/6 | E15, E16 | [phases/e17_control_center_screens.md](phases/e17_control_center_screens.md) |
 | E18 | Control Center Front Door & Run Experience | Beta | Done | 5/5 | E15, E16, E17 | [phases/e18_front_door_run_experience.md](phases/e18_front_door_run_experience.md) |
+| E20 | Spec Core: Constitution, Spec Artifacts & Registry | v2.1 | Not started | 0/5 | E1, E8-S1, E9, E16-S2 (pattern) | [phases/e20_spec_core.md](phases/e20_spec_core.md) |
+| E21 | Spec Compiler: Scoping, Decomposition & Traceability | v2.1 | Not started | 0/4 | E20, E3, E5, E7 | [phases/e21_spec_compiler.md](phases/e21_spec_compiler.md) |
+| E22 | Spec Verification: Executable Acceptance & Drift Enforcement | v2.1 | Not started | 0/5 | E20, E21, E12, E14-S1–S4, E7-S1 | [phases/e22_spec_verification.md](phases/e22_spec_verification.md) |
+| E23 | Harness Engine & Loop Engineering | v2.1 | Not started | 0/5 | E3, E4, E14, E20, E22 | [phases/e23_harness_engine.md](phases/e23_harness_engine.md) |
+| E24 | Spec Studio: AI-Assisted Spec Builder (UI) | v2.1 | Not started | 0/5 | E15–E17, E20–E23 | [phases/e24_spec_studio.md](phases/e24_spec_studio.md) |
+| E25 | Extension Studio: AI-Assisted Agent/Skill/Plugin Development | v2.1 | Not started | 0/4 | E1, E6, E12-S2, E20, E23; E13 (publish) | [phases/e25_extension_studio.md](phases/e25_extension_studio.md) |
 
-Total: **50/90 stories complete** across 19 epics.
+Total: **50/118 stories complete** across 25 epics (E19 is a proposed
+visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 \* **E8-S1 is now complete (2026-07-06)**: on top of the scoped tenancy/
 reversible-migration slice landed as an E7 prerequisite (ADR-010:
@@ -204,6 +217,40 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-07-12** — Planning-only, no implementation: added the **"v2.1 — Spec &
+  Harness" wave — epics E20–E25** — the spec-driven-development + agent-harness
+  layer positioning the platform against Cursor/Claude Code/Codex/Antigravity
+  (integrated specs + harness, which none of them ship together). **E20 — Spec
+  Core** (constitution + `spec.yaml` with EARS requirements, tenant-scoped Spec
+  Registry with immutable published versions, OpenSpec-style requirement-scoped
+  change deltas, `/v2/specs`, "Spine" spec Context Provider); **E21 — Spec
+  Compiler** (intake/scoping with pre-spec prototype stage, requirements→design→
+  task dependency graph in waves, task-to-flow compilation reusing the Flow
+  Engine, requirement↔task↔run↔patch↔test↔eval traceability graph); **E22 —
+  Spec Verification** (acceptance criteria compiled to sandbox tests,
+  requirement-targeted evals, Intent-vs-Evidence-graph drift detection as a
+  blocking validation gate, same-change spec+code coupling with HARD/SOFT/AUTO
+  tiers, human-legible evidence bundles); **E23 — Harness Engine**
+  (`harness.yaml` binding spec+flow+loop policy+gates+budgets with typed result
+  states, pluggable loop policies (evaluator-optimizer / fresh-context /
+  circuit-breaker / heartbeat), durable loop state with resume/fork, worktree
+  isolation + task claiming + candidate race, `/v2/harnesses`); **E24 — Spec
+  Studio** (constitution wizard, EARS-assisted spec editor with clarify loop,
+  task board, drift/evidence dashboards, harness composer); **E25 — Extension
+  Studio** (AI-assisted agent/skill/plugin development gated on contract tests +
+  sandboxed evidence, publish path feeding E13). Deliverables of this pass:
+  **RFC-007** (Draft — layer proposal, prior art, posture decision
+  "spec-anchored, code-coupled, drift-enforced"), reference-doc extensions
+  (new **§22** architecture narrative, roadmap entries **§18.7.12–§18.7.17**,
+  new **v2.1 wave** in §18.9, Sumário entry), six phase docs
+  (`phases/e20_spec_core.md` … `phases/e25_extension_studio.md`), the decisions
+  index row, and this tracker update (story total 90 → 118 across 25 epics).
+  Per-epic ADRs remain required before each epic's first story
+  (`agent_guide.md` §5). Sequencing note: E22/E23's execution-dependent stories
+  are gated on **E14** and **E12** — which concentrates near-term pressure on
+  finishing those v2.0 epics; **E19** stays reserved for the proposed
+  visual-parity audit.
 
 - **2026-07-09** — **E17 — Frontend Redesign: Control Center Screens epic complete
   (6/6)** on `epic/e17-control-center-screens`, merged to `main` via **PR #78**. All
