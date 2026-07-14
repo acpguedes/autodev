@@ -41,6 +41,7 @@ componentes seguem o glossário da seção 3.
 - [20. Métricas de Sucesso e KPIs](#20-métricas-de-sucesso-e-kpis)
 - [21. Apêndices — Templates e Checklists](#21-apêndices--templates-e-checklists)
 - [22. Spec & Harness Layer (v2.1)](#22-spec--harness-layer-v21)
+- [23. SOTA Concept Integration Layer (v2.2)](#23-sota-concept-integration-layer-v22)
 
 ---
 
@@ -6139,6 +6140,114 @@ Stories (detail in the phase doc):
 - **E25-S3 — Activation gates** (deps: E25-S2, E12-S2, E14-S4, E1-S3)
 - **E25-S4 — Publish path** (deps: E25-S3, E1-S5; marketplace half gated on E13)
 
+#### 18.7.18 E26 — Agent Runtime Context Engineering
+
+*(New epic, wave "v2.2 — Concept Integration", authored in English —
+architecture narrative in §23.2; full story/subtask detail in
+`docs/v2_platform/phases/e26_runtime_context_engineering.md`; layer proposal
+in RFC-008.)*
+
+| Field | Description |
+| --- | --- |
+| **Objective** | Make the Agent Runtime cost- and coherence-aware by contract: KV-cache-friendly invariants (stable prefixes, append-only context, deterministic serialization) with a measured cache-hit-rate metric, a pluggable `condenser` extension point for context compaction, tool masking instead of mid-run tool removal, and external-memory primitives (durable notes with reversible compression, plan recitation, keep-errors-in-context). |
+| **Key result** | A 50+-step run keeps a high measured cache hit rate, never exceeds its context budget thanks to condensers, and retains plan/notes/errors across compaction via durable external memory — at measurably lower input-token cost than the uncompacted baseline. |
+
+Stories (detail in the phase doc):
+
+- **E26-S1 — KV-cache-aware runtime invariants & metric** (deps: E2-S3/S4)
+- **E26-S2 — `condenser` extension point** (new RFC-001 kind + two reference condensers; deps: E26-S1, E1, E5)
+- **E26-S3 — Tool masking over removal** (deps: E26-S1, E1, E2-S4)
+- **E26-S4 — External memory primitives & loop-policy options** (`recitation`, `keep_errors`; deps: E26-S2, E8, E23-S2/S3)
+
+#### 18.7.19 E27 — Execution-Grounded Verification & Test-Time Compute
+
+*(New epic, wave "v2.2 — Concept Integration", authored in English — §23.3;
+`docs/v2_platform/phases/e27_execution_grounded_verification.md`; RFC-008.)*
+
+| Field | Description |
+| --- | --- |
+| **Objective** | Test-time compute as a first-class quality lever: best-of-N candidate generation with execution-based selection, multi-verifier composition with calibrated multi-sample LLM judges (never outvoting execution), a cross-model "oracle" second opinion (`distinct_provider_from` Selector policy), property-based acceptance oracles, and hardening against weak test oracles and reward hacking — plus the decontaminated, resource-aware internal evaluation methodology E12 executes. |
+| **Key result** | N candidate patches are generated, executed against compiled acceptance tests, scored by a composed verifier set (optionally including a distinct-provider oracle), and one winner is selected with the full decision trace persisted; tautological suites and test-tampering candidates are detected and rejected. |
+
+Stories (detail in the phase doc):
+
+- **E27-S1 — Best-of-N candidate generation & execution-based selection** (`candidate.*` events; deps: E23-S4, E22-S1, E5, E14-S4)
+- **E27-S2 — Multi-verifier composition & calibrated LLM judges** (deps: E27-S1, E5, E12)
+- **E27-S3 — Cross-model second opinion ("oracle" role)** (deps: E27-S2, E5, E2-S4)
+- **E27-S4 — Property-based acceptance oracles** (deps: E22-S1, E20, E14-S4)
+- **E27-S5 — Oracle hardening & internal evaluation methodology** (deps: E27-S1, E22, E12, E20)
+
+#### 18.7.20 E28 — Execution Environments & Self-Verification
+
+*(New epic, wave "v2.2 — Concept Integration", authored in English — §23.4;
+`docs/v2_platform/phases/e28_execution_environments.md`; RFC-008.)*
+
+| Field | Description |
+| --- | --- |
+| **Objective** | Evolve execution from "a container per validation" to a governed environment layer: machine snapshots (provisioned environment images in the artifact store, resumable in seconds, `/v2/snapshots`), a tiered isolation policy (microVM class for untrusted/LLM-generated code, Docker retained for trusted validation), a browser self-verification runner feeding E22-S5 evidence bundles, and code-mode MCP (tools projected as code APIs executed in the sandbox with on-demand definition loading and in-sandbox data filtering). |
+| **Key result** | Harness iterations resume from snapshots instead of re-provisioning; untrusted code runs under the stronger isolation class fail-closed; UI patches carry agent-produced browser evidence; multi-tool tasks run through generated code with measured context-token usage far below the direct tool-call baseline. |
+
+Stories (detail in the phase doc):
+
+- **E28-S1 — Machine snapshots & environment resume** (`snapshot.*` events; deps: E14-S4, E0-S7, E8)
+- **E28-S2 — Tiered isolation policy** (deps: E14-S4, E28-S1, E11)
+- **E28-S3 — Browser self-verification runner** (deps: E28-S2, E22-S5, E1, E6)
+- **E28-S4 — Code-mode MCP (tools as code APIs)** (deps: E9-S4, E28-S2, E1, E26-S1)
+
+#### 18.7.21 E29 — Durable Learning & Skill Library
+
+*(New epic, wave "v2.2 — Concept Integration", authored in English — §23.5;
+`docs/v2_platform/phases/e29_learning_skill_library.md`; RFC-008.)*
+
+| Field | Description |
+| --- | --- |
+| **Objective** | Memory that compounds without fine-tuning: a tenant-scoped, verified, embedding-indexed skill/playbook/insight library (`/v2/knowledge`, immutable published versions), an incremental curation loop turning run experience into bounded playbook deltas (reflector/curator, promotion policy, decay), a progressive-disclosure skill pack format interoperable with external `SKILL.md`-style packs, and machine-generated repo knowledge served through the E7 context-provider seam. |
+| **Key result** | Agents retrieve top-k relevant playbooks at task start; verified runs yield reviewable deltas that become new immutable versions; a repeated task class shows measured improvement (fewer iterations/tokens to `success`) attributable to library hits. |
+
+Stories (detail in the phase doc):
+
+- **E29-S1 — Skill/playbook library (verified, embedding-indexed)** (`knowledge.*` events; deps: E6, E7-S2/S3, E8, E20-S2 pattern)
+- **E29-S2 — Incremental curation loop (ACE pattern)** (deps: E29-S1, E22, E23, E26-S4)
+- **E29-S3 — Progressive-disclosure skill packs & interop** (deps: E29-S1, E6, E26-S1)
+- **E29-S4 — Machine-generated repo knowledge** (deps: E29-S1, E7, E16-S3)
+
+#### 18.7.22 E30 — FinOps & Autonomy Governance
+
+*(New epic, wave "v2.2 — Concept Integration", authored in English — §23.6;
+`docs/v2_platform/phases/e30_finops_governance.md`; RFC-008. Extends E11's
+governance surface with the cost slice; the shared boundary is recorded in
+both epic ADRs.)*
+
+| Field | Description |
+| --- | --- |
+| **Objective** | Cost as a first-class, legible, enforceable resource: pre-run cost estimation (`cost_estimator` extension kind, `/v2/estimates`, estimates surfaced on plan approval and harness start), hierarchical fail-closed budget caps (tenant → team/project → run → task) with checkpoint ceilings and kill switches, draft-vs-final execution tiers as Selector policy (`tier: draft | final` — tiering changes cost, never verification rigor), and per-surface metering (API/UI/CLI/MCP) with cost dashboards delivered through E11. |
+| **Key result** | Operators see an estimated cost range before approving work; runaway loops stop at ceilings with typed states instead of surprise bills; draft iterations run cheap and final passes run strong under identical gates; spend is attributable per tenant/team/run/surface. |
+
+Stories (detail in the phase doc):
+
+- **E30-S1 — Pre-run cost estimation & price legibility** (deps: E2-S4, E16-S2, E1)
+- **E30-S2 — Hierarchical budget caps, ceilings & kill switches** (`cost.*` events; deps: E2, E3/ADR-006, E8, E11)
+- **E30-S3 — Draft-vs-final execution tiers** (deps: E5, E30-S1, E23, E27)
+- **E30-S4 — Per-surface metering & cost observability** (deps: E30-S2, E9, E11, E15/E17)
+
+#### 18.7.23 E31 — Library Spec Registry
+
+*(New epic, wave "v2.2 — Concept Integration", authored in English — §23.7;
+`docs/v2_platform/phases/e31_library_spec_registry.md`; RFC-008. Resolves the
+library-spec open question RFC-007 deferred.)*
+
+| Field | Description |
+| --- | --- |
+| **Objective** | A registry of verified specs for external dependencies ("spec-as-lockfile"): a `library-spec.yaml` contract per `ecosystem:package@version-range` (public API surface, behavioral clauses, verified usage examples), tenant-scoped registry reusing the E20 pattern (`/v2/library-specs`), an acquisition pipeline that verifies every claim against the real library in the sandbox, retrieval-time injection scoped to the versions a repo's lockfile pins (anti-hallucination), and a marketplace sharing path with provenance. |
+| **Key result** | Codegen against a pinned dependency retrieves the verified spec for exactly that version; a seeded hallucination eval shows the registry-on vs registry-off delta; every `verified` claim traces to a sandbox execution; specs import/export with signatures and re-verify locally. |
+
+Stories (detail in the phase doc):
+
+- **E31-S1 — Dependency-spec contract & registry** (`library_spec.*` events; deps: E20-S1/S2, E1)
+- **E31-S2 — Spec acquisition & verification pipeline** (deps: E31-S1, E3, E14, E7)
+- **E31-S3 — Retrieval integration (anti-hallucination context)** (deps: E31-S1, E7-S4, E20-S5, E5/E12)
+- **E31-S4 — Sharing & marketplace publish path** (deps: E31-S1/S2, E13, E11)
+
 ---
 
 ### 18.8 Dependências entre épicos
@@ -6171,6 +6280,12 @@ A tabela abaixo consolida as dependências de nível de épico (predecessores di
 | **E23 — Harness Engine & Loop Engineering** *(new, English, wave v2.1)* | E3, E4, E14, E20, E22 | Enables E24-S5 (composer) and E25-S2 (builder harness). |
 | **E24 — Spec Studio (UI)** *(new, English, wave v2.1)* | E15–E17, E20–E23 | Operator surface of the v2.1 wave. |
 | **E25 — Extension Studio** *(new, English, wave v2.1)* | E1, E6, E12-S2, E20, E23; E13 (publish half) | AI-assisted extension development; feeds the E13 marketplace. |
+| **E26 — Agent Runtime Context Engineering** *(new, English, wave v2.2)* | E2, E3, E8; E23-S2 (loop-policy options) | Cost/coherence primitives for every agent run; feeds E29 (external memory) and E30-S1 (estimation model). |
+| **E27 — Execution-Grounded Verification & Test-Time Compute** *(new, English, wave v2.2)* | E5, E22, E23, E14, E12 | Generalizes the E23-S4 race into reusable candidate/verifier contracts; defines the internal eval methodology E12 executes. |
+| **E28 — Execution Environments & Self-Verification** *(new, English, wave v2.2)* | E14, E0-S7, E9-S4, E22-S5 | Snapshots, tiered isolation, browser evidence, code-mode MCP; closes weakness 7 together with E14-S4. |
+| **E29 — Durable Learning & Skill Library** *(new, English, wave v2.2)* | E6, E7, E8, E22 | Shared verified memory tier; enables E25 publishing of library entries and E13 marketplace content. |
+| **E30 — FinOps & Autonomy Governance** *(new, English, wave v2.2)* | E2, E3 (ADR-006), E5, E11 | Cost slice of the governance surface (boundary with E11 recorded in both epic ADRs). |
+| **E31 — Library Spec Registry** *(new, English, wave v2.2)* | E20, E7, E14; E13 (publish half) | Verified dependency specs ("spec-as-lockfile"); resolves RFC-007's deferred open question. |
 
 #### Diagrama de sequenciamento
 
@@ -6266,6 +6381,14 @@ O sequenciamento é entregue em três ondas cumulativas. Cada onda tem **conteú
 | **Objetivo** | Add the spec-driven development + agent-harness layer on top of the GA platform: specs as first-class governed artifacts, a compiler from requirements to executable work, mechanical verification (executable acceptance + drift enforcement), the harness as a named loop-engineering unit, and the two Studio surfaces (spec authoring, extension building). See §22 and RFC-007. |
 | **Entra** | **E20** (Spec Core: constitution, `spec.yaml`, registry, deltas, `/v2/specs`, Spine context provider); **E21** (Spec Compiler: scoping, requirements→design→tasks with waves, task-to-flow compilation, traceability graph); **E22** (Spec Verification: acceptance compiler, requirement-targeted evals, drift gate, spec+code coupling tiers, evidence bundles); **E23** (Harness Engine: `harness.yaml`, loop policies, durable loop state, parallel isolation/race, `/v2/harnesses`); **E24** (Spec Studio UI); **E25** (Extension Studio). E20-S1/S2 may start before the GA gate (additive, no v2.0 exit criterion touched); E22/E23 execution-dependent stories are gated on **E14** and **E12** landing first. |
 | **Critérios de saída** | (1) A spec authored (or imported) through `/v2/specs` compiles to an approved task graph and executes end to end as Flow Engine runs with full requirement↔task↔run↔patch traceability; (2) acceptance scenarios of a reference project run as real sandbox tests and gate "requirement satisfied" (no model self-approval anywhere); (3) the drift gate blocks a patch that changes spec'd behavior without a matching spec delta (HARD tier) and records waivers; (4) a harness run demonstrates every typed result state, crash-resume, and a candidate race with a gate/eval-chosen winner; (5) an extension is built from an extension spec to a published, gate-evidenced version entirely inside the platform; (6) every new extension point (`loop_policy`, spec context provider profile) has a green mandatory contract test; (7) both Studios operate exclusively over `/v2` (API-first, §2.13) and meet WCAG 2.2 AA. |
+
+#### v2.2 — "Concept Integration" *(new wave, authored in English)*
+
+| Item | Descrição |
+| --- | --- |
+| **Objetivo** | Integrate the remaining state-of-the-art concepts identified by the July 2026 platform/literature evaluation (RFC-008), keeping the platform model-agnostic: context engineering as runtime contract, execution-grounded test-time compute, durable environments with self-verification, compounding memory, cost governance, and verified dependency specs. See §23 and RFC-008. |
+| **Entra** | **E26** (Runtime Context Engineering: cache invariants + metric, condensers, tool masking, external memory); **E27** (Execution-Grounded Verification: best-of-N + execution selection, multi-verifier + calibrated judges, cross-model oracle, property oracles, hardening + eval methodology); **E28** (Execution Environments: machine snapshots, tiered isolation with a microVM class, browser self-verification, code-mode MCP); **E29** (Durable Learning: knowledge library, ACE curation, skill packs, repo knowledge); **E30** (FinOps: estimation, hierarchical caps + ceilings + kill switches, draft/final tiers, per-surface metering); **E31** (Library Spec Registry: dependency specs, verified acquisition, anti-hallucination retrieval, sharing). E26-S1 and E30-S1 may start before the v2.1 gate (additive, no exit criterion touched); E27/E28 execution-dependent stories are gated on **E14** and **E12** landing first — the v2.2 critical path runs through finishing E14, E12, and E11. |
+| **Critérios de saída** | (1) A long-horizon harness run shows the measured cache-hit-rate metric, at least one condensation event, and durable-memory reconstruction after a fresh-context iteration, at documented lower input-token cost than the uncompacted baseline; (2) a candidate set of N patches is generated, execution-verified, and resolved to one winner with the composed verifier trace (including a distinct-provider oracle verdict where two providers are configured) persisted and inspectable via `/v2`; (3) a reward-hacking fixture (candidate edits a test to pass) is rejected fail-closed, and a tautological acceptance suite is flagged by the weak-oracle check; (4) a harness iteration resumes from a machine snapshot with measured setup-time savings, and untrusted generated code demonstrably executes under the stronger isolation class; (5) a UI-affecting patch carries agent-produced browser evidence in its bundle; (6) a repeated task class shows measured improvement attributable to knowledge-library hits, with every promoted playbook delta traceable to its evidence; (7) every plan approval and harness start surfaces a cost estimate; a runaway-retry fixture stops at its checkpoint ceiling with a typed state; a tenant-level kill switch halts descendant runs auditably; (8) a hallucination eval demonstrates the registry-on vs registry-off delta for a pinned dependency, with every `verified` claim traced to a sandbox run; (9) every new extension point (`condenser`, `cost_estimator`) has a green mandatory contract test, and all new surfaces (`/v2/estimates`, `/v2/snapshots`, `/v2/knowledge`, `/v2/library-specs`) are exercised end to end API-first (§2.13). |
 
 ---
 
@@ -7460,3 +7583,184 @@ define intent as governed specs, compile it to work, and let harnessed agents
 iterate until the intent is mechanically verified — with every step
 API-first, traced, replayable, and reviewable through human-legible
 evidence.**
+
+---
+
+## 23. SOTA Concept Integration Layer (v2.2)
+
+*(New section, authored in English per the repository convention for new
+additions to this document.)*
+
+This is the architecture narrative for the "v2.2 — Concept Integration" wave —
+epics E26–E31, roadmap entries §18.7.18–§18.7.23, wave definition §18.9, layer
+proposal RFC-008, full story detail in
+`docs/v2_platform/phases/e26_*.md`–`phases/e31_*.md`.
+
+### 23.1 What this layer is and why it exists
+
+The July 2026 research pass evaluated eleven mainstream agentic development
+platforms (Claude Code/Agent SDK, Cursor, OpenAI Codex, Devin, Manus, GitHub
+Copilot, Google Antigravity/Jules, Windsurf, the OpenHands/Aider/Cline OSS
+tier, the Factory/Amp/Warp/Replit class, and the Spec Kit/Kiro/Tessl SDD
+tier), seven creative/media AI platforms whose managed-generation patterns
+transfer to development work (ElevenLabs, HeyGen, Runway/Pika/Kling, Google
+Flow/Veo, Suno/Udio, Midjourney), and the 2024–2026 academic literature on
+agentic software engineering. RFC-008 dispositions every evaluated concept as
+covered / gap / guidance / rejected. Two findings organize this layer:
+
+1. **The durable, model-agnostic value is the harness, not the model** —
+   scaffolding accounts for 5–15 points on agentic benchmarks at fixed model
+   capability, and every platform's distinctive strength (Devin's snapshots,
+   Manus's cache discipline, Amp's cross-model oracle, Antigravity's
+   verification artifacts) is a harness property. This platform's existing
+   bets (durable state, patch workflows, sandbox validation, API-first
+   control plane, spec/harness layer) are each independently corroborated.
+2. **The single most under-invested area relative to the evidence is
+   execution-grounded verification with test-time compute** — generating N
+   candidates and selecting by real execution beats elaborate single-shot
+   agency on cost-adjusted quality, and weak test oracles / reward hacking
+   are the systemic failure the verification stack must be hardened against.
+
+The layer is additive. It introduces two extension-point kinds (`condenser`,
+`cost_estimator`), four `/v2` surfaces (`/v2/estimates`, `/v2/snapshots`,
+`/v2/knowledge`, `/v2/library-specs`), five append-only event families
+(`candidate.*`, `snapshot.*`, `knowledge.*`, `cost.*`, `library_spec.*`), and
+additive-MINOR vocabulary on existing contracts (Selector `tier` and
+`distinct_provider_from`; `harness.yaml` context/loop options). Everything
+else composes with E0–E25 unchanged.
+
+### 23.2 Runtime context engineering (E26)
+
+The Agent Runtime gains contractual cost/coherence guarantees: a stable
+prompt prefix per run, append-only history, deterministic serialization —
+measured by a per-run cache-hit-rate metric (cached input tokens are roughly
+an order of magnitude cheaper, making this the highest-ROI runtime
+invariant). Context growth is bounded by pluggable `condenser` policies
+(pinned head + recent tail preserved, middle compressed, every condensation
+an auditable event). The action space is constrained by masking tools, never
+by removing their definitions mid-run (which invalidates the cache and
+confuses references to earlier calls). Long-horizon coherence comes from
+external memory: durable notes and workspace files holding full content with
+only references + summaries in context (reversible compression), plan
+recitation to keep goals in recent attention, and retained error records so
+the model stops repeating mistakes — the last two exposed as harness
+loop-policy options (`recitation`, `keep_errors`).
+
+### 23.3 Execution-grounded verification & test-time compute (E27)
+
+Verification quality becomes a dialable resource. A candidate set runs the
+same task N ways (agent/model/strategy varied via the E5 Selector, isolation
+via E23-S4), each candidate is executed against compiled acceptance tests,
+and selection composes verifiers with execution always primary: calibrated
+multi-sample LLM judges may only score non-executable dimensions; an
+optional **oracle** role — guaranteed by Selector policy to resolve to a
+different provider than the actor — reviews the winner, voting or vetoing by
+gate tier. This cross-model second opinion is a capability only a
+model-agnostic control plane can offer natively. Acceptance oracles are
+strengthened by property-based tests compiled from universally-quantified
+requirements, and the whole stack is hardened against the documented failure
+modes: weak-oracle detection (a suite nothing can fail is flagged),
+lucky-pass flagging, and fail-closed rejection of candidates that touch
+tests/gates/specs outside the spec change process. E27-S5 also fixes the
+internal evaluation methodology (held-out, decontaminated, resource-aware,
+harness-disclosed) that E12 executes.
+
+### 23.4 Execution environments & self-verification (E28)
+
+Environments become durable and proportional to trust. **Machine snapshots**
+capture a provisioned environment (deps installed, services declared) as a
+content-addressed image in the artifact store; harness iterations resume
+from snapshots instead of re-provisioning, with staleness policies and
+GC that never breaks frozen-run replay. **Tiered isolation** keeps Docker
+for trusted validation and adds a microVM-class profile (Firecracker/Kata,
+gVisor fallback) for untrusted or LLM-generated code, selected by fail-closed
+policy, with the class recorded on every execution. **Browser
+self-verification** gives agents a permissioned headless browser inside the
+sandbox to verify their own UI work, attaching screenshots/recordings to the
+E22-S5 evidence bundle. **Code-mode MCP** projects registered MCP servers as
+typed code APIs: agents write code that calls many tools inside the sandbox,
+loading definitions on demand and returning only filtered results to model
+context — collapsing tool-call token overhead and keeping sensitive
+intermediate data out of the context window entirely.
+
+### 23.5 Durable learning & skill library (E29)
+
+The platform accumulates verified experience without touching model weights.
+A tenant-scoped library holds `playbook` / `snippet` / `insight` entries —
+each with provenance to the runs/patches/gates that produced it, embedding-
+indexed and retrieved top-k through the same path as code context (never
+prompt-stuffed). An ACE-style curation loop (reflector extracts candidate
+lessons from finished runs; curator emits bounded deltas; promotion requires
+a configured signal, decay deprecates stale entries) keeps the library alive
+without context collapse. Skill packs adopt progressive disclosure
+(descriptor loaded always, body on demand) and interoperate with the
+external `SKILL.md` ecosystem. Machine-generated repo knowledge (architecture
+overviews, module summaries, entry-point maps rendered from the E7 index and
+knowledge-graph artifacts) serves first-party understanding through the same
+context-provider seam that E31 uses for third-party dependencies.
+
+### 23.6 FinOps & autonomy governance (E30)
+
+Cost becomes legible before, enforceable during, and attributable after
+execution. Before: `cost_estimator` plugins produce estimate ranges with
+confidence from historical run statistics and operator-configured price
+tables, surfaced on every plan approval and harness start
+(`/v2/estimates`), with estimate-vs-actual accuracy tracked. During:
+hierarchical budgets (tenant → team/project → run → task, currency and
+tokens, period caps) enforce reserve-then-settle fail-closed; iteration-
+producing constructs carry checkpoint ceilings independent of token budgets
+(the runaway-retry failure mode); kill switches freeze any level auditably.
+Throughout: draft-vs-final tiers route cheap profiles to draft iterations
+and strong profiles to final passes as pure Selector policy — tiering
+changes cost, never verification rigor. After: every operation is
+attributed to its originating surface (Web UI/CLI/MCP/API), aggregated into
+dashboards delivered through the E11 governance surface (the E30/E11
+boundary is recorded in both epic ADRs).
+
+### 23.7 Library Spec Registry (E31)
+
+The registry RFC-007 deferred: verified contracts for the code the platform
+does not own. A `library-spec.yaml` per `ecosystem:package@version-range`
+captures the public API surface, behavioral clauses, and usage examples —
+with **per-claim verification status**, earned by executing every claim
+against the real installed library in the sandbox. Retrieval integration
+couples to the repo's lockfile: a task touching a dependency receives the
+verified spec slice for exactly the pinned version (anti-hallucination,
+anti-version-mixup), composed with Spine bundles for spec-scoped work, and
+its effectiveness is measured by a seeded hallucination eval. Specs
+import/export as signed artifacts (imported specs re-verify locally or enter
+via trust policy), publish through the E13 marketplace with mandatory
+provenance and licensing metadata, and a curated seed set keeps self-hosted
+installs useful from day one.
+
+### 23.8 Guidance adopted without epics
+
+Recorded in RFC-008 and binding as review guidance: **multi-agent
+restraint** (lean orchestrator + few verified workers; explicit completion
+contracts on every handoff; fan-out breadth always budgeted — the empirical
+failure taxonomy attributes most multi-agent failures to design and
+verification, not model capacity); **benchmark discipline** (no score
+without its harness disclosed; internal tracking on held-out decontaminated
+tasks under resource budgets); **provenance-by-design** (shareable artifacts
+private by default, provenance stamped at creation, licensing mandatory at
+publish); **KV-cache economics awareness** (every runtime/protocol design
+review states its effect on prefix stability).
+
+### 23.9 Composition summary and layer acceptance criteria
+
+| This layer adds | It composes with (unchanged) |
+| --- | --- |
+| Runtime cache invariants + hit-rate metric, `condenser` kind, tool masking, external memory, `recitation`/`keep_errors` options | Agent Runtime (E2), budgets (ADR-006), harness loop policies (E23-S2/S3), State Store (E8) |
+| Candidate sets, verifier composition, calibrated judges, oracle role, property oracles, hardening checks, `candidate.*` events | Selector/Evaluation (E5, RFC-004/005), acceptance compiler + gates (E22), race mechanics (E23-S4), sandbox (E14) |
+| Machine snapshots + `/v2/snapshots`, isolation classes, browser runner, code-mode MCP, `snapshot.*` events | Sandbox runners (E14-S4), artifact store (E0-S7/E8-S3), MCP adapters (E9-S4), evidence bundles (E22-S5) |
+| Knowledge library + `/v2/knowledge`, curation loop, skill packs, repo knowledge, `knowledge.*` events | Skills (E6), retrieval + context providers (E7), registry pattern (E20-S2), traceability (E21-S4) |
+| `cost_estimator` kind + `/v2/estimates`, budget hierarchy + ceilings + kill switches, `tier` policy, per-surface metering, `cost.*` events | Metering (E2-S4), budget propagation (ADR-006), plan approval (E16-S2), Selector (E5), governance surface (E11) |
+| `library-spec.yaml` + `/v2/library-specs`, verified acquisition, lockfile-coupled retrieval, sharing path, `library_spec.*` events | Spec registry pattern (E20), indexing/retrieval (E7), sandbox (E14), marketplace publish (E13) |
+
+The wave-level acceptance criteria live in §18.9 (v2.2). At the layer level,
+the platform claim this section exists to make true is: **agents on this
+platform run cheaper and longer (context engineering), prove their work
+harder (execution-grounded test-time compute), start warmer (snapshots and
+compounding memory), spend predictably (FinOps governance), and stop
+hallucinating the outside world (verified dependency specs) — on any model,
+under one API-first control plane.**

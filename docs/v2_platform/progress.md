@@ -7,7 +7,15 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-12 (**Planning-only: added the "v2.1 — Spec & Harness"
+**Last updated:** 2026-07-13 (**Planning-only: added the "v2.2 — Concept
+Integration" wave — epics E26–E31** (July 2026 SOTA evaluation of mainstream AI
+dev + creative platforms and 2024–2026 literature, integrated as: Runtime Context
+Engineering, Execution-Grounded Verification & Test-Time Compute, Execution
+Environments & Self-Verification, Durable Learning & Skill Library, FinOps &
+Autonomy Governance, Library Spec Registry), specified in reference §23 +
+§18.7.18–§18.7.23 + §18.9, proposed in **RFC-008** (Draft), with phase docs
+`phases/e26_*.md`–`phases/e31_*.md`. No implementation. Previous entry:
+**Planning-only: added the "v2.1 — Spec & Harness"
 wave — epics E20–E25** (spec-driven development + agent-harness layer: Spec Core,
 Spec Compiler, Spec Verification, Harness Engine, Spec Studio, Extension Studio),
 specified in reference §22 + §18.7.12–§18.7.17 + §18.9, proposed in **RFC-007**
@@ -135,8 +143,14 @@ rules (mandatory from E3 onward).**
 | E23 | Harness Engine & Loop Engineering | v2.1 | Not started | 0/5 | E3, E4, E14, E20, E22 | [phases/e23_harness_engine.md](phases/e23_harness_engine.md) |
 | E24 | Spec Studio: AI-Assisted Spec Builder (UI) | v2.1 | Not started | 0/5 | E15–E17, E20–E23 | [phases/e24_spec_studio.md](phases/e24_spec_studio.md) |
 | E25 | Extension Studio: AI-Assisted Agent/Skill/Plugin Development | v2.1 | Not started | 0/4 | E1, E6, E12-S2, E20, E23; E13 (publish) | [phases/e25_extension_studio.md](phases/e25_extension_studio.md) |
+| E26 | Agent Runtime Context Engineering | v2.2 | Not started | 0/4 | E2, E3, E8; E23-S2 (options) | [phases/e26_runtime_context_engineering.md](phases/e26_runtime_context_engineering.md) |
+| E27 | Execution-Grounded Verification & Test-Time Compute | v2.2 | Not started | 0/5 | E5, E22, E23, E14, E12 | [phases/e27_execution_grounded_verification.md](phases/e27_execution_grounded_verification.md) |
+| E28 | Execution Environments & Self-Verification | v2.2 | Not started | 0/4 | E14, E0-S7, E9-S4, E22-S5 | [phases/e28_execution_environments.md](phases/e28_execution_environments.md) |
+| E29 | Durable Learning & Skill Library | v2.2 | Not started | 0/4 | E6, E7, E8, E22 | [phases/e29_learning_skill_library.md](phases/e29_learning_skill_library.md) |
+| E30 | FinOps & Autonomy Governance | v2.2 | Not started | 0/4 | E2, E3 (ADR-006), E5, E11 | [phases/e30_finops_governance.md](phases/e30_finops_governance.md) |
+| E31 | Library Spec Registry | v2.2 | Not started | 0/4 | E20, E7, E14; E13 (publish) | [phases/e31_library_spec_registry.md](phases/e31_library_spec_registry.md) |
 
-Total: **50/118 stories complete** across 25 epics (E19 is a proposed
+Total: **50/143 stories complete** across 31 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 \* **E8-S1 is now complete (2026-07-06)**: on top of the scoped tenancy/
@@ -218,6 +232,49 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-07-13** — Planning-only, no implementation: added the **"v2.2 — Concept
+  Integration" wave — epics E26–E31**, closing the July 2026 state-of-the-art
+  evaluation (11 mainstream agentic dev platforms — Claude Code/Agent SDK, Cursor,
+  OpenAI Codex, Devin, Manus, GitHub Copilot, Google Antigravity/Jules, Windsurf,
+  OpenHands/Aider/Cline, Factory/Amp/Warp/Replit-class, Spec Kit/Kiro/Tessl; 7
+  creative platforms evaluated for transferable concepts — ElevenLabs, HeyGen,
+  Runway/Pika/Kling, Google Flow/Veo, Suno/Udio, Midjourney; ~50 papers
+  2024–2026). Every evaluated concept is dispositioned in RFC-008 (covered /
+  gap / guidance / rejected); the gaps become: **E26 — Agent Runtime Context
+  Engineering** (KV-cache-aware invariants + hit-rate metric, `condenser`
+  extension point, tool masking over removal, external memory with reversible
+  compression + recitation + keep-errors-in-context); **E27 — Execution-Grounded
+  Verification & Test-Time Compute** (best-of-N candidate sets with
+  execution-based selection, multi-verifier composition + calibrated LLM judges,
+  cross-model "oracle" second opinion via `distinct_provider_from`,
+  property-based acceptance oracles, weak-oracle/reward-hacking hardening +
+  internal eval methodology); **E28 — Execution Environments &
+  Self-Verification** (machine snapshots in MinIO with `/v2/snapshots`, tiered
+  isolation with a microVM class for untrusted code, browser self-verification
+  runner feeding evidence bundles, code-mode MCP); **E29 — Durable Learning &
+  Skill Library** (verified embedding-indexed playbook/skill/insight library at
+  `/v2/knowledge`, ACE-style bounded-delta curation, progressive-disclosure
+  skill packs with SKILL.md interop, machine-generated repo knowledge); **E30 —
+  FinOps & Autonomy Governance** (`cost_estimator` kind + `/v2/estimates`
+  pre-run price legibility, hierarchical fail-closed budget caps + checkpoint
+  ceilings + kill switches, draft-vs-final tiers via Selector `tier` policy,
+  per-surface metering feeding E11 dashboards); **E31 — Library Spec Registry**
+  (Tessl-style verified dependency specs at `/v2/library-specs`,
+  sandbox-verified claim acquisition, anti-hallucination retrieval provider,
+  marketplace sharing with provenance — resolves RFC-007's deferred open
+  question). Guidance adopted without epics: multi-agent restraint (MAST),
+  benchmark discipline (disclose-the-harness, decontaminated held-out internal
+  evals), provenance-by-design/default-private sharing, KV-cache economics
+  awareness. Deliverables of this pass: **RFC-008** (Draft — platform evaluation
+  matrix, 45-row concept disposition catalog, contract-surface overview,
+  rejected alternatives incl. swarm-by-default and fine-tuning-based learning,
+  research annex), reference-doc extensions (new **§23** narrative, roadmap
+  entries **§18.7.18–§18.7.23**, new **v2.2 wave** in §18.9), six phase docs
+  (`phases/e26_runtime_context_engineering.md` …
+  `phases/e31_library_spec_registry.md`, 25 stories total), decisions index row,
+  and this tracker (story total now 50/143 across 31 epics). Sequencing note:
+  E26/E30 can start on stable E2/E3; E27/E28 gate on E14+E12; the v2.2 critical
+  path still runs through finishing E14, E12, and E11.
 - **2026-07-12** — Planning-only, no implementation: added the **"v2.1 — Spec &
   Harness" wave — epics E20–E25** — the spec-driven-development + agent-harness
   layer positioning the platform against Cursor/Claude Code/Codex/Antigravity

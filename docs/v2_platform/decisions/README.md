@@ -55,6 +55,7 @@ neither.
 | RFC-006 | Frontend redesign — Execution Control Center | Accepted | E15–E17 | 2026-07-08 |
 | ADR-012 | E15 Design Language & App Shell Implementation Decisions | Accepted | E15 | 2026-07-08 |
 | RFC-007 | Spec & Harness Layer (`spec.yaml`, `harness.yaml`, `/v2/specs`, `/v2/harnesses`) | Draft | E20–E25 | 2026-07-12 |
+| RFC-008 | SOTA Concept Integration Layer (context engineering, verification, environments, learning, FinOps, library specs) | Draft | E26–E31 | 2026-07-13 |
 
 > Update this table whenever an ADR or RFC is added or changes status. This index,
 > together with `docs/v2_platform/progress.md`, is the fastest way to see which
