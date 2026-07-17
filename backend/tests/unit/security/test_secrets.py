@@ -33,7 +33,9 @@ from backend.security.secrets import (
 _FAKE_OPENAI_KEY = "sk-" + ("x" * 25)
 _FAKE_GITHUB_TOKEN = "ghp_" + ("y" * 36)
 _FAKE_AWS_KEY = "AKIA" + ("A" * 16)
-_FAKE_PRIVATE_KEY_HEADER = "-----BEGIN RSA PRIVATE KEY-----"
+# Split so the repo's own raw-text secret scanner never sees the assembled
+# PEM marker in this source file.
+_FAKE_PRIVATE_KEY_HEADER = "-----BEGIN RSA PRIVATE" + " KEY-----"
 
 
 def test_scan_text_detects_openai_key() -> None:
@@ -73,7 +75,7 @@ def test_scan_text_detects_private_key_header() -> None:
 
 def test_scan_text_detects_generic_private_key_header() -> None:
     """A private-key header without an algorithm qualifier still matches."""
-    findings = _scan_text(Path("f.py"), "-----BEGIN PRIVATE KEY-----\n")
+    findings = _scan_text(Path("f.py"), "-----BEGIN PRIVATE" + " KEY-----\n")
     assert [f.kind for f in findings] == ["private_key"]
 
 
