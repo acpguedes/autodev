@@ -20,6 +20,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? "github" : "list",
+  // CI runners cold-compile each Next.js dev-server route on first visit;
+  // the 5s default assertion timeout is too tight for that first paint.
+  expect: { timeout: process.env.CI ? 15_000 : 5_000 },
   use: {
     baseURL: BASE_URL,
     trace: "on-first-retry",

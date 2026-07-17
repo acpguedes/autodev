@@ -16,7 +16,7 @@ type ExtensionItem = {
   detail: Record<string, unknown>;
 };
 
-const ITEMS: ExtensionItem[] = [
+const BASE_ITEMS: readonly ExtensionItem[] = [
   {
     kind: "agent",
     id: "reviewer",
@@ -53,12 +53,19 @@ const ITEMS: ExtensionItem[] = [
 
 /**
  * Intercept every `/v2/extensions*` request the hub makes and answer it
- * from the in-memory {@link ITEMS} fixture, mutating enabled state in place
+ * from a per-test deep copy of {@link BASE_ITEMS}, mutating enabled state in place
  * so enable/disable actions and refetches stay consistent within a test.
  *
  * @param page - The Playwright page to install routing on.
  */
 async function mockExtensionsApi(page: Page): Promise<void> {
+  // Each test gets its own deep copy of the fixture: the route handlers
+  // mutate items in place (enable/disable, agent PUT `push`), and a
+  // Playwright worker runs several tests from this file sequentially, so a
+  // shared module-level array would leak state across tests (flaky in CI,
+  // where fewer workers pack more tests per process).
+  const ITEMS = structuredClone(BASE_ITEMS) as ExtensionItem[];
+
   // Registered first so the more specific routes below (last-registered-wins
   // in Playwright) take priority for the agent-CRUD and enable/disable
   // paths; this one only ever matches the plain catalog list request.
