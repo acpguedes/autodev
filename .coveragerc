@@ -1,0 +1,25 @@
+# Coverage.py configuration for the backend product-code coverage gate.
+#
+# `backend/tests/*` is excluded so the >=85% gate (see `Makefile` /
+# `.github/workflows/ci-backend.yml`) measures only product code under
+# `backend/`, not the test suite itself. Raw coverage including test code
+# is ~93%, which inflates the number without telling us anything about
+# untested product code — hence the omit.
+#
+# pytest-cov auto-discovers this file (its `--cov-config` default is
+# `.coveragerc`) as long as pytest runs with the repo root as the working
+# directory, which is how every `make test-backend*` / CI invocation runs.
+[run]
+omit =
+    backend/tests/*
+
+# `[run] omit` alone does not reliably keep already-imported/executed test
+# modules out of the term/xml reports in this pytest-cov/coverage.py version
+# combination (they still show up with real per-line data). `[report] omit`
+# is the setting that actually filters term, XML, and HTML reports (XML has
+# no `omit` option of its own — it inherits `[report]`), so repeating the
+# same pattern there guarantees the exclusion applies at report-generation
+# time too, regardless of what `[run]` did at collection time.
+[report]
+omit =
+    backend/tests/*

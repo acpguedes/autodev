@@ -19,7 +19,16 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
+  // Two parallel workers thrash the single cold Next.js dev server on the
+  // 4-core CI runner (route compiles queue behind each other and tests hit
+  // the 30s cap). Serialize on CI; keep parallelism for local runs.
+  workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? "github" : "list",
+  // CI runners cold-compile each Next.js dev-server route on first visit;
+  // the 5s default assertion timeout is too tight for that first paint,
+  // and the 30s default test timeout is too tight for compile + retries.
+  timeout: process.env.CI ? 60_000 : 30_000,
+  expect: { timeout: process.env.CI ? 15_000 : 5_000 },
   use: {
     baseURL: BASE_URL,
     trace: "on-first-retry",

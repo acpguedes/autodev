@@ -1,0 +1,68 @@
+name: CI E2E
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm install
+
+      - name: Start backend (SQLite local-first mode)
+        run: nohup python -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8000 > backend.log 2>&1 &
+
+      - name: Wait for backend to become healthy
+        run: |
+          curl -sf --retry 10 --retry-delay 2 --retry-connrefused http://127.0.0.1:8000/docs
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Run frontend e2e suite
+        working-directory: frontend
+        run: npm run e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Show backend log on failure
+        if: failure()
+        run: cat backend.log || true
+
+      - name: Kill backend
+        if: always()
+        run: pkill -f "uvicorn backend.api.main" || true
