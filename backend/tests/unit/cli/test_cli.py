@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Generator
 
 import pytest
 
@@ -13,7 +14,7 @@ from backend.persistence.database import reset_store_cache
 
 
 @pytest.fixture(autouse=True)
-def isolated_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def isolated_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
     database_path = tmp_path / "cli.db"
     config_path = tmp_path / "autodev.config.json"
     workspace = tmp_path / "workspace"

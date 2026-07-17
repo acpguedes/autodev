@@ -25,7 +25,7 @@ from backend.flows.manifest import (
 )
 
 SCHEMA_PATH = (
-    Path(__file__).resolve().parents[1] / "flows" / "schemas" / "flow.schema.json"
+    Path(__file__).resolve().parents[3] / "flows" / "schemas" / "flow.schema.json"
 )
 
 
@@ -415,7 +415,7 @@ class TestSchemaContract:
         import yaml
 
         example = (
-            Path(__file__).resolve().parents[2]
+            Path(__file__).resolve().parents[4]
             / "docs"
             / "v2_platform"
             / "templates"

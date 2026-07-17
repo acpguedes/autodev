@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -13,7 +14,7 @@ from backend.persistence.database import DurableStore, reset_store_cache
 
 
 @pytest.fixture()
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     database_path = tmp_path / "api-test.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path}")
     reset_store_cache()

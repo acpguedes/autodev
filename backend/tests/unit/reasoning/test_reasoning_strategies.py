@@ -13,7 +13,7 @@ from __future__ import annotations
 import asyncio
 from typing import Sequence
 
-from backend.agents.provider import LLMProviderResponse, StubLLMProvider
+from backend.agents.provider import ScriptedLLMProvider, StubLLMProvider
 from backend.reasoning import (
     Budget,
     ReasoningEngine,
@@ -38,21 +38,6 @@ BUILTIN_IDS = {
     "autodev/reasoning-reflection",
     "autodev/reasoning-tot",
 }
-
-
-class _ScriptedProvider:
-    """Provider that returns a scripted sequence of completions, then repeats."""
-
-    def __init__(self, responses: Sequence[str]) -> None:
-        """Store the scripted responses and initialize the call counter."""
-        self._responses = list(responses)
-        self.calls = 0
-
-    def complete(self, prompt: str, *, agent_id: str, run_id: str, tenant_id: str) -> LLMProviderResponse:
-        """Return the next scripted response (repeating the last one)."""
-        index = min(self.calls, len(self._responses) - 1)
-        self.calls += 1
-        return LLMProviderResponse(text=self._responses[index], tokens_input=1, tokens_output=1)
 
 
 def _make_input(
@@ -93,7 +78,7 @@ def test_strategies_are_swappable() -> None:
 
 def test_react_dispatches_tools_and_terminates() -> None:
     """ReAct dispatches an ACTION to a tool, then terminates on FINAL."""
-    provider = _ScriptedProvider(["ACTION search kittens", "FINAL got it"])
+    provider = ScriptedLLMProvider(["ACTION search kittens", "FINAL got it"])
     engine = ReasoningEngine(provider=provider, tool_impls={"search": lambda args: "found"})
     output = asyncio.run(engine.run(ReActStrategy(), _make_input(tools=(ToolSpec("search"),))))
     assert output.stop_reason == "completed"
@@ -104,7 +89,7 @@ def test_react_dispatches_tools_and_terminates() -> None:
 
 def test_react_fails_closed_when_never_terminating() -> None:
     """A ReAct loop that never emits FINAL stops on the budget, fail-closed."""
-    provider = _ScriptedProvider(["ACTION search x"])
+    provider = ScriptedLLMProvider(["ACTION search x"])
     engine = ReasoningEngine(provider=provider, tool_impls={"search": lambda args: "y"})
     budget = Budget(tokens=10_000, cost_usd=100.0, wall_clock_ms=60_000, max_steps=3)
     output = asyncio.run(

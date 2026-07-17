@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -16,7 +17,7 @@ from backend.repository import RepositoryIntelligenceService
 
 
 @pytest.fixture()
-def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
+def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
     database_path = tmp_path / "config-test.db"
     config_path = tmp_path / "autodev.config.json"
     repository_root = tmp_path / "workspace"

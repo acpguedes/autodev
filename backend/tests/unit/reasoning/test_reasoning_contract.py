@@ -40,7 +40,7 @@ from backend.reasoning.contract import (
 )
 from backend.reasoning.policy import validate_reasoning_policy
 
-SCHEMAS_DIR = Path(__file__).resolve().parents[1] / "reasoning" / "schemas"
+SCHEMAS_DIR = Path(__file__).resolve().parents[3] / "reasoning" / "schemas"
 
 
 # --------------------------------------------------------------------------
