@@ -65,6 +65,43 @@ When proposing changes, optimize for:
   contracts are touched); the full suite (`make check`) gates the epic → `main` PR.
   Avoid unnecessary tests.
 
+## Continuation & gap-closing shortcuts (binding)
+
+These shortcuts define what to do when the user gives a terse continuation
+instruction instead of naming a specific story/epic. Resolve them against
+`docs/v2_platform/progress.md` (the canonical tracker) before writing code.
+
+**"continue a implementação" / "execute a próxima etapa|fase|épico"
+(or English equivalents):**
+- Pick the next epic that makes sense in wave order: first any unfinished
+  **Beta** epic (respecting the `Depends on` column); once Beta is complete,
+  move to **v2.1**, then **v2.2**, in dependency order.
+- Within the chosen epic, execute stories in order (S1 → Sn), honoring story
+  dependencies and the branch workflow above.
+- If two epics are equally eligible, prefer the one that unblocks the most
+  downstream epics; state the choice and reasoning briefly before starting.
+
+**"feche os gaps" / "execute stories abertos" (or similar):**
+- Do NOT open a new epic. Find stories that are not implemented
+  (`Not started`, or the missing part of a partial `x/y`) inside epics that
+  have already been started/executed, and implement those, in dependency
+  order.
+- Cross-check the tracker against the code first: if a story is marked done
+  but the code contradicts it, flag it; if code exists but the tracker is
+  stale, update the tracker instead of re-implementing.
+
+**Completion protocol (applies to both shortcuts).** When the requested
+slice of work is finished and validated:
+1. merge each story branch into the epic branch as it completes (per
+   `CONTRIBUTING.md`) and delete the story branch;
+2. open the PR from the epic branch to `main` (full suite `make check` must
+   be green) — include the tracker/doc updates in the same PR;
+3. merge (accept) that PR into `main`;
+4. sync local and remote (`git checkout main && git pull`; make sure
+   `origin` is up to date);
+5. delete branches that are no longer needed (merged story/epic branches),
+   both local and remote.
+
 ## Documentation expectation
 For any meaningful architecture or behavior change, update documentation in the corresponding files under `docs/` and the project root.
 

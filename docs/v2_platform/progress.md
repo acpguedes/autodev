@@ -7,7 +7,12 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-17 (**E8 complete — 4/4**: **E8-S3 — Artifact
+**Last updated:** 2026-07-17 (**Beta hardening wave planned — epics E32–E35
+added**: isolated-execution Beta slice, secrets & credential governance,
+packaging/global install, and Beta readiness gates — 13 new stories; see
+`phases/e32_isolated_execution_beta.md` … `phases/e35_beta_readiness_gates.md`,
+ADR-013/014/015 (all *Proposed*, decisions pending) and
+`beta_gap_analysis.md`. Previous entry: **E8 complete — 4/4**: **E8-S3 — Artifact
 Store** merged in PR #85 (pointer store `backend/artifacts/pointers.py` with
 MinIO/local backends, presigned URLs behind
 `autodev_artifact_retention_days`, referenced-object GC in
@@ -166,9 +171,16 @@ rules (mandatory from E3 onward).**
 | E29 | Durable Learning & Skill Library | v2.2 | Not started | 0/4 | E6, E7, E8, E22 | [phases/e29_learning_skill_library.md](phases/e29_learning_skill_library.md) |
 | E30 | FinOps & Autonomy Governance | v2.2 | Not started | 0/4 | E2, E3 (ADR-006), E5, E11 | [phases/e30_finops_governance.md](phases/e30_finops_governance.md) |
 | E31 | Library Spec Registry | v2.2 | Not started | 0/4 | E20, E7, E14; E13 (publish) | [phases/e31_library_spec_registry.md](phases/e31_library_spec_registry.md) |
+| E32 | Isolated Execution Environment (Beta slice) | Beta | Not started | 0/4 | E14, E11-S4; E28 (contracts) | [phases/e32_isolated_execution_beta.md](phases/e32_isolated_execution_beta.md) |
+| E33 | Secrets & Credential Governance | Beta | Not started | 0/3 | E32, E0-S5, E11-S4 | [phases/e33_secrets_credential_governance.md](phases/e33_secrets_credential_governance.md) |
+| E34 | Packaging & Global Install | Beta | Not started | 0/3 | E14-S7 (CLI), E32 | [phases/e34_packaging_global_install.md](phases/e34_packaging_global_install.md) |
+| E35 | Beta Readiness Gates & Evidence | Beta | Not started | 0/3 | E32-E34, E11, E12 | [phases/e35_beta_readiness_gates.md](phases/e35_beta_readiness_gates.md) |
 
-Total: **51/143 stories complete** across 31 epics (E19 is a proposed
+Total: **70/156 stories complete** across 35 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
+*(2026-07-17: total recomputed from the per-epic Done column — the previous
+"51" predated E15–E18 completion and had drifted; +13 planned stories from
+the new E32–E35 Beta-hardening epics.)*
 
 \* **E8-S1 is now complete (2026-07-06)**: on top of the scoped tenancy/
 reversible-migration slice landed as an E7 prerequisite (ADR-010:

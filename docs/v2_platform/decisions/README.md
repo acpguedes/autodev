@@ -56,6 +56,9 @@ neither.
 | ADR-012 | E15 Design Language & App Shell Implementation Decisions | Accepted | E15 | 2026-07-08 |
 | RFC-007 | Spec & Harness Layer (`spec.yaml`, `harness.yaml`, `/v2/specs`, `/v2/harnesses`) | Draft | E20–E25 | 2026-07-12 |
 | RFC-008 | SOTA Concept Integration Layer (context engineering, verification, environments, learning, FinOps, library specs) | Draft | E26–E31 | 2026-07-13 |
+| ADR-013 | Isolation Backend for Beta Execution Environments | Proposed | E32 | 2026-07-17 |
+| ADR-014 | Secret Store Format | Proposed | E33 | 2026-07-17 |
+| ADR-015 | Global Installation Strategy | Proposed | E34 | 2026-07-17 |
 
 > Update this table whenever an ADR or RFC is added or changes status. This index,
 > together with `docs/v2_platform/progress.md`, is the fastest way to see which
