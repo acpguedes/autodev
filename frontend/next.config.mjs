@@ -28,6 +28,12 @@ const apiOrigin = (() => {
 const connectSrc = [
   "'self'",
   apiOrigin,
+  // When NEXT_PUBLIC_API_URL is unset, the browser client (lib/api.ts
+  // getDefaultApiBaseUrl) falls back to http://<localhost|127.0.0.1>:8000
+  // whenever the app is served on port 3000. The CSP must mirror that
+  // fallback, otherwise the app blocks its own API calls (e2e/CI and the
+  // default local dev setup both run with the env unset).
+  ...(apiOrigin ? [] : ["http://localhost:8000", "http://127.0.0.1:8000"]),
   // Dev server HMR uses a websocket; ws: is required in some browsers even
   // for same-origin websocket upgrades.
   isDev ? "ws:" : null,

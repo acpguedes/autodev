@@ -60,6 +60,51 @@ Avoid introducing new infrastructure dependencies unless there is a clear archit
 - Do not implement broad rewrite behavior where patch-based changes are feasible.
 - Keep local-model compatibility in mind when adding provider integrations.
 
+## Operational efficiency (binding)
+
+Project-mandated gates (CONTRIBUTING.md, `make check-backend`, CI) always take
+precedence over the minimization rules below.
+
+### Execution
+- Before acting, establish scope, dependencies, and completion criteria.
+- Plan the full change set first, then apply it in the fewest safe passes. Do
+  not fragment work into micro-edits, redundant reads, or repeated validation
+  loops.
+- Read only the files and ranges needed (graphify first — see below). Reuse
+  context already obtained; skip any action that cannot change a decision.
+
+### Subagents & parallelism
+- Delegate only when it shortens the critical path more than it adds
+  coordination, re-reading, and context overhead. Never delegate small tasks
+  the current agent can finish directly at lower cost.
+- Give each agent a cohesive scope, sufficient inputs, completion criteria,
+  and an expected output.
+- Parallelize only truly independent scopes with no contention on the same
+  files. Integration, final-review, and global-validation agents start only
+  after their dependencies complete.
+- Do not use agents for polling or active monitoring; wait passively for
+  results.
+- One investigator per problem unless risk explicitly justifies an
+  independent review.
+
+### Verification & tests
+- Choose up front the smallest check set that proves correctness; consolidate
+  equivalent commands and tests into one minimal run.
+- Capture command output once and reuse it. Never re-run a command just to
+  change head/tail/filters/formatting.
+- No trivial, duplicated, or implementation-echo tests. Do not re-run tests
+  without a relevant change, a fix, or justified suspicion of flakiness.
+- On failure, analyze existing evidence first; any re-run must test a concrete
+  hypothesis.
+- Default to targeted checks; run full/broad suites only when risk, blast
+  radius, or project gates require them.
+
+### Stop criteria
+- Stop as soon as completion criteria are proven. No out-of-scope
+  improvements, optional refactors, or redundant evidence.
+- On completion, report concisely: files changed, changes made, checks run,
+  result, remaining risks.
+
 ## Development workflow (binding)
 
 `CONTRIBUTING.md` is the canonical workflow definition. Key rules:

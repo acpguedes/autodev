@@ -35,4 +35,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
-testpaths = ["tests"]
+testpaths = ["tests/unit", "tests/integration"]
+markers = [
+  "unit: fast, isolated tests with no external services (default tier).",
+  "integration: cross-subsystem tests, still local-first (SQLite/stub providers, no live network).",
+  "e2e: end-to-end tests exercising a running API server and/or the frontend.",
+]

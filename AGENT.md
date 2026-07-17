@@ -24,7 +24,9 @@ Good changes usually improve one or more of the following:
 - strongly typed contracts;
 - explicit schemas and state transitions;
 - clear docs for major behavior changes;
-- minimal operational overhead where possible.
+- minimal operational overhead where possible;
+- operational efficiency per the AGENTS.md policy (batched execution, minimal
+  sufficient verification, disciplined subagent use, stop when done).
 
 ### Preferred product direction
 Build toward:

@@ -35,6 +35,10 @@ When proposing changes, optimize for:
 - Keep user-visible summaries separate from control metadata.
 - Favor changes that narrow the gap between product vision and implementation.
 - If introducing a new subsystem, document why it belongs and what problem it solves.
+- Follow the Operational efficiency policy in AGENTS.md (binding): plan the
+  full change set and apply it in the fewest safe passes; smallest sufficient
+  verification with output reuse; delegate to subagents only when it shortens
+  the critical path; stop once completion criteria are proven.
 
 ## Execution environment
 - ALWAYS activate the project virtualenv before running anything that depends on it:
