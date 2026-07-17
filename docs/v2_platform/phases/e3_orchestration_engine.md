@@ -1,9 +1,9 @@
 # E3 — Orchestration Engine (Flow Engine)
 
-**Wave:** Split — graph/checkpointing/human-in-the-loop stories target Alpha (visual
-editor, E3-S6, may stay minimal until Beta); full completion including E3-S6 is a
-Beta entry item alongside E10.
-**Status:** Alpha slice complete · **Stories:** 5/6 complete (S1-S5 done; S6 deferred to Beta with E10)
+**Wave:** Split — graph/checkpointing/human-in-the-loop stories targeted Alpha;
+E3-S6 (visual editor) completed in Beta alongside E10, delivered via E10-S3 +
+E17-S6.
+**Status:** Complete · **Stories:** 6/6 complete (S1-S5 Alpha; S6 via E10-S3 + E17-S6)
 **Depends on:** E0, E2
 **Enables:** E10-S3; consumes E8-S2 (checkpointing/events)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E3), §18.8, §18.9
@@ -111,6 +111,13 @@ Subtasks:
 | DoD (specific) | Visual<->YAML round-trip test; a11y audit |
 | Dependencies | E3-S1, E10 (base Design System) |
 
+**Status: Done** — delivered via **E10-S3** (deterministic `flow.yaml`↔manifest
+round-trip in `frontend/lib/flow/yaml.ts`, covered by `frontend/lib/flow/yaml.test.ts`)
+and **E17-S6** (three-column editor `FlowCanvas`/`FlowPalette`/`NodeInspector`,
+inline validation `frontend/lib/flow/validate.ts` + `validate.test.ts`, keyboard
+editing + storybook-axe a11y checks, and the `frontend/e2e/flow-builder.spec.ts`
+e2e). T1 render, T2 bidirectional edit, and T3 inline validation are all met.
+
 ## v1 precursor / starting point
 
 - `backend/orchestrator/service.py` runs a LangGraph-based **linear, hardcoded**
@@ -129,10 +136,11 @@ Subtasks:
 
 ## Epic exit checklist
 
-- [ ] All 6 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
-      story-specific DoD above.
-- [ ] Contract tests green for the flow schema and node-type extension points.
-- [ ] `docs/v2_platform/progress.md` updated.
-- [ ] Alpha exit criterion "a declarative flow executes an agent-plugin end-to-end with
-      durable state and event-store replay" satisfied (E3-S1..S4 minimum); E3-S6
-      completion tracked against the Beta entry list alongside E10.
+- [x] All 6 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
+      story-specific DoD above (S6 via E10-S3 + E17-S6).
+- [x] Contract tests green for the flow schema and node-type extension points
+      (flow suite 38/38).
+- [x] `docs/v2_platform/progress.md` updated.
+- [x] Alpha exit criterion "a declarative flow executes an agent-plugin end-to-end with
+      durable state and event-store replay" satisfied (E3-S1..S4); E3-S6 completed in
+      Beta alongside E10.

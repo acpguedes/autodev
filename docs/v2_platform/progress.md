@@ -122,9 +122,11 @@ the baseline these epics build on and are measured against. The remaining
 **informal v1 precursors** (dynamic orchestration behind a flag for E3, the
 SQLite store abstraction for E8, the v1 skills registry for E6) are starting
 points only — they do not satisfy the v2 contracts. E3's Alpha slice (S1-S5) is
-complete and verified (flow suite 38/38 green); its only open story, **E3-S6**
-(visual flow editor), was Beta-deferred behind **E10** (Design System, now
-**Done** — E3-S6 unblocked). Remaining Alpha anchor work: **E12-S1** (E8 and E9 are now
+complete and verified (flow suite 38/38 green); its last story, **E3-S6**
+(visual flow editor), is now **complete** — delivered via **E10-S3**
+(deterministic `flow.yaml`↔manifest round-trip, `frontend/lib/flow/yaml.ts`) and
+**E17-S6** (canvas/palette/inspector, inline validation, keyboard + storybook-axe
+a11y, `frontend/e2e/flow-builder.spec.ts`). Remaining Alpha anchor work: **E12-S1** (E8 and E9 are now
 complete). The frontend redesign epics **E15** (done) → **E16** → **E17** (Execution Control Center prototype)
 are planned to run before the E11 kickoff; **E15**, **E16**, and **E17** are now
 complete — the redesigned Control Center is implemented end to end. **E18** (Control
@@ -143,7 +145,7 @@ rules (mandatory from E3 onward).**
 | E0 | Foundations & Hardening | Alpha | Done | 7/7 | — | [phases/e0_foundations_hardening.md](phases/e0_foundations_hardening.md) |
 | E1 | Plugin Core & SDK | Alpha | Done | 5/5 | E0 | [phases/e1_plugin_core_sdk.md](phases/e1_plugin_core_sdk.md) |
 | E2 | Agent Framework | Alpha | Done | 5/5 | E0, E1 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
-| E3 | Orchestration Engine | Alpha/Beta | Alpha done · S6→Beta | 5/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
+| E3 | Orchestration Engine | Alpha/Beta | Done | 6/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
 | E4 | Reasoning | Beta | Done | 4/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
 | E5 | Routing / Selection / Evaluation | Beta | Done | 4/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
 | E6 | Skills v2 | Beta | Done | 5/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
@@ -176,7 +178,7 @@ rules (mandatory from E3 onward).**
 | E34 | Packaging & Global Install | Beta | Not started | 0/3 | E14-S7 (CLI), E32 | [phases/e34_packaging_global_install.md](phases/e34_packaging_global_install.md) |
 | E35 | Beta Readiness Gates & Evidence | Beta | Not started | 0/3 | E32-E34, E11, E12 | [phases/e35_beta_readiness_gates.md](phases/e35_beta_readiness_gates.md) |
 
-Total: **70/156 stories complete** across 35 epics (E19 is a proposed
+Total: **71/156 stories complete** across 35 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
 "51" predated E15–E18 completion and had drifted; +13 planned stories from
@@ -199,13 +201,14 @@ directly (`backend/orchestrator/service.py`,
 to their parent row's tenant (documented at
 `backend/persistence/migrations/versions.py` lines 14-17); this was
 previously miscategorized in this doc as "not done" but is by design, not a
-gap. **E8-S3 (Artifact Store) is partial**: T3 (per-tenant pre-signed URLs)
+gap. **E8-S3 (Artifact Store) is complete**: T3 (per-tenant pre-signed URLs)
 and T4 (orphan cleanup) landed in `backend/artifacts/store.py` +
-`backend/artifacts/cleanup.py`, but T2 (persisting `ArtifactPointer`
-metadata in the State Store) is confirmed **not** implemented anywhere, so
-T4's cleanup is a best-effort heuristic pending T2. **E8-S2 (Event Store)
-is now complete (2026-07-16)** — see the changelog entry below; E8-S4
-(Backup/RPO/RTO, blocked on E11) remains not started. Known follow-up: `backend/persistence/postgres_adapter.py`
+`backend/artifacts/cleanup.py`, and T2 (persisting `ArtifactPointer`
+metadata in the State Store) landed in `backend/artifacts/pointers.py`
+(`ArtifactPointerStore`, PR #85), so cleanup is now reference-based GC over
+the durable pointer registry rather than an age heuristic. **E8-S2 (Event Store)
+is complete (2026-07-16)** — see the changelog entry below; **E8-S4
+(Backup/RPO/RTO) is complete (PR #84)**. Known follow-up: `backend/persistence/postgres_adapter.py`
 is now 713 lines, over this repo's 500-line-per-file guideline — a split
 into `PostgresStore`/`PostgresPlanStore` modules is reasonable future
 cleanup, out of scope for this pass.
@@ -261,6 +264,18 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-07-17** — **Tracker reconciliation (docs-only, no code change)** —
+  cross-checked the tracker against the codebase and closed two stale gaps that
+  were already implemented: (1) **E8-S3 T2** (durable `ArtifactPointer` metadata
+  in the State Store) is implemented in `backend/artifacts/pointers.py`
+  (`ArtifactPointerStore`, PR #85) — the E8-S1/S3 footnote wrongly still called
+  T2 "not implemented" and E8-S4 "not started"; both are corrected. (2)
+  **E3-S6** (visual flow editor) is delivered via **E10-S3** (`flow.yaml`↔manifest
+  round-trip, `frontend/lib/flow/yaml.ts` + `yaml.test.ts`) and **E17-S6**
+  (`FlowCanvas`/`FlowPalette`/`NodeInspector`, `frontend/lib/flow/validate.ts`,
+  keyboard + storybook-axe a11y, `frontend/e2e/flow-builder.spec.ts`), meeting
+  its render/round-trip/inline-validation/a11y DoD. E3 moves to **6/6 Done**;
+  epic total **70 → 71**. No source files changed.
 - **2026-07-16** — **E8-S2 — Event Store and run durability complete** on
   `epic/e8-persistence-data` (story branch `story/e8-s2-event-store`).
   **T1**: append-only `events` table persisting every canonical

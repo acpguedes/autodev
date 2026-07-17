@@ -195,10 +195,11 @@ Subtasks:
 Executed with the following explicit deviations from the story's DoR/
 dependencies, accepted at planning time:
 
-- **E8-S3 partial, in flight in parallel**: E8-S3-T2 (`ArtifactPointer`
-  adoption) is still open and owned by the e8-s3 agent; the backup mirror
-  therefore uses only the artifact store's public API and takes no
-  dependency on E8-S3 internals.
+- **E8-S3 partial, in flight in parallel** (resolved — E8-S3-T2 landed in
+  PR #85, `backend/artifacts/pointers.py`): at the time E8-S4 executed,
+  E8-S3-T2 (`ArtifactPointer` adoption) was still open and owned by the e8-s3
+  agent, so the backup mirror uses only the artifact store's public API and
+  takes no dependency on E8-S3 internals.
 - **No staging environment**: the CNF item "restore test in CI/staging"
   is covered by the automated round-trip test and the runbook's periodic
   execution procedure instead; staging validation remains follow-up work.
