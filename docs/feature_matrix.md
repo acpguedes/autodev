@@ -24,6 +24,7 @@ For the full list of environment flags see `backend/` source and
 | Repository pattern / Store abstraction | `default` | `backend/persistence/base.py` protocol + `get_store()` factory; landed in Unit 1 |
 | PostgreSQL persistence | `optional` | `backend/persistence/postgres_adapter.py` `PostgresStore` — sessions/runs/messages/plans with migrations (E0-S3); selected via `DATABASE_URL=postgresql://…`; requires `psycopg` |
 | Schema migrations (versioned) | `default` | `backend/persistence/migrations/`; `MigrationRunner` with `schema_version` table and ordered callables |
+| Durable Event Store | `default` | `backend/events/store.py` (E8-S2): append-only `events` table ordered per partition plus transactional `event_projections` materialization; every canonical envelope published on the Event Bus persists when `AUTODEV_EVENT_STORE_ENABLED=true` (default); run reconstruction via `EventStore.reconstruct_run()`; retention/compaction via `AUTODEV_EVENT_RETENTION_DAYS` |
 | Redis-backed queue/cache/locks | `optional` | `RedisJobQueue` in `backend/jobs/queue.py` plus `backend/coordination/redis.py`; selected with `AUTODEV_JOB_BACKEND=redis`, while in-process/local fallbacks remain the default |
 | MinIO artifact storage | `optional` | `backend/artifacts/store.py` provides MinIO/S3 artifacts when `STORAGE_BACKEND=s3`; local filesystem artifacts remain the default |
 | pgvector semantic memory | `planned` | Requires PostgreSQL; tracked in roadmap release 0.3 |

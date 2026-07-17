@@ -19,6 +19,12 @@ event: it builds the envelope via :func:`~backend.events.catalog.make_envelope`
 and publishes it, but never lets a bus failure (a bad payload, a
 disconnected Redis, ...) propagate into the caller — a run must never fail
 *because* eventing failed. Failures are logged and swallowed.
+
+When ``autodev_event_store_enabled`` is on (the default), the bus singleton
+is built with a wildcard subscriber that durably appends every published
+envelope to the State Store's Event Store (E8-S2). The subscriber path is
+fault-isolated by the bus, so a persistence failure never blocks delivery
+to other subscribers nor the publishing run.
 """
 
 from __future__ import annotations
@@ -27,12 +33,48 @@ import logging
 from typing import Any
 
 from backend.config.settings import Settings, get_settings
-from backend.events.bus import EventBus, InMemoryEventBus, RedisEventBus
-from backend.events.catalog import make_envelope
+from backend.events.bus import WILDCARD, EventBus, InMemoryEventBus, RedisEventBus
+from backend.events.catalog import EventEnvelope, make_envelope
+from backend.events.store import EventStore
 
 logger = logging.getLogger(__name__)
 
 _bus_instance: EventBus | None = None
+_event_store_instance: EventStore | None = None
+
+
+def get_event_store() -> EventStore:
+    """Build and cache the process-wide :class:`EventStore` singleton.
+
+    The instance is rebound automatically whenever the process durable store
+    changes (e.g. after ``reset_store_cache()`` re-reads ``DATABASE_URL`` in
+    tests), so a cached Event Store never outlives its backing database.
+
+    Returns:
+        The shared Event Store bound to the current process durable store.
+    """
+    global _event_store_instance
+    from backend.persistence.database import get_store
+
+    store = get_store()
+    if _event_store_instance is None or _event_store_instance.backing_store is not store:
+        _event_store_instance = EventStore(store)
+    return _event_store_instance
+
+
+def reset_event_store_for_tests() -> None:
+    """Clear the cached Event Store singleton — for use in test fixtures."""
+    global _event_store_instance
+    _event_store_instance = None
+
+
+def _persist_envelope(envelope: EventEnvelope) -> None:
+    """Bus subscriber durably appending each published envelope (E8-S2-T1).
+
+    Args:
+        envelope: The envelope being delivered by the bus.
+    """
+    get_event_store().append(envelope)
 
 
 def get_event_bus(settings: Settings | None = None) -> EventBus:
@@ -55,6 +97,8 @@ def get_event_bus(settings: Settings | None = None) -> EventBus:
             _bus_instance = RedisEventBus(url=active.autodev_redis_url)
         else:
             _bus_instance = InMemoryEventBus()
+        if active.autodev_event_store_enabled:
+            _bus_instance.subscribe(WILDCARD, _persist_envelope)
     return _bus_instance
 
 
@@ -104,4 +148,10 @@ def emit_event(
         logger.exception("Failed to emit event %s for partition %s", type_, partition_key)
 
 
-__all__ = ["emit_event", "get_event_bus", "reset_event_bus_for_tests"]
+__all__ = [
+    "emit_event",
+    "get_event_bus",
+    "get_event_store",
+    "reset_event_bus_for_tests",
+    "reset_event_store_for_tests",
+]
