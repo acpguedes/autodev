@@ -3,7 +3,7 @@
 **Wave:** Split — E12-S1 (test pyramid) and the start of E12-S2 (contract tests for
 existing extension points) target Alpha; E12-S2 completion plus E12-S3/S4 (agent
 evals, CI quality gates) target Beta.
-**Status:** Not started · **Stories:** 0/4 complete
+**Status:** In progress · **Stories:** 1/4 complete (E12-S1 done)
 **Depends on:** E0, E1-E6, E5
 **Enables:** E13 (Marketplace requires green contract tests to publish); mandatory contract tests for the Beta extension points `execution_environment` (E32, ADR-013) and `secret_backend` (E33, ADR-014) under E12-S2
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.7.6 (E12), §18.8, §18.9
@@ -20,12 +20,30 @@ green contract test; agent/routing quality is measured and fed back.
 
 ## Stories
 
-### E12-S1 — Test pyramid and coverage
+### E12-S1 — Test pyramid and coverage (done)
 
 Subtasks:
-- `E12-S1-T1`: unit/integration/e2e suites organized by subsystem.
-- `E12-S1-T2`: core coverage >= 85% with a CI gate.
-- `E12-S1-T3`: deterministic data/fixtures and a stub provider for tests.
+- [x] `E12-S1-T1`: unit/integration/e2e suites organized by subsystem
+      (`backend/tests/unit/<subsystem>/`, `backend/tests/integration/`,
+      `frontend/e2e/`).
+- [x] `E12-S1-T2`: core coverage >= 85% with a CI gate. "Core" = `backend/`
+      excluding `backend/tests/*`; enforced via `make test-backend` /
+      `.github/workflows/ci-backend.yml`
+      (`--cov=backend --cov-fail-under=85`, `backend/tests/*` omitted via
+      the root `.coveragerc`), with a
+      coverage summary published on every PR
+      (`scripts/ci_coverage_summary.py` → `$GITHUB_STEP_SUMMARY` +
+      `backend-coverage-report` artifact). Product coverage measured at
+      88.29% (raw coverage including test code is ~93%, which is why the
+      omit is required for the gate to be meaningful).
+- [x] `E12-S1-T3`: deterministic data/fixtures and a stub provider for tests
+      (`StubLLMProvider` in `backend/agents/provider.py`; no network/live
+      services in the unit tier).
+
+A dedicated smoke e2e CI job (`.github/workflows/ci-e2e.yml`) boots the
+backend (SQLite local-first mode), health-probes `/docs`, then runs the
+Playwright frontend suite (`cd frontend && npm run e2e`), replacing the
+previous lightweight `smoke-e2e` job that only curled `/health`.
 
 | Item | Content |
 | --- | --- |
@@ -82,11 +100,12 @@ Subtasks:
 
 ## v1 precursor / starting point
 
-- Backend CI (ruff + mypy + pytest) and frontend CI (lint + typecheck + vitest) are
+- Backend CI (ruff + mypy + pytest) and frontend CI (lint + typecheck + vitest) were
   already `default` (`.github/workflows/ci-backend.yml`, `ci-frontend.yml`) — a solid
-  base for E12-S1, but there are no coverage gates yet (`planned`, tracked as Unit 22
-  in `docs/implementation/mvp_refactor_plan.md`), no smoke e2e job, and no infra/docs
-  validation.
+  base for E12-S1. E12-S1 added the 85% product-code coverage gate (previously
+  `planned`, tracked as Unit 22 in `docs/implementation/mvp_refactor_plan.md`) and a
+  dedicated smoke e2e job (`ci-e2e.yml`); infra/docs validation beyond this remains
+  out of scope for E12-S1.
 - There is no contract-test harness, no agent evals, and no CI-enforced Validation
   Gate beyond lint/type/test today; E12-S2, E12-S3, and E12-S4 start from zero and are
   gated on E1-E6 and E5 respectively.

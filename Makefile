@@ -78,12 +78,15 @@ install-dev: venv ## Install optional dev tools (black, ruff, mypy, pytest-cov, 
 
 test: test-backend test-frontend ## Run the full backend + frontend test suites
 
-test-backend: ## Run the backend pytest suite with coverage gate (>=60%)
+test-backend: ## Run the backend pytest suite with coverage gate (>=85% of product code, see .coveragerc)
 	$(PY) -m pytest $(PYTEST_PATHS) -q \
-		--cov=backend --cov-report=term-missing --cov-fail-under=60
+		--cov=backend --cov-report=term-missing --cov-report=xml:coverage.xml \
+		--cov-fail-under=85
 
 test-backend-parallel: ## Backend suite via pytest-xdist (needs `make install-dev`); serial run is authoritative on disagreement
-	$(PY) -m pytest $(PYTEST_PATHS) -q -n auto
+	$(PY) -m pytest $(PYTEST_PATHS) -q -n auto \
+		--cov=backend --cov-report=term-missing --cov-report=xml:coverage.xml \
+		--cov-fail-under=85
 
 test-frontend: ## Run the frontend vitest suite
 	cd $(FRONTEND_DIR) && $(NPM) test
@@ -170,7 +173,7 @@ container-shell: ## Open a shell inside the backend dev/test container
 
 container-test: ## Run backend tests inside the backend container
 	$(COMPOSE) run --rm backend pytest $(PYTEST_PATHS) -q \
-		--cov=backend --cov-report=term-missing --cov-fail-under=60
+		--cov=backend --cov-report=term-missing --cov-fail-under=85
 
 run_secret_scanning: ## Run the repository secret scanner inside the backend container
 	$(COMPOSE) run --rm backend python scripts/run_secret_scanning.py .
@@ -182,7 +185,7 @@ container-check: ## Run backend lint, typecheck, and tests inside the backend co
 		python scripts/run_secret_scanning.py . && \
 		ruff check backend tests && \
 		mypy backend && \
-		pytest $(PYTEST_PATHS) -q --cov=backend --cov-report=term-missing --cov-fail-under=60'
+		pytest $(PYTEST_PATHS) -q --cov=backend --cov-report=term-missing --cov-fail-under=85'
 
 container-down: ## Tear down the Docker Compose stack
 	$(COMPOSE) down

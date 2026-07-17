@@ -102,6 +102,48 @@ Run everything (backend + frontend):
 make test
 ```
 
+### Test pyramid & layout
+
+AutoDev's backend suite is organized as three tiers, bottom to top:
+
+| Tier | Location | What it covers | External I/O |
+|------|----------|-----------------|---------------|
+| Unit | `backend/tests/unit/<subsystem>/` | A single module/class in isolation | None — no network, no live services, no real LLM/API/Docker calls |
+| Integration | `backend/tests/integration/` | Real in-process component boundaries (SQLite persistence, FastAPI `TestClient`, plugin host, orchestrator wiring) | In-process only — no outbound network, no external API keys |
+| E2E | `frontend/e2e/*.spec.ts` (Playwright) + the `smoke-e2e` CI job | The real FastAPI backend and the built Next.js app driven together through a browser | Real local processes (backend on `:8000`, frontend dev server); frontend specs intercept `/v2/*` requests so they stay deterministic even when a live backend isn't reachable |
+
+`<subsystem>` mirrors the `backend/` package layout (e.g.
+`backend/tests/unit/agents/`, `backend/tests/unit/patches/`), so a test's path
+tells you which product module it protects. `backend/tests/fixtures/` holds
+shared deterministic fixtures usable from either the unit or integration
+tier. Top-level `tests/` (repo root) keeps the pre-existing API/CLI/
+orchestrator/config suite and is unaffected by this layout.
+
+Pytest markers (registered in `backend/pyproject.toml`) let you select a tier
+without relying on paths:
+
+```bash
+pytest -m unit -q
+pytest -m integration -q
+```
+
+**Determinism / stub-provider policy — mandatory for the unit tier:**
+
+- No network calls, no live external services, no real LLM provider, no real
+  git remotes, no real Docker/sandbox execution. Use `StubLLMProvider`
+  (`backend/agents/provider.py`) and the fixtures under
+  `backend/tests/fixtures/` for anything that would otherwise reach outside
+  the process.
+- The integration tier may exercise real in-process components (SQLite,
+  `TestClient`) but still must not require outbound network access or real
+  credentials — CI runs with no external services configured.
+- The e2e tier boots real backend/frontend processes but keeps browser specs
+  deterministic by mocking `/v2/*` API responses at the network layer (see
+  the existing specs under `frontend/e2e/`).
+
+A flaky or non-deterministic test blocks the tier it belongs to — fix or stub
+the dependency rather than adding retries.
+
 ### Backend tests (pytest)
 
 ```bash
@@ -114,7 +156,9 @@ The suite spans **285+ tests** across two locations:
 
 - `tests/backend/` — API, CLI, orchestrator, LLM factory, config.
 - `backend/tests/` — agents, plans, patches, validation, skills, repository
-  intelligence, observability, job queue, sandbox runner, tree-sitter provider.
+  intelligence, observability, job queue, sandbox runner, tree-sitter
+  provider, organized into `unit/<subsystem>/` and `integration/` per the
+  layout above.
 
 `tests/conftest.py` puts the repository root on `sys.path`, and
 `backend/pyproject.toml` sets `pythonpath = ["."]`, so the suites run from a
@@ -179,16 +223,48 @@ Vitest picks up `frontend/lib/**/*.test.ts` (see `frontend/vitest.config.ts`).
 
 ---
 
-## 4. Coverage (optional)
+## 4. Coverage
 
-Requires `make install-dev` (for `pytest-cov`):
+`make test-backend` (and CI's `backend-tests` job) enforce a **coverage gate
+of 85% on product code**: `--cov=backend --cov-fail-under=85`, with
+`backend/tests/*` omitted via the root `.coveragerc`. pytest-cov auto-discovers
+this file when pytest runs from the repo root, which is how every
+`make test-backend*` / CI invocation runs. The omit matters — without it,
+coverage.py counts the test files themselves as "covered by being executed",
+which inflates the number and hides real gaps in `backend/` (raw/unfiltered
+coverage on this repo is ~93%; the product-code-only figure the gate enforces
+is ~88%).
+
+The `.coveragerc` repeats the same `omit = backend/tests/*` pattern under
+**both** `[run]` and `[report]`. `[run] omit` alone is not enough: it
+controls what coverage.py measures during collection, but does not
+reliably keep already-imported test modules out of the generated
+term/XML/HTML reports. `[report] omit` is what actually filters those
+reports (the `[xml]` section has no `omit` of its own — it inherits
+`[report]`'s), so both sections are required for the gate to measure
+product-only coverage correctly.
+
+```bash
+make test-backend
+# raw:
+.venv/bin/python -m pytest tests backend/tests -q \
+  --cov=backend --cov-report=term-missing --cov-report=xml:coverage.xml \
+  --cov-fail-under=85
+# (backend/tests/* is omitted via the root .coveragerc, picked up automatically)
+```
+
+This also writes `coverage.xml` (Cobertura format), which CI uploads as a
+build artifact and summarizes in the job's step summary
+(`scripts/ci_coverage_summary.py`).
+
+For an HTML report to drill into locally (requires `make install-dev` for
+`pytest-cov`):
 
 ```bash
 make coverage
 ```
 
-Prints a `term-missing` report and writes an HTML report to `htmlcov/`
-(git-ignored). Open `htmlcov/index.html` in a browser to drill in.
+Writes `htmlcov/` (git-ignored) — open `htmlcov/index.html` in a browser.
 
 ---
 
@@ -243,9 +319,17 @@ make container-down    # tear it down
 
 ## 8. Reproduce CI locally
 
-The GitHub Actions pipelines run the backend pytest suite
-(`.github/workflows/ci-backend.yml`) and the frontend lint → typecheck → test →
-build sequence (`.github/workflows/ci-frontend.yml`). Reproduce both with:
+Three GitHub Actions workflows gate every PR:
+
+- `.github/workflows/ci-backend.yml` — secret/CVE scan, then the backend
+  pytest suite with the 85% coverage gate.
+- `.github/workflows/ci-frontend.yml` — frontend lint → typecheck → unit
+  test → build.
+- `.github/workflows/ci-e2e.yml` — smoke e2e: boots the backend
+  (`uvicorn backend.api.main:app`), health-probes `/docs`, then runs the
+  Playwright suite (`frontend/e2e/`) against the built Next.js app.
+
+Reproduce the first two with:
 
 ```bash
 make check          # lint + typecheck + tests + build, backend & frontend
@@ -256,6 +340,29 @@ make check-frontend # frontend slice only
 > `make check` uses the backend dev tools, so run `make install-dev` first.
 > To mirror CI's backend job exactly (tests only, no lint/typecheck), run
 > `make test-backend`.
+
+Reproduce the e2e smoke job:
+
+```bash
+.venv/bin/python -m uvicorn backend.api.main:app --port 8000 &
+curl -sf --retry 10 --retry-delay 2 --retry-connrefused http://localhost:8000/docs
+cd frontend && npx playwright install --with-deps chromium && npm run e2e
+```
+
+Playwright's `webServer` config (`frontend/playwright.config.ts`) starts the
+Next.js dev server for you; override the port with `PLAYWRIGHT_PORT` if you
+already have something listening on `:3000` (e.g. a sibling worktree).
+
+> **Caveat when overriding `PLAYWRIGHT_PORT`:** `frontend/lib/api.ts`'s
+> `getDefaultApiBaseUrl()` only defaults the API base to `http://localhost:8000`
+> when the frontend itself is served from `localhost:3000` exactly; on any
+> other port it falls back to same-origin requests. The `sessions-config.spec.ts`
+> mocks intercept the hardcoded `http://localhost:8000/v2/**` origin, so
+> running the frontend on a non-3000 port (and/or the backend on a non-8000
+> port) makes those specs fail with "endpoint unavailable" — not a real
+> regression, just a mismatch between the port override and this hardcoded
+> default. Use the default ports (`:3000` frontend / `:8000` backend) to
+> reproduce the e2e job faithfully; CI's `ci-e2e.yml` always does.
 
 ---
 
