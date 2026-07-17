@@ -3,8 +3,9 @@
 **Wave:** v2.2 — Concept Integration (gated on E14 sandbox/execution
 contracts landing first).
 **Status:** Not started · **Stories:** 0/4 complete
-**Depends on:** E14 (real execution, sandbox runners), E0 (MinIO artifacts),
-E9 (MCP), E22-S5 (evidence bundles)
+**Depends on:** E14 (real execution, sandbox runners), E32 (Beta
+execution-environment contract — E28 extends it, never forks it), E0 (MinIO
+artifacts), E9 (MCP), E22-S5 (evidence bundles)
 **Enables:** cheaper harness iterations (E23), E25 (Extension Studio builds
 in provisioned envs), UI-change verification evidence (E22/E24 dashboards)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §23.4,
@@ -71,8 +72,9 @@ Subtasks:
 - `E28-S2-T1`: isolation classes — declare `trusted` (Docker, current
   SandboxRunner) and `untrusted` (microVM-class: Firecracker/Kata, or gVisor
   where microVMs are unavailable) as runner profiles behind one execution
-  contract; class chosen by policy (source of code, execution mode, tenant
-  config), not by callers.
+  contract — the E32 (Beta) environment abstraction, whose backend decision
+  history lives in ADR-013; class chosen by policy (source of code,
+  execution mode, tenant config), not by callers.
 - `E28-S2-T2`: policy defaults — LLM-generated code executing with network
   or credential access defaults to `untrusted`; platform-authored validation
   suites stay `trusted`; policy is fail-closed (unknown provenance →

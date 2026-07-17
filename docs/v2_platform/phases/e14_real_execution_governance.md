@@ -7,11 +7,21 @@ modes, sandbox runners) can start once E3's core and E9-S1 land, without
 waiting on all of E11; S5 (Web UX) additionally depends on E10; S6-S7
 (shell/CLI) can proceed in parallel once S3 lands.
 **Status:** Not started · **Stories:** 0/7 complete
-**Depends on:** E2, E3, E9-S1, E11-S4
+**Depends on:** E2, E3, E9-S1, E11-S4; environment layer provided by E32
+(Beta cut of the isolated execution environment)
 **Enables:** the Beta exit criterion's real execution flow; consumed by E10
 (approval/execution screens, via E14-S5)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §12.7-§12.10,
 §18.5, §18.7.8, §18.8, §18.9
+
+**Scope boundary (Beta):** E14 owns *what* runs (ExecutionTask/Action,
+permission & approval policy, governed autonomy) and the runner contract
+(E14-S4). *Where* it runs — the environment abstraction, fail-closed
+network/filesystem policy, lifecycle and isolation audit — is **E32**
+(`phases/e32_isolated_execution_beta.md`, ADR-013). Packaging, global
+install and upgrade of the `autodev` CLI/platform are **E34**
+(`phases/e34_packaging_global_install.md`, ADR-015); E14-S6/S7 keep the CLI
+command UX only.
 
 ## Objective
 

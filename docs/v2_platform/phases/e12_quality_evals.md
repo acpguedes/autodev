@@ -5,7 +5,7 @@ existing extension points) target Alpha; E12-S2 completion plus E12-S3/S4 (agent
 evals, CI quality gates) target Beta.
 **Status:** Not started · **Stories:** 0/4 complete
 **Depends on:** E0, E1-E6, E5
-**Enables:** E13 (Marketplace requires green contract tests to publish)
+**Enables:** E13 (Marketplace requires green contract tests to publish); mandatory contract tests for the Beta extension points `execution_environment` (E32, ADR-013) and `secret_backend` (E33, ADR-014) under E12-S2
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.7.6 (E12), §18.8, §18.9
 
 ## Objective

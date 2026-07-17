@@ -123,6 +123,7 @@ manifest, registry, and runtime docs.
 | Executable validation pipeline | `optional` | Same flag as above; returns real exit codes and captured output when enabled |
 | Validation skipped by default | `default` | Returns `skipped=true, backend="disabled"` unless flag is set |
 | Failure classification / rework loop | `planned` | Tracked as Unit 29 in `mvp_refactor_plan.md` |
+| Isolated execution environment — Beta slice (container-first, pluggable `SandboxRunner` backend) | `planned` | E32; ADR-013 (backend decision pending); `docs/v2_platform/phases/e32_isolated_execution_beta.md` |
 
 ---
 
@@ -175,6 +176,7 @@ manifest, registry, and runtime docs.
 | Plugin permission isolation | `default` | Default-deny fs/net/exec/secrets model for plugins with brokered Host API access and `plugin.permission.denied` audit events (E1-S3); see [`docs/plugins/permissions.md`](plugins/permissions.md) |
 
 See [`docs/security.md`](security.md) for the full threat model and residual risks (no dependency lockfile, mutable base image tags, no frontend-specific CSP/HSTS headers in `next.config.mjs` — backend headers now ship by default).
+| Secret store & credential governance (encrypted at rest, redaction, scoped injection) | `planned` | E33; ADR-014 (format decision pending); `docs/v2_platform/phases/e33_secrets_credential_governance.md` |
 
 ---
 
@@ -240,10 +242,14 @@ See [`docs/security.md`](security.md) for the full threat model and residual ris
 | Docker Compose (backend + frontend) | `default` | `infrastructure/docker-compose.yml`; boots with `LLM_PROVIDER=stub` |
 | Production-like Compose profile (Postgres + Redis + MinIO) | `optional` | `infrastructure/docker-compose.yml --profile prod` starts `backend-prod` with PostgreSQL, Redis, and MinIO wiring |
 | Kubernetes deployment | `planned` | `terraform/main.tf` is a placeholder; tracked in roadmap release 1.0 |
+| Global install & upgrade (`autodev` CLI + self-host bundle) | `planned` | E34; ADR-015 (strategy decision pending); `docs/v2_platform/phases/e34_packaging_global_install.md` |
+| Beta readiness gates & evidence bundle | `planned` | E35; `docs/v2_platform/phases/e35_beta_readiness_gates.md` |
 
 ---
 
-*Last updated: 2026-07-04, adding the Plugin System (v2, E1) and Agent Framework
+*Last updated: 2026-07-17, adding the planned E32–E35 Beta-hardening rows
+(isolated execution, secret store, global install, readiness gates).
+Previous update 2026-07-04, adding the Plugin System (v2, E1) and Agent Framework
 (v2, E2) sections, correcting the PostgreSQL and typed-settings rows, and adding
 the E0-S5/E1-S3 security rows. See `docs/v2_platform/progress.md` for the current
 v2 story tracker and `git log` for full history.*
