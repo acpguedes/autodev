@@ -132,7 +132,7 @@ def test_stdio_subprocess_roundtrip(tmp_path: Path) -> None:
         input=stdin_payload,
         capture_output=True,
         text=True,
-        cwd=str(Path(__file__).resolve().parents[2]),
+        cwd=str(Path(__file__).resolve().parents[4]),
         env=env,
         timeout=30,
     )

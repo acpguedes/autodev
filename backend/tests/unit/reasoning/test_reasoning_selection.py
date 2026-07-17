@@ -9,10 +9,9 @@ traced. Also checks the Agent Runtime binding adapter.
 from __future__ import annotations
 
 import asyncio
-from typing import Sequence
 
 from backend.agents.manifest import AgentBudgets
-from backend.agents.provider import LLMProviderResponse, StubLLMProvider
+from backend.agents.provider import ScriptedLLMProvider, StubLLMProvider
 from backend.reasoning import (
     ReasoningInput,
     ReasoningService,
@@ -32,21 +31,6 @@ from backend.reasoning.policy import (
     TracingSpec,
 )
 from backend.reasoning.strategies import register_builtin_strategies
-
-
-class _ScriptedProvider:
-    """Provider returning a scripted sequence of completions, then repeating."""
-
-    def __init__(self, responses: Sequence[str]) -> None:
-        """Store the scripted responses and initialize the call counter."""
-        self._responses = list(responses)
-        self.calls = 0
-
-    def complete(self, prompt: str, *, agent_id: str, run_id: str, tenant_id: str) -> LLMProviderResponse:
-        """Return the next scripted response (repeating the last one)."""
-        index = min(self.calls, len(self._responses) - 1)
-        self.calls += 1
-        return LLMProviderResponse(text=self._responses[index], tokens_input=1, tokens_output=1)
 
 
 def _policy_with_rules(*, on_exceed: str = "fail_closed") -> ReasoningPolicy:
@@ -124,7 +108,7 @@ def test_service_runs_selected_strategy_and_traces_decision() -> None:
 def test_fallback_degrades_on_budget_exhausted() -> None:
     """An overrun under a degrade_to policy retries with the fallback strategy."""
     events: list[TraceEvent] = []
-    provider = _ScriptedProvider(["ACTION search x"])  # ReAct never emits FINAL
+    provider = ScriptedLLMProvider(["ACTION search x"])  # ReAct never emits FINAL
     service = ReasoningService(
         _registry(), provider=provider, tool_impls={"search": lambda args: "y"}, on_event=events.append
     )
@@ -144,7 +128,7 @@ def test_fallback_degrades_on_budget_exhausted() -> None:
 
 def test_fail_closed_returns_budget_exhausted() -> None:
     """With the default fail_closed policy, an overrun is returned unaltered."""
-    provider = _ScriptedProvider(["ACTION search x"])
+    provider = ScriptedLLMProvider(["ACTION search x"])
     service = ReasoningService(_registry(), provider=provider, tool_impls={"search": lambda args: "y"})
     policy = default_reasoning_policy(default_strategy="autodev/reasoning-react", max_steps=2)
     run_input = ReasoningInput(

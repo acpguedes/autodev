@@ -13,7 +13,7 @@ from backend.skills.invoker import SkillInvocationBroker
 from backend.skills.manifest import load_manifest, validate_manifest
 from backend.skills.registry_v2 import SkillRegistry
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[4]
 APPLY_PATCH_DIR = REPO_ROOT / "examples" / "plugins" / "skill-apply-patch"
 SUMMARIZE_LLM_DIR = REPO_ROOT / "examples" / "plugins" / "skill-summarize-llm"
 

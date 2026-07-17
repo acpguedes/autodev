@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Iterator, cast
 
 import pytest
 
@@ -13,7 +14,7 @@ from backend.persistence.database import DurableStore, reset_store_cache
 
 
 @pytest.fixture()
-def orchestrator_service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> OrchestratorService:
+def orchestrator_service(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[OrchestratorService]:
     database_path = tmp_path / "autodev-test.db"
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path}")
     reset_store_cache()
@@ -136,7 +137,7 @@ def test_agent_metadata_validation_falls_back_to_contract_valid_payload(
 ) -> None:
     service = OrchestratorService(
         agents={"planner": InvalidPlannerFallbackAgent()},
-        store=orchestrator_service._store,
+        store=cast(DurableStore, orchestrator_service._store),
     )
 
     session = service.create_plan("Validate metadata")
@@ -149,7 +150,7 @@ def test_agent_metadata_validation_falls_back_to_contract_valid_payload(
 def test_create_plan_fallback_filters_non_list_lines(orchestrator_service: OrchestratorService) -> None:
     service = OrchestratorService(
         agents={"planner": PlannerWithoutMetadata()},
-        store=orchestrator_service._store,
+        store=cast(DurableStore, orchestrator_service._store),
     )
 
     session = service.create_plan("Fallback parsing")

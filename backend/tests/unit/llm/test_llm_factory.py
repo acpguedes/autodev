@@ -13,6 +13,11 @@ from backend.llm.factory import DEFAULT_OLLAMA_BASE_URL, get_chat_model
 def test_ollama_provider_uses_local_openai_compatible_defaults(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Isolate from any real OPENAI_API_KEY set in the host environment: the
+    # ollama provider must fall back to the hardcoded "ollama" placeholder
+    # key regardless of what happens to be exported in the shell running
+    # the tests (deterministic fixture behavior, E12-S1-T3).
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     calls: list[dict[str, object]] = []
 
     class FakeChatOpenAI:
