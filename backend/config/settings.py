@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     # --- artifacts ---
     storage_backend: Literal["local", "s3"] = "local"
     autodev_artifact_dir: str = "/data/artifacts"
+    autodev_artifact_retention_days: int = Field(default=7, ge=-1)
     autodev_minio_endpoint: str = ""
     autodev_minio_bucket: str = "autodev-artifacts"
     autodev_minio_access_key: str = ""

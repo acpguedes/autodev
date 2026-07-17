@@ -1,23 +1,16 @@
-"""Best-effort lifecycle cleanup for orphaned artifact store objects.
+"""Lifecycle cleanup for artifact store objects (E8-S3/T4).
 
-Scope note (E8-S3/T4): the platform does not yet persist ``ArtifactPointer``
-metadata anywhere durable — there is no State Store table recording which
-object keys are still referenced by a run, patch, or export (E8-S3/T2 is not
-implemented; see ``get_artifact_store`` callers, which only ever build the
-store, never record a pointer). Without that registry, there is no
-authoritative way to know whether a given object is truly orphaned.
+Two sweep strategies are provided:
 
-This module therefore implements a best-effort, convention-based sweep
-instead of true reference-counted cleanup:
-
-- Callers may pass ``referenced_object_keys``, any keys known (from whatever
-  ad hoc tracking exists today) to still be in use; those are always kept.
-- Objects younger than ``older_than`` are always kept, since a very recent
-  object may simply not have been referenced anywhere yet.
-- Everything else is treated as orphaned.
-
-Once T2 lands, this heuristic should be replaced with an accurate diff
-against the real artifact-reference table.
+- :func:`cleanup_unreferenced_artifacts` — the authoritative, reference-based
+  garbage collector. With the durable pointer registry landed (E8-S3/T2,
+  :class:`backend.artifacts.pointers.ArtifactPointerStore`), an object is
+  garbage exactly when no ``artifacts`` row references its key. An age guard
+  (``autodev_artifact_retention_days``) still protects very recent objects,
+  since a payload may be written moments before its pointer row commits.
+- :func:`cleanup_orphaned_artifacts` — the older best-effort, convention-based
+  sweep (age plus caller-supplied allowlist). Kept for callers without access
+  to the pointer registry; prefer the reference-based GC.
 """
 
 from __future__ import annotations
@@ -26,12 +19,14 @@ from collections.abc import Collection, Iterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+from backend.artifacts.pointers import ArtifactPointerStore
 from backend.artifacts.store import (
     ArtifactStore,
     LocalArtifactStore,
     MinioArtifactStore,
     all_bucket_names,
 )
+from backend.config.settings import get_settings
 
 
 @dataclass(frozen=True)
@@ -206,9 +201,54 @@ def cleanup_orphaned_artifacts(
     return CleanupResult(removed=removed, scanned_count=scanned_count, dry_run=dry_run)
 
 
+def cleanup_unreferenced_artifacts(
+    store: ArtifactStore,
+    pointers: ArtifactPointerStore | None = None,
+    *,
+    retention_days: int | None = None,
+    dry_run: bool = False,
+    now: datetime | None = None,
+) -> CleanupResult:
+    """Garbage-collect stored objects no pointer row references (E8-S3/T4).
+
+    Authoritative, reference-counted cleanup: every object key present in the
+    ``artifacts`` State Store table (any tenant) is kept; everything else is
+    garbage, subject to an age guard so payloads written moments before their
+    pointer row commits are never swept.
+
+    Args:
+        store: The artifact store to sweep.
+        pointers: Pointer registry to consult; defaults to a store built via
+            :class:`~backend.artifacts.pointers.ArtifactPointerStore`.
+        retention_days: Minimum age, in days, an unreferenced object must
+            have before removal. Defaults to the
+            ``autodev_artifact_retention_days`` setting. ``-1`` disables
+            collection entirely (objects are kept forever).
+        dry_run: If ``True``, compute and return what would be removed
+            without deleting anything.
+        now: Reference timestamp used to compute object age; defaults to
+            the current UTC time. Exposed for deterministic testing.
+
+    Returns:
+        A :class:`CleanupResult` describing what was (or would be) removed.
+    """
+    days = retention_days if retention_days is not None else get_settings().autodev_artifact_retention_days
+    if days < 0:
+        return CleanupResult(removed=[], scanned_count=0, dry_run=dry_run)
+    registry = pointers or ArtifactPointerStore()
+    return cleanup_orphaned_artifacts(
+        store,
+        older_than=timedelta(days=days),
+        referenced_object_keys=registry.referenced_object_keys(),
+        dry_run=dry_run,
+        now=now,
+    )
+
+
 __all__ = [
     "ArtifactObjectInfo",
     "CleanupResult",
     "cleanup_orphaned_artifacts",
+    "cleanup_unreferenced_artifacts",
     "iter_all_objects",
 ]

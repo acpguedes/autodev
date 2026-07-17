@@ -91,6 +91,26 @@ def build_parser() -> argparse.ArgumentParser:
     repository_context_parser.add_argument("--limit", type=int, default=6)
     repository_context_parser.set_defaults(handler=_handle_repository_context)
 
+    artifacts_cleanup_parser = subparsers.add_parser(
+        "artifacts-cleanup",
+        help="Remove objetos de artefatos sem ponteiro registrado no State Store",
+    )
+    artifacts_cleanup_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Apenas reporta o que seria removido, sem apagar nada",
+    )
+    artifacts_cleanup_parser.add_argument(
+        "--retention-days",
+        type=int,
+        default=None,
+        help=(
+            "Idade mínima (dias) de um objeto sem referência antes da remoção; "
+            "padrão AUTODEV_ARTIFACT_RETENTION_DAYS, -1 desativa a coleta"
+        ),
+    )
+    artifacts_cleanup_parser.set_defaults(handler=_handle_artifacts_cleanup)
+
     sdk_parser = subparsers.add_parser("sdk", help="Ferramentas do SDK de plugins")
     sdk_subparsers = sdk_parser.add_subparsers(dest="sdk_command", required=True)
     sdk_new_parser = sdk_subparsers.add_parser("new", help="Cria projetos do SDK")
@@ -161,6 +181,45 @@ def _handle_config_show(args: argparse.Namespace) -> int:
                 "instructions": document.instructions.model_dump(),
             },
             indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
+def _handle_artifacts_cleanup(args: argparse.Namespace) -> int:
+    """Handle ``autodev artifacts-cleanup``: garbage-collect unreferenced artifacts.
+
+    Args:
+        args: Parsed CLI arguments with ``dry_run`` and optional ``retention_days``.
+
+    Returns:
+        Process exit code, always ``0``.
+    """
+    from backend.artifacts import cleanup_unreferenced_artifacts, get_artifact_store
+
+    store = get_artifact_store()
+    result = cleanup_unreferenced_artifacts(
+        store,
+        dry_run=args.dry_run,
+        retention_days=args.retention_days,
+    )
+    print(
+        json.dumps(
+            {
+                "status": "ok",
+                "dry_run": result.dry_run,
+                "scanned_count": result.scanned_count,
+                "removed": [
+                    {
+                        "bucket": obj.bucket,
+                        "object_key": obj.object_key,
+                        "size_bytes": obj.size_bytes,
+                        "last_modified": obj.last_modified.isoformat(),
+                    }
+                    for obj in result.removed
+                ],
+            },
             ensure_ascii=False,
         )
     )
