@@ -2,10 +2,11 @@
 
 **Wave:** Split — E8-S1/E8-S2 (multi-tenant schema + event store) target Alpha;
 E8-S3/E8-S4 (artifacts + backup/RPO/RTO) target Beta.
-**Status:** In progress · **Stories:** 2/4 complete* (matches
-`../progress.md`'s epic table). \* E8-S1 and E8-S2 are complete (see
-below); E8-S3 is partial (T3/T4 done, T2 gap remains); E8-S4 is not
-started (blocked on E11).
+**Status:** In progress · **Stories:** 3/4 complete* (`../progress.md`'s
+epic table still shows 2/4; its update is owned by the epic-level
+process, not this story). \* E8-S1 and E8-S2 are complete (see
+below); E8-S3 is partial (T3/T4 done, T2 gap remains); E8-S4 is done
+(see DoR deviations in its section).
 **Depends on:** E0
 **Enables:** durable base for E3, E9, E11; integrates with E11 (backup)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.7.2 (E8), §18.8, §18.9
@@ -153,10 +154,24 @@ Subtasks:
 
 ### E8-S4 — Backup, RPO/RTO, and reversibility
 
+**Status: Done** (branch `epic/e8-s4-backup-rpo-rto`).
+
 Subtasks:
-- `E8-S4-T1`: logical/physical backup of PostgreSQL and MinIO.
-- `E8-S4-T2`: restore runbook with RTO <= 30 min verification.
-- `E8-S4-T3`: automated periodic restore test.
+- `E8-S4-T1` (**done**): `backend/persistence/backup.py` — `BackupManager`
+  with SQLite online backup (`sqlite3.Connection.backup`), `pg_dump`/
+  `pg_restore` wrappers (skipped with an explicit component status when the
+  tools or `DATABASE_URL` are unavailable), artifact mirror driven solely by
+  the artifact store's public API, and a JSON manifest carrying SHA-256
+  digests plus `schema_version`. CLI: `python -m backend.persistence.backup`
+  (`backup` / `restore` / `verify`), non-zero exit on any failure.
+- `E8-S4-T2` (**done**): `docs/v2_platform/runbooks/e8_restore_runbook.md` —
+  per-component restore procedure, integrity checklist, RTO <= 30 min
+  verification steps, and backup-failure alerting guidance.
+- `E8-S4-T3` (**done**): `backend/tests/test_backup_restore.py` — seed →
+  backup → wipe → restore → integrity asserts round-trip; Postgres and MinIO
+  variants auto-skip when the services are unavailable; periodic execution
+  documented in the runbook. Evidence: full suite green in the project venv
+  (848 passed, 2 skipped — the Postgres/MinIO variants on this host).
 
 | Item | Content |
 | --- | --- |
@@ -165,6 +180,22 @@ Subtasks:
 | DoR | E8-S1..S3 ready; staging environment available |
 | DoD | End-to-end restore validated; runbook published; backup-failure alerts |
 | Dependencies | E8-S1, E8-S2, E8-S3, E11 |
+
+#### DoR deviations (accepted)
+
+Executed with the following explicit deviations from the story's DoR/
+dependencies, accepted at planning time:
+
+- **E8-S3 partial, in flight in parallel**: E8-S3-T2 (`ArtifactPointer`
+  adoption) is still open and owned by the e8-s3 agent; the backup mirror
+  therefore uses only the artifact store's public API and takes no
+  dependency on E8-S3 internals.
+- **No staging environment**: the CNF item "restore test in CI/staging"
+  is covered by the automated round-trip test and the runbook's periodic
+  execution procedure instead; staging validation remains follow-up work.
+- **E11 does not exist yet**: the E11 dependency (ops/alerting integration)
+  is replaced by the alerting guidance documented in the restore runbook;
+  wiring into E11 is deferred until that epic lands.
 
 ## v1 precursor / starting point
 
