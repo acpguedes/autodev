@@ -2,10 +2,10 @@
 
 **Wave:** Split — E8-S1/E8-S2 (multi-tenant schema + event store) target Alpha;
 E8-S3/E8-S4 (artifacts + backup/RPO/RTO) target Beta.
-**Status:** In progress · **Stories:** 1/4 complete* (matches
-`../progress.md`'s epic table). \* E8-S1 is now complete (see below); E8-S3
-is partial (T3/T4 done, T2 gap remains); E8-S2/S4 are not started (blocked
-on E9/E11 respectively).
+**Status:** In progress · **Stories:** 2/4 complete* (matches
+`../progress.md`'s epic table). \* E8-S1 and E8-S2 are complete (see
+below); E8-S3 is partial (T3/T4 done, T2 gap remains); E8-S4 is not
+started (blocked on E11).
 **Depends on:** E0
 **Enables:** durable base for E3, E9, E11; integrates with E11 (backup)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.7.2 (E8), §18.8, §18.9
@@ -76,6 +76,40 @@ Subtasks:
 | Dependencies | E0 |
 
 ### E8-S2 — Event Store and run durability
+
+**Complete (2026-07-16).** Summary against the subtasks:
+
+- `E8-S2-T1` (**done**): `backend/events/store.py` `EventStore` — an
+  append-only `events` table persisting every canonical
+  :class:`EventEnvelope` (catalog `domain.entity.action` types, E9-S3)
+  with a gap-free per-partition `sequence` (`UNIQUE (partition_key,
+  sequence)`), `tenant_id`, and the full envelope payload, on both SQLite
+  and Postgres. Wired as a wildcard Event Bus subscriber in
+  `backend/events/runtime.py:get_event_bus()` behind
+  `autodev_event_store_enabled` (default on); the bus's fault-isolated
+  dispatch plus a per-thread cached write connection keep the append fast
+  and non-blocking for the run (CNF; bounded by the
+  `test_flows_checkpoint.py` overhead test).
+- `E8-S2-T2` (**done**): flow-state checkpointing itself landed in E3-S3
+  (`flow_runs.state_json` + `backend/flows/checkpoint.py`); this story
+  adds `EventStore.reconstruct_run()`, rebuilding a run view (status,
+  step trail, terminal outcome) purely from stored envelopes, verified
+  in test against the `FlowRunStore` record together with a
+  `FlowEngine.replay_run()` deterministic-replay assertion (DoD).
+- `E8-S2-T3` (**done**): `event_projections` materialization (derived
+  status, last sequence/type/time, per-type counts) updated in the same
+  transaction as each append — O(1) status queries via
+  `get_projection()`/`list_projections()`.
+- `E8-S2-T4` (**done**): `EventStore.purge_expired()` compacts events of
+  *terminal* partitions older than the configurable retention window
+  (`autodev_event_retention_days`, default 30; `-1` disables), always
+  keeping the projection row as the compacted summary.
+
+DoD check: reconstruction + deterministic replay covered by
+`backend/tests/test_event_store.py`; retention configurable via settings;
+event-store docs updated (`docs/feature_matrix.md` § Persistence,
+`docs/config.md` env inventory). Record types/DDL/decoders live in
+`backend/events/records.py`, mirroring the flows records/state split.
 
 Subtasks:
 - `E8-S2-T1`: append-only events table (`domain.entity.action`) ordered per run.

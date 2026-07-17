@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     # --- event bus (E9-S2-T2) ---
     autodev_event_bus: Literal["inmemory", "redis"] = "inmemory"
 
+    # --- event store (E8-S2) ---
+    autodev_event_store_enabled: bool = True
+    autodev_event_retention_days: int = Field(default=30, ge=-1)
+
     # --- artifacts ---
     storage_backend: Literal["local", "s3"] = "local"
     autodev_artifact_dir: str = "/data/artifacts"
