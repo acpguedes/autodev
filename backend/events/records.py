@@ -166,6 +166,20 @@ def _iso(value: Any) -> str:
     return str(value)
 
 
+def _dt(value: Any) -> datetime:
+    """Normalize a DB timestamp value (datetime or str) to a ``datetime``.
+
+    Args:
+        value: Raw column value.
+
+    Returns:
+        The value as an aware/naive ``datetime`` (as stored).
+    """
+    if isinstance(value, datetime):
+        return value
+    return datetime.fromisoformat(str(value))
+
+
 def decode_event(row: Any) -> StoredEvent:
     """Decode an ``events`` row into a :class:`StoredEvent`.
 
@@ -184,7 +198,7 @@ def decode_event(row: Any) -> StoredEvent:
         schemaVersion=str(values[10]),
         eventId=str(values[2]),
         type=str(values[3]),
-        occurredAt=_iso(values[4]),
+        occurredAt=_dt(values[4]),
         tenantId=str(values[5]),
         partitionKey=str(values[6]),
         traceId=str(values[7] or ""),

@@ -155,8 +155,9 @@ class EventStore:
             ),
             (envelope.partitionKey,),
         ).fetchone()
+        counts: dict[str, int] = {}
         if row is None:
-            status, counts = "", {}
+            status = ""
         else:
             values = list(row)
             status = str(values[0] or "")
@@ -310,7 +311,7 @@ class EventStore:
             if envelope.type == "flow.run.started":
                 started_at = envelope.occurredAt.isoformat()
             elif envelope.type == "run.step.started":
-                step = {
+                step: dict[str, Any] = {
                     "stepKey": str(data.get("stepKey", "")),
                     "agent": str(data.get("agent", "")),
                     "status": "running",
@@ -321,10 +322,12 @@ class EventStore:
                 open_steps[step["stepKey"]] = step
             elif envelope.type in ("run.step.completed", "run.step.failed"):
                 key = str(data.get("stepKey", ""))
-                step = open_steps.get(key)
-                if step is None:
+                found = open_steps.get(key)
+                if found is None:
                     step = {"stepKey": key, "agent": "", "sequence": stored.sequence}
                     steps.append(step)
+                else:
+                    step = found
                 terminal = (
                     str(data.get("status", "completed"))
                     if envelope.type == "run.step.completed"
