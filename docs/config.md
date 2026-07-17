@@ -92,6 +92,9 @@ error before the API starts.
 | `AUTODEV_REPO_PROVIDER` | `lexical` | Repository provider selector. |
 | `AUTODEV_JOB_BACKEND` | `inprocess` | `inprocess` or `redis`. |
 | `AUTODEV_REDIS_URL` | empty | Redis URL for prod queue/cache/locks. Must use `redis://` or `rediss://`. |
+| `AUTODEV_EVENT_BUS` | `inmemory` | Event Bus backend: `inmemory` or `redis` (Redis Streams). |
+| `AUTODEV_EVENT_STORE_ENABLED` | `true` | Durably persist every published event envelope in the State Store (E8-S2). |
+| `AUTODEV_EVENT_RETENTION_DAYS` | `30` | Days to retain stored events of terminal runs before compaction; `-1` keeps them forever. |
 | `STORAGE_BACKEND` | `local` | `local` or `s3` artifact storage. |
 | `AUTODEV_ARTIFACT_DIR` | `/data/artifacts` | Local artifact fallback directory. |
 | `AUTODEV_MINIO_ENDPOINT` | empty | MinIO/S3 endpoint. |

@@ -7,7 +7,15 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-13 (**Planning-only: added the "v2.2 — Concept
+**Last updated:** 2026-07-16 (**E8-S2 — Event Store and run durability
+complete** on `epic/e8-persistence-data`: durable append-only `events` table
+for canonical envelopes ordered per partition (`backend/events/store.py` +
+`backend/events/records.py`), transactional `event_projections`
+materialization for O(1) status queries, `reconstruct_run()` rebuilding a run
+purely from stored events (verified with a deterministic-replay DoD test),
+retention-based compaction via `autodev_event_retention_days`, and Event Bus
+wiring behind `autodev_event_store_enabled` (default on). E8 is now 2/4.
+Previous entry: **Planning-only: added the "v2.2 — Concept
 Integration" wave — epics E26–E31** (July 2026 SOTA evaluation of mainstream AI
 dev + creative platforms and 2024–2026 literature, integrated as: Runtime Context
 Engineering, Execution-Grounded Verification & Test-Time Compute, Execution
@@ -126,7 +134,7 @@ rules (mandatory from E3 onward).**
 | E5 | Routing / Selection / Evaluation | Beta | Done | 4/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
 | E6 | Skills v2 | Beta | Done | 5/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
 | E7 | Context & RAG | Beta | Done | 4/4 | E1, E2, E8, E5 | [phases/e7_context_rag.md](phases/e7_context_rag.md) |
-| E8 | Persistence & Data | Alpha/Beta | In progress · E8-S1 done, E8-S3 partial (T2 gap) | 1/4* | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
+| E8 | Persistence & Data | Alpha/Beta | In progress · E8-S1/S2 done, E8-S3 partial (T2 gap) | 2/4* | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
 | E9 | APIs, Events & MCP | Alpha/Beta | Done | 4/4 | E8, E2, E6 | [phases/e9_apis_events_mcp.md](phases/e9_apis_events_mcp.md) |
 | E10 | UI/UX & Design System | Beta | Done | 4/4 | E3, E9, E1 | [phases/e10_ui_ux_design_system.md](phases/e10_ui_ux_design_system.md) |
 | E11 | Observability, Security & Multi-tenant | Beta | Not started | 0/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
@@ -150,7 +158,7 @@ rules (mandatory from E3 onward).**
 | E30 | FinOps & Autonomy Governance | v2.2 | Not started | 0/4 | E2, E3 (ADR-006), E5, E11 | [phases/e30_finops_governance.md](phases/e30_finops_governance.md) |
 | E31 | Library Spec Registry | v2.2 | Not started | 0/4 | E20, E7, E14; E13 (publish) | [phases/e31_library_spec_registry.md](phases/e31_library_spec_registry.md) |
 
-Total: **50/143 stories complete** across 31 epics (E19 is a proposed
+Total: **51/143 stories complete** across 31 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 \* **E8-S1 is now complete (2026-07-06)**: on top of the scoped tenancy/
@@ -174,9 +182,9 @@ gap. **E8-S3 (Artifact Store) is partial**: T3 (per-tenant pre-signed URLs)
 and T4 (orphan cleanup) landed in `backend/artifacts/store.py` +
 `backend/artifacts/cleanup.py`, but T2 (persisting `ArtifactPointer`
 metadata in the State Store) is confirmed **not** implemented anywhere, so
-T4's cleanup is a best-effort heuristic pending T2. E8-S2 (Event Store —
-now unblocked: E9-S3's event catalog and canonical envelope landed) and
-E8-S4 (Backup/RPO/RTO, blocked on E11) remain not started. Known follow-up: `backend/persistence/postgres_adapter.py`
+T4's cleanup is a best-effort heuristic pending T2. **E8-S2 (Event Store)
+is now complete (2026-07-16)** — see the changelog entry below; E8-S4
+(Backup/RPO/RTO, blocked on E11) remains not started. Known follow-up: `backend/persistence/postgres_adapter.py`
 is now 713 lines, over this repo's 500-line-per-file guideline — a split
 into `PostgresStore`/`PostgresPlanStore` modules is reasonable future
 cleanup, out of scope for this pass.
@@ -231,6 +239,34 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-07-16** — **E8-S2 — Event Store and run durability complete** on
+  `epic/e8-persistence-data` (story branch `story/e8-s2-event-store`).
+  **T1**: append-only `events` table persisting every canonical
+  `EventEnvelope` published on the Event Bus (catalog `domain.entity.action`
+  types), gap-free per-partition `sequence` (`UNIQUE (partition_key,
+  sequence)`), `tenant_id` column, SQLite + Postgres DDL
+  (`backend/events/store.py`; record types/DDL/decoders in
+  `backend/events/records.py`). Wired as a wildcard bus subscriber in
+  `get_event_bus()` behind the new `autodev_event_store_enabled` setting
+  (default on); a per-thread cached write connection keeps the append
+  ~0.03 ms so the checkpoint-overhead NFR test still passes (fast-append
+  CNF). **T2**: `EventStore.reconstruct_run()` rebuilds a run view (status,
+  step trail, terminal outcome) purely from stored events; DoD test runs a
+  real `FlowEngine` flow, checks the reconstruction against the
+  `FlowRunStore` record, and asserts `FlowEngine.replay_run()` is
+  deterministic. **T3**: `event_projections` materialization (derived
+  status, last sequence/type/time, per-type counts) updated in the same
+  transaction as each append; `get_projection()`/`list_projections()` give
+  O(1) status queries. **T4**: `EventStore.purge_expired()` compacts events
+  of terminal partitions older than `autodev_event_retention_days`
+  (default 30, `-1` = keep forever), preserving the projection row as the
+  compacted summary. Tests: `backend/tests/test_event_store.py` (13 cases:
+  ordering/resume/round-trip, projections, reconstruction+replay, bus
+  wiring on/off, retention). Docs: `docs/config.md` env inventory
+  (including the previously undocumented `AUTODEV_EVENT_BUS`),
+  `docs/feature_matrix.md` § Persistence, E8 phase doc. Full backend suite
+  green before the story→epic merge.
 
 - **2026-07-13** — Planning-only, no implementation: added the **"v2.2 — Concept
   Integration" wave — epics E26–E31**, closing the July 2026 state-of-the-art
