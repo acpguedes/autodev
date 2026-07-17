@@ -7,8 +7,17 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-16 (**E8-S2 — Event Store and run durability
-complete** on `epic/e8-persistence-data`: durable append-only `events` table
+**Last updated:** 2026-07-17 (**E8 complete — 4/4**: **E8-S3 — Artifact
+Store** merged in PR #85 (pointer store `backend/artifacts/pointers.py` with
+MinIO/local backends, presigned URLs behind
+`autodev_artifact_retention_days`, referenced-object GC in
+`backend/artifacts/cleanup.py`, CLI + config surface, closing the earlier T2
+gap) and **E8-S4 — Backup, RPO/RTO & restore runbook** merged in PR #84
+(backup/restore tooling over the persistence adapters, tenancy-migration and
+artifact-store test coverage, RPO/RTO targets + restore runbook documented in
+`phases/e8_persistence_data.md`). Known follow-up: split the oversized
+`backend/persistence/sqlite_adapter.py`. Previous entry: **E8-S2 — Event
+Store and run durability complete** on `epic/e8-persistence-data`: durable append-only `events` table
 for canonical envelopes ordered per partition (`backend/events/store.py` +
 `backend/events/records.py`), transactional `event_projections`
 materialization for O(1) status queries, `reconstruct_run()` rebuilding a run
@@ -110,8 +119,8 @@ SQLite store abstraction for E8, the v1 skills registry for E6) are starting
 points only — they do not satisfy the v2 contracts. E3's Alpha slice (S1-S5) is
 complete and verified (flow suite 38/38 green); its only open story, **E3-S6**
 (visual flow editor), was Beta-deferred behind **E10** (Design System, now
-**Done** — E3-S6 unblocked). Remaining Alpha anchor work: **E8-S2** and **E12-S1** (E9 is now
-complete; E9-S3's event catalog unblocks E8-S2). The frontend redesign epics **E15** (done) → **E16** → **E17** (Execution Control Center prototype)
+**Done** — E3-S6 unblocked). Remaining Alpha anchor work: **E12-S1** (E8 and E9 are now
+complete). The frontend redesign epics **E15** (done) → **E16** → **E17** (Execution Control Center prototype)
 are planned to run before the E11 kickoff; **E15**, **E16**, and **E17** are now
 complete — the redesigned Control Center is implemented end to end. **E18** (Control
 Center Front Door & Run Experience, also complete) made that UI the platform's front
@@ -119,7 +128,7 @@ door: root service descriptor, self-hosted `/docs` under the strict CSP, and
 single-command `make run`. A visual-parity audit of the screens against the prototype
 (fonts, tokens, spacing, per-screen interaction details, per-screen checklist derived
 from ADR-012 and the prototype `shots/`) remains deferred as a proposed **E19**.
-**Next action: E8-S2 (Event Store) and E12-S1; follow `agent_guide.md` §1-4 quality
+**Next action: E12-S1; follow `agent_guide.md` §1-4 quality
 rules (mandatory from E3 onward).**
 
 ## Epic status
@@ -134,7 +143,7 @@ rules (mandatory from E3 onward).**
 | E5 | Routing / Selection / Evaluation | Beta | Done | 4/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
 | E6 | Skills v2 | Beta | Done | 5/5 | E1 | [phases/e6_skills_v2.md](phases/e6_skills_v2.md) |
 | E7 | Context & RAG | Beta | Done | 4/4 | E1, E2, E8, E5 | [phases/e7_context_rag.md](phases/e7_context_rag.md) |
-| E8 | Persistence & Data | Alpha/Beta | In progress · E8-S1/S2 done, E8-S3 partial (T2 gap) | 2/4* | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
+| E8 | Persistence & Data | Alpha/Beta | Done | 4/4 | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
 | E9 | APIs, Events & MCP | Alpha/Beta | Done | 4/4 | E8, E2, E6 | [phases/e9_apis_events_mcp.md](phases/e9_apis_events_mcp.md) |
 | E10 | UI/UX & Design System | Beta | Done | 4/4 | E3, E9, E1 | [phases/e10_ui_ux_design_system.md](phases/e10_ui_ux_design_system.md) |
 | E11 | Observability, Security & Multi-tenant | Beta | Not started | 0/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
