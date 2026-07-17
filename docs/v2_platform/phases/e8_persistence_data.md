@@ -2,11 +2,9 @@
 
 **Wave:** Split — E8-S1/E8-S2 (multi-tenant schema + event store) target Alpha;
 E8-S3/E8-S4 (artifacts + backup/RPO/RTO) target Beta.
-**Status:** In progress · **Stories:** 3/4 complete* (`../progress.md`'s
-epic table still shows 2/4; its update is owned by the epic-level
-process, not this story). \* E8-S1 and E8-S2 are complete (see
-below); E8-S3 is partial (T3/T4 done, T2 gap remains); E8-S4 is done
-(see DoR deviations in its section).
+**Status:** Done · **Stories:** 4/4 complete. E8-S1, E8-S2, E8-S3,
+and E8-S4 are complete (see below; E8-S3 T2 gap closed in PR #85,
+E8-S4 DoR deviations noted in its section).
 **Depends on:** E0
 **Enables:** durable base for E3, E9, E11; integrates with E11 (backup)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.7.2 (E8), §18.8, §18.9
@@ -128,21 +126,32 @@ Subtasks:
 
 ### E8-S3 — Artifact Store (MinIO)
 
-**Partial progress (2026-07-06).** Summary against the subtasks:
+**Done (2026-07-16).** Summary against the subtasks:
 
 - `E8-S3-T1` (**done**, landed earlier as E0-S6): `backend/artifacts/store.py`
   — `ArtifactKind`, `ArtifactPointer`, the `ArtifactStore` ABC,
   `LocalArtifactStore`, `MinioArtifactStore`.
-- `E8-S3-T2` (**not done**): confirmed via audit that no `ArtifactPointer`
-  is ever persisted to a State Store table anywhere in the codebase —
-  artifacts are written/read by object key only, with no DB-backed
-  reference. This is the largest remaining piece of E8-S3.
+- `E8-S3-T2` (**done**): `backend/artifacts/pointers.py` adds
+  `ArtifactPointerStore` — a State Store–backed `artifacts` table
+  (`UNIQUE (bucket, object_key)`, upsert on re-record) following the
+  `EventStore` precedent (`get_store()`, idempotent `_ensure_schema()`,
+  SQLite/Postgres shim; zero changes to
+  `backend/persistence/postgres_adapter.py`), plus `persist_artifact()`
+  to upload and record a pointer in one step. Exported from
+  `backend/artifacts/__init__.py`.
 - `E8-S3-T3` (**done**): per-tenant, expiring pre-signed URL support added
   to `MinioArtifactStore`/`LocalArtifactStore`.
-- `E8-S3-T4` (**partial**): `backend/artifacts/cleanup.py` adds
-  `cleanup_orphaned_artifacts()`, but since T2 doesn't exist yet it's a
-  best-effort age + allowlist heuristic, not true reference-counted garbage
-  collection — revisit once T2 lands.
+- `E8-S3-T4` (**done**): `backend/artifacts/cleanup.py` now provides
+  `cleanup_unreferenced_artifacts()` — true reference-based GC driven by
+  `ArtifactPointerStore.referenced_object_keys()`, keeping the age guard
+  via the `autodev_artifact_retention_days` setting (default 7; `-1`
+  keeps forever) — exposed as the `artifacts-cleanup --dry-run` CLI
+  subcommand.
+- Evidence: `backend/tests/test_artifact_pointers.py` (round-trip with
+  sha256, tenant isolation, reference-based `persist_artifact`, GC
+  preserves referenced / removes orphans / dry-run) — 20 passed together
+  with `test_artifact_store.py`; operator docs in `docs/config.md`
+  (“Artifact Storage (E8-S3)”).
 
 | Item | Content |
 | --- | --- |
