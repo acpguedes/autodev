@@ -1,0 +1,53 @@
+# Reference eval — agent smoke test (E12-S3).
+#
+# A small, deterministic, versioned eval.yaml exercised by:
+#   - `make eval-reference` (local, on-demand trigger)
+#   - `python -m backend.cli eval run evals/reference/agent_smoke/eval.yaml` (CLI trigger)
+#   - `.github/workflows/ci-evals.yml` (CI gate)
+#
+# It targets the `autodev/agent-coder` agent, runs fully offline against
+# `dataset.yaml` (three fixed cases, no network calls), and its `gate.fail_if`
+# is designed to PASS on that reference dataset — a red run means either the
+# dataset drifted or the eval/runner/gate machinery regressed.
+#
+# See docs/evals/reference.md for the full walkthrough and
+# docs/evals/spec.md for the eval.yaml field reference.
+schemaVersion: "1.0"
+id: autodev/agent-smoke
+version: 1.0.0
+
+target:
+  kind: agent
+  agent_id: autodev/agent-coder
+
+mode: offline
+
+dataset:
+  ref: dataset.yaml # resolved relative to this file by the reference-eval CLI/loader
+  split: test
+  size: 3
+
+evaluators:
+  - kind: deterministic
+    id: patch_applies
+    check: "patch.dry_run.ok == true"
+  - kind: deterministic
+    id: tests_pass
+    check: "sandbox.tests.exit_code == 0"
+
+metrics:
+  quality:
+    primary: tests_pass
+    aggregate: mean
+    min_pass_rate: 1.0
+  cost:
+    budget_usd_p95: 0.5
+  latency:
+    p95_seconds: 30
+
+gate:
+  fail_if: >-
+    quality.tests_pass.mean < 1.0 or
+    quality.patch_applies.mean < 1.0 or
+    cost.usd_p95 > 0.5 or
+    latency.p95_seconds > 30

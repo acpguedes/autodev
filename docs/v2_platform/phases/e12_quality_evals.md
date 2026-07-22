@@ -86,12 +86,29 @@ Subtasks:
 | DoD | All extension points have a contract test; gate active; docs |
 | Dependencies | E1, E2, E3, E4, E5, E6 |
 
-### E12-S3 — Agent evals and closed feedback loop
+### E12-S3 — Agent evals and closed feedback loop (done)
 
 Subtasks:
-- `E12-S3-T1`: `eval.yaml` (dataset + rubric + metrics) executable offline/online.
-- `E12-S3-T2`: Evaluation Service integration and result storage.
-- `E12-S3-T3`: feedback into the Router & Selector.
+- [x] `E12-S3-T1`: `eval.yaml` (dataset + rubric + metrics) executable
+      offline/online. Reference eval shipped at
+      `evals/reference/agent_smoke/` (`eval.yaml` + `dataset.yaml`), a
+      versioned, deterministic offline eval whose gate passes against its
+      own dataset.
+- [x] `E12-S3-T2`: Evaluation Service integration and result storage. A
+      dataset loader (`backend/evals/dataset_loader.py`) plus an on-demand
+      trigger — `autodev eval run <path>` CLI command
+      (`backend/cli_plugins/evals.py`) and `make eval-reference` — run the
+      reference eval through `EvaluationService.run_offline`, persist the
+      `EvalResult`, and exit non-zero when the gate fails. Gated in CI via
+      `.github/workflows/ci-evals.yml`.
+- [x] `E12-S3-T3`: feedback into the Router & Selector.
+      `backend/tests/integration/test_reference_eval_feedback_loop.py`
+      proves the closed loop end-to-end: running the reference eval ->
+      `publish_snapshot` -> `RoutingFeedbackService` promotion -> the
+      Selector's score-weighted stage reading the active snapshot and
+      changing its decision.
+
+Documented in `docs/evals/reference.md` (linked from `docs/evals/spec.md`).
 
 | Item | Content |
 | --- | --- |

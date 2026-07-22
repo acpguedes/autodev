@@ -139,6 +139,14 @@ openapi-v2: ## Generate docs/api/openapi_v2.json from the live /v2 FastAPI route
 	$(PY) scripts/generate_openapi_v2.py
 
 # --------------------------------------------------------------------------
+# Evals (E12-S3)
+# --------------------------------------------------------------------------
+.PHONY: eval-reference
+
+eval-reference: ## Run the reference eval offline and gate on the result (local + CI trigger)
+	$(PY) -m backend.cli eval run evals/reference/agent_smoke/eval.yaml
+
+# --------------------------------------------------------------------------
 # Run (development servers)
 # --------------------------------------------------------------------------
 .PHONY: run dev run-backend run-frontend
