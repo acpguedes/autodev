@@ -53,12 +53,30 @@ previous lightweight `smoke-e2e` job that only curled `/health`.
 | DoD | Coverage gate active; report on every PR; testing docs |
 | Dependencies | E0 |
 
-### E12-S2 — Extension-point contract tests
+### E12-S2 — Extension-point contract tests (done)
 
 Subtasks:
-- `E12-S2-T1`: contract-test harness per Extension Point (plugin, agent, skill, provider).
-- `E12-S2-T2`: `hostApi` (SemVer) compatibility verification.
-- `E12-S2-T3`: mandatory gate for Marketplace publication.
+- [x] `E12-S2-T1`: contract-test harness per Extension Point (plugin, agent, skill, provider).
+  Implemented as `backend/tests/contract/` with a shared coverage registry
+  (`backend/tests/contract/_harness.py`) parametrized over every
+  `ExtensionPointKind`; new contract tests added for `agent`, `skill`,
+  `context_provider`, plus the cross-cutting LLM provider and flow
+  surfaces, and the existing `reasoning`/`router`+`selector`/`evaluator`
+  contract tests are reused rather than duplicated. See `docs/testing.md`
+  ("Contract tests").
+- [x] `E12-S2-T2`: `hostApi` (SemVer) compatibility verification.
+  `backend/tests/contract/test_host_api_compatibility.py` exercises
+  `PluginHost` directly (rejects an incompatible declared range, accepts a
+  compatible one) and asserts every published `*_CONTRACT_HOST_API` is
+  satisfied by `HOST_API_VERSION`, using a small reusable
+  `check_host_api_compatibility()` helper (`backend/sdk/host_api.py`).
+- [x] `E12-S2-T3`: mandatory gate for Marketplace publication.
+  `backend/tests/contract/test_extension_point_coverage.py` fails the
+  build if a catalog `ExtensionPointKind` has no contract registration;
+  the whole tier runs under the existing `make test-backend` / CI 85%
+  coverage gate (no separate CI wiring needed). `docs/testing.md`
+  documents this as the mandatory prerequisite for Marketplace (E13)
+  publication — the Marketplace consumer itself remains out of scope here.
 
 | Item | Content |
 | --- | --- |
