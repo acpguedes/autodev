@@ -169,6 +169,9 @@ latency.p50_seconds / latency.p95_seconds
 `EvalRunner.evaluate_gate(spec.gate, metrics)` returns `(passed, reason)`;
 `passed=True` with no gate declared. CI integration (E12) is: call
 `run_offline`, then fail the pipeline step when `result.gate_passed is False`.
+A concrete, ready-to-run example of this — the reference eval, its dataset
+loader, the `autodev eval run` CLI trigger, and the CI workflow that gates on
+it — is documented in `docs/evals/reference.md` (E12-S3).
 
 ## Persisted results
 

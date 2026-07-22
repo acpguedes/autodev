@@ -1,0 +1,43 @@
+# Reference dataset for evals/reference/agent_smoke/eval.yaml (E12-S3).
+#
+# Three fixed, deterministic cases. Every case is constructed so that both
+# `patch_applies` and `tests_pass` (see eval.yaml's `evaluators`) score 1.0
+# and stay within the declared cost/latency budgets — this is what makes the
+# reference eval's `gate.fail_if` PASS. Loaded via
+# `backend.evals.dataset_loader.load_eval_cases` into `EvalCase` objects (the
+# Evaluation Service itself does not resolve `dataset.ref` — see
+# docs/evals/spec.md's "Dataset-loading scope boundary").
+cases:
+  - case_id: smoke-off-by-one
+    payload:
+      candidate: "Fix off-by-one error in the pagination loop bound."
+      patch:
+        dry_run:
+          ok: true
+      sandbox:
+        tests:
+          exit_code: 0
+      cost_usd: 0.04
+      latency_seconds: 3.5
+  - case_id: smoke-null-check
+    payload:
+      candidate: "Add a missing null check before dereferencing the response body."
+      patch:
+        dry_run:
+          ok: true
+      sandbox:
+        tests:
+          exit_code: 0
+      cost_usd: 0.06
+      latency_seconds: 4.0
+  - case_id: smoke-typo-rename
+    payload:
+      candidate: "Rename the misspelled 'lenght' field to 'length' across call sites."
+      patch:
+        dry_run:
+          ok: true
+      sandbox:
+        tests:
+          exit_code: 0
+      cost_usd: 0.03
+      latency_seconds: 2.0
