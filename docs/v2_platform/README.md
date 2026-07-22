@@ -26,6 +26,23 @@ of it, not a replacement.
 > first. Epic/story identifiers, manifest field names, and event names are unchanged
 > either way — those are part of the actual contracts, not prose.
 
+
+## Planning authority
+
+| Question | Authoritative source | Notes |
+| --- | --- | --- |
+| Architecture principles and stable contracts | `docs/architecture/v2_platform_reference.md` | Normative for subsystem boundaries, extension points and non-functional principles. |
+| Implementation status, current wave, next action and known drift | `docs/v2_platform/progress.md` | Wins for execution sequencing and tracker status. Record conflicts as `Doc drift` instead of guessing. |
+| Epic/story scope and acceptance criteria | `docs/v2_platform/phases/e<N>_*.md` | Detailed scope for each planned slice; keep the status header aligned with `progress.md`. |
+| ADR/RFC decisions | `docs/v2_platform/decisions/` | Required when contracts, governance or trade-offs change materially. |
+
+The v2.3 **Platform Excellence** planning layer (E36-E40) captures the latest
+architecture-review recommendations: an explicit SDD operating model,
+context-independent phase handoffs, harness engineering, looping engineering,
+SOTA evidence governance, competitive benchmarks, product modes, agentic
+security, minimum FinOps, architecture fitness functions and local-first
+degradation.
+
 ## How this differs from the existing `docs/roadmap.md` / `mvp_refactor_plan.md`
 
 `docs/roadmap.md` and `docs/implementation/mvp_refactor_plan.md` track **incremental,
@@ -44,7 +61,7 @@ reconciled as v2 epics land.
 | [`progress.md`](progress.md) | Living tracker: which epic/story is Done/In progress/Not started, current wave (Alpha/Beta/GA), wave exit-gate checklists, changelog. **Start here** to see where the rewrite stands. |
 | [`agent_guide.md`](agent_guide.md) | How to pick up an epic/story: workflow gates (G1-G5), DoR/DoD, ADR/RFC triggers, naming/versioning conventions, and how to keep the tracking docs in sync. **Read this before starting implementation work.** |
 | [`documentation_rebuild.md`](documentation_rebuild.md) | Playbook for rebuilding the rest of the project's documentation (root README, `docs/architecture/*`, `docs/implementation/*`, etc.) as v2 epics and waves land, since this is a full architecture refactor and the old docs will otherwise drift out of sync with the new one. |
-| [`phases/`](phases/) | One file per epic (`E0` through `E17`): objective, key result, every story with its subtasks and functional/non-functional/DoR/DoD criteria, dependencies, wave assignment, and what existing v1 code (if any) is a starting point. |
+| [`phases/`](phases/) | One file per epic (`E0` through `E40`, with E19 reserved): objective, key result, every story with its subtasks and functional/non-functional/DoR/DoD criteria, dependencies, wave assignment, and what existing v1 code (if any) is a starting point. |
 | [`templates/`](templates/) | Copy-ready templates: `story_template.md`, `adr_template.md`, `rfc_template.md`, `dor_checklist.md`, `dod_checklist.md`, and worked manifest examples under `templates/manifests/` (`plugin.yaml`, `agent.yaml`, `flow.yaml`, `skill.yaml`, `eval.yaml`). |
 | [`decisions/`](decisions/) | ADR/RFC log for architecturally significant decisions made during the rewrite, with an index and the process for adding new entries. |
 

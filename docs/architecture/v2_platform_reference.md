@@ -10,6 +10,22 @@ extensão, os requisitos funcionais e **não-funcionais**, e um **roadmap por et
 critérios funcionais/não-funcionais explícitos e por *Definition of Ready* (DoR) e
 *Definition of Done* (DoD)** — ver a seção 18 e os templates do apêndice (seção 21).
 
+
+### Autoridade documental
+
+| Pergunta | Fonte autoritativa | Observação |
+| --- | --- | --- |
+| Princípios de arquitetura e contratos estáveis | Este documento | Normativo para fronteiras de subsistemas, extension points e requisitos não-funcionais. |
+| Status de implementação, onda atual, próxima ação e drift conhecido | `docs/v2_platform/progress.md` | Vence para sequenciamento operacional e estado real dos épicos/stories. |
+| Escopo detalhado de épico/story | `docs/v2_platform/phases/e<N>_*.md` | Deve permanecer alinhado ao tracker; conflitos entram no ledger de drift. |
+| Decisões arquiteturais | `docs/v2_platform/decisions/` | ADR/RFC aceitos vencem prose antiga sobre a mesma decisão. |
+
+A camada de planejamento **v2.3 — Platform Excellence** (E36-E40) complementa
+o roadmap com recomendações de maturidade: SDD operating model, independência
+de contexto por `PhaseHandoff`, harness engineering, looping engineering, matriz
+de evidência SOTA, benchmark competitivo, modos de produto, segurança agentic,
+FinOps mínimo, fitness functions e degradação local-first.
+
 **Como ler:** as seções 1–3 dão a base (visão, princípios, glossário canônico);
 4 descreve a arquitetura; 5–14 detalham os subsistemas e contratos; 15 cobre a
 experiência (UI/UX); 16–17 os requisitos não-funcionais e de qualidade; 18 o
@@ -42,6 +58,7 @@ componentes seguem o glossário da seção 3.
 - [21. Apêndices — Templates e Checklists](#21-apêndices--templates-e-checklists)
 - [22. Spec & Harness Layer (v2.1)](#22-spec--harness-layer-v21)
 - [23. SOTA Concept Integration Layer (v2.2)](#23-sota-concept-integration-layer-v22)
+- [24. Platform Excellence (v2.3)](#24-platform-excellence-v23)
 
 ---
 
@@ -7764,3 +7781,27 @@ harder (execution-grounded test-time compute), start warmer (snapshots and
 compounding memory), spend predictably (FinOps governance), and stop
 hallucinating the outside world (verified dependency specs) — on any model,
 under one API-first control plane.**
+
+
+---
+
+## 24. Platform Excellence (v2.3)
+
+A onda **v2.3 — Platform Excellence** transforma a auditoria de maturidade do
+plano em épicos executáveis. Ela não substitui E20-E35; ela endurece suas regras
+de operação para que o AutoDev concorra com plataformas agentic maduras mantendo
+OSS/self-hosting e independência de fornecedor.
+
+| Épico | Tema | Resultado esperado |
+| --- | --- | --- |
+| E36 | SDD Operating Model & Document Authority | Uma única disciplina operacional para intake, specs, waivers, execução e drift documental. |
+| E37 | Harness & Looping Excellence | Harness engineering e looping engineering como contratos: `PhaseHandoff`, padrões de loop, contexto independente, replay e stop/recovery taxonomies. |
+| E38 | SOTA Evidence Matrix & Capability Benchmark | Claims SOTA com evidência graduada e benchmark self-hostable para comparar releases. |
+| E39 | Product Modes, Agentic Security & Minimum FinOps | Modos de produto claros, threat model agentic e contrato mínimo de custo/autonomia antes de loops caros. |
+| E40 | Architecture Fitness & Local-First Degradation | Fitness functions e matriz de degradação para impedir erosão arquitetural e falhas silenciosas em instalações locais/offline. |
+
+**Regra de integração.** Stories de E36-E40 podem ser puxadas para Beta/v2.1
+quando forem pré-condição de segurança ou governança para uma story anterior
+(ex.: FinOps mínimo antes de candidate races; `PhaseHandoff` antes de loops com
+agentes independentes). Quando isso ocorrer, `progress.md` deve registrar a
+dependência puxada e o phase doc original continua sendo a descrição completa.

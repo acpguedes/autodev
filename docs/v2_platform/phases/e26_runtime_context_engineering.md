@@ -20,6 +20,12 @@ external-memory primitives (State-Store/workspace notes with reversible
 compression, plan recitation, keep-errors-in-context) so long tasks stay
 coherent without unbounded context growth.
 
+E26 also supplies the runtime primitives that E37's harness/looping excellence
+layer consumes for phase-level context independence: condensers may summarize a
+run, but phase transitions must reconstruct from durable notes, evidence
+references and typed handoff bundles rather than inheriting another agent's raw
+conversation.
+
 ## Key result
 
 A 50+-step agent run whose measured prompt-cache hit rate stays high (stable
@@ -129,7 +135,7 @@ Subtasks:
 | Functional | A fresh-context iteration (E23-S2) reconstructs working state from notes + references alone; recitation demonstrably re-appends the live plan; a repeated-failure fixture shows the error record surviving condensation |
 | Non-functional | Restored content metered against the run budget; notes tenant-scoped (E8-S1 RLS) |
 | DoR (specific) | E26-S2 available; E23-S2/S3 contracts reviewed (options are additive) |
-| DoD (specific) | Reconstruction + recitation + error-retention tests; `docs/runtime/memory.md` |
+| DoD (specific) | Reconstruction + recitation + error-retention tests; `docs/runtime/memory.md`; compatible with E37 `PhaseHandoff` context-quarantine rules once available |
 | Dependencies | E26-S2, E8, E23-S2/S3 (option wiring, additive) |
 
 ## v1/v2 precursor / starting point

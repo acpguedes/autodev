@@ -32,6 +32,12 @@ distinct-provider oracle), and selects a winner with the full decision trace
 persisted — while an oracle-hardening pass demonstrates that weak-test
 "lucky passes" are detected rather than accepted.
 
+Candidate races and oracle reviews are specialized harness/looping patterns:
+they must be cost-bounded, replayable and context-independent. E37 formalizes
+the handoff and arbitration contracts so losing candidates, critics and oracles
+cannot leak private reasoning/context into the winning execution phase unless a
+typed evidence artifact explicitly permits it.
+
 ## Prior art (condensed)
 
 Agentless (localize → generate-N → select-by-tests beats elaborate agency on
@@ -67,7 +73,7 @@ Subtasks:
 | Functional | A race of N candidates yields exactly one winner chosen by execution verdicts with the decision trace inspectable; losers retained; a candidate that fails compilation/tests is never selectable over one that passes |
 | Non-functional | Aggregate cost capped by the parent budget (cannot overspend); N is a policy parameter, not code |
 | DoR (specific) | RFC-008 accepted; epic ADR (candidate/verifier contracts, judge calibration policy) filed; E23-S4 race mechanics reviewed |
-| DoD (specific) | Selection, partial-set, and budget-cap tests; `docs/verification/candidates.md` |
+| DoD (specific) | Selection, partial-set, budget-cap and candidate-context-isolation tests; `docs/verification/candidates.md` |
 | Dependencies | E23-S4, E22-S1, E5, E14-S4 |
 
 ### E27-S2 — Multi-verifier composition & calibrated LLM judges
