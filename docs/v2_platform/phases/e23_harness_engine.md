@@ -20,6 +20,16 @@ durable loop state that survives sessions, parallel isolation with task
 claiming and a candidate-race pattern, and first-class observability through
 `/v2/harnesses`.
 
+**Harness engineering** is the discipline of designing the outer runtime
+scaffold around an agent: the artifact that defines the objective, admissible
+actions, state, gates, evidence, budgets, stop states, replay surface and
+handoff boundaries. **Looping engineering** is the discipline of deciding when
+and how that scaffold iterates: progress signals, recovery choices, stagnation
+detection, fresh-context rehydration, candidate forks, human escalation and
+cost-aware termination. E23 is the v2.1 foundation for both; E37 later hardens
+them with a pattern catalog, `PhaseHandoff` context quarantine, recovery
+taxonomy and replay debugger requirements without changing the E23 boundary.
+
 ## Key result
 
 An operator (or the Spec Compiler) starts a harness run that iterates
@@ -68,7 +78,7 @@ Subtasks:
 | Functional | A never-converging task stops as `stalled` via the circuit breaker (not `max_budget` exhaustion); a fresh-context run demonstrably shares no conversational tokens between iterations; evaluator feedback is structured and persisted per iteration |
 | Non-functional | Fail-closed budgets at both iteration and run level (ADR-006 semantics); policy plugins pass a mandatory contract test |
 | DoR (specific) | E23-S1 available; E4 strategy seam reviewed (policies compose with, not replace, reasoning strategies) |
-| DoD (specific) | One test per reference policy incl. the stagnation fixture; `docs/harness/loops.md` |
+| DoD (specific) | One test per reference policy incl. the stagnation fixture; `docs/harness/loops.md`; cross-link E37's harness/looping pattern catalog once available |
 | Dependencies | E23-S1, E3, E4, E14 |
 
 ### E23-S3 — Durable loop state & session lifecycle
@@ -83,7 +93,7 @@ Subtasks:
 | Functional | Killing the process mid-iteration and resuming loses at most the in-flight iteration; the checklist never flips to passing without a gate verdict recorded; a fork shares history up to the fork point and diverges after |
 | Non-functional | State reconstruction from journal+checklist alone is sufficient for a fresh-context iteration (no hidden memory) |
 | DoR (specific) | E23-S1/S2 available; E3-S3 checkpoint semantics reviewed |
-| DoD (specific) | Crash/resume and fork tests; `docs/harness/state.md` |
+| DoD (specific) | Crash/resume and fork tests; `docs/harness/state.md`; no raw prior-agent transcript is required for reconstruction |
 | Dependencies | E23-S1, E23-S2, E3-S3, E8 |
 
 ### E23-S4 — Parallel isolation, task claiming & candidate race

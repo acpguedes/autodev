@@ -7,7 +7,7 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-17 (**Beta hardening wave planned — epics E32–E35
+**Last updated:** 2026-07-22 (**Planning-only: added the v2.3 Platform Excellence wave — epics E36-E40** for document authority + SDD operating model, context-independent harness/looping excellence, SOTA evidence + capability benchmark, product modes + agentic security + minimum FinOps, and architecture fitness + local-first degradation. Previous entry: **Beta hardening wave planned — epics E32–E35
 added**: isolated-execution Beta slice, secrets & credential governance,
 packaging/global install, and Beta readiness gates — 13 new stories; see
 `phases/e32_isolated_execution_beta.md` … `phases/e35_beta_readiness_gates.md`,
@@ -85,6 +85,22 @@ English default + pt-BR, externalized copy in `app/page.tsx` and
 `eslint-plugin-i18next` lint gate. Gates: lint 0 errors, `tsc --noEmit` clean, 22/22
 test files (89/89 tests), 12/12 e2e tests. E10 — UI/UX & Design System epic (4/4) on
 `epic/e10-ui-ux-design-system` remains complete from the prior entry.)
+
+
+## Planning authority
+
+| Question | Authoritative source | Notes |
+| --- | --- | --- |
+| Architecture principles and stable contracts | `docs/architecture/v2_platform_reference.md` | Normative for subsystem boundaries, extension points and NFRs. |
+| Implementation status, current wave, next action and known drift | `docs/v2_platform/progress.md` | This file wins for execution sequencing and tracker status. |
+| Epic/story scope and acceptance criteria | `docs/v2_platform/phases/e<N>_*.md` | Detailed story scope; status headers must match this tracker. |
+| ADR/RFC decisions | `docs/v2_platform/decisions/` | Decisions win over older prose when accepted; proposed decisions must be called out. |
+
+### Doc drift ledger
+
+No open doc-drift entries as of 2026-07-22. When a contributor finds a conflict
+between the reference, tracker, phase docs, AGENTS.md or implementation evidence,
+record it here before changing execution order.
 
 ## How to update this file
 
@@ -181,12 +197,18 @@ rules (mandatory from E3 onward).**
 | E33 | Secrets & Credential Governance | Beta | Not started | 0/3 | E32, E0-S5, E11-S4 | [phases/e33_secrets_credential_governance.md](phases/e33_secrets_credential_governance.md) |
 | E34 | Packaging & Global Install | Beta | Not started | 0/3 | E14-S7 (CLI), E32 | [phases/e34_packaging_global_install.md](phases/e34_packaging_global_install.md) |
 | E35 | Beta Readiness Gates & Evidence | Beta | Not started | 0/3 | E32-E34, E11, E12 | [phases/e35_beta_readiness_gates.md](phases/e35_beta_readiness_gates.md) |
+| E36 | SDD Operating Model & Document Authority | v2.3 | Not started | 0/4 | E20-E23 | [phases/e36_sdd_operating_model.md](phases/e36_sdd_operating_model.md) |
+| E37 | Harness & Looping Excellence: Context-Independent Agents | v2.3 | Not started | 0/5 | E23, E26, E27, E8, E14, E32 | [phases/e37_harness_looping_context_independence.md](phases/e37_harness_looping_context_independence.md) |
+| E38 | SOTA Evidence Matrix & Capability Benchmark | v2.3 | Not started | 0/4 | E12, E20-E23, E27, E28 | [phases/e38_sota_evidence_benchmark.md](phases/e38_sota_evidence_benchmark.md) |
+| E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
+| E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 
-Total: **71/156 stories complete** across 35 epics (E19 is a proposed
+Total: **71/178 stories complete** across 40 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
 "51" predated E15–E18 completion and had drifted; +13 planned stories from
-the new E32–E35 Beta-hardening epics.)*
+the new E32–E35 Beta-hardening epics; +22 planned stories from the E36–E40
+v2.3 Platform Excellence planning wave.)*
 
 \* **E8-S1 is now complete (2026-07-06)**: on top of the scoped tenancy/
 reversible-migration slice landed as an E7 prerequisite (ADR-010:
@@ -271,6 +293,14 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-07-22** — Planning-only, no implementation: added the **v2.3 —
+  Platform Excellence** wave (**E36-E40**, 22 stories) to convert the architecture
+  review recommendations into executable planning slices: document authority +
+  SDD operating model; context-independent phase handoffs plus harness
+  engineering and looping engineering; SOTA evidence matrix + capability
+  benchmark; product modes + agentic threat model + minimum FinOps; and
+  architecture fitness functions + local-first degradation.
 
 - **2026-07-17** — **Tracker reconciliation (docs-only, no code change)** —
   cross-checked the tracker against the codebase and closed two stale gaps that
