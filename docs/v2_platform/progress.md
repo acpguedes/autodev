@@ -147,7 +147,15 @@ is now **complete** — unit/integration/e2e suite layout under `backend/tests/`
 deterministic fixtures + `StubLLMProvider`, and an 85% product-code coverage gate
 enforced via `make test-backend` / `ci-backend.yml` and a smoke e2e job
 (`ci-e2e.yml`); see `docs/testing.md` and
-[phases/e12_quality_evals.md](phases/e12_quality_evals.md). The frontend redesign epics **E15** (done) → **E16** → **E17** (Execution Control Center prototype)
+[phases/e12_quality_evals.md](phases/e12_quality_evals.md). **E12-S2**
+(extension-point contract tests) and **E12-S3** (agent evals + closed feedback
+loop) are now **complete** — a `backend/tests/contract/` tier parametrized over
+every `ExtensionPointKind` with a `hostApi` SemVer compatibility check
+(`backend/sdk/host_api.py`), and a versioned reference eval
+(`evals/reference/agent_smoke/`) runnable via `make eval-reference` /
+`autodev eval run` and gated in CI (`ci-evals.yml`), with an integration test
+proving eval scores feed the Router/Selector; only **E12-S4** (CI Validation
+Gates) remains. The frontend redesign epics **E15** (done) → **E16** → **E17** (Execution Control Center prototype)
 are planned to run before the E11 kickoff; **E15**, **E16**, and **E17** are now
 complete — the redesigned Control Center is implemented end to end. **E18** (Control
 Center Front Door & Run Experience, also complete) made that UI the platform's front
@@ -155,8 +163,8 @@ door: root service descriptor, self-hosted `/docs` under the strict CSP, and
 single-command `make run`. A visual-parity audit of the screens against the prototype
 (fonts, tokens, spacing, per-screen interaction details, per-screen checklist derived
 from ADR-012 and the prototype `shots/`) remains deferred as a proposed **E19**.
-**Next action: E12-S2; follow `agent_guide.md` §1-4 quality
-rules (mandatory from E3 onward).**
+**Next action: E12-S4 (CI Validation Gates; deps E12-S1..S3 now met); follow
+`agent_guide.md` §1-4 quality rules (mandatory from E3 onward).**
 
 ## Epic status
 
@@ -174,7 +182,7 @@ rules (mandatory from E3 onward).**
 | E9 | APIs, Events & MCP | Alpha/Beta | Done | 4/4 | E8, E2, E6 | [phases/e9_apis_events_mcp.md](phases/e9_apis_events_mcp.md) |
 | E10 | UI/UX & Design System | Beta | Done | 4/4 | E3, E9, E1 | [phases/e10_ui_ux_design_system.md](phases/e10_ui_ux_design_system.md) |
 | E11 | Observability, Security & Multi-tenant | Beta | Not started | 0/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
-| E12 | Quality & Evals | Alpha/Beta | In progress | 1/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
+| E12 | Quality & Evals | Alpha/Beta | In progress | 3/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 | E15 | Frontend Redesign: Design Language & App Shell | Beta | Done | 4/4 | E10 | [phases/e15_design_language_shell.md](phases/e15_design_language_shell.md) |
