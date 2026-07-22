@@ -144,6 +144,49 @@ pytest -m integration -q
 A flaky or non-deterministic test blocks the tier it belongs to — fix or stub
 the dependency rather than adding retries.
 
+### Contract tests
+
+`backend/tests/contract/` is a dedicated tier (E12-S2) that pins the
+**extension-point contracts** plugins are built against: for each
+[`ExtensionPointKind`](../backend/plugins/catalog.py) declared in
+`backend/plugins/catalog.py`, a contract test asserts that its Protocol/ABC
+shape has not silently changed, and — where the extension point has a
+manifest format — that the validator round-trips a minimal valid document
+and rejects an invalid one. It has no separate Makefile/CI entry: it is
+plain `backend/tests/` content, so `make test-backend` / CI collect and
+gate it exactly like the unit and integration tiers, including the 85%
+coverage requirement from §4 below.
+
+| Extension point | Contract test module | What it guarantees |
+|---|---|---|
+| `agent` | `backend/tests/contract/test_agent_contract.py` | `Agent` structural Protocol shape (`backend/agents/base.py`) is stable; `agent.yaml` round-trips via `validate_agent_manifest()` |
+| `skill` | `backend/tests/contract/test_skill_contract.py` | `Skill`/`BaseSkill` shape (`backend/skills/base.py`) is stable; `skill.yaml` round-trips via `validate_manifest()` |
+| `reasoning` | `backend/tests/unit/reasoning/test_reasoning_contract.py` | Reused as-is from E4-S1 — not duplicated |
+| `router`, `selector` | `backend/tests/unit/routing/test_routing_contract.py` | Reused as-is from E5-S1/S2 — not duplicated (selector is validated as part of the same `RoutingPolicy`) |
+| `evaluator` | `backend/tests/unit/evals/test_evals_contract.py` | Reused as-is — not duplicated |
+| `context_provider` | `backend/tests/contract/test_context_provider_contract.py` | `ContextProvider` runtime-checkable Protocol shape (`backend/context/provider.py`) is stable, verified against a real implementation |
+| `tool`, `retriever`, `validation_gate`, `ui_panel`, `event_handler` | *(pending — see below)* | Declared in the catalog but have no dedicated Protocol/manifest of their own yet |
+| LLM provider *(cross-cutting, not a catalog kind)* | `backend/tests/contract/test_provider_contract.py` | `LLMProvider` structural Protocol shape (`backend/agents/provider.py`) is stable |
+| Flow *(cross-cutting, not a catalog kind)* | `backend/tests/contract/test_flow_contract.py` | `flow.yaml` round-trips via `validate_flow_manifest()` |
+| `hostApi` SemVer compatibility | `backend/tests/contract/test_host_api_compatibility.py` | `PluginHost` rejects an incompatible declared range and installs a compatible one; every published `*_CONTRACT_HOST_API` is satisfied by `HOST_API_VERSION` |
+
+**Mandatory build gate.** `backend/tests/contract/test_extension_point_coverage.py`
+is parametrized over every member of `ExtensionPointKind` and asserts each
+one is registered in `backend/tests/contract/_harness.py`'s coverage map —
+either `COVERED` (with an importable contract test module) or `PENDING`
+(with a written rationale for why no Protocol/manifest exists yet). Adding a
+new extension-point kind to the catalog without registering it there fails
+the build immediately, rather than silently shipping an uncontracted
+extension point.
+
+**Marketplace prerequisite.** A green contract suite is the mandatory
+prerequisite for publishing a plugin to the Marketplace (E13): the
+Marketplace consumer itself is out of scope for E12-S2 and is not built
+here, but any future publish path must require
+`backend/tests/contract` to pass (and, per the coverage gate above, every
+extension point the plugin declares to be registered with a real contract)
+before accepting a submission.
+
 ### Backend tests (pytest)
 
 ```bash
