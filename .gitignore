@@ -36,6 +36,11 @@ tests/reports/*
 *.db
 *.sqlite
 *.sqlite3
+# SQLite WAL/shared-memory sidecars (not matched by the patterns above)
+*.db-shm
+*.db-wal
+*.sqlite-shm
+*.sqlite-wal
 
 # --- Runtime configuration (keep the tracked *.example.json templates) ---
 autodev.config.json

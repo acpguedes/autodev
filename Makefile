@@ -208,9 +208,12 @@ docker-down: container-down ## Alias for container-down
 # --------------------------------------------------------------------------
 # CI parity: everything the pipelines run
 # --------------------------------------------------------------------------
-.PHONY: check check-backend check-frontend check-compose
+.PHONY: check check-backend check-frontend check-compose validate-patches
 
 check: check-backend check-frontend check-compose ## Run lint + typecheck + tests + build (CI parity)
+
+validate-patches: ## Patch-validation gate: dry-run + path-traversal guard (E12-S4)
+	$(PY) scripts/validate_patches.py
 
 check-compose: ## Validate the Docker Compose file (skips when docker is absent)
 	@if command -v docker >/dev/null 2>&1; then \
