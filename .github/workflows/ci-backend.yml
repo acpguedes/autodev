@@ -25,7 +25,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r backend/requirements.txt
-          python -m pip install ruff mypy
+          # Pin to the versions `make check-backend` runs locally: unpinned
+          # ruff/mypy pull newer defaults (e.g. B008 on FastAPI Depends()) and
+          # the gate would diverge from what contributors see.
+          python -m pip install "ruff==0.15.18" "mypy==2.1.0"
 
       - name: Lint (ruff)
         run: python -m ruff check backend tests
