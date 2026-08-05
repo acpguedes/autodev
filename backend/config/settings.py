@@ -17,7 +17,6 @@ from typing import Any, Literal
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 _SECRET_FIELDS = {
     "openai_api_key",
     "autodev_api_token",
@@ -44,6 +43,10 @@ class Settings(BaseSettings):
 
     # --- LLM ---
     llm_provider: str = "stub"
+    # Global default model for the provider-neutral gateway (E2-S6). Empty means
+    # no global default: agents must then select a model, or the run fails
+    # explicitly rather than silently picking one.
+    llm_model: str = ""
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"
     openai_base_url: str = ""
@@ -157,7 +160,9 @@ class Settings(BaseSettings):
             raise ValueError("AUTODEV_SETTINGS_FILE must contain a JSON object.")
         nested = payload.get("settings", payload)
         if not isinstance(nested, dict):
-            raise ValueError("AUTODEV_SETTINGS_FILE 'settings' value must be an object.")
+            raise ValueError(
+                "AUTODEV_SETTINGS_FILE 'settings' value must be an object."
+            )
         return nested
 
     @model_validator(mode="after")

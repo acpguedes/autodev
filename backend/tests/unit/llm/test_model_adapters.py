@@ -16,7 +16,9 @@ from backend.llm import (
     ExecutionMetadata,
     MessageContent,
     ModelAuthenticationError,
+    ModelInvalidRequestError,
     ModelRequest,
+    ModelUnsupportedCapabilityError,
     NormalizedMessage,
     TokenUsage,
     ToolDefinition,
@@ -112,9 +114,23 @@ def test_langchain_adapter_normalizes_message_usage_tools_and_finish_reason(
             return FakeBoundModel()
 
         def with_structured_output(
-            self, schema: object, **kwargs: object
+            self,
+            schema: object,
+            *,
+            include_raw: bool = False,
+            tools: object = None,
         ) -> FakeStructuredModel:
-            calls.append({"structured_schema": schema, "structured_kwargs": kwargs})
+            # Mirrors ChatOpenAI: `tools` is declared explicitly, so the adapter
+            # can prove it will be honored rather than swallowed by **kwargs.
+            calls.append(
+                {
+                    "structured_schema": schema,
+                    "structured_kwargs": {
+                        "include_raw": include_raw,
+                        "tools": tools,
+                    },
+                }
+            )
             return FakeStructuredModel()
 
     factory_calls: list[dict[str, object]] = []
@@ -157,6 +173,197 @@ def test_langchain_adapter_normalizes_message_usage_tools_and_finish_reason(
     assert isinstance(structured_kwargs, dict)
     assert structured_kwargs["include_raw"] is True
     assert structured_kwargs["tools"]
+
+
+def _structured_adapter(
+    monkeypatch: pytest.MonkeyPatch, model: object
+) -> LangChainModelProvider:
+    """Register a fake chat model behind the contained LangChain adapter."""
+    monkeypatch.setattr(
+        "backend.llm.langchain_adapter.get_chat_model", lambda **kwargs: model
+    )
+    return LangChainModelProvider("openai")
+
+
+def _ai_message() -> object:
+    """Build a minimal LangChain-shaped assistant message."""
+    return types.SimpleNamespace(
+        content="{}",
+        tool_calls=[],
+        usage_metadata={},
+        response_metadata={},
+    )
+
+
+def test_structured_output_requires_native_provider_support(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A model without native structured output fails as a capability error."""
+
+    class NoStructuredModel:
+        def bind_tools(self, tools: object) -> object:  # pragma: no cover - unused
+            raise AssertionError("tool binding must not be reached")
+
+    adapter = _structured_adapter(monkeypatch, NoStructuredModel())
+
+    with pytest.raises(ModelUnsupportedCapabilityError):
+        adapter.complete(
+            _request(structured=True),
+            ModelTarget(provider="openai", name="gpt-test"),
+            _metadata(),
+        )
+
+
+def test_structured_output_requires_a_raw_capable_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Providers that cannot return the raw envelope fail closed, not silently.
+
+    ``tools=False`` is required: with tools in the request the tool guard three
+    lines below fires first, so the test would pass without ever exercising the
+    ``include_raw`` check it is named for.
+    """
+
+    class NoRawModel:
+        def with_structured_output(
+            self, schema: object, *, method: str = "json_schema"
+        ) -> object:  # pragma: no cover - never invoked
+            raise AssertionError("structured runnable must not be built")
+
+    adapter = _structured_adapter(monkeypatch, NoRawModel())
+
+    with pytest.raises(ModelUnsupportedCapabilityError):
+        adapter.complete(
+            _request(tools=False, structured=True),
+            ModelTarget(provider="openai", name="gpt-test"),
+            _metadata(),
+        )
+
+
+def test_structured_output_never_silently_drops_requested_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Tool calling combined with structured output fails when unsupported.
+
+    The kwargs-absorbing shape is the dangerous one and is the real
+    ``BaseChatModel.with_structured_output`` signature: forwarding ``tools`` into
+    ``**kwargs`` looks like success while the provider ignores them entirely, so
+    a catch-all must not count as support.
+    """
+
+    class KwargsAbsorbingModel:
+        def with_structured_output(
+            self, schema: object, *, include_raw: bool = False, **kwargs: object
+        ) -> object:  # pragma: no cover - never invoked
+            raise AssertionError("structured runnable must not be built")
+
+    class NoToolsStructuredModel:
+        def with_structured_output(
+            self, schema: object, *, include_raw: bool = False
+        ) -> object:  # pragma: no cover - never invoked
+            raise AssertionError("structured runnable must not be built")
+
+    for model in (KwargsAbsorbingModel(), NoToolsStructuredModel()):
+        adapter = _structured_adapter(monkeypatch, model)
+
+        with pytest.raises(ModelUnsupportedCapabilityError):
+            adapter.complete(
+                _request(tools=True, structured=True),
+                ModelTarget(provider="openai", name="gpt-test"),
+                _metadata(),
+            )
+
+
+def test_real_langchain_base_signature_cannot_smuggle_tools() -> None:
+    """Guard the introspection rule against the actual LangChain base class."""
+    from langchain_core.language_models.chat_models import BaseChatModel
+
+    from backend.llm.langchain_adapter import _accepts_keyword
+
+    target = BaseChatModel.with_structured_output
+
+    assert _accepts_keyword(target, "include_raw") is True
+    assert _accepts_keyword(target, "tools", require_explicit=True) is False
+
+
+def test_structured_output_without_tools_sends_only_portable_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only ``include_raw`` is forwarded when the request declares no tools."""
+    seen: dict[str, object] = {}
+
+    class StructuredRunnable:
+        def invoke(self, messages: object) -> object:
+            return {"raw": _ai_message(), "parsed": {"ok": True}, "parsing_error": None}
+
+    class FakeModel:
+        def with_structured_output(
+            self, schema: object, *, include_raw: bool = False, tools: object = None
+        ) -> object:
+            seen.update({"include_raw": include_raw, "tools": tools})
+            return StructuredRunnable()
+
+    adapter = _structured_adapter(monkeypatch, FakeModel())
+
+    response = adapter.complete(
+        _request(tools=False, structured=True),
+        ModelTarget(provider="openai", name="gpt-test"),
+        _metadata(),
+    )
+
+    assert seen == {"include_raw": True, "tools": None}
+    assert response.structured_output is not None
+    assert response.structured_output.value == {"ok": True}
+
+
+def test_structured_output_parsing_failure_is_an_invalid_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A native parsing error is a bad model output, not a capability gap."""
+
+    class StructuredRunnable:
+        def invoke(self, messages: object) -> object:
+            return {
+                "raw": _ai_message(),
+                "parsed": None,
+                "parsing_error": ValueError("cannot parse"),
+            }
+
+    class FakeModel:
+        def with_structured_output(self, schema: object, **kwargs: object) -> object:
+            return StructuredRunnable()
+
+    adapter = _structured_adapter(monkeypatch, FakeModel())
+
+    with pytest.raises(ModelInvalidRequestError):
+        adapter.complete(
+            _request(tools=False, structured=True),
+            ModelTarget(provider="openai", name="gpt-test"),
+            _metadata(),
+        )
+
+
+def test_structured_output_requires_the_include_raw_envelope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A provider that ignores ``include_raw`` fails as a capability error."""
+
+    class StructuredRunnable:
+        def invoke(self, messages: object) -> object:
+            return {"ok": True}
+
+    class FakeModel:
+        def with_structured_output(self, schema: object, **kwargs: object) -> object:
+            return StructuredRunnable()
+
+    adapter = _structured_adapter(monkeypatch, FakeModel())
+
+    with pytest.raises(ModelUnsupportedCapabilityError):
+        adapter.complete(
+            _request(tools=False, structured=True),
+            ModelTarget(provider="openai", name="gpt-test"),
+            _metadata(),
+        )
 
 
 def test_langchain_missing_credentials_fail_closed_as_typed_redacted_error(
@@ -218,12 +425,183 @@ def test_langchain_adapter_streams_only_normalized_chunks(
         )
     )
 
-    assert [chunk.content_delta for chunk in chunks] == ["hel", "lo"]
+    assert [chunk.content_delta for chunk in chunks] == ["hel", "lo", ""]
+    assert chunks[0].usage is None
+    assert chunks[0].done is False
     assert chunks[-1].usage == TokenUsage(1, 1)
     assert chunks[-1].cost == EstimatedCost(0.02)
     assert chunks[-1].done is True
 
 
+def test_langchain_stream_yields_each_chunk_before_pulling_the_next(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The adapter never prefetches a later chunk before delivering the current one."""
+    produced: list[str] = []
+
+    def provider_chunks() -> object:
+        for text in ("a", "b"):
+            produced.append(text)
+            yield types.SimpleNamespace(content=text, tool_calls=[], usage_metadata={})
+
+    class FakeModel:
+        def stream(self, messages: object) -> object:
+            return provider_chunks()
+
+    monkeypatch.setattr(
+        "backend.llm.langchain_adapter.get_chat_model", lambda **kwargs: FakeModel()
+    )
+    adapter = LangChainModelProvider("openai")
+
+    stream = iter(
+        adapter.stream(
+            _request(tools=False),
+            ModelTarget(provider="openai", name="gpt-test"),
+            _metadata(),
+        )
+    )
+
+    first = next(stream)
+
+    assert first.content_delta == "a"
+    assert produced == ["a"]
+    assert [chunk.content_delta for chunk in stream] == ["b", ""]
+
+
+def test_langchain_stream_reports_absent_cost_metadata_as_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Providers that report no cost yield ``None`` instead of a fabricated zero."""
+
+    class FakeModel:
+        def stream(self, messages: object) -> object:
+            return iter(
+                (
+                    types.SimpleNamespace(
+                        content="ok",
+                        tool_calls=[],
+                        usage_metadata={"input_tokens": 1, "output_tokens": 1},
+                    ),
+                )
+            )
+
+    monkeypatch.setattr(
+        "backend.llm.langchain_adapter.get_chat_model", lambda **kwargs: FakeModel()
+    )
+    adapter = LangChainModelProvider("openai")
+
+    chunks = tuple(
+        adapter.stream(
+            _request(tools=False),
+            ModelTarget(provider="openai", name="gpt-test"),
+            _metadata(),
+        )
+    )
+
+    assert all(chunk.cost is None for chunk in chunks)
+    assert chunks[-1].usage == TokenUsage(1, 1)
+
+
+def test_langchain_stream_refuses_structured_output_instead_of_degrading(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Streaming cannot silently drop a requested structured-output schema."""
+
+    class FakeModel:
+        def stream(self, messages: object) -> object:  # pragma: no cover - unreachable
+            raise AssertionError("provider must not be invoked")
+
+    monkeypatch.setattr(
+        "backend.llm.langchain_adapter.get_chat_model", lambda **kwargs: FakeModel()
+    )
+    adapter = LangChainModelProvider("openai")
+
+    with pytest.raises(ModelUnsupportedCapabilityError):
+        tuple(
+            adapter.stream(
+                _request(tools=False, structured=True),
+                ModelTarget(provider="openai", name="gpt-test"),
+                _metadata(),
+            )
+        )
+
+
 def test_legacy_response_shape_remains_source_compatible() -> None:
     """Task 2 does not change the public legacy response constructor."""
     assert LLMProviderResponse("ok").text == "ok"
+
+
+def test_httpx_status_errors_map_to_governed_fallback_codes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``httpx.HTTPStatusError`` carries its status on ``.response``, not itself.
+
+    Reading only ``status_code`` classified 429/5xx as ``provider_error``, so a
+    manifest declaring ``fallbackOn: [rate_limit, unavailable]`` would never
+    fire — a governed policy silently not applying.
+    """
+    import httpx
+
+    from backend.llm import ModelRateLimitError
+
+    def failing_factory(**kwargs: object) -> object:
+        request = httpx.Request("POST", "https://api.example.com/v1/chat")
+        raise httpx.HTTPStatusError(
+            "rate limited",
+            request=request,
+            response=httpx.Response(429, request=request),
+        )
+
+    monkeypatch.setattr("backend.llm.langchain_adapter.get_chat_model", failing_factory)
+    adapter = LangChainModelProvider("openai")
+
+    with pytest.raises(ModelRateLimitError) as raised:
+        adapter.complete(
+            _request(tools=False),
+            ModelTarget(provider="openai", name="gpt-test"),
+            _metadata(),
+        )
+
+    assert raised.value.code == "rate_limit"
+
+
+def test_base_gateway_error_carries_a_taxonomy_code() -> None:
+    """The exported base error must be classifiable, not raise ``AttributeError``."""
+    from backend.llm import ModelGatewayError
+
+    error = ModelGatewayError("boom")
+
+    assert error.code == "provider_error"
+    assert error.retryable is False
+
+
+def test_adapter_failures_leak_no_credential_through_the_exception_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The adapter's own re-raise sites must break the chain too.
+
+    ``_normalize_exception`` redacts the message it builds, but chaining the raw
+    provider exception puts the original back within reach of any span or log
+    handler that formats exception chains.
+    """
+    import traceback
+
+    secret = "hunter2hunter2secret"
+
+    def failing_factory(**kwargs: object) -> object:
+        raise RuntimeError(f"401 {{'api_key': '{secret}'}}")
+
+    monkeypatch.setattr("backend.llm.langchain_adapter.get_chat_model", failing_factory)
+    adapter = LangChainModelProvider("openai")
+
+    with pytest.raises(Exception) as raised:
+        adapter.complete(
+            _request(tools=False),
+            ModelTarget(provider="openai", name="gpt-test"),
+            _metadata(),
+        )
+
+    rendered = "".join(traceback.format_exception(raised.value))
+    assert secret not in str(raised.value)
+    assert secret not in rendered
+    assert raised.value.__cause__ is None

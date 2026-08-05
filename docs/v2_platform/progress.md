@@ -179,7 +179,7 @@ unblocked Beta epic; deps E0/E8/E9-S1/E4 all Done); follow `agent_guide.md`
 | --- | --- | --- | --- | --- | --- | --- |
 | E0 | Foundations & Hardening | Alpha | Done | 7/7 | — | [phases/e0_foundations_hardening.md](phases/e0_foundations_hardening.md) |
 | E1 | Plugin Core & SDK | Alpha | Done | 5/5 | E0 | [phases/e1_plugin_core_sdk.md](phases/e1_plugin_core_sdk.md) |
-| E2 | Agent Framework | Alpha | In Progress | 5/6 | E0, E1; E2-S6: E2-S1–S4 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
+| E2 | Agent Framework | Alpha | In Progress | 5/6 (E2-S6 implemented, story review pending) | E0, E1; E2-S6: E2-S1–S4 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
 | E3 | Orchestration Engine | Alpha/Beta | Done | 6/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
 | E4 | Reasoning | Beta | Done | 4/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
 | E5 | Routing / Selection / Evaluation | Beta | Done | 4/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
