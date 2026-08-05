@@ -9,7 +9,7 @@
 #
 #   GH_REPO=owner/name ./scripts/configure_branch_protection.sh
 #
-# It requires the `gh` CLI, authenticated as a repo admin.
+# It requires Python 3 and the `gh` CLI, authenticated as a repo admin.
 set -euo pipefail
 
 REPO="${GH_REPO:-$(gh repo view --json nameWithOwner -q .nameWithOwner)}"
@@ -30,17 +30,26 @@ REQUIRED_CHECKS=(
 
 echo "Applying branch protection to ${REPO}@${BRANCH} ..."
 
-checks_json="$(printf '%s\n' "${REQUIRED_CHECKS[@]}" \
-  | jq -R . | jq -s '{strict: true, contexts: .}')"
+payload="$(
+  python3 -c '
+import json
+import sys
+
+print(json.dumps({
+    "required_status_checks": {"strict": True, "contexts": sys.argv[1:]},
+    "enforce_admins": True,
+    "required_pull_request_reviews": {"required_approving_review_count": 1},
+    "restrictions": None,
+}))
+' "${REQUIRED_CHECKS[@]}"
+)"
 
 gh api \
   --method PUT \
   -H "Accept: application/vnd.github+json" \
   "repos/${REPO}/branches/${BRANCH}/protection" \
-  -f "required_status_checks=${checks_json}" \
-  -F "enforce_admins=true" \
-  -f "required_pull_request_reviews[required_approving_review_count]=1" \
-  -F "restrictions=" \
+  --input - \
+  <<<"${payload}" \
   1>/dev/null
 
 echo "Done. Required checks on ${BRANCH}:"
