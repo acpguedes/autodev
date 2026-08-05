@@ -46,7 +46,11 @@ The old path can coexist during migration.
 External coding agents are not model providers. Their filesystem/process lifecycle,
 interactive protocol, workspace isolation, patch semantics, and approvals require a
 future `CodingAgentHarness` abstraction. They must not be hidden behind `ModelProvider`
-or granted model-gateway credentials implicitly.
+or granted model-gateway credentials implicitly. The evidence behind this distinction —
+an inspected external system whose "agent" is a durable session around an external
+coding-agent process, with model selection delegated to each harness's own SDK — is
+recorded with citations and claim classification in
+`docs/v2_platform/model_gateway_agent_comparison.md`.
 
 ## Alternatives considered
 
@@ -91,5 +95,7 @@ working unchanged. Remove adapters and gateway composition only after confirming
 ## References
 
 - `docs/v2_platform/phases/e2_agent_framework.md` — E2-S6 scope and non-goals.
+- `docs/v2_platform/model_gateway_agent_comparison.md` — internal-agent vs. external
+  coding-agent evidence matrix with claim classification.
 - `docs/architecture/v2_platform_reference.md` — platform contract and OSS principles.
 - ADR-003 — Agent Manifest and Initial Capability Vocabulary.
