@@ -123,7 +123,7 @@ The authoritative decision is
 | --- | --- | --- |
 | Baseline validation | Complete | Full local baseline was green on exact base `7708430`; it does not validate later story commits. |
 | Task 1: contract/governance/configuration | Complete | Commits `f7e895c` and `9536482`; scoped rereview clean. |
-| Task 2: gateway/adapters/fallback/limits/tracing | **Fix rounds 1-2 applied; confirmation rereview pending** | `7090b01` + `f1d10c6`, corrected by `e3b2a0c` and `ccb6ae0`. Every finding from the first independent rereview is fixed with regression coverage. |
+| Task 2: gateway/adapters/fallback/limits/tracing | **Fix rounds 1-3 applied; another confirmation rereview required** | `7090b01` + `f1d10c6`, corrected by `e3b2a0c`, `ccb6ae0`, and `e321c11`. Two of three review rounds found real defects in the previous round's fixes, including one credential leak and one regression introduced by a fix. |
 | Task 3: runtime/flow/global settings/API/acceptance telemetry | Not started | Do not start until the Task 2 confirmation rereview is clean. |
 | Task 4: public docs/Traycer matrix/examples/versioning/story closure | **Partially complete** | Traycer evidence matrix published (`8756e88`). Public configuration/examples, versioning, and story closure remain. |
 | Final graph, story validation, epic validation, review, merge, and PR | Not started | No story/epic merge has been performed. |
@@ -138,7 +138,8 @@ branch is pushed to `origin` and has **not** been merged into the story branch.
 | --- | --- |
 | `e3b2a0c` | Task 2 fix round 1: capability-honest native structured output, explicit failure when streaming is combined with a structured schema, stream prefetch replaced by a terminal chunk, cost-absence policy pinned by test. |
 | `8756e88` | Traycer/AutoDev evidence matrix (`docs/v2_platform/model_gateway_agent_comparison.md`) plus ADR-016 cross-references. |
-| `ccb6ae0` | Task 2 fix round 2: all findings from the first independent rereview — 2 Critical, 6 Important, 5 Minor. |
+| `ccb6ae0` | Task 2 fix round 2: findings from the first independent rereview — 2 Critical, 6 Important, 5 Minor. One of these fixes did not work and one introduced a regression; both corrected in `e321c11`. |
+| `e321c11` | Task 2 fix round 3: credential leak onto spans, the two bad fixes from `ccb6ae0`, and three non-discriminating tests. |
 
 `f1d10c6` turned out to pass the pre-existing focused suite unchanged; the real
 defects it left were found by reading and by the independent rereview, not by a
@@ -252,9 +253,56 @@ The planned Task 3 and Task 4 files have not been edited.
   call from the budget without making one; an abandoned stream left no governance
   record; two unreachable raises used `invalid_request`.
 
+### Closed in `e321c11` (fix round 3, from the confirmation rereview of `ccb6ae0`)
+
+The confirmation rereview did not clear `ccb6ae0`. It found one claimed fix that did
+not work, one regression introduced by the fix round, and a pre-existing credential
+leak underneath both.
+
+- **Critical, pre-existing since `7090b01`** — OpenTelemetry's
+  `start_as_current_span` defaults to `record_exception=True`, attaching the raw
+  provider exception to the span before redaction ran on the caller-facing error. A
+  provider raising `api_key=sk-... rejected` gave the caller a redacted message and the
+  span the live key. Automatic exception recording is disabled; spans carry a stable
+  code and never a provider message.
+- **High — `ccb6ae0` did not actually fix the span taxonomy.** `_span_error_code`
+  checked `isinstance(code, str)` rather than membership, so vendor codes still reached
+  spans, and its test drove `trace_model_call` directly, exercising only the branch that
+  already worked. Sanitizing now happens where the span attribute is written.
+- **High — `ccb6ae0` introduced a regression.** The abandoned-stream `finally` recorded
+  `provider_error` on `GeneratorExit`, which fires on the ordinary
+  `for chunk in stream: ... if chunk.done: break` idiom, so every successful stream was
+  reported as a failure and got no success record. Abandoned attempts are now recorded
+  without an error code.
+- **Medium** — detached streaming spans set an explicit ERROR status; the streaming
+  error path accumulates billed usage symmetrically with `complete()`; `recorded` is set
+  before `_record`; `_preflight` keeps `provider=""`.
+
+Three guards were passing without testing anything and are now mutation-checked (each
+verified to fail when its fix is reverted): the thread-safety test blocks on a barrier
+so it fails in a full-file run rather than passing on scheduling luck; the
+capability-budget test uses two targets so it can observe the budget; the span-taxonomy
+test runs through the gateway.
+
 ### Still open
 
-- A confirmation rereview of `ccb6ae0` is required before Task 3 starts.
+- A further confirmation rereview of `e321c11` has not been run. Two of the three review
+  rounds so far found real defects in the preceding round's fixes, so **do not treat
+  Task 2 as clean without one.**
+- **Recorded, not fixed:** `_stream_prepared` is ~164 lines with cyclomatic complexity
+  ~31 and 7 levels of nesting at the `yield`; `complete` is ~134 lines at ~23. Both far
+  exceed the project's threshold, and that density is why the `GeneratorExit`
+  regression slipped in. Extracting per-attempt execution and the record-once
+  bookkeeping into helpers is the recommended follow-up. It was deliberately not
+  attempted late in the fix cycle.
+- **User-visible behavior change to document in Task 4:** combining `tool_calling` with
+  `structured_output` now raises `unsupported_capability` on any provider whose
+  `with_structured_output` does not declare `tools` explicitly. `ChatOpenAI` declares
+  it; the LangChain base shape does not. This is the intended no-silent-degradation
+  trade, but it must be stated in the public docs.
+- **`attempts` is unreliable for `stream()`.** A generator body runs on whichever thread
+  calls `next()`, so a stream consumed on a worker thread records onto that worker's
+  thread-local. Task 3 must aggregate telemetry through a per-run `telemetry_sink`.
 
 The pre-WIP Task 2 report saying "No Task 2 blocker remains" is superseded and must not
 be treated as current.
