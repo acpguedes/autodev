@@ -87,6 +87,8 @@ def get_chat_model(
     provider: str | None = None,
     model: str | None = None,
     temperature: float | None = None,
+    max_tokens: int | None = None,
+    request_timeout: float | None = None,
     allow_stub: bool = True,
 ) -> BaseChatModel:
     """Return a configured ``BaseChatModel`` for the desired provider.
@@ -101,14 +103,24 @@ def get_chat_model(
     temperature:
         Optional sampling temperature. When ``None`` the function reads the
         provider-specific environment variable.
+    max_tokens:
+        Optional maximum generated-token limit passed to the provider.
+    request_timeout:
+        Optional provider request timeout in seconds.
     allow_stub:
         When ``True`` (default) the function falls back to :class:`StubChatModel`
         if the real provider cannot be configured.
     """
 
     resolved_provider = (
-        provider if provider is not None else (os.getenv("LLM_PROVIDER", "stub") or "stub")
-    ).strip().lower()
+        (
+            provider
+            if provider is not None
+            else (os.getenv("LLM_PROVIDER", "stub") or "stub")
+        )
+        .strip()
+        .lower()
+    )
 
     if resolved_provider in {"", "stub", "fake", "none"}:
         if not allow_stub:
@@ -125,7 +137,11 @@ def get_chat_model(
             )
 
         base_url = os.getenv("OPENAI_BASE_URL")
-        resolved_model = model if model is not None else (os.getenv("OPENAI_MODEL", "gpt-4o-mini") or "gpt-4o-mini")
+        resolved_model = (
+            model
+            if model is not None
+            else (os.getenv("OPENAI_MODEL", "gpt-4o-mini") or "gpt-4o-mini")
+        )
         resolved_temperature = (
             temperature
             if temperature is not None
@@ -135,17 +151,24 @@ def get_chat_model(
         from langchain_openai import ChatOpenAI
 
         verify_ssl = _read_ssl_verify()
-        return ChatOpenAI(
+        chat_model_factory: Any = ChatOpenAI
+        return chat_model_factory(
             model=resolved_model,
             temperature=resolved_temperature,
             api_key=api_key,  # type: ignore[arg-type]
             base_url=base_url,
             http_client=httpx.Client(verify=verify_ssl),
             http_async_client=httpx.AsyncClient(verify=verify_ssl),
+            max_tokens=max_tokens,
+            request_timeout=request_timeout,
         )
 
     if resolved_provider == "ollama":
-        resolved_model = model if model is not None else (os.getenv("OPENAI_MODEL", "llama3.1") or "llama3.1")
+        resolved_model = (
+            model
+            if model is not None
+            else (os.getenv("OPENAI_MODEL", "llama3.1") or "llama3.1")
+        )
         resolved_temperature = (
             temperature
             if temperature is not None
@@ -160,13 +183,16 @@ def get_chat_model(
         from langchain_openai import ChatOpenAI
 
         verify_ssl = _read_ssl_verify()
-        return ChatOpenAI(
+        chat_model_factory = ChatOpenAI
+        return chat_model_factory(
             model=resolved_model,
             temperature=resolved_temperature,
             api_key=os.getenv("OPENAI_API_KEY") or "ollama",  # type: ignore[arg-type]
             base_url=base_url,
             http_client=httpx.Client(verify=verify_ssl),
             http_async_client=httpx.AsyncClient(verify=verify_ssl),
+            max_tokens=max_tokens,
+            request_timeout=request_timeout,
         )
 
     raise LLMConfigurationError(

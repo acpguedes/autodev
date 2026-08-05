@@ -59,6 +59,7 @@ neither.
 | ADR-013 | Isolation Backend for Beta Execution Environments | Proposed | E32 | 2026-07-17 |
 | ADR-014 | Secret Store Format | Proposed | E33 | 2026-07-17 |
 | ADR-015 | Global Installation Strategy | Proposed | E34 | 2026-07-17 |
+| ADR-016 | AutoDev-Owned Provider-Neutral Model Gateway Boundary | Accepted | E2-S6 | 2026-08-05 |
 
 > Update this table whenever an ADR or RFC is added or changes status. This index,
 > together with `docs/v2_platform/progress.md`, is the fastest way to see which

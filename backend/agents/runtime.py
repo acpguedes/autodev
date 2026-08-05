@@ -16,7 +16,40 @@ from backend.agents.provider import LLMProvider, StubLLMProvider
 from backend.agents.tools import AgentToolBroker
 from backend.context.composer import ContextComposer
 from backend.context.provider import ContextItem
+from backend.llm.contracts import (
+    AttemptTelemetry,
+    ExecutionMetadata,
+    MessageContent,
+    ModelRequest,
+    NormalizedMessage,
+)
+from backend.llm.gateway import ModelGateway
+from backend.llm.model_config import ModelConfig
+from backend.llm.registry import resolve_model_config
 from backend.observability.tracing import trace_run_step
+
+
+def _model_metrics(attempts: list[AttemptTelemetry]) -> dict[str, float | int]:
+    """Aggregate gateway attempt telemetry into run metrics.
+
+    Only numeric aggregates belong here -- ``metrics`` is a flat numeric map.
+    Provider and model identity per attempt stay on the model spans and the
+    gateway's telemetry sink, which can carry strings.
+
+    Args:
+        attempts: Attempt telemetry collected during the run.
+
+    Returns:
+        Model metrics, or an empty mapping when the run made no model calls.
+    """
+    if not attempts:
+        return {}
+    failures = sum(1 for attempt in attempts if attempt.error_code is not None)
+    return {
+        "model.attempts": len(attempts),
+        "model.failures": failures,
+        "model.latency_ms": sum(attempt.duration_ms for attempt in attempts),
+    }
 
 
 class AgentHandler(Protocol):
@@ -167,6 +200,10 @@ class AgentRuntimeContext:
     _ledger: _BudgetLedger
     _broker: AgentToolBroker
     _provider: LLMProvider
+    _gateway: ModelGateway | None = None
+    _model_override: ModelConfig | None = None
+    _global_model_config: ModelConfig | None = None
+    _model_attempts: list[AttemptTelemetry] = field(default_factory=list)
     _steps: list[AgentRuntimeStep] = field(default_factory=list)
     context_items: list[ContextItem] = field(default_factory=list)
 
@@ -250,7 +287,11 @@ class AgentRuntimeContext:
         return self._broker.call_skill(skill_id, **kwargs)
 
     def call_llm(self, prompt: str) -> str:
-        """Complete a prompt via the configured LLM provider and track usage.
+        """Complete a prompt and track usage against the run's budgets.
+
+        Routes through the provider-neutral model gateway when the runtime was
+        built with one, and through the original :class:`LLMProvider` otherwise,
+        so callers that inject a provider directly are unaffected.
 
         Args:
             prompt: Fully rendered prompt text.
@@ -260,19 +301,67 @@ class AgentRuntimeContext:
 
         Raises:
             BudgetExceeded: If a token or cost budget is now exceeded.
+            ModelGatewayError: If gateway preflight, execution, or limits fail
+                closed -- including when no model configuration is available.
         """
-        response = self._provider.complete(
-            prompt,
-            agent_id=self.manifest.id,
-            run_id=self.run_id,
-            tenant_id=self.tenant_id,
+        if self._gateway is None:
+            response = self._provider.complete(
+                prompt,
+                agent_id=self.manifest.id,
+                run_id=self.run_id,
+                tenant_id=self.tenant_id,
+            )
+            self.consume_budget(
+                tokens_input=response.tokens_input,
+                tokens_output=response.tokens_output,
+                cost_usd=response.cost_usd,
+            )
+            return response.text
+        return self._call_model_gateway(prompt)
+
+    def _call_model_gateway(self, prompt: str) -> str:
+        """Execute one governed model call and fold its telemetry into the run.
+
+        Precedence is resolved per call rather than once per run so it always
+        reflects the approved order: execution override, then agent manifest,
+        then global default, then an explicit error.
+        """
+        assert self._gateway is not None
+        config = resolve_model_config(
+            execution_override=self._model_override,
+            agent_config=self.manifest.model,
+            global_config=self._global_model_config,
         )
+        request = ModelRequest(
+            messages=(
+                NormalizedMessage(
+                    role="user",
+                    content=(MessageContent(type="text", text=prompt),),
+                ),
+            )
+        )
+        metadata = ExecutionMetadata(
+            provider=config.provider or "",
+            model=config.name,
+            attributes={
+                "agent_id": self.manifest.id,
+                "run_id": self.run_id,
+                "tenant_id": self.tenant_id,
+            },
+        )
+        try:
+            response = self._gateway.complete(request, config, metadata=metadata)
+        finally:
+            # `attempts` is thread-local per operation and documented as reliable
+            # for `complete()` on the calling thread, which is exactly this case.
+            # Collected in `finally` so a failed call still reports its attempts.
+            self._model_attempts.extend(self._gateway.attempts)
         self.consume_budget(
-            tokens_input=response.tokens_input,
-            tokens_output=response.tokens_output,
-            cost_usd=response.cost_usd,
+            tokens_input=response.usage.input_tokens,
+            tokens_output=response.usage.output_tokens,
+            cost_usd=response.cost.usd,
         )
-        return response.text
+        return "".join(part.text or "" for part in response.message.content)
 
 
 class AgentRuntime:
@@ -285,6 +374,8 @@ class AgentRuntime:
         skills: dict[str, Any] | None = None,
         provider: LLMProvider | None = None,
         context_composer: ContextComposer | None = None,
+        gateway: ModelGateway | None = None,
+        model_config: ModelConfig | None = None,
     ) -> None:
         """Initialize the runtime with shared tools, skills, LLM provider, and context policy.
 
@@ -292,6 +383,12 @@ class AgentRuntime:
             tools: Mapping of tool id to callable implementation, if any.
             skills: Mapping of skill id to callable implementation, if any.
             provider: LLM provider to use; defaults to :class:`StubLLMProvider`.
+                Used only when no ``gateway`` is supplied, so existing callers
+                that inject a provider keep their behavior unchanged.
+            gateway: Provider-neutral model gateway. When supplied, model calls
+                are governed by it and take precedence over ``provider``.
+            model_config: Global default model configuration, used when neither
+                an execution override nor the agent manifest selects one.
             context_composer: Composer (E7-S4) whose output is attached to
                 every run's :attr:`AgentRuntimeContext.context_items`; the
                 composer's provider list/weights/timeouts are the
@@ -303,6 +400,8 @@ class AgentRuntime:
         self._skills = skills or {}
         self._provider = provider or StubLLMProvider()
         self._context_composer = context_composer
+        self._gateway = gateway
+        self._model_config = model_config
 
     def run(
         self,
@@ -314,6 +413,7 @@ class AgentRuntime:
         tenant_id: str = "default",
         budgets: AgentBudgets | None = None,
         context_query: str = "",
+        model_override: ModelConfig | None = None,
     ) -> AgentRunResult:
         """Run an agent handler end-to-end with validation and guardrails.
 
@@ -324,6 +424,8 @@ class AgentRuntime:
             run_id: Identifier to use for this run; generated if omitted.
             tenant_id: Identifier of the tenant the run is scoped to.
             budgets: Budgets to enforce; defaults to the manifest's declared budgets.
+            model_override: Highest-precedence model selection for this run. Wins
+                over the agent manifest and the runtime's global default.
             context_query: Query forwarded to the runtime's ``context_composer``
                 (if any) to focus what context is composed for this run;
                 ignored when no composer is configured.
@@ -335,7 +437,18 @@ class AgentRuntime:
         active_budgets = budgets or manifest.budgets
         ledger = _BudgetLedger(active_budgets)
         broker = AgentToolBroker(manifest, tools=self._tools, skills=self._skills)
-        ctx = AgentRuntimeContext(manifest, payload, active_run_id, tenant_id, ledger, broker, self._provider)
+        ctx = AgentRuntimeContext(
+            manifest,
+            payload,
+            active_run_id,
+            tenant_id,
+            ledger,
+            broker,
+            self._provider,
+            self._gateway,
+            model_override,
+            self._model_config,
+        )
         if self._context_composer is not None:
             ctx.context_items = self._context_composer.compose(context_query, tenant_id=tenant_id).items
 
@@ -459,6 +572,7 @@ class AgentRuntime:
                 "cost.usd": ctx._ledger.cost_usd,
                 "tool.calls": ctx._ledger.tool_calls,
                 "steps": len(ctx._steps),
+                **_model_metrics(ctx._model_attempts),
             },
         )
 

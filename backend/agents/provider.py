@@ -20,9 +20,12 @@ than redefining local scripted-provider classes.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, Sequence
+from typing import TYPE_CHECKING, Protocol, Sequence
 
 from backend.repository.embeddings.provider import StubEmbeddingProvider
+
+if TYPE_CHECKING:
+    from backend.llm.contracts import ModelProvider
 
 
 @dataclass(frozen=True)
@@ -45,7 +48,9 @@ class LLMProviderResponse:
 class LLMProvider(Protocol):
     """Structural interface for LLM backends used by the agent runtime."""
 
-    def complete(self, prompt: str, *, agent_id: str, run_id: str, tenant_id: str) -> LLMProviderResponse:
+    def complete(
+        self, prompt: str, *, agent_id: str, run_id: str, tenant_id: str
+    ) -> LLMProviderResponse:
         """Generate a completion for the given prompt.
 
         Args:
@@ -86,7 +91,9 @@ class StubLLMProvider:
             cost_usd=cost_usd,
         )
 
-    def complete(self, prompt: str, *, agent_id: str, run_id: str, tenant_id: str) -> LLMProviderResponse:
+    def complete(
+        self, prompt: str, *, agent_id: str, run_id: str, tenant_id: str
+    ) -> LLMProviderResponse:
         """Return the fixed response configured at construction time.
 
         Args:
@@ -120,7 +127,9 @@ class ScriptedLLMProvider:
         self._responses = list(responses)
         self.calls = 0
 
-    def complete(self, prompt: str, *, agent_id: str, run_id: str, tenant_id: str) -> LLMProviderResponse:
+    def complete(
+        self, prompt: str, *, agent_id: str, run_id: str, tenant_id: str
+    ) -> LLMProviderResponse:
         """Return the next scripted response, repeating the last one.
 
         Args:
@@ -134,7 +143,23 @@ class ScriptedLLMProvider:
         """
         index = min(self.calls, len(self._responses) - 1)
         self.calls += 1
-        return LLMProviderResponse(text=self._responses[index], tokens_input=1, tokens_output=1)
+        return LLMProviderResponse(
+            text=self._responses[index], tokens_input=1, tokens_output=1
+        )
+
+
+def as_model_provider(provider: LLMProvider) -> ModelProvider:
+    """Wrap a legacy provider for the provider-neutral gateway.
+
+    Args:
+        provider: Existing text-only provider instance.
+
+    Returns:
+        Provider-neutral compatibility adapter.
+    """
+    from backend.llm.legacy_adapter import LegacyLLMProviderAdapter
+
+    return LegacyLLMProviderAdapter(provider)
 
 
 __all__ = [
@@ -143,4 +168,5 @@ __all__ = [
     "ScriptedLLMProvider",
     "StubEmbeddingProvider",
     "StubLLMProvider",
+    "as_model_provider",
 ]

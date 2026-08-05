@@ -30,7 +30,11 @@ def test_ollama_provider_uses_local_openai_compatible_defaults(
         def __init__(self, **kwargs):
             calls.append(kwargs)
 
-    monkeypatch.setitem(sys.modules, "langchain_openai", types.SimpleNamespace(ChatOpenAI=FakeChatOpenAI))
+    monkeypatch.setitem(
+        sys.modules,
+        "langchain_openai",
+        types.SimpleNamespace(ChatOpenAI=FakeChatOpenAI),
+    )
     get_chat_model.cache_clear()
 
     model = get_chat_model(provider="ollama", model="llama3.1")
@@ -50,3 +54,33 @@ def test_openai_provider_without_key_falls_back_to_stub(
     model = get_chat_model(provider="openai")
 
     assert getattr(model, "is_stub", False) is True
+
+
+def test_factory_passes_output_and_timeout_limits_to_openai(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gateway target limits reach the replaceable LangChain model constructor."""
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    calls: list[dict[str, object]] = []
+
+    class FakeChatOpenAI:
+        def __init__(self, **kwargs: object) -> None:
+            calls.append(kwargs)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "langchain_openai",
+        types.SimpleNamespace(ChatOpenAI=FakeChatOpenAI),
+    )
+    get_chat_model.cache_clear()
+
+    get_chat_model(
+        provider="openai",
+        model="gpt-test",
+        max_tokens=123,
+        request_timeout=4.5,
+        allow_stub=False,
+    )
+
+    assert calls[0]["max_tokens"] == 123
+    assert calls[0]["request_timeout"] == 4.5

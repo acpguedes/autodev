@@ -28,7 +28,6 @@ from backend.observability.tracing import (
 from backend.orchestrator.service import OrchestratorService
 from backend.persistence.sqlite_adapter import SQLiteStore
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
