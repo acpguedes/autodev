@@ -36,18 +36,42 @@ class PatchValidationError(RuntimeError):
     """Raised when a patch-engine safety property does not hold."""
 
 
+def _snapshot_workspace(root: Path) -> dict[str, tuple[str, bytes | str | None]]:
+    """Capture filesystem entries and file contents below a workspace root.
+
+    Args:
+        root: Workspace root to inspect.
+
+    Returns:
+        A mapping from relative path to entry type and content identity.
+    """
+    snapshot: dict[str, tuple[str, bytes | str | None]] = {}
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix()
+        if path.is_symlink():
+            snapshot[relative] = ("symlink", path.readlink().as_posix())
+        elif path.is_file():
+            snapshot[relative] = ("file", path.read_bytes())
+        elif path.is_dir():
+            snapshot[relative] = ("directory", None)
+        else:
+            snapshot[relative] = ("other", None)
+    return snapshot
+
+
 def check_dry_run_does_not_write(root: Path) -> None:
-    """Assert a dry-run apply reports a no-write outcome and touches no file.
+    """Assert a dry-run reports a no-write outcome and preserves the workspace.
 
     Args:
         root: Workspace root the patch is applied against.
 
     Raises:
-        PatchValidationError: If the dry-run claims to have applied the patch,
-            or if it writes the target file to disk.
+        PatchValidationError: If the dry-run claims to have applied the patch
+            or changes any workspace entry.
     """
     target_rel = "src/example.txt"
     patch = generate_patch(target_rel, original="old\n", updated="new\n")
+    before = _snapshot_workspace(root)
 
     result = apply_patch(patch, root=str(root), enable=False)
 
@@ -56,9 +80,11 @@ def check_dry_run_does_not_write(root: Path) -> None:
             "Dry-run apply must not report applied=True/dry_run=False; "
             f"got applied={result.applied}, dry_run={result.dry_run}."
         )
-    if (root / target_rel).exists():
+    after = _snapshot_workspace(root)
+    if after != before:
         raise PatchValidationError(
-            f"Dry-run apply wrote {target_rel!r} to disk; it must not touch the filesystem."
+            "Dry-run apply changed the workspace filesystem; it must preserve "
+            "all entries and file contents."
         )
 
 

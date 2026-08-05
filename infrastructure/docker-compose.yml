@@ -29,8 +29,11 @@ services:
       - ../scripts:/workspace/scripts
       - ../tests:/workspace/tests
       - ../docs:/workspace/docs
+      - ../evals:/workspace/evals:ro
+      - ../examples:/workspace/examples:ro
       - ../infrastructure:/workspace/infrastructure
       - ../sandbox:/workspace/sandbox
+      - ../sdk:/workspace/sdk:ro
       - ../Makefile:/workspace/Makefile:ro
       - ../mypy.ini:/workspace/mypy.ini:ro
     security_opt:

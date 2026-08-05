@@ -69,7 +69,7 @@ install-frontend: ## Install frontend node dependencies
 	cd $(FRONTEND_DIR) && $(NPM) install
 
 install-dev: venv ## Install optional dev tools (black, ruff, mypy, pytest-cov, pytest-xdist)
-	$(PIP) install black ruff mypy pytest-cov pytest-xdist
+	$(PIP) install black "ruff==0.15.18" "mypy==2.1.0" pytest-cov pytest-xdist
 
 # --------------------------------------------------------------------------
 # Test
@@ -189,7 +189,7 @@ run_secret_scanning: ## Run the repository secret scanner inside the backend con
 security-scan: run_secret_scanning ## Alias for local/container secret scanning
 
 container-check: ## Run backend lint, typecheck, and tests inside the backend container
-	$(COMPOSE) run --rm backend sh -lc '\
+	$(COMPOSE) run --build --rm backend sh -c '\
 		python scripts/run_secret_scanning.py . && \
 		ruff check backend tests && \
 		mypy backend && \

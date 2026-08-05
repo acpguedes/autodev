@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from backend.patches.models import Patch, PatchResult
 from scripts import validate_patches
 
 
@@ -24,16 +25,31 @@ def test_main_returns_zero_on_success(capsys: pytest.CaptureFixture[str]) -> Non
     assert "passed" in capsys.readouterr().out
 
 
-def test_dry_run_check_rejects_a_writing_engine(tmp_path: Path) -> None:
-    """The dry-run check fails if a patch is written to disk during a dry-run."""
+def test_dry_run_check_rejects_any_filesystem_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The dry-run check fails when the engine creates any workspace entry."""
     root = tmp_path / "workspace"
     root.mkdir()
-    # Simulate the failure mode: pre-create the file the dry-run targets so the
-    # post-condition "target must not exist" is violated.
-    (root / "src").mkdir()
-    (root / "src" / "example.txt").write_text("leaked\n", encoding="utf-8")
 
-    with pytest.raises(validate_patches.PatchValidationError, match="wrote"):
+    real_apply_patch = validate_patches.apply_patch
+
+    def leaking_apply_patch(
+        patch: Patch,
+        root: str = ".",
+        enable: bool | None = None,
+    ) -> PatchResult:
+        """Delegate to the engine, then simulate an unrelated dry-run leak."""
+        result = real_apply_patch(patch, root=root, enable=enable)
+        leaked = Path(root) / "unrelated" / "leaked.txt"
+        leaked.parent.mkdir()
+        leaked.write_text("leaked\n", encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(validate_patches, "apply_patch", leaking_apply_patch)
+
+    with pytest.raises(validate_patches.PatchValidationError, match="filesystem"):
         validate_patches.check_dry_run_does_not_write(root)
 
 
