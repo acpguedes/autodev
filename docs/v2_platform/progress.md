@@ -7,7 +7,7 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-07-22 (**Planning-only: added the v2.3 Platform Excellence wave — epics E36-E40** for document authority + SDD operating model, context-independent harness/looping excellence, SOTA evidence + capability benchmark, product modes + agentic security + minimum FinOps, and architecture fitness + local-first degradation. Previous entry: **Beta hardening wave planned — epics E32–E35
+**Last updated:** 2026-08-05 (**E2 complete 6/6** — E2-S6 delivers the provider-neutral model gateway: agents select models via additive schema 2.1, precedence is execution override → agent manifest → global `LLM_MODEL`, and capability checks, governed fallback, call/token/cost ceilings, and telemetry are enforced by AutoDev-owned contracts (ADR-016). Public configuration and tested limitations: `docs/agents/model_gateway.md`. **Caveat:** the story branch was not reviewed end to end; the review loop was stopped by explicit decision after five fix rounds — see `handoffs/e2_s6_model_gateway.md`.) Previous entry: 2026-08-05 (**E2-S6 corrective story in progress — E2 temporarily 5/6**: ADR-016 selects an AutoDev-owned provider-neutral model gateway boundary; immutable contracts and additive validated 2.1 agent model configuration are landing without changing 2.0 manifests. Previous entry: **Planning-only: added the v2.3 Platform Excellence wave — epics E36-E40** for document authority + SDD operating model, context-independent harness/looping excellence, SOTA evidence + capability benchmark, product modes + agentic security + minimum FinOps, and architecture fitness + local-first degradation. Previous entry: **Beta hardening wave planned — epics E32–E35
 added**: isolated-execution Beta slice, secrets & credential governance,
 packaging/global install, and Beta readiness gates — 13 new stories; see
 `phases/e32_isolated_execution_beta.md` … `phases/e35_beta_readiness_gates.md`,
@@ -179,7 +179,7 @@ unblocked Beta epic; deps E0/E8/E9-S1/E4 all Done); follow `agent_guide.md`
 | --- | --- | --- | --- | --- | --- | --- |
 | E0 | Foundations & Hardening | Alpha | Done | 7/7 | — | [phases/e0_foundations_hardening.md](phases/e0_foundations_hardening.md) |
 | E1 | Plugin Core & SDK | Alpha | Done | 5/5 | E0 | [phases/e1_plugin_core_sdk.md](phases/e1_plugin_core_sdk.md) |
-| E2 | Agent Framework | Alpha | Done | 5/5 | E0, E1 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
+| E2 | Agent Framework | Alpha | Done | 6/6 | E0, E1; E2-S6: E2-S1–S4 | [phases/e2_agent_framework.md](phases/e2_agent_framework.md) |
 | E3 | Orchestration Engine | Alpha/Beta | Done | 6/6 | E0, E2 | [phases/e3_orchestration_engine.md](phases/e3_orchestration_engine.md) |
 | E4 | Reasoning | Beta | Done | 4/4 | E1, E2 | [phases/e4_reasoning.md](phases/e4_reasoning.md) |
 | E5 | Routing / Selection / Evaluation | Beta | Done | 4/4 | E2, E4 | [phases/e5_routing_selection_evaluation.md](phases/e5_routing_selection_evaluation.md) |
@@ -308,6 +308,14 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-05** — Opened corrective story **E2-S6 — Provider-neutral model
+  gateway and governed fallback** (E2 temporarily **5/6 In Progress**; dependencies
+  E0, E1, E2-S1–S4). ADR-016 accepts AutoDev-owned immutable contracts plus
+  replaceable adapters and defers LiteLLM. Task 1 adds validated `agent.yaml` 2.1
+  model configuration while retaining 2.0 and legacy string `policy.model` behavior.
+  Explicit non-goals: parallel scheduling, A2A, shared-context ACLs, external coding
+  agent harnesses, pricing catalogs, and UI redesign.
 
 - **2026-07-22** — Planning-only, no implementation: added the **v2.3 —
   Platform Excellence** wave (**E36-E40**, 22 stories) to convert the architecture

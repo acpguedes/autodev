@@ -1,8 +1,8 @@
 # E2 — Agent Framework
 
 **Wave:** Alpha
-**Status:** Done · **Stories:** 5/5 complete
-**Depends on:** E0, E1
+**Status:** In Progress · **Stories:** 5/6 complete
+**Depends on:** E0, E1; E2-S6 additionally depends on E2-S1 through E2-S4
 **Enables:** E4, E5, E9-S4
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E2), §18.8, §18.9
 
@@ -94,6 +94,38 @@ Subtasks:
 | DoD (specific) | Parity suite green; SDK example |
 | Dependencies | E2-S3, E2-S4, E1-S4 |
 
+### E2-S6 — Provider-neutral model gateway and governed fallback — Done
+
+Subtasks:
+- `E2-S6-T1`: accepted gateway decision, immutable provider-neutral contracts, and
+  validated agent model configuration.
+- `E2-S6-T2`: replaceable provider adapters and deterministic offline stub behavior.
+- `E2-S6-T3`: governed retry/fallback, capability checks, limits, and telemetry.
+- `E2-S6-T4`: runtime migration, compatibility validation, and documentation closure.
+
+| Criterion | Detail |
+| --- | --- |
+| Functional | Agents select provider-neutral model targets; adapters normalize messages, tools, structured output, streaming, usage/cost, metadata, and typed failures |
+| Non-functional | Offline stub remains first-class; credentials never enter manifests/contracts; retries, fallbacks, calls, tokens, and cost fail closed at configured limits |
+| DoR (specific) | ADR-016 accepted; additive 2.1 manifest syntax and 2.0 compatibility agreed |
+| DoD (specific) | Contract/manifest/provider tests green; runtime migration preserves E2 behavior; relevant model-gateway docs published |
+| Dependencies | E0, E1, E2-S1, E2-S2, E2-S3, E2-S4 |
+
+All four subtasks are implemented on `traycer/e2-s6-model-gateway-resume`. Public
+configuration and limitations are documented in
+[`docs/agents/model_gateway.md`](../../agents/model_gateway.md); the internal-agent vs.
+external-harness evidence is in
+[`model_gateway_agent_comparison.md`](../model_gateway_agent_comparison.md).
+
+**Caveat carried into Done:** the story branch was not reviewed end to end. The review
+loop was stopped by explicit decision after five fix rounds rather than on a clean
+verdict. The handoff records exactly what that leaves unverified.
+
+Explicit non-goals for E2-S6 are parallel scheduling, Agent-to-Agent (A2A)
+protocols, shared-context ACLs, external coding-agent harnesses, pricing catalogs, and
+UI redesign. External coding agents remain a future `CodingAgentHarness` abstraction,
+separate from the model gateway.
+
 ## v1 precursor / starting point
 
 - `backend/agents/registry.py` (auto-discovery) and `backend/agents/contracts.py`
@@ -111,8 +143,8 @@ Subtasks:
 
 ## Epic exit checklist
 
-- [x] All 5 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
+- [x] All 6 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
       story-specific DoD above.
 - [x] Contract tests green for the agent IO/capability extension points.
-- [x] `docs/v2_platform/progress.md` updated.
+- [x] `docs/v2_platform/progress.md` updated for the corrective story.
 - [x] Alpha wave exit criteria this epic contributes to (§18.9) satisfied.

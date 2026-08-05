@@ -119,6 +119,7 @@ expire.
 | `AUTODEV_SETTINGS_FILE` | empty | Optional flat JSON settings file loaded below env vars. |
 | `DATABASE_URL` | `sqlite:///./autodev.db` | State store connection URL. |
 | `LLM_PROVIDER` | `stub` | `stub`, `openai`, or `ollama`. |
+| `LLM_MODEL` | empty | Global default model for the provider-neutral gateway. Empty means no global default: agents must then select their own model, or the run fails explicitly. See [Model Gateway](agents/model_gateway.md). |
 | `OPENAI_API_KEY` | empty | Required when `LLM_PROVIDER=openai`. |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Hosted or local model name. |
 | `OPENAI_BASE_URL` | empty | Compatible gateway URL. |

@@ -13,6 +13,12 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from packaging.version import InvalidVersion, Version
 
 from backend.agents.capabilities import CAPABILITY_IDS
+from backend.llm.model_config import (
+    ModelConfig,
+    ModelConfigError,
+    model_config_from_legacy_alias,
+    parse_model_config,
+)
 
 AGENT_ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*$")
 CONTRACT_ID_RE = AGENT_ID_RE
@@ -20,6 +26,7 @@ SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 ENTRYPOINT_REF_RE = re.compile(r"^[A-Za-z_][\w.]*:[A-Za-z_][\w.]*$")
 VALID_LEVELS = frozenset({"primary", "secondary"})
 VALID_INVALID_OUTPUT_ACTIONS = frozenset({"repair-then-fail", "fail", "passthrough"})
+SUPPORTED_AGENT_SCHEMA_VERSIONS = frozenset({"2.0", "2.1"})
 
 
 class ValidationError(ValueError):
@@ -165,6 +172,7 @@ class AgentManifest:
         permissions: Tool, skill, and network grants for the agent.
         budgets: Resource limits enforced on the agent's runs.
         policy: Free-form policy configuration.
+        model: Optional provider-neutral model selection and governance configuration.
         display_name: Optional human-readable name.
         description: Optional human-readable description.
         raw: Original parsed manifest document.
@@ -181,6 +189,7 @@ class AgentManifest:
     permissions: AgentPermissionSpec = field(default_factory=AgentPermissionSpec)
     budgets: AgentBudgets = DEFAULT_AGENT_BUDGETS
     policy: dict[str, Any] = field(default_factory=dict)
+    model: ModelConfig | None = None
     display_name: str | None = None
     description: str | None = None
     raw: dict[str, Any] = field(default_factory=dict)
@@ -224,6 +233,8 @@ def validate_agent_manifest(raw: dict[str, Any]) -> AgentManifestValidationResul
 
     if kind and kind != "Agent":
         errors.append("kind must be Agent")
+    if schema_version and schema_version not in SUPPORTED_AGENT_SCHEMA_VERSIONS:
+        errors.append("schemaVersion must be 2.0 or 2.1")
     if agent_id and not AGENT_ID_RE.match(agent_id):
         errors.append("id must use namespace/name kebab-case format")
     if version and not _is_semver(version):
@@ -240,6 +251,23 @@ def validate_agent_manifest(raw: dict[str, Any]) -> AgentManifestValidationResul
     if policy is not None and not isinstance(policy, dict):
         errors.append("policy must be an object when provided")
         policy = {}
+
+    model: ModelConfig | None = None
+    legacy_model_declared = isinstance(policy, dict) and "model" in policy
+    if "model" in raw and legacy_model_declared:
+        errors.append("model and policy.model cannot both be declared")
+    elif "model" in raw:
+        if schema_version != "2.1":
+            errors.append("model requires schemaVersion 2.1")
+        try:
+            model = parse_model_config(raw.get("model"))
+        except ModelConfigError as exc:
+            errors.extend(exc.errors)
+    elif legacy_model_declared:
+        try:
+            model = model_config_from_legacy_alias(policy.get("model"))
+        except ModelConfigError as exc:
+            errors.extend(exc.errors)
 
     if errors:
         return AgentManifestValidationResult(False, errors)
@@ -258,6 +286,7 @@ def validate_agent_manifest(raw: dict[str, Any]) -> AgentManifestValidationResul
             permissions=permissions,
             budgets=budgets,
             policy=dict(policy or {}),
+            model=model,
             entrypoint=entrypoint,
             display_name=_string(raw.get("displayName")) or None,
             description=_string(raw.get("description")) or None,
