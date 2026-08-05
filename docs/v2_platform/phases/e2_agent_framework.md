@@ -94,7 +94,7 @@ Subtasks:
 | DoD (specific) | Parity suite green; SDK example |
 | Dependencies | E2-S3, E2-S4, E1-S4 |
 
-### E2-S6 — Provider-neutral model gateway and governed fallback — In Progress
+### E2-S6 — Provider-neutral model gateway and governed fallback — In Progress (implementation complete, story review pending)
 
 Subtasks:
 - `E2-S6-T1`: accepted gateway decision, immutable provider-neutral contracts, and
@@ -110,6 +110,16 @@ Subtasks:
 | DoR (specific) | ADR-016 accepted; additive 2.1 manifest syntax and 2.0 compatibility agreed |
 | DoD (specific) | Contract/manifest/provider tests green; runtime migration preserves E2 behavior; relevant model-gateway docs published |
 | Dependencies | E0, E1, E2-S1, E2-S2, E2-S3, E2-S4 |
+
+All four subtasks are implemented on `traycer/e2-s6-model-gateway-resume`. Public
+configuration and limitations are documented in
+[`docs/agents/model_gateway.md`](../../agents/model_gateway.md); the internal-agent vs.
+external-harness evidence is in
+[`model_gateway_agent_comparison.md`](../model_gateway_agent_comparison.md).
+
+**Not yet satisfied:** the story branch has not been reviewed end to end, and the
+review loop was stopped by explicit decision after five fix rounds rather than on a
+clean verdict. See the handoff for what that means before merging.
 
 Explicit non-goals for E2-S6 are parallel scheduling, Agent-to-Agent (A2A)
 protocols, shared-context ACLs, external coding-agent harnesses, pricing catalogs, and

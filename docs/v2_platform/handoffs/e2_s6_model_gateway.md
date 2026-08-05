@@ -124,7 +124,7 @@ The authoritative decision is
 | Baseline validation | Complete | Full local baseline was green on exact base `7708430`; it does not validate later story commits. |
 | Task 1: contract/governance/configuration | Complete | Commits `f7e895c` and `9536482`; scoped rereview clean. |
 | Task 2: gateway/adapters/fallback/limits/tracing | **Fix rounds 1-5 applied; another confirmation rereview required** | `7090b01` + `f1d10c6`, corrected by `e3b2a0c`, `ccb6ae0`, `e321c11`, `6a308b3`, and `54f66d4`. Round 4 was the first delta a review found clean. Round 5 fixed the redaction regex itself, which had been bypassable for the whole story. |
-| Task 3: runtime/flow/global settings/API/acceptance telemetry | Not started | Do not start until the Task 2 confirmation rereview is clean. |
+| Task 3: runtime/flow/global settings/acceptance telemetry | **Complete** (`c158278`) | Gateway wired into `AgentRuntime` with per-execution override, global `LLM_MODEL` default, and telemetry aggregated into `AgentRunResult.metrics`. Flow propagation needs no change: `flows/handlers.py` already accepts an injected runtime. No API endpoint constructs a runtime, so there was nothing to propagate there. |
 | Task 4: public docs/Traycer matrix/examples/versioning/story closure | **Partially complete** | Traycer evidence matrix published (`8756e88`). Public configuration/examples, versioning, and story closure remain. |
 | Final graph, story validation, epic validation, review, merge, and PR | Not started | No story/epic merge has been performed. |
 
