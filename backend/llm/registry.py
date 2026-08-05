@@ -104,4 +104,23 @@ def resolve_model_config(
     return replace(selected, provider=inherited)
 
 
-__all__ = ["ModelProviderRegistry", "resolve_model_config"]
+def global_model_config(provider: str, model: str) -> ModelConfig | None:
+    """Build the process-wide default model configuration from settings values.
+
+    Args:
+        provider: Configured provider id, e.g. ``LLM_PROVIDER``.
+        model: Configured global model name, e.g. ``LLM_MODEL``.
+
+    Returns:
+        The global default, or ``None`` when no model is configured. ``None`` is
+        deliberate: without a global default an agent must select its own model,
+        and a run with neither fails explicitly instead of guessing one.
+    """
+    resolved_provider = provider.strip()
+    resolved_model = model.strip()
+    if not resolved_model:
+        return None
+    return ModelConfig(provider=resolved_provider or None, name=resolved_model)
+
+
+__all__ = ["ModelProviderRegistry", "global_model_config", "resolve_model_config"]

@@ -214,3 +214,15 @@ def test_redaction_covers_the_shapes_providers_actually_emit(message: str) -> No
     from backend.llm.errors import redact_error_message
 
     assert "hunter2hunter2" not in redact_error_message(message)
+
+
+def test_global_model_config_is_absent_until_a_model_is_configured() -> None:
+    """An unset global model yields no default rather than an invented one."""
+    from backend.llm.registry import global_model_config
+
+    assert global_model_config("stub", "") is None
+    assert global_model_config("", "  ") is None
+
+    configured = global_model_config("stub", "gpt-test")
+    assert configured is not None
+    assert (configured.provider, configured.name) == ("stub", "gpt-test")
