@@ -123,7 +123,7 @@ The authoritative decision is
 | --- | --- | --- |
 | Baseline validation | Complete | Full local baseline was green on exact base `7708430`; it does not validate later story commits. |
 | Task 1: contract/governance/configuration | Complete | Commits `f7e895c` and `9536482`; scoped rereview clean. |
-| Task 2: gateway/adapters/fallback/limits/tracing | **Fix rounds 1-3 applied; another confirmation rereview required** | `7090b01` + `f1d10c6`, corrected by `e3b2a0c`, `ccb6ae0`, and `e321c11`. Two of three review rounds found real defects in the previous round's fixes, including one credential leak and one regression introduced by a fix. |
+| Task 2: gateway/adapters/fallback/limits/tracing | **Fix rounds 1-4 applied; another confirmation rereview required** | `7090b01` + `f1d10c6`, corrected by `e3b2a0c`, `ccb6ae0`, `e321c11`, and `6a308b3`. Three of four review rounds found real defects in the previous round's fixes, twice in fixes reported as complete. |
 | Task 3: runtime/flow/global settings/API/acceptance telemetry | Not started | Do not start until the Task 2 confirmation rereview is clean. |
 | Task 4: public docs/Traycer matrix/examples/versioning/story closure | **Partially complete** | Traycer evidence matrix published (`8756e88`). Public configuration/examples, versioning, and story closure remain. |
 | Final graph, story validation, epic validation, review, merge, and PR | Not started | No story/epic merge has been performed. |
@@ -139,7 +139,9 @@ branch is pushed to `origin` and has **not** been merged into the story branch.
 | `e3b2a0c` | Task 2 fix round 1: capability-honest native structured output, explicit failure when streaming is combined with a structured schema, stream prefetch replaced by a terminal chunk, cost-absence policy pinned by test. |
 | `8756e88` | Traycer/AutoDev evidence matrix (`docs/v2_platform/model_gateway_agent_comparison.md`) plus ADR-016 cross-references. |
 | `ccb6ae0` | Task 2 fix round 2: findings from the first independent rereview — 2 Critical, 6 Important, 5 Minor. One of these fixes did not work and one introduced a regression; both corrected in `e321c11`. |
-| `e321c11` | Task 2 fix round 3: credential leak onto spans, the two bad fixes from `ccb6ae0`, and three non-discriminating tests. |
+| `e321c11` | Task 2 fix round 3: credential leak onto spans, the two bad fixes from `ccb6ae0`, and three non-discriminating tests. Its span fix was incomplete and it introduced one regression. |
+| `6a308b3` | Task 2 fix round 4: credential leak through the `__cause__` chain (spans **and** logs), `GeneratorExit` on the span channel, the round-3 visibility regression, unbounded stream telemetry, and two uncovered streaming paths. |
+| `77e8e06` | Formatting-only: black on the remaining story files, ASTs verified identical. |
 
 `f1d10c6` turned out to pass the pre-existing focused suite unchanged; the real
 defects it left were found by reading and by the independent rereview, not by a
@@ -284,11 +286,42 @@ so it fails in a full-file run rather than passing on scheduling luck; the
 capability-budget test uses two targets so it can observe the budget; the span-taxonomy
 test runs through the gateway.
 
+### Closed in `6a308b3` (fix round 4, from the confirmation rereview of `e321c11`)
+
+That rereview did not clear `e321c11` either.
+
+- **Critical, still open from round 3** — the credential leak was moved, not closed.
+  Disabling `record_exception` on the model span left the raw exception on `__cause__`;
+  OpenTelemetry formats exception chains and every *other* span (run steps, request
+  middleware) still records exceptions by default, so the live key landed on the
+  enclosing run-step span. The same chain reached `logging` via `exc_info=True` inside
+  `_record`. The chain is now broken at the redaction boundary (`raise ... from None`,
+  eight sites) and the sink log records only the exception type.
+- **High, half-fixed in round 3** — `GeneratorExit` was still treated as a provider
+  failure on the *span* channel, so the ordinary `break`-after-`done` idiom produced a
+  clean attempt record and an ERROR span. The two governance channels disagreed.
+- **Medium, regression introduced by round 3** — replacing the taxonomy fallback with
+  `str(getattr(exc, "code", "") or "")` made codeless failures render as successful
+  spans with no ERROR status.
+- **Medium** — stream attempt telemetry grew without bound on the consuming thread; the
+  reset now happens in the generator body.
+- **Low** — `redacted_gateway_error` no longer raises `TypeError` for a subclass with a
+  different constructor signature.
+
+Two streaming paths the rereview found entirely uncovered now have tests, including the
+"never switch providers after output reached the caller" invariant.
+
+Two guards written this round did not discriminate on the first attempt — one drove the
+gateway where the tracer's own fallback was needed, the other created and consumed a
+stream on the same thread. Both were rewritten until they failed against the reverted
+fix. **Mutation-check every new guard in this area; several have looked correct while
+testing nothing.**
+
 ### Still open
 
-- A further confirmation rereview of `e321c11` has not been run. Two of the three review
-  rounds so far found real defects in the preceding round's fixes, so **do not treat
-  Task 2 as clean without one.**
+- A confirmation rereview of `6a308b3` has not been run. **Three of four review rounds
+  found real defects in the preceding round's fixes — twice in fixes that had been
+  reported as complete. Do not treat Task 2 as clean without one.**
 - **Recorded, not fixed:** `_stream_prepared` is ~164 lines with cyclomatic complexity
   ~31 and 7 levels of nesting at the `yield`; `complete` is ~134 lines at ~23. Both far
   exceed the project's threshold, and that density is why the `GeneratorExit`
