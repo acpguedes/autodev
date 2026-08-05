@@ -51,10 +51,17 @@ def test_parse_model_config_accepts_canonical_camel_case_syntax() -> None:
     assert config.fallback[0].temperature is None
 
 
-def test_parse_model_config_accepts_complete_capability_and_error_vocabularies() -> None:
+def test_parse_model_config_accepts_complete_capability_and_error_vocabularies() -> (
+    None
+):
     """Every governed capability and normalized error id is accepted by the parser."""
     raw = _valid_model_config()
-    raw["requiredCapabilities"] = ["text", "tool_calling", "structured_output", "streaming"]
+    raw["requiredCapabilities"] = [
+        "text",
+        "tool_calling",
+        "structured_output",
+        "streaming",
+    ]
     raw["fallbackOn"] = [
         "provider_not_configured",
         "unsupported_capability",
@@ -69,7 +76,12 @@ def test_parse_model_config_accepts_complete_capability_and_error_vocabularies()
 
     config = parse_model_config(raw)
 
-    assert config.required_capabilities == ("text", "tool_calling", "structured_output", "streaming")
+    assert config.required_capabilities == (
+        "text",
+        "tool_calling",
+        "structured_output",
+        "streaming",
+    )
     assert config.fallback_on == (
         "provider_not_configured",
         "unsupported_capability",
@@ -92,12 +104,28 @@ def test_parse_model_config_accepts_complete_capability_and_error_vocabularies()
         (("maxTokens",), 0, "model.maxTokens must be a positive integer"),
         (("timeoutSeconds",), -1, "model.timeoutSeconds must be a positive number"),
         (("retries",), 6, "model.retries must be an integer between 0 and 5"),
-        (("requiredCapabilities",), ["telepathy"], "unknown model capability telepathy"),
+        (
+            ("requiredCapabilities",),
+            ["telepathy"],
+            "unknown model capability telepathy",
+        ),
         (("fallbackOn",), ["overloaded"], "unknown model error overloaded"),
         (("limits", "maxCalls"), 0, "model.limits.maxCalls must be a positive integer"),
-        (("limits", "maxCostUsd"), 0.0, "model.limits.maxCostUsd must be a positive number"),
-        (("limits", "maxCostUsd"), math.nan, "model.limits.maxCostUsd must be a positive number"),
-        (("timeoutSeconds",), math.inf, "model.timeoutSeconds must be a positive number"),
+        (
+            ("limits", "maxCostUsd"),
+            0.0,
+            "model.limits.maxCostUsd must be a positive number",
+        ),
+        (
+            ("limits", "maxCostUsd"),
+            math.nan,
+            "model.limits.maxCostUsd must be a positive number",
+        ),
+        (
+            ("timeoutSeconds",),
+            math.inf,
+            "model.timeoutSeconds must be a positive number",
+        ),
     ],
 )
 def test_parse_model_config_rejects_invalid_values(
@@ -129,7 +157,9 @@ def test_parse_model_config_rejects_invalid_values(
         "serviceCredentials",
     ],
 )
-def test_parse_model_config_rejects_sensitive_keys_recursively(sensitive_key: str) -> None:
+def test_parse_model_config_rejects_sensitive_keys_recursively(
+    sensitive_key: str,
+) -> None:
     """Credentials cannot be smuggled into nested model or fallback configuration."""
     raw = _valid_model_config()
     fallback = raw["fallback"]
@@ -154,6 +184,8 @@ def test_parse_model_config_rejects_empty_and_nested_fallbacks() -> None:
     with pytest.raises(ModelConfigError) as exc_info:
         parse_model_config(raw)
 
-    assert "model.fallback[0].provider must be a non-blank string" in exc_info.value.errors
+    assert (
+        "model.fallback[0].provider must be a non-blank string" in exc_info.value.errors
+    )
     assert "model.fallback[0].name must be a non-blank string" in exc_info.value.errors
     assert "model.fallback[1].fallback is not allowed" in exc_info.value.errors

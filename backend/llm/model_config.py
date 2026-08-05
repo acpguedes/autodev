@@ -28,7 +28,9 @@ _MODEL_KEYS = frozenset(
         "fallback",
     }
 )
-_TARGET_KEYS = frozenset({"provider", "name", "temperature", "maxTokens", "timeoutSeconds", "retries"})
+_TARGET_KEYS = frozenset(
+    {"provider", "name", "temperature", "maxTokens", "timeoutSeconds", "retries"}
+)
 _LIMIT_KEYS = frozenset({"maxCalls", "maxTotalTokens", "maxCostUsd"})
 _SENSITIVE_KEYS = frozenset(
     {
@@ -47,7 +49,14 @@ _SENSITIVE_KEYS = frozenset(
         "privatekey",
     }
 )
-_SENSITIVE_KEY_MARKERS = ("apikey", "accesskey", "privatekey", "secret", "password", "credential")
+_SENSITIVE_KEY_MARKERS = (
+    "apikey",
+    "accesskey",
+    "privatekey",
+    "secret",
+    "password",
+    "credential",
+)
 
 
 class ModelConfigError(ValueError):
@@ -145,7 +154,9 @@ def parse_model_config(raw: object, *, path: str = "model") -> ModelConfig:
     name = _non_blank_string(raw.get("name"), f"{path}.name", errors)
     temperature = _temperature(raw.get("temperature"), f"{path}.temperature", errors)
     max_tokens = _positive_int(raw.get("maxTokens"), f"{path}.maxTokens", errors)
-    timeout_seconds = _positive_number(raw.get("timeoutSeconds"), f"{path}.timeoutSeconds", errors)
+    timeout_seconds = _positive_number(
+        raw.get("timeoutSeconds"), f"{path}.timeoutSeconds", errors
+    )
     retries = _retries(raw.get("retries", 0), f"{path}.retries", errors)
     required = _known_ids(
         raw.get("requiredCapabilities", ["text"]),
@@ -162,7 +173,9 @@ def parse_model_config(raw: object, *, path: str = "model") -> ModelConfig:
         errors=errors,
     )
     limits = _parse_limits(raw.get("limits", {}), path=f"{path}.limits", errors=errors)
-    fallback = _parse_fallback(raw.get("fallback", []), path=f"{path}.fallback", errors=errors)
+    fallback = _parse_fallback(
+        raw.get("fallback", []), path=f"{path}.fallback", errors=errors
+    )
 
     if errors:
         raise ModelConfigError(errors)
@@ -180,7 +193,9 @@ def parse_model_config(raw: object, *, path: str = "model") -> ModelConfig:
     )
 
 
-def model_config_from_legacy_alias(name: object, *, path: str = "policy.model") -> ModelConfig:
+def model_config_from_legacy_alias(
+    name: object, *, path: str = "policy.model"
+) -> ModelConfig:
     """Create a provider-inheriting configuration from legacy ``policy.model``.
 
     Args:
@@ -217,12 +232,18 @@ def _parse_limits(raw: object, *, path: str, errors: list[str]) -> ModelLimits:
     _reject_unknown_keys(raw, _LIMIT_KEYS, path=path, errors=errors)
     return ModelLimits(
         max_calls=_positive_int(raw.get("maxCalls"), f"{path}.maxCalls", errors),
-        max_total_tokens=_positive_int(raw.get("maxTotalTokens"), f"{path}.maxTotalTokens", errors),
-        max_cost_usd=_positive_number(raw.get("maxCostUsd"), f"{path}.maxCostUsd", errors),
+        max_total_tokens=_positive_int(
+            raw.get("maxTotalTokens"), f"{path}.maxTotalTokens", errors
+        ),
+        max_cost_usd=_positive_number(
+            raw.get("maxCostUsd"), f"{path}.maxCostUsd", errors
+        ),
     )
 
 
-def _parse_fallback(raw: object, *, path: str, errors: list[str]) -> tuple[ModelTarget, ...]:
+def _parse_fallback(
+    raw: object, *, path: str, errors: list[str]
+) -> tuple[ModelTarget, ...]:
     """Parse ordered non-nesting fallback targets.
 
     Args:
@@ -247,10 +268,16 @@ def _parse_fallback(raw: object, *, path: str, errors: list[str]) -> tuple[Model
         _reject_unknown_keys(item, _TARGET_KEYS, path=item_path, errors=errors)
         targets.append(
             ModelTarget(
-                provider=_non_blank_string(item.get("provider"), f"{item_path}.provider", errors),
+                provider=_non_blank_string(
+                    item.get("provider"), f"{item_path}.provider", errors
+                ),
                 name=_non_blank_string(item.get("name"), f"{item_path}.name", errors),
-                temperature=_temperature(item.get("temperature"), f"{item_path}.temperature", errors),
-                max_tokens=_positive_int(item.get("maxTokens"), f"{item_path}.maxTokens", errors),
+                temperature=_temperature(
+                    item.get("temperature"), f"{item_path}.temperature", errors
+                ),
+                max_tokens=_positive_int(
+                    item.get("maxTokens"), f"{item_path}.maxTokens", errors
+                ),
                 timeout_seconds=_positive_number(
                     item.get("timeoutSeconds"), f"{item_path}.timeoutSeconds", errors
                 ),
@@ -325,7 +352,9 @@ def _find_sensitive_keys(raw: object, *, path: str, errors: list[str]) -> None:
                 or normalized.endswith("token")
                 or any(marker in normalized for marker in _SENSITIVE_KEY_MARKERS)
             ):
-                errors.append(f"{child_path} is sensitive and must not be stored in manifests")
+                errors.append(
+                    f"{child_path} is sensitive and must not be stored in manifests"
+                )
             _find_sensitive_keys(value, path=child_path, errors=errors)
     elif isinstance(raw, list):
         for index, value in enumerate(raw):
