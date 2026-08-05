@@ -1,4 +1,26 @@
-"""Utilities for creating LangChain language models."""
+"""Provider-neutral model contracts plus legacy LangChain factory utilities."""
+
+from .contracts import (
+    AttemptTelemetry,
+    EstimatedCost,
+    ExecutionMetadata,
+    MessageContent,
+    ModelCapabilities,
+    ModelGatewayError,
+    ModelProvider,
+    ModelRateLimitError,
+    ModelRequest,
+    ModelResponse,
+    ModelTimeoutError,
+    ModelUnavailableError,
+    NormalizedMessage,
+    StreamChunk,
+    StreamingModelProvider,
+    StructuredOutput,
+    TokenUsage,
+    ToolCall,
+    ToolDefinition,
+)
 
 from .factory import (
     LLMConfigurationError,
@@ -6,10 +28,35 @@ from .factory import (
     get_chat_model,
     is_configured_model,
 )
+from .model_config import ModelConfig, ModelConfigError, ModelLimits, ModelTarget, parse_model_config
 
 __all__ = [
+    "AttemptTelemetry",
+    "EstimatedCost",
+    "ExecutionMetadata",
     "LLMConfigurationError",
+    "MessageContent",
+    "ModelCapabilities",
+    "ModelConfig",
+    "ModelConfigError",
+    "ModelGatewayError",
+    "ModelLimits",
+    "ModelProvider",
+    "ModelRateLimitError",
+    "ModelRequest",
+    "ModelResponse",
+    "ModelTarget",
+    "ModelTimeoutError",
+    "ModelUnavailableError",
+    "NormalizedMessage",
     "StubChatModel",
+    "StreamChunk",
+    "StreamingModelProvider",
+    "StructuredOutput",
+    "TokenUsage",
+    "ToolCall",
+    "ToolDefinition",
     "get_chat_model",
     "is_configured_model",
+    "parse_model_config",
 ]

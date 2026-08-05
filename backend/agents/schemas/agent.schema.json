@@ -6,7 +6,7 @@
   "additionalProperties": true,
   "required": ["schemaVersion", "kind", "id", "version", "hostApi", "capabilities", "io", "entrypoint"],
   "properties": {
-    "schemaVersion": { "const": "2.0" },
+    "schemaVersion": { "enum": ["2.0", "2.1"] },
     "kind": { "const": "Agent" },
     "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*/[a-z0-9]+(?:-[a-z0-9]+)*$" },
     "version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$" },
@@ -75,6 +75,73 @@
         "runtime": { "const": "python" },
         "ref": { "type": "string" }
       }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "name"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+        "maxTokens": { "type": "integer", "minimum": 1 },
+        "timeoutSeconds": { "type": "number", "exclusiveMinimum": 0 },
+        "retries": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "requiredCapabilities": {
+          "type": "array",
+          "items": { "enum": ["text", "tools", "structured_output", "streaming"] }
+        },
+        "fallbackOn": {
+          "type": "array",
+          "items": { "enum": ["timeout", "rate_limit", "unavailable"] }
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "maxCalls": { "type": "integer", "minimum": 1 },
+            "maxTotalTokens": { "type": "integer", "minimum": 1 },
+            "maxCostUsd": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+        "fallback": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/modelTarget" }
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "properties": {
+        "model": { "type": "string", "minLength": 1 }
+      }
     }
-  }
+  },
+  "$defs": {
+    "modelTarget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "name"],
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+        "maxTokens": { "type": "integer", "minimum": 1 },
+        "timeoutSeconds": { "type": "number", "exclusiveMinimum": 0 },
+        "retries": { "type": "integer", "minimum": 0, "maximum": 5 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "required": ["model"] },
+      "then": { "properties": { "schemaVersion": { "const": "2.1" } } }
+    },
+    {
+      "not": {
+        "required": ["model", "policy"],
+        "properties": { "policy": { "required": ["model"] } }
+      }
+    }
+  ]
 }
