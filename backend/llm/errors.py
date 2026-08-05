@@ -139,7 +139,14 @@ def redacted_gateway_error(
         error_type = type(error)
     else:
         error_type = ModelProviderError
-    return error_type(redact_error_message(error), provider=provider, model=model)
+    message = redact_error_message(error)
+    try:
+        return error_type(message, provider=provider, model=model)
+    except TypeError:
+        # A subclass may not accept the base constructor's keywords. Losing the
+        # specific type is far better than replacing a governed failure with a
+        # TypeError that escapes the taxonomy entirely.
+        return ModelProviderError(message, provider=provider, model=model)
 
 
 __all__ = [

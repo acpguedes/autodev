@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from typing import Generator, Iterable, Mapping, cast
 
@@ -781,3 +782,130 @@ def test_stub_normalizes_all_response_fields_without_network_access(
     assert response.usage.total_tokens == 6
     assert response.cost.usd == 0.01
     assert response.metadata.finish_reason == "tool_calls"
+
+
+def test_stream_falls_back_to_the_next_target_before_any_output() -> None:
+    """A streaming failure before first output may recover onto another target."""
+    provider = StubModelProvider(
+        responses={"primary": ModelUnavailableError("down")},
+        streams={"safe": (StreamChunk(index=0, content_delta="ok", done=True),)},
+    )
+    gateway = ModelGateway(ModelProviderRegistry({"stub": provider}))
+
+    chunks = tuple(
+        gateway.stream(
+            _request(),
+            ModelConfig(
+                provider="stub",
+                name="primary",
+                fallback_on=("unavailable",),
+                fallback=(ModelTarget(provider="stub", name="safe"),),
+            ),
+            metadata=_metadata(),
+        )
+    )
+
+    assert [chunk.content_delta for chunk in chunks] == ["ok"]
+    assert gateway.attempts[0].error_code == "unavailable"
+    assert gateway.attempts[-1].error_code is None
+
+
+def test_stream_never_switches_provider_after_output_reached_the_caller() -> None:
+    """Once a chunk is delivered, a later failure must not replay on another target.
+
+    Falling back mid-stream would splice two providers' output into one
+    response. This invariant had no test at all.
+    """
+
+    class HalfBrokenProvider:
+        def capabilities(self, target: ModelTarget) -> ModelCapabilities:
+            return ModelCapabilities(("text", "streaming"))
+
+        def complete(
+            self,
+            request: ModelRequest,
+            target: ModelTarget,
+            metadata: ExecutionMetadata,
+        ) -> ModelResponse:  # pragma: no cover - streaming test only
+            raise AssertionError("complete must not be called")
+
+        def stream(
+            self,
+            request: ModelRequest,
+            target: ModelTarget,
+            metadata: ExecutionMetadata,
+        ) -> Iterable[StreamChunk]:
+            calls.append(target.name)
+            if target.name == "primary":
+                yield StreamChunk(index=0, content_delta="partial")
+                raise ModelUnavailableError("died mid-stream")
+            yield StreamChunk(index=0, content_delta="replacement", done=True)
+
+    calls: list[str] = []
+    gateway = ModelGateway(ModelProviderRegistry({"stub": HalfBrokenProvider()}))
+    delivered: list[str] = []
+
+    with pytest.raises(ModelUnavailableError):
+        for chunk in gateway.stream(
+            _request(),
+            ModelConfig(
+                provider="stub",
+                name="primary",
+                fallback_on=("unavailable",),
+                fallback=(ModelTarget(provider="stub", name="safe"),),
+            ),
+            metadata=_metadata(),
+        ):
+            delivered.append(chunk.content_delta)
+
+    assert delivered == ["partial"]
+    assert calls == ["primary"], "fallback must not run after output was delivered"
+
+
+def test_stream_attempts_do_not_accumulate_on_the_consuming_thread() -> None:
+    """A pooled worker draining many streams must not grow an unbounded list.
+
+    ``stream()`` resets the caller's thread-local, but the generator body runs
+    wherever ``next()`` is called; without a reset there, that thread's attempt
+    list is never cleared.
+
+    The stream must be *created* on this thread and *consumed* on a reused
+    worker: creating and consuming on one thread hides the leak, because
+    ``stream()``'s own reset already cleared that thread's list.
+    """
+    provider = StubModelProvider(
+        streams={"s": (StreamChunk(index=0, content_delta="x", done=True),)}
+    )
+    gateway = ModelGateway(ModelProviderRegistry({"stub": provider}))
+    seen: list[int] = []
+
+    def consume(stream: Iterable[StreamChunk]) -> int:
+        tuple(stream)
+        return len(gateway.attempts)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        for _ in range(5):
+            stream = gateway.stream(
+                _request(),
+                ModelConfig(provider="stub", name="s"),
+                metadata=_metadata(),
+            )
+            seen.append(pool.submit(consume, stream).result())
+
+    assert seen == [1, 1, 1, 1, 1], f"attempt list grew on the worker: {seen}"
+
+
+def test_a_subclass_with_a_custom_signature_still_yields_a_governed_error() -> None:
+    """Normalization must not replace a governed failure with a ``TypeError``."""
+    from backend.llm.errors import ModelGatewayError, redacted_gateway_error
+
+    class WeirdError(ModelGatewayError):
+        code = "unavailable"
+
+        def __init__(self, message: str) -> None:
+            super().__init__(message)
+
+    error = redacted_gateway_error(WeirdError("boom"), provider="p", model="m")
+
+    assert error.code in {"provider_error", "unavailable"}
+    assert error.provider == "p"

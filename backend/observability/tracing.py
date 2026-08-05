@@ -289,9 +289,18 @@ def trace_model_call(
     with _model_call_span(set_current=set_current) as span:
         try:
             yield measurements
+        except GeneratorExit:
+            # The consumer stopped iterating a streamed attempt. That is not a
+            # provider failure -- most often it is `break` after the terminal
+            # chunk -- so the span must not be marked ERROR.
+            raise
         except BaseException as exc:
             if not measurements.error_code:
-                measurements.error_code = str(getattr(exc, "code", "") or "")
+                # An exception without its own code is still a failure; falling
+                # back to an empty code would render it as a successful span.
+                measurements.error_code = (
+                    str(getattr(exc, "code", "") or "") or "provider_error"
+                )
             raise
         finally:
             # Sanitizing here rather than at each assignment makes this the one

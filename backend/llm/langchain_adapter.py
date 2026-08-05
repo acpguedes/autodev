@@ -104,7 +104,7 @@ class LangChainModelProvider:
                 raw = runnable.invoke(messages)
             return _normalize_response(raw, target, metadata, structured)
         except Exception as exc:
-            raise _normalize_exception(exc, target) from exc
+            raise _normalize_exception(exc, target) from None
 
     def stream(
         self,
@@ -142,7 +142,7 @@ class LangChainModelProvider:
                 index += 1
             yield StreamChunk(index=index, usage=usage, cost=cost, done=True)
         except Exception as exc:
-            raise _normalize_exception(exc, target) from exc
+            raise _normalize_exception(exc, target) from None
 
     def _model(self, target: ModelTarget) -> object:
         """Construct a real model with permissive stub fallback disabled."""

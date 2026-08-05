@@ -63,7 +63,7 @@ class LegacyLLMProviderAdapter:
                 exc,
                 provider=target.provider or "legacy",
                 model=target.name,
-            ) from exc
+            ) from None
         return ModelResponse(
             message=NormalizedMessage(
                 role="assistant",

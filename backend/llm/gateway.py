@@ -79,10 +79,16 @@ def _model_trace(
 def _span_error_code(error: BaseException) -> str:
     """Return this error's own code for span annotation.
 
-    The value is a hint, not a guarantee: ``trace_model_call`` clamps whatever
-    lands here to the stable vocabulary, so a vendor code such as
+    ``GeneratorExit`` yields an empty code: it means the consumer stopped
+    iterating, not that the provider failed, so the attempt must not be marked
+    as an error on the span.
+
+    Any other value is a hint, not a guarantee -- ``trace_model_call`` clamps
+    whatever lands here to the stable vocabulary, so a vendor code such as
     ``invalid_api_key`` cannot reach a span even though it is returned here.
     """
+    if isinstance(error, GeneratorExit):
+        return ""
     code = getattr(error, "code", None)
     return code if isinstance(code, str) else "provider_error"
 
@@ -231,12 +237,12 @@ class ModelGateway:
                         )
                     )
                     if isinstance(error, ModelBudgetExceededError):
-                        raise error from exc
+                        raise error from None
                     if error.code in config.fallback_on and retry_index < retries:
                         continue
                     if self._can_recover(error.code, config, target_index, prepared):
                         break
-                    raise error from exc
+                    raise error from None
                 if succeeded and response is not None:
                     self._record(
                         AttemptTelemetry(
@@ -289,7 +295,15 @@ class ModelGateway:
         config: ModelConfig,
         metadata: ExecutionMetadata,
     ) -> Iterable[StreamChunk]:
-        """Execute preflighted streaming targets, buffering each attempt atomically."""
+        """Execute preflighted streaming targets, buffering each attempt atomically.
+
+        The generator body runs on whichever thread drives ``next()``, which is
+        not necessarily the thread that called ``stream()``. Resetting here binds
+        the attempt list to the consuming thread; without it that thread's list
+        is never cleared and grows by one record per stream for the lifetime of
+        a pooled worker.
+        """
+        self._begin_operation()
         budget = GatewayBudget()
         attempt_number = 0
         for target_index, item in enumerate(prepared):
@@ -411,14 +425,14 @@ class ModelGateway:
                         )
                     )
                     if isinstance(error, ModelBudgetExceededError):
-                        raise error from exc
+                        raise error from None
                     if emitted:
-                        raise error from exc
+                        raise error from None
                     if error.code in config.fallback_on and retry_index < retries:
                         continue
                     if self._can_recover(error.code, config, target_index, prepared):
                         break
-                    raise error from exc
+                    raise error from None
                 finally:
                     if not recorded and not succeeded:
                         # The consumer stopped iterating before the generator
@@ -532,12 +546,16 @@ class ModelGateway:
             return
         try:
             self._telemetry_sink(telemetry)
-        except Exception:  # noqa: BLE001 - telemetry must not break execution
+        except Exception as exc:  # noqa: BLE001 - telemetry must not break execution
+            # Deliberately not `exc_info=True`: this runs inside the gateway's
+            # `except` block, so the implicit `__context__` chain would format
+            # the raw provider exception -- credentials included -- into the log
+            # record, defeating redaction on a second channel.
             logger.warning(
-                "model gateway telemetry sink failed for provider=%s model=%s",
+                "model gateway telemetry sink failed for provider=%s model=%s: %s",
                 telemetry.provider,
                 telemetry.model,
-                exc_info=True,
+                type(exc).__name__,
             )
 
 
