@@ -18,6 +18,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 
 from backend.llm import (
     EstimatedCost,
+    ModelCapabilities,
     ExecutionMetadata,
     ModelConfig,
     ModelRequest,
@@ -379,3 +380,45 @@ def test_a_codeless_provider_failure_is_still_visible_on_the_span() -> None:
     assert spans
     assert (spans[-1].attributes or {})["autodev.model.error_code"] == "provider_error"
     assert spans[-1].status.status_code is StatusCode.ERROR
+
+
+def test_streaming_failure_leaks_no_credential_through_the_exception_chain() -> None:
+    """The streaming re-raise sites need their own guard.
+
+    Reverting only the streaming ``raise ... from None`` sites left the whole
+    suite green, because the one chain guard exercised `complete()` alone.
+    """
+    secret = "hunter2hunter2secret"
+
+    class LeakyStreamProvider(StubModelProvider):
+        def capabilities(self, target: ModelTarget) -> ModelCapabilities:
+            return ModelCapabilities(("text", "streaming"))
+
+        def stream(
+            self,
+            request: ModelRequest,
+            target: ModelTarget,
+            metadata: ExecutionMetadata,
+        ) -> Iterator[StreamChunk]:
+            yield StreamChunk(index=0, content_delta="partial")
+            raise RuntimeError(f"502 upstream {{'api_key': '{secret}'}}")
+
+    exporter = InMemorySpanExporter()
+    configure_tracing(span_exporter=exporter)
+    gateway = ModelGateway(
+        ModelProviderRegistry({"stub": LeakyStreamProvider(responses={"s": "x"})})
+    )
+
+    with pytest.raises(Exception) as raised:
+        with trace_run_step(run_id="r", step_id="s", agent="a", status="running"):
+            for _ in gateway.stream(
+                ModelRequest(messages=()),
+                ModelConfig(provider="stub", name="s"),
+                metadata=ExecutionMetadata(provider="stub", model="s"),
+            ):
+                pass
+
+    assert secret not in str(raised.value)
+    for span in exporter.get_finished_spans():
+        rendered = f"{span.attributes} {[(e.name, e.attributes) for e in span.events]}"
+        assert secret not in rendered, f"credential reached span {span.name}"

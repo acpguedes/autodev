@@ -909,3 +909,61 @@ def test_a_subclass_with_a_custom_signature_still_yields_a_governed_error() -> N
 
     assert error.code in {"provider_error", "unavailable"}
     assert error.provider == "p"
+
+
+def test_span_and_governance_codes_agree_for_a_third_party_provider() -> None:
+    """A raw ``.code`` on a non-gateway exception must not reach the span alone.
+
+    ``redacted_gateway_error`` only preserves ``.code`` for ``ModelGatewayError``.
+    Reading it off an arbitrary exception for the span made the span claim
+    ``timeout`` while the caller, the telemetry record, and the fallback
+    decision all saw ``provider_error`` -- three channels disagreeing about one
+    attempt, with the configured ``timeout`` fallback never firing.
+    """
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+        InMemorySpanExporter,
+    )
+
+    from backend.observability.tracing import configure_tracing
+
+    class VendorTimeout(Exception):
+        code = "timeout"
+
+    class ThirdPartyProvider:
+        def capabilities(self, target: ModelTarget) -> ModelCapabilities:
+            return ModelCapabilities(("text",))
+
+        def complete(
+            self,
+            request: ModelRequest,
+            target: ModelTarget,
+            metadata: ExecutionMetadata,
+        ) -> ModelResponse:
+            raise VendorTimeout("upstream timed out")
+
+    exporter = InMemorySpanExporter()
+    configure_tracing(span_exporter=exporter)
+    gateway = ModelGateway(ModelProviderRegistry({"vendor": ThirdPartyProvider()}))
+
+    with pytest.raises(Exception) as raised:
+        gateway.complete(
+            _request(),
+            ModelConfig(
+                provider="vendor",
+                name="m",
+                fallback_on=("timeout",),
+                fallback=(ModelTarget(provider="vendor", name="backup"),),
+            ),
+            metadata=_metadata(),
+        )
+
+    span_codes = {
+        (s.attributes or {}).get("autodev.model.error_code")
+        for s in exporter.get_finished_spans()
+        if s.name == "autodev.model.call"
+    }
+    telemetry_codes = {attempt.error_code for attempt in gateway.attempts}
+
+    assert getattr(raised.value, "code") == "provider_error"
+    assert telemetry_codes == {"provider_error"}
+    assert span_codes == {"provider_error"}, f"span disagreed: {span_codes}"

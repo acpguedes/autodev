@@ -189,3 +189,28 @@ def test_parse_model_config_rejects_empty_and_nested_fallbacks() -> None:
     )
     assert "model.fallback[0].name must be a non-blank string" in exc_info.value.errors
     assert "model.fallback[1].fallback is not allowed" in exc_info.value.errors
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Error code: 401 - {'error': 'x', 'sent': {'x-api-key': 'hunter2hunter2'}}",
+        '{"apiKey": "hunter2hunter2"}',
+        "{'api_key': 'hunter2hunter2'}",
+        "{'authToken': 'hunter2hunter2'}",
+        "connect https://user:hunter2hunter2@host/v1",
+        "api_key=hunter2hunter2",
+        "Authorization: Bearer hunter2hunter2",
+        "key sk-hunter2hunter2 rejected",
+    ],
+)
+def test_redaction_covers_the_shapes_providers_actually_emit(message: str) -> None:
+    """Redaction must survive quoting, dict/JSON reprs, and URL userinfo.
+
+    Provider SDKs surface request context as a dict or JSON repr, so a pattern
+    that only accepts bare ``name=value`` walks past the most common real shape.
+    Every earlier guard used the bare form, which is how that gap survived.
+    """
+    from backend.llm.errors import redact_error_message
+
+    assert "hunter2hunter2" not in redact_error_message(message)

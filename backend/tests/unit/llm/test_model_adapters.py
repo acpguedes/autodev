@@ -217,7 +217,12 @@ def test_structured_output_requires_native_provider_support(
 def test_structured_output_requires_a_raw_capable_provider(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Providers that cannot return the raw envelope fail closed, not silently."""
+    """Providers that cannot return the raw envelope fail closed, not silently.
+
+    ``tools=False`` is required: with tools in the request the tool guard three
+    lines below fires first, so the test would pass without ever exercising the
+    ``include_raw`` check it is named for.
+    """
 
     class NoRawModel:
         def with_structured_output(
@@ -229,7 +234,7 @@ def test_structured_output_requires_a_raw_capable_provider(
 
     with pytest.raises(ModelUnsupportedCapabilityError):
         adapter.complete(
-            _request(structured=True),
+            _request(tools=False, structured=True),
             ModelTarget(provider="openai", name="gpt-test"),
             _metadata(),
         )
@@ -568,3 +573,35 @@ def test_base_gateway_error_carries_a_taxonomy_code() -> None:
 
     assert error.code == "provider_error"
     assert error.retryable is False
+
+
+def test_adapter_failures_leak_no_credential_through_the_exception_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The adapter's own re-raise sites must break the chain too.
+
+    ``_normalize_exception`` redacts the message it builds, but chaining the raw
+    provider exception puts the original back within reach of any span or log
+    handler that formats exception chains.
+    """
+    import traceback
+
+    secret = "hunter2hunter2secret"
+
+    def failing_factory(**kwargs: object) -> object:
+        raise RuntimeError(f"401 {{'api_key': '{secret}'}}")
+
+    monkeypatch.setattr("backend.llm.langchain_adapter.get_chat_model", failing_factory)
+    adapter = LangChainModelProvider("openai")
+
+    with pytest.raises(Exception) as raised:
+        adapter.complete(
+            _request(tools=False),
+            ModelTarget(provider="openai", name="gpt-test"),
+            _metadata(),
+        )
+
+    rendered = "".join(traceback.format_exception(raised.value))
+    assert secret not in str(raised.value)
+    assert secret not in rendered
+    assert raised.value.__cause__ is None

@@ -216,3 +216,13 @@ def test_error_taxonomy_is_complete_and_matches_the_schema() -> None:
 
     assert MODEL_ERROR_CODES == expected
     assert frozenset(items["enum"]) == expected
+
+
+def test_known_error_codes_match_the_contract_vocabulary() -> None:
+    """The vocabulary derived from the error classes must not drift."""
+    from typing import get_args
+
+    from backend.llm.contracts import ModelErrorCode
+    from backend.llm.errors import KNOWN_ERROR_CODES
+
+    assert KNOWN_ERROR_CODES == set(get_args(ModelErrorCode))
