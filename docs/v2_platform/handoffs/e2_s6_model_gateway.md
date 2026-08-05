@@ -123,18 +123,38 @@ The authoritative decision is
 | --- | --- | --- |
 | Baseline validation | Complete | Full local baseline was green on exact base `7708430`; it does not validate later story commits. |
 | Task 1: contract/governance/configuration | Complete | Commits `f7e895c` and `9536482`; scoped rereview clean. |
-| Task 2: gateway/adapters/fallback/limits/tracing | **Partially complete** | Main implementation is in `7090b01`; review failed. Interrupted corrective edits are checkpointed in `f1d10c6` and have not been tested or rereviewed. |
-| Task 3: runtime/flow/global settings/API/acceptance telemetry | Not started | Do not start until Task 2 review is clean. |
-| Task 4: public docs/Traycer matrix/examples/versioning/story closure | Not started | Do not mark E2-S6 or E2 complete before this slice. |
+| Task 2: gateway/adapters/fallback/limits/tracing | **Fix rounds 1-2 applied; confirmation rereview pending** | `7090b01` + `f1d10c6`, corrected by `e3b2a0c` and `ccb6ae0`. Every finding from the first independent rereview is fixed with regression coverage. |
+| Task 3: runtime/flow/global settings/API/acceptance telemetry | Not started | Do not start until the Task 2 confirmation rereview is clean. |
+| Task 4: public docs/Traycer matrix/examples/versioning/story closure | **Partially complete** | Traycer evidence matrix published (`8756e88`). Public configuration/examples, versioning, and story closure remain. |
 | Final graph, story validation, epic validation, review, merge, and PR | Not started | No story/epic merge has been performed. |
+
+### Work done on branch `traycer/e2-s6-model-gateway-resume`
+
+Traycer created this branch from the `d3e13b4` checkpoint. Ancestry with
+`origin/story/e2-s6-model-gateway` was verified; no fast-forward was needed. The
+branch is pushed to `origin` and has **not** been merged into the story branch.
+
+| Commit | Content |
+| --- | --- |
+| `e3b2a0c` | Task 2 fix round 1: capability-honest native structured output, explicit failure when streaming is combined with a structured schema, stream prefetch replaced by a terminal chunk, cost-absence policy pinned by test. |
+| `8756e88` | Traycer/AutoDev evidence matrix (`docs/v2_platform/model_gateway_agent_comparison.md`) plus ADR-016 cross-references. |
+| `ccb6ae0` | Task 2 fix round 2: all findings from the first independent rereview — 2 Critical, 6 Important, 5 Minor. |
+
+`f1d10c6` turned out to pass the pre-existing focused suite unchanged; the real
+defects it left were found by reading and by the independent rereview, not by a
+failing test. Do not treat "the WIP suite was green" as evidence again.
 
 ### First exact pending task
 
-Resume **Task 2 review fix round 1** at `f1d10c6`: inspect the checkpointed native
-structured-output and streamed-cost changes, run the focused Task 2 tests, fix only
-failures required by the two Important findings, and obtain a clean independent
-rereview. Do not start Task 3 before this gate. The remaining Minor first-token
-prefetch finding must be fixed or explicitly adjudicated during that rereview.
+Read the outcome of the Task 2 confirmation rereview of `ccb6ae0`. If it is clean,
+start **Task 3**: wire the gateway into the runtime, global settings, and API, and
+aggregate attempt telemetry into `AgentRunResult.metrics`. The integration seam is
+`AgentRuntimeContext.call_llm` (`backend/agents/runtime.py:252`); legacy
+`LLMProvider` injection at `AgentRuntime.__init__` (`:286`) must keep working
+unchanged, metrics are assembled in `_result` (`:455`), and global model
+configuration belongs beside `llm_provider` in `backend/config/settings.py:46`.
+Prefer a per-run `telemetry_sink` over the gateway's `attempts` property when
+aggregating, because `attempts` is thread-local per operation.
 
 ## Files changed from the story base and their purpose
 
@@ -183,30 +203,106 @@ The planned Task 3 and Task 4 files have not been edited.
   incomplete. Corrected in `9536482` to the exact capability/error vocabularies.
 - Task 1 rereview found no remaining Critical or Important findings.
 
-### Open until verified
+### Closed in `e3b2a0c` (fix round 1)
 
-- Task 2 Important: `7090b01` implemented structured output by parsing plain response
-  content rather than invoking LangChain/provider native structured-output mode.
-  `f1d10c6` attempts to use `with_structured_output(..., include_raw=True)` and
-  normalize its native result, but this is untested and not rereviewed. In particular,
-  confirm whether passing `tools` and `strict` is portable across the registered
-  OpenAI/Ollama LangChain implementations and fails explicitly where unsupported.
-- Task 2 Important: streaming in `7090b01` did not carry, trace, or enforce estimated
-  cost. `f1d10c6` adds `StreamChunk.cost`, propagation, limit checks, and tests, but
-  this is untested and not rereviewed. Verify budget/error telemetry and all contract
-  consumers.
-- Task 2 Minor: the LangChain stream adapter pulls one provider item ahead before
-  yielding the current chunk. This can delay first-token delivery and surface a later
-  iterator error before the caller receives an earlier chunk. It remains open.
+- Task 2 Important (native structured output): resolved. `ollama` is served by
+  `ChatOpenAI` against an OpenAI-compatible base URL (`backend/llm/factory.py:183-196`)
+  and `langchain_ollama` is not installed, so both registered providers share one
+  `with_structured_output` signature. The adapter now forwards only arguments the
+  provider declares and raises `unsupported_capability` on any gap. The unconditional
+  `strict=True` was removed: it was coupled to the unrelated presence of tools and
+  narrows schema acceptance under OpenAI strict mode.
+- Task 2 Important (streamed cost): mechanics verified — `StreamChunk.cost`,
+  propagation, span attributes, and telemetry all work. The enforcement *claim* was
+  overstated; see the documented limitation below.
+- Task 2 Minor (stream prefetch): fixed. Chunks are yielded on arrival and the stream
+  closes with a terminal chunk carrying the final usage/cost snapshot.
+- Found while fixing, not previously recorded: `stream()` silently discarded a
+  requested `structured_output_schema`, violating the no-silent-degradation rule. It
+  now fails explicitly.
 
-The pre-WIP Task 2 report saying "No Task 2 blocker remains" is superseded by the
-later independent review and must not be treated as current.
+### Closed in `ccb6ae0` (fix round 2, from the first independent rereview)
+
+- **Critical** — importing the tracer at module scope closed an import cycle
+  (`observability -> config -> llm.factory -> llm package -> gateway -> observability`),
+  breaking any entrypoint whose first backend import was observability. The suite could
+  not catch it because conftest imports the app first. Fixed with a call-time import
+  and a subprocess guard test.
+- **Critical** — telemetry recording and the success return sat inside the classifying
+  `try`, so a failing telemetry sink discarded a paid-for response and issued a second
+  billed provider call. Only the provider call is classified now; sink failures are
+  isolated and logged.
+- **Important** — a timed-out attempt raised before its usage/cost were accounted,
+  letting a fallback chain exceed configured ceilings.
+- **Important** — `_accepts_keyword` accepted a `**kwargs` catch-all, so `tools` could
+  be forwarded and silently ignored. Arguments whose effect cannot be verified
+  afterwards now require an explicit parameter.
+- **Important** — the streaming span stayed current across `yield`, re-parenting caller
+  work onto the model call. Streaming now uses a detached span.
+- **Important** — span error codes were read verbatim from provider exceptions, leaking
+  vendor codes outside the taxonomy. Codes are constrained, with a contract test
+  pinning the observability copy to `ModelErrorCode`.
+- **Important** — a test claimed fail-closed streaming cost enforcement using only
+  single-chunk streams. Renamed to what it proves; see the limitation below.
+- **Important** — attempt telemetry was shared mutable state that interleaved across
+  threads. It is now thread-local.
+- **Minor** — base `ModelGatewayError` had no `code`; `httpx.HTTPStatusError` carries
+  its status on `.response` so 429/5xx were misclassified and governed
+  `rate_limit`/`unavailable` fallback never fired; a non-streaming provider consumed a
+  call from the budget without making one; an abandoned stream left no governance
+  record; two unreachable raises used `invalid_request`.
+
+### Still open
+
+- A confirmation rereview of `ccb6ae0` is required before Task 3 starts.
+
+The pre-WIP Task 2 report saying "No Task 2 blocker remains" is superseded and must not
+be treated as current.
+
+### Documented limitations of cost governance
+
+These are intentional and pinned by test, not oversights:
+
+- **No provider cost metadata means no cost enforcement.** Cost ceilings act on
+  provider-reported or stub-computed estimates. A provider that reports no cost
+  contributes zero, so `max_cost_usd` cannot fail closed on it. Token and call ceilings
+  remain enforceable and are the reliable guardrail there.
+- **Streaming cost enforcement is not pre-emptive.** Real providers report usage and
+  cost on the terminal chunk, after content has been delivered. The gateway fails closed
+  as soon as it learns the cost, but cannot withhold content it had no reason to block.
+  Callers that must not over-spend should use `max_calls` or a non-streaming call.
 
 ## Tests and checks actually executed
 
+### On branch `traycer/e2-s6-model-gateway-resume` at `ccb6ae0`
+
+```text
+LLM_PROVIDER=stub python -m pytest -q backend/tests -p no:randomly
+1332 passed, 5 failed, 2 skipped in 598s
+
+python -m ruff check backend tests      -> All checks passed!
+python -m mypy backend                  -> Success: no issues found in 377 source files
+python -m black --check <files this branch touched> -> clean
+```
+
+All 5 failures are pre-existing and environmental, demonstrated rather than assumed:
+
+- `backend/tests/unit/validation/test_sandbox_runner.py` (4 tests) shell out to a bare
+  `python` executable, which is not on `PATH` in this environment. The identical test
+  fails the same way on the pristine base checkout at `7708430`.
+- `test_agents_v2_registry.py::test_capability_search_returns_rankable_candidates_under_100ms`
+  is a wall-clock assertion that failed only while two full suites ran back to back; it
+  **passes in isolation** on this branch.
+
+The focused Task 2 set (`backend/tests/unit/llm/`, `backend/tests/unit/observability/`,
+model gateway + provider contract tests) is **87 passed**.
+
+### Prior state, for context
+
 No test, formatter, linter, type checker, graph update, build, or full suite was run
 after the `f1d10c6` changes. Only `git diff --check` was run on that uncommitted diff;
-it exited 0 before the WIP commit.
+it exited 0 before the WIP commit. When finally executed, that suite passed unchanged —
+the defects in `f1d10c6` were latent and required reading and review to find.
 
 The following earlier results are recorded evidence, not claims about current HEAD:
 
