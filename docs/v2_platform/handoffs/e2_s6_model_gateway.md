@@ -123,7 +123,7 @@ The authoritative decision is
 | --- | --- | --- |
 | Baseline validation | Complete | Full local baseline was green on exact base `7708430`; it does not validate later story commits. |
 | Task 1: contract/governance/configuration | Complete | Commits `f7e895c` and `9536482`; scoped rereview clean. |
-| Task 2: gateway/adapters/fallback/limits/tracing | **Fix rounds 1-4 applied; another confirmation rereview required** | `7090b01` + `f1d10c6`, corrected by `e3b2a0c`, `ccb6ae0`, `e321c11`, and `6a308b3`. Three of four review rounds found real defects in the previous round's fixes, twice in fixes reported as complete. |
+| Task 2: gateway/adapters/fallback/limits/tracing | **Fix rounds 1-5 applied; another confirmation rereview required** | `7090b01` + `f1d10c6`, corrected by `e3b2a0c`, `ccb6ae0`, `e321c11`, `6a308b3`, and `54f66d4`. Round 4 was the first delta a review found clean. Round 5 fixed the redaction regex itself, which had been bypassable for the whole story. |
 | Task 3: runtime/flow/global settings/API/acceptance telemetry | Not started | Do not start until the Task 2 confirmation rereview is clean. |
 | Task 4: public docs/Traycer matrix/examples/versioning/story closure | **Partially complete** | Traycer evidence matrix published (`8756e88`). Public configuration/examples, versioning, and story closure remain. |
 | Final graph, story validation, epic validation, review, merge, and PR | Not started | No story/epic merge has been performed. |
@@ -142,6 +142,7 @@ branch is pushed to `origin` and has **not** been merged into the story branch.
 | `e321c11` | Task 2 fix round 3: credential leak onto spans, the two bad fixes from `ccb6ae0`, and three non-discriminating tests. Its span fix was incomplete and it introduced one regression. |
 | `6a308b3` | Task 2 fix round 4: credential leak through the `__cause__` chain (spans **and** logs), `GeneratorExit` on the span channel, the round-3 visibility regression, unbounded stream telemetry, and two uncovered streaming paths. |
 | `77e8e06` | Formatting-only: black on the remaining story files, ASTs verified identical. |
+| `54f66d4` | Task 2 fix round 5: redaction bypassed by quoted/dict-repr credentials and URL userinfo; span-vs-caller error-code divergence; taxonomy code dropped by the TypeError guard; guards for the seven unprotected redaction sites. |
 
 `f1d10c6` turned out to pass the pre-existing focused suite unchanged; the real
 defects it left were found by reading and by the independent rereview, not by a
