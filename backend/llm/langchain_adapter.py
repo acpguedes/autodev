@@ -237,32 +237,40 @@ def _tool_definitions(request: ModelRequest) -> list[dict[str, object]]:
     ]
 
 
-def _accepts_keyword(target: object, name: str) -> bool:
+def _accepts_keyword(
+    target: object, name: str, *, require_explicit: bool = False
+) -> bool:
     """Return whether a callable can receive a named keyword argument.
 
     Args:
         target: Callable to introspect.
         name: Keyword argument name.
+        require_explicit: When ``True``, a ``**kwargs`` catch-all does not count
+            as support. Use this for arguments whose effect cannot be verified
+            afterwards: ``**kwargs`` would swallow them silently, which is
+            indistinguishable from the provider honoring them.
 
     Returns:
-        ``True`` when the keyword is declared or absorbed by ``**kwargs``, and
-        ``True`` when the callable cannot be introspected, leaving validation to
-        the provider implementation itself.
+        Whether the keyword can be forwarded. When the callable cannot be
+        introspected, an explicitly-required keyword is treated as unsupported
+        and any other keyword is left for the provider to validate.
     """
     try:
         parameters = inspect.signature(target).parameters  # type: ignore[arg-type]
     except (TypeError, ValueError):
-        return True
-    if any(
-        parameter.kind is inspect.Parameter.VAR_KEYWORD
-        for parameter in parameters.values()
-    ):
-        return True
+        return not require_explicit
     parameter = parameters.get(name)
-    return parameter is not None and parameter.kind in {
+    if parameter is not None and parameter.kind in {
         inspect.Parameter.KEYWORD_ONLY,
         inspect.Parameter.POSITIONAL_OR_KEYWORD,
-    }
+    }:
+        return True
+    if require_explicit:
+        return False
+    return any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    )
 
 
 def _structured_runnable(model: object, request: ModelRequest) -> object:
@@ -288,7 +296,7 @@ def _structured_runnable(model: object, request: ModelRequest) -> object:
         )
     kwargs: dict[str, object] = {"include_raw": True}
     if request.tools:
-        if not _accepts_keyword(structured, "tools"):
+        if not _accepts_keyword(structured, "tools", require_explicit=True):
             raise ModelUnsupportedCapabilityError(
                 "configured model cannot combine tool calling with native "
                 "structured output"
@@ -450,7 +458,7 @@ def _normalize_exception(error: Exception, target: ModelTarget) -> Exception:
     kwargs = {"provider": target.provider, "model": target.name}
     if isinstance(error, (TimeoutError, httpx.TimeoutException)):
         return ModelTimeoutError(message, **kwargs)
-    status = getattr(error, "status_code", None)
+    status = _status_code(error)
     if status == 429:
         return ModelRateLimitError(message, **kwargs)
     if status in {401, 403}:
@@ -466,6 +474,21 @@ def _normalize_exception(error: Exception, target: ModelTarget) -> Exception:
     ):
         return ModelAuthenticationError(message, **kwargs)
     return ModelProviderError(message, **kwargs)
+
+
+def _status_code(error: Exception) -> int | None:
+    """Return an HTTP status from a provider error, however it exposes one.
+
+    ``httpx.HTTPStatusError`` carries the status on ``.response``, not on the
+    exception, so reading only ``status_code`` would misclassify 429 and 5xx
+    responses as generic provider errors and silently disable governed
+    ``rate_limit``/``unavailable`` fallback.
+    """
+    status = getattr(error, "status_code", None)
+    if isinstance(status, int):
+        return status
+    status = getattr(getattr(error, "response", None), "status_code", None)
+    return status if isinstance(status, int) else None
 
 
 def _mapping(value: object) -> dict[str, Any]:

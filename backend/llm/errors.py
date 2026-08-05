@@ -17,10 +17,15 @@ _PROVIDER_KEY = re.compile(r"\b(?:sk|pk)-[A-Za-z0-9_-]{6,}\b")
 
 
 class ModelGatewayError(RuntimeError):
-    """Base error normalized at the provider-neutral boundary."""
+    """Base error normalized at the provider-neutral boundary.
 
-    code: ModelErrorCode
-    retryable: bool
+    The defaults keep the base class usable: a provider raising the exported
+    base type still carries a taxonomy-valid ``code`` instead of failing with
+    ``AttributeError`` where the gateway classifies it.
+    """
+
+    code: ModelErrorCode = "provider_error"
+    retryable: bool = False
 
     def __init__(
         self,

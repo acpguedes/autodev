@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import threading
+import time
 from dataclasses import replace
-from typing import Iterable, Mapping
+from typing import Generator, Iterable, Mapping, cast
 
 import pytest
 
 from backend.llm import (
+    AttemptTelemetry,
     EstimatedCost,
     ExecutionMetadata,
     MessageContent,
@@ -301,8 +304,15 @@ def test_stream_normalizes_chunks_and_enforces_streaming_capability() -> None:
     assert provider.calls[0].stream is True
 
 
-def test_stream_cost_is_accounted_in_telemetry_and_enforced_fail_closed() -> None:
-    """Streaming cost snapshots reach telemetry and cannot bypass aggregate limits."""
+def test_stream_cost_is_accounted_in_telemetry_and_blocks_before_the_next_chunk() -> (
+    None
+):
+    """Streaming cost snapshots reach telemetry and stop the stream when breached.
+
+    Enforcement is chunk-granular, not pre-emptive: see
+    ``test_stream_cost_breach_is_detected_only_once_the_provider_reports`` for
+    the limit of this guarantee on realistic multi-chunk streams.
+    """
     provider = StubModelProvider(
         streams={
             "within-budget": (
@@ -353,6 +363,221 @@ def test_stream_cost_is_accounted_in_telemetry_and_enforced_fail_closed() -> Non
         )
     assert gateway.attempts[-1].error_code == "budget_exceeded"
     assert gateway.attempts[-1].cost == EstimatedCost(0.75)
+
+
+def test_stream_cost_breach_is_detected_only_once_the_provider_reports() -> None:
+    """Documented limitation: streaming cost enforcement is not pre-emptive.
+
+    Real providers report usage and cost on the terminal chunk, after the
+    content has already been delivered. The gateway fails closed as soon as it
+    learns the cost, but it cannot withhold content it had no reason to block.
+    Callers that must not over-spend need ``max_calls`` or a non-streaming call.
+    """
+    provider = StubModelProvider(
+        streams={
+            "late-cost": (
+                StreamChunk(index=0, content_delta="part1 "),
+                StreamChunk(index=1, content_delta="part2 "),
+                StreamChunk(
+                    index=2,
+                    usage=TokenUsage(500, 500),
+                    cost=EstimatedCost(9.99),
+                    done=True,
+                ),
+            )
+        }
+    )
+    gateway = ModelGateway(ModelProviderRegistry({"stub": provider}))
+    delivered: list[str] = []
+
+    with pytest.raises(ModelBudgetExceededError):
+        for chunk in gateway.stream(
+            _request(),
+            ModelConfig(
+                provider="stub",
+                name="late-cost",
+                limits=ModelLimits(max_cost_usd=0.01, max_total_tokens=10),
+            ),
+            metadata=_metadata(),
+        ):
+            delivered.append(chunk.content_delta)
+
+    assert delivered == ["part1 ", "part2 "]
+    assert gateway.attempts[-1].error_code == "budget_exceeded"
+
+
+def test_telemetry_sink_failure_never_discards_a_paid_for_response() -> None:
+    """A broken telemetry sink is not a provider failure.
+
+    Recording telemetry inside the classifying ``try`` made a sink exception
+    look like a model error: the successful (billed) response was thrown away
+    and a second provider call was issued.
+    """
+    billed: list[str] = []
+
+    class RecordingProvider(StubModelProvider):
+        def complete(
+            self,
+            request: ModelRequest,
+            target: ModelTarget,
+            metadata: ExecutionMetadata,
+        ) -> ModelResponse:
+            billed.append(target.name)
+            return super().complete(request, target, metadata)
+
+    provider = RecordingProvider(
+        responses={
+            "primary": StubModelOutput(text="primary"),
+            "fallback": StubModelOutput(text="fallback"),
+        }
+    )
+
+    def exploding_sink(telemetry: AttemptTelemetry) -> None:
+        raise RuntimeError("sink boom")
+
+    gateway = ModelGateway(
+        ModelProviderRegistry({"stub": provider}), telemetry_sink=exploding_sink
+    )
+
+    response = gateway.complete(
+        _request(),
+        ModelConfig(
+            provider="stub",
+            name="primary",
+            fallback=(ModelTarget(provider="stub", name="fallback"),),
+            fallback_on=("provider_error",),
+        ),
+        metadata=_metadata(),
+    )
+
+    assert response.message.content[0].text == "primary"
+    assert billed == ["primary"]
+
+
+def test_timed_out_attempt_still_counts_against_the_budget() -> None:
+    """A slow attempt was billed by the provider, so it is not free to the budget.
+
+    Raising the timeout before accounting let a fallback chain consume more
+    tokens and cost than the configured ceilings allowed.
+    """
+
+    class SlowProvider(StubModelProvider):
+        def complete(
+            self,
+            request: ModelRequest,
+            target: ModelTarget,
+            metadata: ExecutionMetadata,
+        ) -> ModelResponse:
+            if target.name == "slow":
+                time.sleep(0.05)
+            return super().complete(request, target, metadata)
+
+    provider = SlowProvider(
+        responses={
+            "slow": StubModelOutput(
+                text="slow", usage=TokenUsage(4, 4), cost=EstimatedCost(5.0)
+            ),
+            "fast": StubModelOutput(
+                text="fast", usage=TokenUsage(4, 4), cost=EstimatedCost(5.0)
+            ),
+        }
+    )
+    gateway = ModelGateway(ModelProviderRegistry({"stub": provider}))
+
+    with pytest.raises(ModelBudgetExceededError):
+        gateway.complete(
+            _request(),
+            ModelConfig(
+                provider="stub",
+                name="slow",
+                timeout_seconds=0.01,
+                fallback=(ModelTarget(provider="stub", name="fast"),),
+                fallback_on=("timeout",),
+                limits=ModelLimits(max_total_tokens=10, max_cost_usd=6.0),
+            ),
+            metadata=_metadata(),
+        )
+
+
+def test_streaming_capability_gap_does_not_consume_a_call_from_the_budget() -> None:
+    """A provider that cannot stream never issues a call, so it must not spend one."""
+
+    class NonStreamingProvider:
+        def capabilities(self, target: ModelTarget) -> ModelCapabilities:
+            return ModelCapabilities(("text", "streaming"))
+
+        def complete(
+            self,
+            request: ModelRequest,
+            target: ModelTarget,
+            metadata: ExecutionMetadata,
+        ) -> ModelResponse:  # pragma: no cover - not exercised
+            raise AssertionError("complete must not be called")
+
+    gateway = ModelGateway(ModelProviderRegistry({"stub": NonStreamingProvider()}))
+
+    with pytest.raises(ModelUnsupportedCapabilityError):
+        tuple(
+            gateway.stream(
+                _request(),
+                ModelConfig(provider="stub", name="m", limits=ModelLimits(max_calls=1)),
+                metadata=_metadata(),
+            )
+        )
+
+    assert gateway.attempts[-1].error_code == "unsupported_capability"
+
+
+def test_abandoned_stream_still_records_the_billed_attempt() -> None:
+    """A client disconnect must not erase a real provider call from telemetry."""
+    provider = StubModelProvider(
+        streams={
+            "m": tuple(
+                StreamChunk(index=index, content_delta=str(index)) for index in range(5)
+            )
+        }
+    )
+    gateway = ModelGateway(ModelProviderRegistry({"stub": provider}))
+
+    stream = cast(
+        Generator[StreamChunk, None, None],
+        gateway.stream(
+            _request(), ModelConfig(provider="stub", name="m"), metadata=_metadata()
+        ),
+    )
+    next(stream)
+    next(stream)
+    stream.close()
+
+    assert gateway.attempts, "an abandoned stream must leave a governance record"
+    assert gateway.attempts[-1].provider == "stub"
+
+
+def test_attempt_telemetry_does_not_leak_between_threads() -> None:
+    """One gateway shared by several threads must not interleave their attempts."""
+    provider = StubModelProvider(
+        responses={name: StubModelOutput(text=name) for name in ("a", "b")}
+    )
+    gateway = ModelGateway(ModelProviderRegistry({"stub": provider}))
+    observed: dict[str, list[str]] = {"a": [], "b": []}
+
+    def run(name: str) -> None:
+        for _ in range(50):
+            gateway.complete(
+                _request(),
+                ModelConfig(provider="stub", name=name),
+                metadata=_metadata(),
+            )
+            observed[name].extend(attempt.model for attempt in gateway.attempts)
+
+    threads = [threading.Thread(target=run, args=(name,)) for name in ("a", "b")]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert set(observed["a"]) == {"a"}
+    assert set(observed["b"]) == {"b"}
 
 
 def test_stream_cost_limits_are_unenforceable_without_provider_cost_metadata() -> None:

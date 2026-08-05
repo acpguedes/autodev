@@ -114,9 +114,23 @@ def test_langchain_adapter_normalizes_message_usage_tools_and_finish_reason(
             return FakeBoundModel()
 
         def with_structured_output(
-            self, schema: object, **kwargs: object
+            self,
+            schema: object,
+            *,
+            include_raw: bool = False,
+            tools: object = None,
         ) -> FakeStructuredModel:
-            calls.append({"structured_schema": schema, "structured_kwargs": kwargs})
+            # Mirrors ChatOpenAI: `tools` is declared explicitly, so the adapter
+            # can prove it will be honored rather than swallowed by **kwargs.
+            calls.append(
+                {
+                    "structured_schema": schema,
+                    "structured_kwargs": {
+                        "include_raw": include_raw,
+                        "tools": tools,
+                    },
+                }
+            )
             return FakeStructuredModel()
 
     factory_calls: list[dict[str, object]] = []
@@ -224,7 +238,19 @@ def test_structured_output_requires_a_raw_capable_provider(
 def test_structured_output_never_silently_drops_requested_tools(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Tool calling combined with structured output fails when unsupported."""
+    """Tool calling combined with structured output fails when unsupported.
+
+    The kwargs-absorbing shape is the dangerous one and is the real
+    ``BaseChatModel.with_structured_output`` signature: forwarding ``tools`` into
+    ``**kwargs`` looks like success while the provider ignores them entirely, so
+    a catch-all must not count as support.
+    """
+
+    class KwargsAbsorbingModel:
+        def with_structured_output(
+            self, schema: object, *, include_raw: bool = False, **kwargs: object
+        ) -> object:  # pragma: no cover - never invoked
+            raise AssertionError("structured runnable must not be built")
 
     class NoToolsStructuredModel:
         def with_structured_output(
@@ -232,14 +258,27 @@ def test_structured_output_never_silently_drops_requested_tools(
         ) -> object:  # pragma: no cover - never invoked
             raise AssertionError("structured runnable must not be built")
 
-    adapter = _structured_adapter(monkeypatch, NoToolsStructuredModel())
+    for model in (KwargsAbsorbingModel(), NoToolsStructuredModel()):
+        adapter = _structured_adapter(monkeypatch, model)
 
-    with pytest.raises(ModelUnsupportedCapabilityError):
-        adapter.complete(
-            _request(tools=True, structured=True),
-            ModelTarget(provider="openai", name="gpt-test"),
-            _metadata(),
-        )
+        with pytest.raises(ModelUnsupportedCapabilityError):
+            adapter.complete(
+                _request(tools=True, structured=True),
+                ModelTarget(provider="openai", name="gpt-test"),
+                _metadata(),
+            )
+
+
+def test_real_langchain_base_signature_cannot_smuggle_tools() -> None:
+    """Guard the introspection rule against the actual LangChain base class."""
+    from langchain_core.language_models.chat_models import BaseChatModel
+
+    from backend.llm.langchain_adapter import _accepts_keyword
+
+    target = BaseChatModel.with_structured_output
+
+    assert _accepts_keyword(target, "include_raw") is True
+    assert _accepts_keyword(target, "tools", require_explicit=True) is False
 
 
 def test_structured_output_without_tools_sends_only_portable_arguments(
@@ -485,3 +524,47 @@ def test_langchain_stream_refuses_structured_output_instead_of_degrading(
 def test_legacy_response_shape_remains_source_compatible() -> None:
     """Task 2 does not change the public legacy response constructor."""
     assert LLMProviderResponse("ok").text == "ok"
+
+
+def test_httpx_status_errors_map_to_governed_fallback_codes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``httpx.HTTPStatusError`` carries its status on ``.response``, not itself.
+
+    Reading only ``status_code`` classified 429/5xx as ``provider_error``, so a
+    manifest declaring ``fallbackOn: [rate_limit, unavailable]`` would never
+    fire — a governed policy silently not applying.
+    """
+    import httpx
+
+    from backend.llm import ModelRateLimitError
+
+    def failing_factory(**kwargs: object) -> object:
+        request = httpx.Request("POST", "https://api.example.com/v1/chat")
+        raise httpx.HTTPStatusError(
+            "rate limited",
+            request=request,
+            response=httpx.Response(429, request=request),
+        )
+
+    monkeypatch.setattr("backend.llm.langchain_adapter.get_chat_model", failing_factory)
+    adapter = LangChainModelProvider("openai")
+
+    with pytest.raises(ModelRateLimitError) as raised:
+        adapter.complete(
+            _request(tools=False),
+            ModelTarget(provider="openai", name="gpt-test"),
+            _metadata(),
+        )
+
+    assert raised.value.code == "rate_limit"
+
+
+def test_base_gateway_error_carries_a_taxonomy_code() -> None:
+    """The exported base error must be classifiable, not raise ``AttributeError``."""
+    from backend.llm import ModelGatewayError
+
+    error = ModelGatewayError("boom")
+
+    assert error.code == "provider_error"
+    assert error.retryable is False

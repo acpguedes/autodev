@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
+import threading
 import time
+from contextlib import contextmanager
 from dataclasses import replace
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable, Iterator
 
 from backend.llm.contracts import (
     AttemptTelemetry,
@@ -21,6 +24,8 @@ from backend.llm.contracts import (
 from backend.llm.errors import (
     ModelBudgetExceededError,
     ModelInvalidRequestError,
+    ModelProviderError,
+    ModelProviderNotConfiguredError,
     ModelUnsupportedCapabilityError,
     redacted_gateway_error,
 )
@@ -33,7 +38,48 @@ from backend.llm.gateway_state import (
 )
 from backend.llm.model_config import ModelConfig, ModelTarget
 from backend.llm.registry import ModelProviderRegistry
-from backend.observability.tracing import trace_model_call
+
+if TYPE_CHECKING:
+    from backend.observability.tracing import ModelCallTrace
+
+logger = logging.getLogger(__name__)
+
+
+@contextmanager
+def _model_trace(
+    *,
+    agent_id: str,
+    provider: str,
+    model: str,
+    fallback_attempt: int,
+    set_current: bool = True,
+) -> Iterator["ModelCallTrace"]:
+    """Open a model span, importing observability lazily.
+
+    ``backend.observability.tracing`` imports ``backend.config``, which imports
+    ``backend.llm.factory`` and therefore this package. Importing the tracer at
+    call time keeps that cycle from breaking any entrypoint whose first backend
+    import is ``backend.observability``.
+
+    Yields:
+        Mutable span measurements for the attempt.
+    """
+    from backend.observability.tracing import trace_model_call
+
+    with trace_model_call(
+        agent_id=agent_id,
+        provider=provider,
+        model=model,
+        fallback_attempt=fallback_attempt,
+        set_current=set_current,
+    ) as measurements:
+        yield measurements
+
+
+def _span_error_code(error: BaseException) -> str:
+    """Return a taxonomy-safe error code for span annotation."""
+    code = getattr(error, "code", None)
+    return code if isinstance(code, str) else "provider_error"
 
 
 class ModelGateway:
@@ -53,12 +99,22 @@ class ModelGateway:
         """
         self._registry = registry
         self._telemetry_sink = telemetry_sink
-        self._attempts: list[AttemptTelemetry] = []
+        self._state = threading.local()
 
     @property
     def attempts(self) -> tuple[AttemptTelemetry, ...]:
-        """Return telemetry for the most recent gateway operation."""
-        return tuple(self._attempts)
+        """Return telemetry for this thread's most recent gateway operation.
+
+        Attempt telemetry is thread-local, so a gateway instance shared between
+        threads never interleaves one operation's attempts into another's. A
+        ``telemetry_sink`` remains the durable channel; this property is a
+        convenience for the calling thread.
+        """
+        return tuple(getattr(self._state, "attempts", ()))
+
+    def _begin_operation(self) -> None:
+        """Reset attempt telemetry for the calling thread."""
+        self._state.attempts = []
 
     def complete(
         self,
@@ -80,7 +136,7 @@ class ModelGateway:
         Raises:
             ModelGatewayError: If preflight, execution, or limits fail closed.
         """
-        self._attempts = []
+        self._begin_operation()
         prepared = self._preflight(request, config, streaming=False)
         budget = GatewayBudget()
         attempt_number = 0
@@ -109,8 +165,9 @@ class ModelGateway:
                 attempt_number += 1
                 started = time.perf_counter()
                 response: ModelResponse | None = None
+                succeeded = False
                 try:
-                    with trace_model_call(
+                    with _model_trace(
                         agent_id=_metadata_agent_id(metadata),
                         provider=item.target.provider or "",
                         model=item.target.name,
@@ -120,39 +177,25 @@ class ModelGateway:
                             response = item.provider.complete(
                                 request, item.target, metadata
                             )
-                        except BaseException:
+                        except BaseException as exc:
                             model_trace.latency_ms = (
                                 time.perf_counter() - started
                             ) * 1000
+                            model_trace.error_code = _span_error_code(exc)
                             raise
                         duration_ms = (time.perf_counter() - started) * 1000
-                        _check_timeout(duration_ms, item.target)
                         model_trace.latency_ms = duration_ms
                         model_trace.input_tokens = response.usage.input_tokens
                         model_trace.output_tokens = response.usage.output_tokens
                         model_trace.estimated_cost_usd = response.cost.usd
+                        # Account the attempt before enforcing ceilings: a slow
+                        # or over-budget attempt was still billed by the
+                        # provider, so it must not be free to the budget.
                         budget.tokens += response.usage.total_tokens
                         budget.cost_usd += response.cost.usd
+                        _check_timeout(duration_ms, item.target)
                         check_usage_limits(config.limits, budget, item.target)
-                    self._record(
-                        AttemptTelemetry(
-                            attempt=attempt_number,
-                            provider=item.target.provider or "",
-                            model=item.target.name,
-                            duration_ms=duration_ms,
-                            usage=response.usage,
-                            cost=response.cost,
-                        )
-                    )
-                    return replace(
-                        response,
-                        metadata=replace(
-                            response.metadata,
-                            provider=item.target.provider or "",
-                            model=item.target.name,
-                            latency_ms=duration_ms,
-                        ),
-                    )
+                    succeeded = True
                 except Exception as exc:
                     error = redacted_gateway_error(
                         exc,
@@ -184,7 +227,29 @@ class ModelGateway:
                     if self._can_recover(error.code, config, target_index, prepared):
                         break
                     raise error from exc
-        raise ModelInvalidRequestError("model gateway exhausted configured targets")
+                if succeeded and response is not None:
+                    self._record(
+                        AttemptTelemetry(
+                            attempt=attempt_number,
+                            provider=item.target.provider or "",
+                            model=item.target.name,
+                            duration_ms=duration_ms,
+                            usage=response.usage,
+                            cost=response.cost,
+                        )
+                    )
+                    return replace(
+                        response,
+                        metadata=replace(
+                            response.metadata,
+                            provider=item.target.provider or "",
+                            model=item.target.name,
+                            latency_ms=duration_ms,
+                        ),
+                    )
+        raise ModelProviderError(  # pragma: no cover - defensive invariant guard
+            "model gateway exhausted configured targets"
+        )
 
     def stream(
         self,
@@ -203,7 +268,7 @@ class ModelGateway:
         Returns:
             Iterable of normalized chunks from one successful attempt.
         """
-        self._attempts = []
+        self._begin_operation()
         prepared = self._preflight(request, config, streaming=True)
         return self._stream_prepared(prepared, request, config, metadata)
 
@@ -234,6 +299,29 @@ class ModelGateway:
                 ):
                     continue
                 raise item.capability_error
+            provider = item.provider
+            if not isinstance(provider, StreamingModelProvider):
+                # Checked before the call budget: a provider that cannot stream
+                # never issues a call, so it must not consume one.
+                attempt_number += 1
+                self._record(
+                    AttemptTelemetry(
+                        attempt_number,
+                        item.target.provider or "",
+                        item.target.name,
+                        0.0,
+                        error_code="unsupported_capability",
+                    )
+                )
+                if self._can_recover(
+                    "unsupported_capability", config, target_index, prepared
+                ):
+                    continue
+                raise ModelUnsupportedCapabilityError(
+                    "provider does not implement streaming",
+                    provider=item.target.provider,
+                    model=item.target.name,
+                )
             retries = item.target.retries or 0
             for retry_index in range(retries + 1):
                 check_call_limit(config.limits, budget, item.target)
@@ -243,19 +331,15 @@ class ModelGateway:
                 usage = TokenUsage()
                 cost = EstimatedCost()
                 emitted = False
+                recorded = False
+                succeeded = False
                 try:
-                    provider = item.provider
-                    if not isinstance(provider, StreamingModelProvider):
-                        raise ModelUnsupportedCapabilityError(
-                            "provider does not implement streaming",
-                            provider=item.target.provider,
-                            model=item.target.name,
-                        )
-                    with trace_model_call(
+                    with _model_trace(
                         agent_id=_metadata_agent_id(metadata),
                         provider=item.target.provider or "",
                         model=item.target.name,
                         fallback_attempt=target_index,
+                        set_current=False,
                     ) as model_trace:
                         try:
                             for chunk in provider.stream(
@@ -279,30 +363,21 @@ class ModelGateway:
                                     )
                                 emitted = True
                                 yield chunk
-                        except BaseException:
+                        except BaseException as exc:
                             model_trace.latency_ms = (
                                 time.perf_counter() - started
                             ) * 1000
+                            model_trace.error_code = _span_error_code(exc)
                             raise
                         duration_ms = (time.perf_counter() - started) * 1000
-                        _check_timeout(duration_ms, item.target)
                         model_trace.latency_ms = duration_ms
                         model_trace.input_tokens = usage.input_tokens
                         model_trace.output_tokens = usage.output_tokens
                         model_trace.estimated_cost_usd = cost.usd
                         budget.tokens += usage.total_tokens
                         budget.cost_usd += cost.usd
-                    self._record(
-                        AttemptTelemetry(
-                            attempt_number,
-                            item.target.provider or "",
-                            item.target.name,
-                            duration_ms,
-                            usage=usage,
-                            cost=cost,
-                        )
-                    )
-                    return
+                        _check_timeout(duration_ms, item.target)
+                    succeeded = True
                 except Exception as exc:
                     error = redacted_gateway_error(
                         exc,
@@ -320,6 +395,7 @@ class ModelGateway:
                             error_code=error.code,
                         )
                     )
+                    recorded = True
                     if isinstance(error, ModelBudgetExceededError):
                         raise error from exc
                     if emitted:
@@ -329,7 +405,35 @@ class ModelGateway:
                     if self._can_recover(error.code, config, target_index, prepared):
                         break
                     raise error from exc
-        raise ModelInvalidRequestError(
+                finally:
+                    if not recorded and not succeeded:
+                        # The consumer abandoned the generator (for example a
+                        # client disconnect). The provider call was still made,
+                        # so it must not vanish from the governance record.
+                        self._record(
+                            AttemptTelemetry(
+                                attempt_number,
+                                item.target.provider or "",
+                                item.target.name,
+                                (time.perf_counter() - started) * 1000,
+                                usage=usage,
+                                cost=cost,
+                                error_code="provider_error",
+                            )
+                        )
+                if succeeded:
+                    self._record(
+                        AttemptTelemetry(
+                            attempt_number,
+                            item.target.provider or "",
+                            item.target.name,
+                            duration_ms,
+                            usage=usage,
+                            cost=cost,
+                        )
+                    )
+                    return
+        raise ModelProviderError(  # pragma: no cover - defensive invariant guard
             "model gateway exhausted configured streaming targets"
         )
 
@@ -342,7 +446,10 @@ class ModelGateway:
     ) -> tuple[PreparedTarget, ...]:
         """Resolve every provider and capability before any invocation."""
         if config.provider is None:
-            self._registry.resolve("", model=config.name)
+            raise ModelProviderNotConfiguredError(
+                "model configuration resolved no provider",
+                model=config.name,
+            )
         if config.fallback and not config.fallback_on:
             raise ModelInvalidRequestError(
                 "fallback targets require non-empty fallbackOn"
@@ -392,10 +499,25 @@ class ModelGateway:
         return code in config.fallback_on and target_index + 1 < len(prepared)
 
     def _record(self, telemetry: AttemptTelemetry) -> None:
-        """Record safe attempt telemetry and notify the optional sink."""
-        self._attempts.append(telemetry)
-        if self._telemetry_sink is not None:
+        """Record safe attempt telemetry and notify the optional sink.
+
+        A sink failure is never a provider failure: it is isolated here so it
+        cannot discard a paid-for response or trigger a spurious fallback.
+        """
+        attempts: list[AttemptTelemetry] = getattr(self._state, "attempts", [])
+        attempts.append(telemetry)
+        self._state.attempts = attempts
+        if self._telemetry_sink is None:
+            return
+        try:
             self._telemetry_sink(telemetry)
+        except Exception:  # noqa: BLE001 - telemetry must not break execution
+            logger.warning(
+                "model gateway telemetry sink failed for provider=%s model=%s",
+                telemetry.provider,
+                telemetry.model,
+                exc_info=True,
+            )
 
 
 def _effective_primary(config: ModelConfig) -> ModelTarget:

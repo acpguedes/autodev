@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Any, Iterator
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -188,6 +188,52 @@ class ModelCallTrace:
     error_code: str = ""
 
 
+MODEL_ERROR_CODES = frozenset(
+    {
+        "provider_not_configured",
+        "unsupported_capability",
+        "authentication",
+        "invalid_request",
+        "rate_limit",
+        "timeout",
+        "unavailable",
+        "budget_exceeded",
+        "provider_error",
+    }
+)
+"""Stable model error vocabulary allowed on spans.
+
+Mirrors ``backend.llm.contracts.ModelErrorCode``. It is duplicated rather than
+imported because ``backend.llm`` imports this module; a contract test asserts the
+two stay identical.
+"""
+
+
+@contextmanager
+def _model_call_span(*, set_current: bool) -> Iterator[Any]:
+    """Open the model span, optionally without making it the current span.
+
+    Args:
+        set_current: When ``False`` the span is not attached to the ambient
+            context. Streaming callers need this: a generator suspends at each
+            ``yield``, and an attached span would re-parent unrelated caller work
+            onto the model call.
+
+    Yields:
+        The started span, ended when the block exits.
+    """
+    tracer = get_tracer()
+    if set_current:
+        with tracer.start_as_current_span("autodev.model.call") as span:
+            yield span
+        return
+    span = tracer.start_span("autodev.model.call")
+    try:
+        yield span
+    finally:
+        span.end()
+
+
 @contextmanager
 def trace_model_call(
     *,
@@ -195,6 +241,7 @@ def trace_model_call(
     provider: str,
     model: str,
     fallback_attempt: int,
+    set_current: bool = True,
 ) -> Iterator[ModelCallTrace]:
     """Trace one provider attempt without recording prompt or secret content.
 
@@ -203,16 +250,23 @@ def trace_model_call(
         provider: Registered provider id.
         model: Provider model id.
         fallback_attempt: Zero-based target index in the fallback chain.
+        set_current: Whether the span becomes the current span. Streaming
+            callers pass ``False`` so suspended generators do not capture
+            unrelated caller spans as children.
 
     Yields:
         Mutable measurement fields finalized as safe span attributes.
     """
     measurements = ModelCallTrace()
-    with get_tracer().start_as_current_span("autodev.model.call") as span:
+    with _model_call_span(set_current=set_current) as span:
         try:
             yield measurements
         except BaseException as exc:
-            measurements.error_code = str(getattr(exc, "code", "provider_error"))
+            if not measurements.error_code:
+                code = getattr(exc, "code", None)
+                measurements.error_code = (
+                    code if code in MODEL_ERROR_CODES else "provider_error"
+                )
             raise
         finally:
             span.set_attributes(
@@ -231,6 +285,7 @@ def trace_model_call(
 
 
 __all__ = [
+    "MODEL_ERROR_CODES",
     "InMemorySpanExporter",
     "configure_tracing",
     "get_tracer",
