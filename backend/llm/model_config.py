@@ -37,7 +37,9 @@ _SENSITIVE_KEYS = frozenset(
         "accesstoken",
         "authtoken",
         "bearertoken",
+        "accesskey",
         "secret",
+        "secretkey",
         "clientsecret",
         "password",
         "credential",
@@ -45,6 +47,7 @@ _SENSITIVE_KEYS = frozenset(
         "privatekey",
     }
 )
+_SENSITIVE_KEY_MARKERS = ("apikey", "accesskey", "privatekey", "secret", "password", "credential")
 
 
 class ModelConfigError(ValueError):
@@ -317,7 +320,11 @@ def _find_sensitive_keys(raw: object, *, path: str, errors: list[str]) -> None:
         for key, value in raw.items():
             child_path = f"{path}.{key}"
             normalized = re.sub(r"[^a-z0-9]", "", str(key).lower())
-            if normalized in _SENSITIVE_KEYS:
+            if (
+                normalized in _SENSITIVE_KEYS
+                or normalized.endswith("token")
+                or any(marker in normalized for marker in _SENSITIVE_KEY_MARKERS)
+            ):
                 errors.append(f"{child_path} is sensitive and must not be stored in manifests")
             _find_sensitive_keys(value, path=child_path, errors=errors)
     elif isinstance(raw, list):

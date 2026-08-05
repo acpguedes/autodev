@@ -18,11 +18,33 @@ JSONMapping: TypeAlias = Mapping[str, JSONValue]
 
 MessageRole: TypeAlias = Literal["system", "user", "assistant", "tool"]
 ContentType: TypeAlias = Literal["text", "json", "image"]
-ModelCapabilityId: TypeAlias = Literal["text", "tools", "structured_output", "streaming"]
-ModelErrorCode: TypeAlias = Literal["timeout", "rate_limit", "unavailable"]
+ModelCapabilityId: TypeAlias = Literal["text", "tool_calling", "structured_output", "streaming"]
+ModelErrorCode: TypeAlias = Literal[
+    "provider_not_configured",
+    "unsupported_capability",
+    "authentication",
+    "invalid_request",
+    "timeout",
+    "rate_limit",
+    "unavailable",
+    "budget_exceeded",
+    "provider_error",
+]
 
-MODEL_CAPABILITY_IDS = frozenset({"text", "tools", "structured_output", "streaming"})
-MODEL_ERROR_CODES = frozenset({"timeout", "rate_limit", "unavailable"})
+MODEL_CAPABILITY_IDS = frozenset({"text", "tool_calling", "structured_output", "streaming"})
+MODEL_ERROR_CODES = frozenset(
+    {
+        "provider_not_configured",
+        "unsupported_capability",
+        "authentication",
+        "invalid_request",
+        "timeout",
+        "rate_limit",
+        "unavailable",
+        "budget_exceeded",
+        "provider_error",
+    }
+)
 
 
 def _freeze_json(value: object, *, path: str = "$") -> JSONValue:

@@ -51,6 +51,38 @@ def test_parse_model_config_accepts_canonical_camel_case_syntax() -> None:
     assert config.fallback[0].temperature is None
 
 
+def test_parse_model_config_accepts_complete_capability_and_error_vocabularies() -> None:
+    """Every governed capability and normalized error id is accepted by the parser."""
+    raw = _valid_model_config()
+    raw["requiredCapabilities"] = ["text", "tool_calling", "structured_output", "streaming"]
+    raw["fallbackOn"] = [
+        "provider_not_configured",
+        "unsupported_capability",
+        "authentication",
+        "invalid_request",
+        "timeout",
+        "rate_limit",
+        "unavailable",
+        "budget_exceeded",
+        "provider_error",
+    ]
+
+    config = parse_model_config(raw)
+
+    assert config.required_capabilities == ("text", "tool_calling", "structured_output", "streaming")
+    assert config.fallback_on == (
+        "provider_not_configured",
+        "unsupported_capability",
+        "authentication",
+        "invalid_request",
+        "timeout",
+        "rate_limit",
+        "unavailable",
+        "budget_exceeded",
+        "provider_error",
+    )
+
+
 @pytest.mark.parametrize(
     ("path", "value", "message"),
     [
@@ -84,16 +116,34 @@ def test_parse_model_config_rejects_invalid_values(
         parse_model_config(raw)
 
 
-def test_parse_model_config_rejects_sensitive_keys_recursively() -> None:
+@pytest.mark.parametrize(
+    "sensitive_key",
+    [
+        "apiKey",
+        "secretKey",
+        "accessKey",
+        "secretAccessKey",
+        "awsAccessKeyId",
+        "refreshToken",
+        "databasePassword",
+        "serviceCredentials",
+    ],
+)
+def test_parse_model_config_rejects_sensitive_keys_recursively(sensitive_key: str) -> None:
     """Credentials cannot be smuggled into nested model or fallback configuration."""
     raw = _valid_model_config()
     fallback = raw["fallback"]
     assert isinstance(fallback, list)
     assert isinstance(fallback[0], dict)
-    fallback[0]["metadata"] = {"apiKey": "must-not-live-in-manifest"}
+    fallback[0]["metadata"] = {sensitive_key: "must-not-live-in-manifest"}
 
-    with pytest.raises(ModelConfigError, match=r"model\.fallback\[0\]\.metadata\.apiKey is sensitive"):
+    with pytest.raises(ModelConfigError) as exc_info:
         parse_model_config(raw)
+
+    assert (
+        f"model.fallback[0].metadata.{sensitive_key} is sensitive and must not be stored in manifests"
+        in exc_info.value.errors
+    )
 
 
 def test_parse_model_config_rejects_empty_and_nested_fallbacks() -> None:

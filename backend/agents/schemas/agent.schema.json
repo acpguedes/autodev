@@ -89,11 +89,23 @@
         "retries": { "type": "integer", "minimum": 0, "maximum": 5 },
         "requiredCapabilities": {
           "type": "array",
-          "items": { "enum": ["text", "tools", "structured_output", "streaming"] }
+          "items": { "enum": ["text", "tool_calling", "structured_output", "streaming"] }
         },
         "fallbackOn": {
           "type": "array",
-          "items": { "enum": ["timeout", "rate_limit", "unavailable"] }
+          "items": {
+            "enum": [
+              "provider_not_configured",
+              "unsupported_capability",
+              "authentication",
+              "invalid_request",
+              "timeout",
+              "rate_limit",
+              "unavailable",
+              "budget_exceeded",
+              "provider_error"
+            ]
+          }
         },
         "limits": {
           "type": "object",
