@@ -18,11 +18,12 @@ def test_ollama_provider_uses_local_openai_compatible_defaults(
     # key regardless of what happens to be exported in the shell running
     # the tests (deterministic fixture behavior, E12-S1-T3).
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    # Same isolation for the base URL, which the ollama branch reads from the
-    # same env: RuntimeConfigService.apply_to_environment() exports
-    # OPENAI_BASE_URL process-wide, so an earlier test (or a developer's local
-    # config) would otherwise leak its endpoint into this assertion.
+    # Same isolation for the base URLs read by the Ollama branch:
+    # RuntimeConfigService.apply_to_environment() exports both variables
+    # process-wide, so an earlier test (or local config) would otherwise leak
+    # its endpoint into this assertion.
     monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
     calls: list[dict[str, object]] = []
 
     class FakeChatOpenAI:
