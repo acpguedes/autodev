@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import math
 from collections.abc import Iterable, Mapping
@@ -30,6 +31,7 @@ from backend.llm.errors import (
     ModelAuthenticationError,
     ModelInvalidRequestError,
     ModelProviderError,
+    ModelUnsupportedCapabilityError,
     redact_error_message,
     redacted_gateway_error,
 )
@@ -110,18 +112,35 @@ class LangChainModelProvider:
         target: ModelTarget,
         metadata: ExecutionMetadata,
     ) -> Iterable[StreamChunk]:
-        """Stream LangChain chunks normalized to the internal chunk contract."""
+        """Stream LangChain chunks normalized to the internal chunk contract.
+
+        Each provider chunk is yielded as soon as it arrives, so first-token
+        delivery is never delayed by a look-ahead read. The stream closes with a
+        terminal chunk carrying the final usage and cost snapshot.
+
+        Raises:
+            ModelUnsupportedCapabilityError: If the request asks for structured
+                output, which this adapter cannot honor while streaming.
+        """
         try:
+            if request.structured_output_schema is not None:
+                raise ModelUnsupportedCapabilityError(
+                    "streamed native structured output is not supported",
+                    provider=target.provider,
+                    model=target.name,
+                )
             model = self._model(target)
             runnable = cast(_Runnable, _bind_tools(model, request))
-            iterator = iter(runnable.stream(_langchain_messages(request)))
-            current = next(iterator, None)
             index = 0
-            while current is not None:
-                following = next(iterator, None)
-                yield _normalize_chunk(current, index=index, done=following is None)
-                current = following
+            usage: TokenUsage | None = None
+            cost: EstimatedCost | None = None
+            for raw in runnable.stream(_langchain_messages(request)):
+                chunk = _normalize_chunk(raw, index=index)
+                usage = chunk.usage if chunk.usage is not None else usage
+                cost = chunk.cost if chunk.cost is not None else cost
+                yield chunk
                 index += 1
+            yield StreamChunk(index=index, usage=usage, cost=cost, done=True)
         except Exception as exc:
             raise _normalize_exception(exc, target) from exc
 
@@ -218,28 +237,81 @@ def _tool_definitions(request: ModelRequest) -> list[dict[str, object]]:
     ]
 
 
+def _accepts_keyword(target: object, name: str) -> bool:
+    """Return whether a callable can receive a named keyword argument.
+
+    Args:
+        target: Callable to introspect.
+        name: Keyword argument name.
+
+    Returns:
+        ``True`` when the keyword is declared or absorbed by ``**kwargs``, and
+        ``True`` when the callable cannot be introspected, leaving validation to
+        the provider implementation itself.
+    """
+    try:
+        parameters = inspect.signature(target).parameters  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return True
+    if any(
+        parameter.kind is inspect.Parameter.VAR_KEYWORD
+        for parameter in parameters.values()
+    ):
+        return True
+    parameter = parameters.get(name)
+    return parameter is not None and parameter.kind in {
+        inspect.Parameter.KEYWORD_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+    }
+
+
 def _structured_runnable(model: object, request: ModelRequest) -> object:
-    """Select LangChain's native provider structured-output mode."""
+    """Select LangChain's native provider structured-output mode.
+
+    Only arguments the concrete provider actually declares are forwarded, and any
+    gap is reported as a capability error so the gateway can fall back explicitly
+    instead of degrading silently.
+
+    Raises:
+        ModelUnsupportedCapabilityError: If the provider cannot express native
+            structured output, cannot return the raw envelope, or cannot combine
+            structured output with the requested tools.
+    """
     structured = getattr(model, "with_structured_output", None)
     if not callable(structured) or request.structured_output_schema is None:
-        raise ModelInvalidRequestError(
+        raise ModelUnsupportedCapabilityError(
             "configured model does not support native structured output"
         )
-    tools = _tool_definitions(request)
+    if not _accepts_keyword(structured, "include_raw"):
+        raise ModelUnsupportedCapabilityError(
+            "configured model cannot return a raw native structured response"
+        )
     kwargs: dict[str, object] = {"include_raw": True}
-    if tools:
-        kwargs.update({"tools": tools, "strict": True})
+    if request.tools:
+        if not _accepts_keyword(structured, "tools"):
+            raise ModelUnsupportedCapabilityError(
+                "configured model cannot combine tool calling with native "
+                "structured output"
+            )
+        kwargs["tools"] = _tool_definitions(request)
     return structured(dict(request.structured_output_schema), **kwargs)
 
 
 def _native_structured_response(
     native: object,
 ) -> tuple[object, StructuredOutput | None]:
-    """Consume LangChain's include-raw native structured result."""
+    """Consume LangChain's include-raw native structured result.
+
+    Raises:
+        ModelUnsupportedCapabilityError: If the provider ignored ``include_raw``
+            and returned no raw response to normalize.
+        ModelInvalidRequestError: If the model produced unparsable structured
+            output.
+    """
     result = _mapping(native)
     raw = result.get("raw")
     if raw is None:
-        raise ModelInvalidRequestError(
+        raise ModelUnsupportedCapabilityError(
             "native structured output did not include a raw response"
         )
     if result.get("parsing_error") is not None:
@@ -284,8 +356,8 @@ def _normalize_response(
     )
 
 
-def _normalize_chunk(raw: object, *, index: int, done: bool) -> StreamChunk:
-    """Translate one LangChain streaming chunk."""
+def _normalize_chunk(raw: object, *, index: int) -> StreamChunk:
+    """Translate one LangChain streaming chunk into a non-terminal chunk."""
     content = getattr(raw, "content", "")
     text = content if isinstance(content, str) else json.dumps(content, sort_keys=True)
     metadata = _mapping(getattr(raw, "response_metadata", {}))
@@ -293,10 +365,21 @@ def _normalize_chunk(raw: object, *, index: int, done: bool) -> StreamChunk:
         index=index,
         content_delta=text,
         tool_calls=_tool_calls(getattr(raw, "tool_calls", ())),
-        usage=_usage(raw, metadata),
+        usage=_reported_usage(raw, metadata),
         cost=_estimated_cost(raw, metadata),
-        done=done,
+        done=False,
     )
+
+
+def _reported_usage(
+    raw: object, response_metadata: Mapping[str, object]
+) -> TokenUsage | None:
+    """Return a usage snapshot only when the provider actually reported one."""
+    if not _mapping(getattr(raw, "usage_metadata", {})) and not _mapping(
+        response_metadata.get("token_usage", {})
+    ):
+        return None
+    return _usage(raw, response_metadata)
 
 
 def _usage(raw: object, response_metadata: Mapping[str, object]) -> TokenUsage:

@@ -355,6 +355,57 @@ def test_stream_cost_is_accounted_in_telemetry_and_enforced_fail_closed() -> Non
     assert gateway.attempts[-1].cost == EstimatedCost(0.75)
 
 
+def test_stream_cost_limits_are_unenforceable_without_provider_cost_metadata() -> None:
+    """Documented limitation: cost governance needs a reported estimate to act on.
+
+    Providers that stream without any cost metadata contribute nothing to the cost
+    budget, so a configured ``max_cost_usd`` cannot fail closed on them. Token and
+    call ceilings remain enforceable and are the reliable guardrails in that case.
+    """
+    provider = StubModelProvider(
+        streams={
+            "no-cost": (
+                StreamChunk(
+                    index=0,
+                    content_delta="ok",
+                    usage=TokenUsage(4, 4),
+                    done=True,
+                ),
+            )
+        }
+    )
+    gateway = ModelGateway(ModelProviderRegistry({"stub": provider}))
+
+    chunks = tuple(
+        gateway.stream(
+            _request(),
+            ModelConfig(
+                provider="stub",
+                name="no-cost",
+                limits=ModelLimits(max_cost_usd=0.01),
+            ),
+            metadata=_metadata(),
+        )
+    )
+
+    assert chunks[-1].cost is None
+    assert gateway.attempts[-1].cost == EstimatedCost()
+    assert gateway.attempts[-1].error_code is None
+
+    with pytest.raises(ModelBudgetExceededError):
+        tuple(
+            gateway.stream(
+                _request(),
+                ModelConfig(
+                    provider="stub",
+                    name="no-cost",
+                    limits=ModelLimits(max_total_tokens=4),
+                ),
+                metadata=_metadata(),
+            )
+        )
+
+
 def test_stream_yields_live_without_buffering_the_whole_provider_attempt() -> None:
     """The first normalized chunk reaches callers before the provider produces the second."""
     events: list[str] = []
