@@ -170,6 +170,36 @@ The goal is fast story iteration with a strict gate at `main`.
    authoritative. See `docs/testing.md` for the current status of parallel
    execution.
 
+### Validation Gates (E12-S4)
+
+Every pull request runs a chained set of **Validation Gates** in CI; a merge is
+allowed only when all of them are green. The gates, and the workflow that owns
+each:
+
+| Gate (required check) | Workflow | What it enforces |
+| --- | --- | --- |
+| `lint-typecheck` | `ci-backend.yml` | `ruff check backend tests` + `mypy backend` |
+| `backend-tests` | `ci-backend.yml` | full pytest suite + 85% product-coverage gate |
+| `patch-validation` | `ci-backend.yml` | patch engine dry-run does not write; path-traversal guard rejects escapes (`scripts/validate_patches.py`) |
+| `security-baseline` | `ci-backend.yml` | secret scanning + critical-CVE scan |
+| `frontend-checks` | `ci-frontend.yml` | eslint + tsc + vitest + build |
+| `smoke-e2e` | `ci-e2e.yml` | backend boots; Playwright e2e suite passes |
+| `reference-eval-gate` | `ci-evals.yml` | the reference agent eval passes its gate |
+
+Run the fast gates locally before pushing:
+
+```bash
+make check-backend      # lint + typecheck + tests + coverage
+make validate-patches   # patch dry-run + path-traversal guard
+```
+
+**Merge is blocked without green gates.** The required-check set above is
+enforced as branch protection on `main` (strict / up-to-date, admins included,
+one approving review). A repo admin applies or updates it once with
+`scripts/configure_branch_protection.sh` (needs a token with admin rights); keep
+that script's check list in sync with the table above whenever a gate is added
+or removed.
+
 ## 5. Pull requests and issues
 
 - Use the PR template (`.github/PULL_REQUEST_TEMPLATE.md`). Reference the epic

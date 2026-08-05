@@ -3,7 +3,7 @@
 **Wave:** Split — E12-S1 (test pyramid) and the start of E12-S2 (contract tests for
 existing extension points) target Alpha; E12-S2 completion plus E12-S3/S4 (agent
 evals, CI quality gates) target Beta.
-**Status:** In progress · **Stories:** 3/4 complete (E12-S1, E12-S2, E12-S3 done)
+**Status:** Complete · **Stories:** 4/4 complete (E12-S1, E12-S2, E12-S3, E12-S4 done)
 **Depends on:** E0, E1-E6, E5
 **Enables:** E13 (Marketplace requires green contract tests to publish); mandatory contract tests for the Beta extension points `execution_environment` (E32, ADR-013) and `secret_backend` (E33, ADR-014) under E12-S2
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.7.6 (E12), §18.8, §18.9
@@ -118,12 +118,23 @@ Documented in `docs/evals/reference.md` (linked from `docs/evals/spec.md`).
 | DoD | Reference eval green; feedback to the Selector verified; docs |
 | Dependencies | E5 |
 
-### E12-S4 — CI quality gates (Validation Gates)
+### E12-S4 — CI quality gates (Validation Gates) (done)
 
 Subtasks:
-- `E12-S4-T1`: chained lint/tests/coverage/security gates.
-- `E12-S4-T2`: patch validation (dry-run, path guard) in the pipeline.
-- `E12-S4-T3`: merge blocked without green gates.
+- [x] `E12-S4-T1`: chained lint/tests/coverage/security gates. `ci-backend.yml`
+      now runs `lint-typecheck` (`ruff check backend tests` + `mypy backend`)
+      alongside the existing `backend-tests` (pytest + 85% coverage) and
+      `security-baseline` (secret + CVE scan) jobs; `ci-frontend.yml` already
+      chains eslint + tsc + vitest + build.
+- [x] `E12-S4-T2`: patch validation (dry-run, path guard) in the pipeline. New
+      `patch-validation` CI gate runs `scripts/validate_patches.py`, which
+      exercises the E0 patch engine to prove a dry-run writes nothing and the
+      path-traversal guard rejects escaping paths; also runnable via
+      `make validate-patches`.
+- [x] `E12-S4-T3`: merge blocked without green gates. The required-check set is
+      documented in `CONTRIBUTING.md` (§4 "Validation Gates") and enforced as
+      branch protection on `main` via `scripts/configure_branch_protection.sh`
+      (strict/up-to-date, admins included, one approving review).
 
 | Item | Content |
 | --- | --- |
@@ -147,10 +158,11 @@ Subtasks:
 
 ## Epic exit checklist
 
-- [ ] All 4 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
+- [x] All 4 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
       story-specific DoD above.
-- [ ] Every extension point declared across E1-E6 has a green contract test.
-- [ ] `docs/v2_platform/progress.md` updated.
-- [ ] Alpha exit criterion "test pyramid + contract tests for existing extension
+- [x] Every extension point declared across E1-E6 has a green contract test
+      (E12-S2: `backend/tests/contract/` parametrized over `ExtensionPointKind`).
+- [x] `docs/v2_platform/progress.md` updated.
+- [x] Alpha exit criterion "test pyramid + contract tests for existing extension
       points" (E12-S1, start of E12-S2) and Beta entry item "complete contract tests,
       agent evals, quality gates" (E12-S2 completion, E12-S3/S4) satisfied per §18.9.
