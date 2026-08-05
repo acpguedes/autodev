@@ -11,22 +11,27 @@ from typing import Iterator, get_args
 
 import pytest
 from opentelemetry import trace
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 
 from backend.llm import (
     EstimatedCost,
     ExecutionMetadata,
     ModelConfig,
     ModelRequest,
+    ModelResponse,
     StreamChunk,
 )
 from backend.llm.gateway import ModelGateway
+from backend.llm.model_config import ModelTarget
 from backend.llm.registry import ModelProviderRegistry
 from backend.llm.stub_provider import StubModelProvider
 from backend.observability.tracing import (
     MODEL_ERROR_CODES,
     ModelCallTrace,
+    configure_tracing,
     model_call_span_attributes,
-    trace_model_call,
 )
 
 
@@ -124,22 +129,83 @@ def test_span_error_code_never_escapes_the_gateway_taxonomy() -> None:
     Provider SDK exceptions carry vendor codes such as ``invalid_api_key``.
     Recording those verbatim makes dashboards keyed on the stable vocabulary
     silently miss attempts.
+
+    Driving this through the real gateway matters: the gateway assigns the code
+    itself, so a test that only calls ``trace_model_call`` directly exercises
+    the branch that was already safe and passes while the live path leaks.
     """
 
     class VendorError(Exception):
         code = "invalid_api_key"
 
-    measurements: ModelCallTrace | None = None
-    with pytest.raises(VendorError):
-        with trace_model_call(
-            agent_id="a", provider="openai", model="m", fallback_attempt=0
-        ) as trace:
-            measurements = trace
-            raise VendorError("vendor specific")
+    class FailingProvider(StubModelProvider):
+        def complete(
+            self,
+            request: ModelRequest,
+            target: ModelTarget,
+            metadata: ExecutionMetadata,
+        ) -> ModelResponse:
+            raise VendorError(
+                "401 Unauthorized: api_key=sk-livesecret1234567890 rejected"
+            )
 
-    assert measurements is not None
-    assert measurements.error_code == "provider_error"
-    assert measurements.error_code in MODEL_ERROR_CODES
+    exporter = InMemorySpanExporter()
+    configure_tracing(span_exporter=exporter)
+    gateway = ModelGateway(
+        ModelProviderRegistry({"stub": FailingProvider(responses={"m": "x"})})
+    )
+
+    with pytest.raises(Exception):
+        gateway.complete(
+            ModelRequest(messages=()),
+            ModelConfig(provider="stub", name="m"),
+            metadata=ExecutionMetadata(provider="stub", model="m"),
+        )
+
+    spans = [s for s in exporter.get_finished_spans() if s.name == "autodev.model.call"]
+    assert spans, "the failing attempt must still produce a span"
+    for span in spans:
+        code = (span.attributes or {})["autodev.model.error_code"]
+        assert code in MODEL_ERROR_CODES
+        assert code != "invalid_api_key"
+
+
+def test_span_never_records_a_raw_provider_exception_message() -> None:
+    """Credentials must not reach a span even though the caller message is redacted.
+
+    OpenTelemetry's default ``record_exception`` attaches ``str(exc)`` verbatim,
+    which happens before redaction runs on the caller-facing error object.
+    """
+
+    class LeakyError(Exception):
+        code = "authentication"
+
+    class FailingProvider(StubModelProvider):
+        def complete(
+            self,
+            request: ModelRequest,
+            target: ModelTarget,
+            metadata: ExecutionMetadata,
+        ) -> ModelResponse:
+            raise LeakyError("api_key=sk-livesecret1234567890 rejected")
+
+    exporter = InMemorySpanExporter()
+    configure_tracing(span_exporter=exporter)
+    gateway = ModelGateway(
+        ModelProviderRegistry({"stub": FailingProvider(responses={"m": "x"})})
+    )
+
+    with pytest.raises(Exception) as raised:
+        gateway.complete(
+            ModelRequest(messages=()),
+            ModelConfig(provider="stub", name="m"),
+            metadata=ExecutionMetadata(provider="stub", model="m"),
+        )
+
+    assert "sk-livesecret" not in str(raised.value)
+    for span in exporter.get_finished_spans():
+        rendered = f"{span.attributes} {[(e.name, e.attributes) for e in span.events]}"
+        assert "sk-livesecret" not in rendered
 
 
 def test_taxonomy_error_codes_match_the_contract_vocabulary() -> None:

@@ -77,7 +77,12 @@ def _model_trace(
 
 
 def _span_error_code(error: BaseException) -> str:
-    """Return a taxonomy-safe error code for span annotation."""
+    """Return this error's own code for span annotation.
+
+    The value is a hint, not a guarantee: ``trace_model_call`` clamps whatever
+    lands here to the stable vocabulary, so a vendor code such as
+    ``invalid_api_key`` cannot reach a span even though it is returned here.
+    """
     code = getattr(error, "code", None)
     return code if isinstance(code, str) else "provider_error"
 
@@ -106,9 +111,14 @@ class ModelGateway:
         """Return telemetry for this thread's most recent gateway operation.
 
         Attempt telemetry is thread-local, so a gateway instance shared between
-        threads never interleaves one operation's attempts into another's. A
-        ``telemetry_sink`` remains the durable channel; this property is a
-        convenience for the calling thread.
+        threads never interleaves one operation's attempts into another's.
+
+        This is a convenience for ``complete()``. It is **not** reliable for
+        ``stream()``: a generator body runs on whichever thread calls ``next()``,
+        so a stream consumed on a worker thread (for example Starlette's
+        ``iterate_in_threadpool``) records onto that worker's thread-local and
+        leaves this property empty on the request thread. Use a
+        ``telemetry_sink`` for anything durable, and always for streaming.
         """
         return tuple(getattr(self._state, "attempts", ()))
 
@@ -368,6 +378,10 @@ class ModelGateway:
                                 time.perf_counter() - started
                             ) * 1000
                             model_trace.error_code = _span_error_code(exc)
+                            # Same reasoning as the non-streaming path: usage
+                            # reported before the failure was still billed.
+                            budget.tokens += usage.total_tokens
+                            budget.cost_usd += cost.usd
                             raise
                         duration_ms = (time.perf_counter() - started) * 1000
                         model_trace.latency_ms = duration_ms
@@ -384,6 +398,7 @@ class ModelGateway:
                         provider=item.target.provider or "",
                         model=item.target.name,
                     )
+                    recorded = True
                     self._record(
                         AttemptTelemetry(
                             attempt_number,
@@ -395,7 +410,6 @@ class ModelGateway:
                             error_code=error.code,
                         )
                     )
-                    recorded = True
                     if isinstance(error, ModelBudgetExceededError):
                         raise error from exc
                     if emitted:
@@ -407,9 +421,16 @@ class ModelGateway:
                     raise error from exc
                 finally:
                     if not recorded and not succeeded:
-                        # The consumer abandoned the generator (for example a
-                        # client disconnect). The provider call was still made,
-                        # so it must not vanish from the governance record.
+                        # The consumer stopped iterating before the generator
+                        # finished -- a client disconnect, or simply `break`
+                        # after the terminal chunk, which is the ordinary
+                        # streaming idiom. The provider call was made and
+                        # billed, so it must not vanish from the governance
+                        # record; but no provider error occurred, so it must not
+                        # be labelled as one either. Attributing this to
+                        # `provider_error` made every ordinary `break` look like
+                        # a failure in error-rate telemetry.
+                        recorded = True
                         self._record(
                             AttemptTelemetry(
                                 attempt_number,
@@ -418,7 +439,6 @@ class ModelGateway:
                                 (time.perf_counter() - started) * 1000,
                                 usage=usage,
                                 cost=cost,
-                                error_code="provider_error",
                             )
                         )
                 if succeeded:
@@ -448,6 +468,7 @@ class ModelGateway:
         if config.provider is None:
             raise ModelProviderNotConfiguredError(
                 "model configuration resolved no provider",
+                provider="",
                 model=config.name,
             )
         if config.fallback and not config.fallback_on:

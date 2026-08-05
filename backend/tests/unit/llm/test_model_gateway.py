@@ -500,7 +500,12 @@ def test_timed_out_attempt_still_counts_against_the_budget() -> None:
 
 
 def test_streaming_capability_gap_does_not_consume_a_call_from_the_budget() -> None:
-    """A provider that cannot stream never issues a call, so it must not spend one."""
+    """A provider that cannot stream never issues a call, so it must not spend one.
+
+    Two targets and ``max_calls=1`` are required to see the difference: with a
+    single target the first ``check_call_limit`` passes either way, so the same
+    error is raised whether or not the budget was charged.
+    """
 
     class NonStreamingProvider:
         def capabilities(self, target: ModelTarget) -> ModelCapabilities:
@@ -514,18 +519,69 @@ def test_streaming_capability_gap_does_not_consume_a_call_from_the_budget() -> N
         ) -> ModelResponse:  # pragma: no cover - not exercised
             raise AssertionError("complete must not be called")
 
-    gateway = ModelGateway(ModelProviderRegistry({"stub": NonStreamingProvider()}))
-
-    with pytest.raises(ModelUnsupportedCapabilityError):
-        tuple(
-            gateway.stream(
-                _request(),
-                ModelConfig(provider="stub", name="m", limits=ModelLimits(max_calls=1)),
-                metadata=_metadata(),
-            )
+    streaming = StubModelProvider(
+        streams={"fallback": (StreamChunk(index=0, content_delta="ok", done=True),)}
+    )
+    gateway = ModelGateway(
+        ModelProviderRegistry(
+            {"broken": NonStreamingProvider(), "stub": streaming},
         )
+    )
 
-    assert gateway.attempts[-1].error_code == "unsupported_capability"
+    chunks = tuple(
+        gateway.stream(
+            _request(),
+            ModelConfig(
+                provider="broken",
+                name="m",
+                limits=ModelLimits(max_calls=1),
+                fallback_on=("unsupported_capability",),
+                fallback=(ModelTarget(provider="stub", name="fallback"),),
+            ),
+            metadata=_metadata(),
+        )
+    )
+
+    assert [chunk.content_delta for chunk in chunks] == ["ok"]
+    assert gateway.attempts[0].error_code == "unsupported_capability"
+    assert gateway.attempts[-1].error_code is None
+
+
+def test_breaking_out_of_a_completed_stream_is_not_reported_as_a_failure() -> None:
+    """``break`` after the terminal chunk is the ordinary streaming idiom.
+
+    Recording the resulting ``GeneratorExit`` as ``provider_error`` made every
+    successful stream look like a failure in error-rate telemetry.
+    """
+    recorded: list[AttemptTelemetry] = []
+    provider = StubModelProvider(
+        streams={
+            "s": (
+                StreamChunk(index=0, content_delta="a"),
+                StreamChunk(
+                    index=1,
+                    usage=TokenUsage(10, 10),
+                    cost=EstimatedCost(0.5),
+                    done=True,
+                ),
+            )
+        }
+    )
+    gateway = ModelGateway(
+        ModelProviderRegistry({"stub": provider}), telemetry_sink=recorded.append
+    )
+
+    delivered = []
+    for chunk in gateway.stream(
+        _request(), ModelConfig(provider="stub", name="s"), metadata=_metadata()
+    ):
+        delivered.append(chunk.content_delta)
+        if chunk.done:
+            break
+
+    assert delivered == ["a", ""]
+    assert len(recorded) == 1
+    assert recorded[0].error_code is None
 
 
 def test_abandoned_stream_still_records_the_billed_attempt() -> None:
@@ -554,15 +610,32 @@ def test_abandoned_stream_still_records_the_billed_attempt() -> None:
 
 
 def test_attempt_telemetry_does_not_leak_between_threads() -> None:
-    """One gateway shared by several threads must not interleave their attempts."""
-    provider = StubModelProvider(
+    """One gateway shared by several threads must not interleave their attempts.
+
+    The barrier is load-bearing. Without it both operations finish inside a
+    single GIL slice once modules are warm, so a shared-state regression passes
+    by scheduling luck when the file is run as a whole.
+    """
+    barrier = threading.Barrier(2, timeout=5)
+
+    class OverlappingProvider(StubModelProvider):
+        def complete(
+            self,
+            request: ModelRequest,
+            target: ModelTarget,
+            metadata: ExecutionMetadata,
+        ) -> ModelResponse:
+            barrier.wait()
+            return super().complete(request, target, metadata)
+
+    provider = OverlappingProvider(
         responses={name: StubModelOutput(text=name) for name in ("a", "b")}
     )
     gateway = ModelGateway(ModelProviderRegistry({"stub": provider}))
     observed: dict[str, list[str]] = {"a": [], "b": []}
 
     def run(name: str) -> None:
-        for _ in range(50):
+        for _ in range(20):
             gateway.complete(
                 _request(),
                 ModelConfig(provider="stub", name=name),

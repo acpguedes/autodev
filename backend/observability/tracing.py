@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Iterator
 
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -209,6 +210,24 @@ two stay identical.
 """
 
 
+def _safe_error_code(code: str) -> str:
+    """Clamp an error code to the stable vocabulary before it reaches a span.
+
+    Provider SDK exceptions expose vendor codes such as ``invalid_api_key``.
+    Recording those verbatim makes dashboards keyed on the stable vocabulary
+    silently miss attempts, so anything unrecognized becomes ``provider_error``.
+
+    Args:
+        code: Candidate code, or an empty string when the attempt succeeded.
+
+    Returns:
+        A member of :data:`MODEL_ERROR_CODES`, or an empty string on success.
+    """
+    if not code:
+        return ""
+    return code if code in MODEL_ERROR_CODES else "provider_error"
+
+
 @contextmanager
 def _model_call_span(*, set_current: bool) -> Iterator[Any]:
     """Open the model span, optionally without making it the current span.
@@ -224,7 +243,16 @@ def _model_call_span(*, set_current: bool) -> Iterator[Any]:
     """
     tracer = get_tracer()
     if set_current:
-        with tracer.start_as_current_span("autodev.model.call") as span:
+        # record_exception/set_status_on_exception are disabled deliberately.
+        # OpenTelemetry would attach `str(exc)` verbatim, and provider
+        # exceptions carry credentials: the caller-facing message is redacted
+        # downstream, but the span event would already hold the raw key. This
+        # span reports a stable error code and never an exception message.
+        with tracer.start_as_current_span(
+            "autodev.model.call",
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
             yield span
         return
     span = tracer.start_span("autodev.model.call")
@@ -263,12 +291,13 @@ def trace_model_call(
             yield measurements
         except BaseException as exc:
             if not measurements.error_code:
-                code = getattr(exc, "code", None)
-                measurements.error_code = (
-                    code if code in MODEL_ERROR_CODES else "provider_error"
-                )
+                measurements.error_code = str(getattr(exc, "code", "") or "")
             raise
         finally:
+            # Sanitizing here rather than at each assignment makes this the one
+            # place a code can reach a span, whatever a caller wrote onto the
+            # mutable measurements.
+            error_code = _safe_error_code(measurements.error_code)
             span.set_attributes(
                 model_call_span_attributes(
                     agent_id=agent_id,
@@ -278,10 +307,14 @@ def trace_model_call(
                     input_tokens=measurements.input_tokens,
                     output_tokens=measurements.output_tokens,
                     estimated_cost_usd=measurements.estimated_cost_usd,
-                    error_code=measurements.error_code,
+                    error_code=error_code,
                     fallback_attempt=fallback_attempt,
                 )
             )
+            if error_code:
+                # Status description is the stable code, never the provider
+                # message, which may contain credentials.
+                span.set_status(Status(StatusCode.ERROR, error_code))
 
 
 __all__ = [
