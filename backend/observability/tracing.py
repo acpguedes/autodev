@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import dataclass
 from typing import Iterator
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor, SpanExporter
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    SimpleSpanProcessor,
+    SpanExporter,
+)
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from backend.config.settings import Settings, get_settings
@@ -131,10 +136,106 @@ def trace_run_step(
         yield
 
 
+def model_call_span_attributes(
+    *,
+    agent_id: str,
+    provider: str,
+    model: str,
+    latency_ms: float,
+    input_tokens: int,
+    output_tokens: int,
+    estimated_cost_usd: float,
+    error_code: str,
+    fallback_attempt: int,
+) -> dict[str, str | int | float]:
+    """Return prompt-free and credential-free model span attributes.
+
+    Args:
+        agent_id: Agent issuing the model call.
+        provider: Registered provider id.
+        model: Provider model id.
+        latency_ms: Attempt latency in milliseconds.
+        input_tokens: Normalized input-token count.
+        output_tokens: Normalized output-token count.
+        estimated_cost_usd: Estimated attempt cost in US dollars.
+        error_code: Stable gateway error code or an empty string.
+        fallback_attempt: Zero-based target index in the fallback chain.
+
+    Returns:
+        Flat OpenTelemetry-compatible attributes without request content.
+    """
+    return {
+        "autodev.model.agent_id": agent_id,
+        "autodev.model.provider": provider,
+        "autodev.model.name": model,
+        "autodev.model.latency_ms": latency_ms,
+        "autodev.model.tokens.input": input_tokens,
+        "autodev.model.tokens.output": output_tokens,
+        "autodev.model.estimated_cost_usd": estimated_cost_usd,
+        "autodev.model.error_code": error_code,
+        "autodev.model.fallback_attempt": fallback_attempt,
+    }
+
+
+@dataclass
+class ModelCallTrace:
+    """Mutable safe measurements finalized when a model span closes."""
+
+    latency_ms: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+    error_code: str = ""
+
+
+@contextmanager
+def trace_model_call(
+    *,
+    agent_id: str,
+    provider: str,
+    model: str,
+    fallback_attempt: int,
+) -> Iterator[ModelCallTrace]:
+    """Trace one provider attempt without recording prompt or secret content.
+
+    Args:
+        agent_id: Agent issuing the call.
+        provider: Registered provider id.
+        model: Provider model id.
+        fallback_attempt: Zero-based target index in the fallback chain.
+
+    Yields:
+        Mutable measurement fields finalized as safe span attributes.
+    """
+    measurements = ModelCallTrace()
+    with get_tracer().start_as_current_span("autodev.model.call") as span:
+        try:
+            yield measurements
+        except BaseException as exc:
+            measurements.error_code = str(getattr(exc, "code", "provider_error"))
+            raise
+        finally:
+            span.set_attributes(
+                model_call_span_attributes(
+                    agent_id=agent_id,
+                    provider=provider,
+                    model=model,
+                    latency_ms=measurements.latency_ms,
+                    input_tokens=measurements.input_tokens,
+                    output_tokens=measurements.output_tokens,
+                    estimated_cost_usd=measurements.estimated_cost_usd,
+                    error_code=measurements.error_code,
+                    fallback_attempt=fallback_attempt,
+                )
+            )
+
+
 __all__ = [
     "InMemorySpanExporter",
     "configure_tracing",
     "get_tracer",
+    "model_call_span_attributes",
     "step_span_attributes",
+    "trace_model_call",
     "trace_run_step",
 ]

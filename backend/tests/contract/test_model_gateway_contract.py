@@ -28,6 +28,7 @@ from backend.llm.contracts import (
     ToolCall,
     ToolDefinition,
 )
+from backend.llm.model_config import ModelTarget
 
 
 def _agent_schema() -> dict[str, object]:
@@ -39,7 +40,16 @@ def _agent_schema() -> dict[str, object]:
 class _ConformingProvider:
     """Small real implementation used to exercise the structural protocol."""
 
-    def complete(self, request: ModelRequest) -> ModelResponse:
+    def capabilities(self, target: ModelTarget) -> ModelCapabilities:
+        """Advertise the target's text capability."""
+        return ModelCapabilities(("text",))
+
+    def complete(
+        self,
+        request: ModelRequest,
+        target: ModelTarget,
+        metadata: ExecutionMetadata,
+    ) -> ModelResponse:
         """Return a deterministic response for a provider-neutral request."""
         return ModelResponse(
             message=NormalizedMessage(
@@ -71,7 +81,11 @@ def test_provider_contract_carries_normalized_messages_tools_and_usage() -> None
     )
 
     provider: ModelProvider = _ConformingProvider()
-    response = provider.complete(request)
+    response = provider.complete(
+        request,
+        ModelTarget(provider="stub", name="coder-primary"),
+        ExecutionMetadata(provider="stub", model="coder-primary"),
+    )
 
     assert response.message.content[0].text == "done"
     assert response.usage.total_tokens == 3
@@ -135,7 +149,9 @@ def test_stream_telemetry_capabilities_and_typed_errors_use_stable_ids() -> None
         error_code="timeout",
     )
     structured = StructuredOutput(value={"status": "ok"}, schema_name="result")
-    error = ModelTimeoutError("provider timed out", provider="stub", model="coder-primary")
+    error = ModelTimeoutError(
+        "provider timed out", provider="stub", model="coder-primary"
+    )
 
     assert capabilities.supports("text") is True
     assert chunk.content_delta == "partial"

@@ -10,7 +10,15 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Iterable, Literal, Mapping, Protocol, Sequence, TypeAlias, runtime_checkable
+from typing import Literal, Mapping, Sequence, TypeAlias
+
+from backend.llm.errors import (
+    ModelGatewayError,
+    ModelRateLimitError,
+    ModelTimeoutError,
+    ModelUnavailableError,
+)
+from backend.llm.provider_protocol import ModelProvider, StreamingModelProvider
 
 JSONScalar: TypeAlias = str | int | float | bool | None
 JSONValue: TypeAlias = JSONScalar | Sequence["JSONValue"] | Mapping[str, "JSONValue"]
@@ -18,7 +26,9 @@ JSONMapping: TypeAlias = Mapping[str, JSONValue]
 
 MessageRole: TypeAlias = Literal["system", "user", "assistant", "tool"]
 ContentType: TypeAlias = Literal["text", "json", "image"]
-ModelCapabilityId: TypeAlias = Literal["text", "tool_calling", "structured_output", "streaming"]
+ModelCapabilityId: TypeAlias = Literal[
+    "text", "tool_calling", "structured_output", "streaming"
+]
 ModelErrorCode: TypeAlias = Literal[
     "provider_not_configured",
     "unsupported_capability",
@@ -31,7 +41,9 @@ ModelErrorCode: TypeAlias = Literal[
     "provider_error",
 ]
 
-MODEL_CAPABILITY_IDS = frozenset({"text", "tool_calling", "structured_output", "streaming"})
+MODEL_CAPABILITY_IDS = frozenset(
+    {"text", "tool_calling", "structured_output", "streaming"}
+)
 MODEL_ERROR_CODES = frozenset(
     {
         "provider_not_configured",
@@ -75,7 +87,10 @@ def _freeze_json(value: object, *, path: str = "$") -> JSONValue:
             frozen[key] = _freeze_json(item, path=f"{path}.{key}")
         return MappingProxyType(frozen)
     if isinstance(value, (list, tuple)):
-        return tuple(_freeze_json(item, path=f"{path}[{index}]") for index, item in enumerate(value))
+        return tuple(
+            _freeze_json(item, path=f"{path}[{index}]")
+            for index, item in enumerate(value)
+        )
     raise TypeError(f"{path} contains unsupported JSON value {type(value).__name__}")
 
 
@@ -90,7 +105,9 @@ def _freeze_mapping(value: Mapping[str, object], *, path: str) -> JSONMapping:
         A recursively immutable mapping.
     """
     frozen = _freeze_json(value, path=path)
-    if not isinstance(frozen, Mapping):  # pragma: no cover - guaranteed by the input type
+    if not isinstance(
+        frozen, Mapping
+    ):  # pragma: no cover - guaranteed by the input type
         raise TypeError(f"{path} must be a mapping")
     return frozen
 
@@ -113,7 +130,9 @@ class MessageContent:
 
     def __post_init__(self) -> None:
         """Freeze nested JSON content after construction."""
-        object.__setattr__(self, "data", _freeze_json(self.data, path="message.content.data"))
+        object.__setattr__(
+            self, "data", _freeze_json(self.data, path="message.content.data")
+        )
 
 
 @dataclass(frozen=True)
@@ -132,7 +151,9 @@ class ToolCall:
 
     def __post_init__(self) -> None:
         """Freeze tool arguments after construction."""
-        object.__setattr__(self, "arguments", _freeze_mapping(self.arguments, path="tool.arguments"))
+        object.__setattr__(
+            self, "arguments", _freeze_mapping(self.arguments, path="tool.arguments")
+        )
 
 
 @dataclass(frozen=True)
@@ -159,7 +180,9 @@ class NormalizedMessage:
         """Copy ordered fields and freeze message metadata after construction."""
         object.__setattr__(self, "content", tuple(self.content))
         object.__setattr__(self, "tool_calls", tuple(self.tool_calls))
-        object.__setattr__(self, "metadata", _freeze_mapping(self.metadata, path="message.metadata"))
+        object.__setattr__(
+            self, "metadata", _freeze_mapping(self.metadata, path="message.metadata")
+        )
 
 
 @dataclass(frozen=True)
@@ -178,7 +201,11 @@ class ToolDefinition:
 
     def __post_init__(self) -> None:
         """Freeze the input schema after construction."""
-        object.__setattr__(self, "input_schema", _freeze_mapping(self.input_schema, path="tool.input_schema"))
+        object.__setattr__(
+            self,
+            "input_schema",
+            _freeze_mapping(self.input_schema, path="tool.input_schema"),
+        )
 
 
 @dataclass(frozen=True)
@@ -230,7 +257,9 @@ class StructuredOutput:
 
     def __post_init__(self) -> None:
         """Freeze the structured value after construction."""
-        object.__setattr__(self, "value", _freeze_json(self.value, path="structured_output.value"))
+        object.__setattr__(
+            self, "value", _freeze_json(self.value, path="structured_output.value")
+        )
 
 
 @dataclass(frozen=True)
@@ -255,7 +284,11 @@ class ExecutionMetadata:
 
     def __post_init__(self) -> None:
         """Freeze execution attributes after construction."""
-        object.__setattr__(self, "attributes", _freeze_mapping(self.attributes, path="execution.attributes"))
+        object.__setattr__(
+            self,
+            "attributes",
+            _freeze_mapping(self.attributes, path="execution.attributes"),
+        )
 
 
 @dataclass(frozen=True)
@@ -282,9 +315,14 @@ class ModelRequest:
             object.__setattr__(
                 self,
                 "structured_output_schema",
-                _freeze_mapping(self.structured_output_schema, path="request.structured_output_schema"),
+                _freeze_mapping(
+                    self.structured_output_schema,
+                    path="request.structured_output_schema",
+                ),
             )
-        object.__setattr__(self, "metadata", _freeze_mapping(self.metadata, path="request.metadata"))
+        object.__setattr__(
+            self, "metadata", _freeze_mapping(self.metadata, path="request.metadata")
+        )
 
 
 @dataclass(frozen=True)
@@ -376,78 +414,6 @@ class ModelCapabilities:
             ``True`` when the capability appears in :attr:`supported`.
         """
         return capability in self.supported
-
-
-@runtime_checkable
-class ModelProvider(Protocol):
-    """Structural protocol implemented by replaceable provider adapters."""
-
-    def complete(self, request: ModelRequest) -> ModelResponse:
-        """Execute one normalized completion request.
-
-        Args:
-            request: Provider-neutral completion request.
-
-        Returns:
-            Provider-neutral normalized response.
-        """
-        ...
-
-
-@runtime_checkable
-class StreamingModelProvider(ModelProvider, Protocol):
-    """Optional extension protocol for providers with native streaming."""
-
-    def stream(self, request: ModelRequest) -> Iterable[StreamChunk]:
-        """Stream normalized chunks for one request.
-
-        Args:
-            request: Provider-neutral completion request.
-
-        Returns:
-            An iterable of normalized response chunks.
-        """
-        ...
-
-
-class ModelGatewayError(RuntimeError):
-    """Base error normalized at the provider-neutral boundary."""
-
-    code: ModelErrorCode
-    retryable: bool
-
-    def __init__(self, message: str, *, provider: str | None = None, model: str | None = None) -> None:
-        """Initialize a typed provider error.
-
-        Args:
-            message: Human-readable error description without credentials.
-            provider: Provider identifier, when known.
-            model: Model identifier, when known.
-        """
-        super().__init__(message)
-        self.provider = provider
-        self.model = model
-
-
-class ModelTimeoutError(ModelGatewayError):
-    """Provider attempt exceeded its configured timeout."""
-
-    code: ModelErrorCode = "timeout"
-    retryable = True
-
-
-class ModelRateLimitError(ModelGatewayError):
-    """Provider rejected an attempt because of rate limiting."""
-
-    code: ModelErrorCode = "rate_limit"
-    retryable = True
-
-
-class ModelUnavailableError(ModelGatewayError):
-    """Provider or model target was temporarily unavailable."""
-
-    code: ModelErrorCode = "unavailable"
-    retryable = True
 
 
 __all__ = [

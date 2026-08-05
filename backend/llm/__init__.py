@@ -28,7 +28,27 @@ from .factory import (
     get_chat_model,
     is_configured_model,
 )
-from .model_config import ModelConfig, ModelConfigError, ModelLimits, ModelTarget, parse_model_config
+from .errors import (
+    ModelAuthenticationError,
+    ModelBudgetExceededError,
+    ModelInvalidRequestError,
+    ModelProviderError,
+    ModelProviderNotConfiguredError,
+    ModelUnsupportedCapabilityError,
+    redact_error_message,
+)
+from .gateway import ModelGateway
+from .langchain_adapter import LangChainModelProvider
+from .legacy_adapter import LegacyLLMProviderAdapter
+from .model_config import (
+    ModelConfig,
+    ModelConfigError,
+    ModelLimits,
+    ModelTarget,
+    parse_model_config,
+)
+from .registry import ModelProviderRegistry, resolve_model_config
+from .stub_provider import StubModelOutput, StubModelProvider, StubProviderCall
 
 __all__ = [
     "AttemptTelemetry",
@@ -37,19 +57,30 @@ __all__ = [
     "LLMConfigurationError",
     "MessageContent",
     "ModelCapabilities",
+    "ModelAuthenticationError",
+    "ModelBudgetExceededError",
     "ModelConfig",
     "ModelConfigError",
     "ModelGatewayError",
+    "ModelGateway",
+    "ModelInvalidRequestError",
     "ModelLimits",
     "ModelProvider",
+    "ModelProviderError",
+    "ModelProviderNotConfiguredError",
+    "ModelProviderRegistry",
     "ModelRateLimitError",
     "ModelRequest",
     "ModelResponse",
     "ModelTarget",
     "ModelTimeoutError",
     "ModelUnavailableError",
+    "ModelUnsupportedCapabilityError",
     "NormalizedMessage",
     "StubChatModel",
+    "StubModelOutput",
+    "StubModelProvider",
+    "StubProviderCall",
     "StreamChunk",
     "StreamingModelProvider",
     "StructuredOutput",
@@ -59,4 +90,8 @@ __all__ = [
     "get_chat_model",
     "is_configured_model",
     "parse_model_config",
+    "LangChainModelProvider",
+    "LegacyLLMProviderAdapter",
+    "redact_error_message",
+    "resolve_model_config",
 ]
