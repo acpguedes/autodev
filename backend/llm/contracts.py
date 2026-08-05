@@ -353,6 +353,7 @@ class StreamChunk:
         content_delta: Incremental text content.
         tool_calls: Incremental or completed normalized tool calls.
         usage: Usage snapshot when the provider reports it.
+        cost: Estimated cost snapshot when the provider reports it.
         done: Whether this is the final stream chunk.
     """
 
@@ -360,6 +361,7 @@ class StreamChunk:
     content_delta: str = ""
     tool_calls: tuple[ToolCall, ...] = ()
     usage: TokenUsage | None = None
+    cost: EstimatedCost | None = None
     done: bool = False
 
     def __post_init__(self) -> None:

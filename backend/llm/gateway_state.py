@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from typing import Callable
 
 from backend.llm.contracts import AttemptTelemetry
-from backend.llm.errors import ModelUnsupportedCapabilityError
-from backend.llm.model_config import ModelTarget
+from backend.llm.errors import ModelBudgetExceededError, ModelUnsupportedCapabilityError
+from backend.llm.model_config import ModelLimits, ModelTarget
 from backend.llm.provider_protocol import ModelProvider
 
 TelemetrySink = Callable[[AttemptTelemetry], None]
@@ -31,4 +31,40 @@ class PreparedTarget:
     capability_error: ModelUnsupportedCapabilityError | None = None
 
 
-__all__ = ["GatewayBudget", "PreparedTarget", "TelemetrySink"]
+def check_call_limit(
+    limits: ModelLimits, budget: GatewayBudget, target: ModelTarget
+) -> None:
+    """Fail before invoking a call beyond the configured ceiling."""
+    if limits.max_calls is not None and budget.calls >= limits.max_calls:
+        raise ModelBudgetExceededError(
+            "model call limit exceeded",
+            provider=target.provider,
+            model=target.name,
+        )
+
+
+def check_usage_limits(
+    limits: ModelLimits, budget: GatewayBudget, target: ModelTarget
+) -> None:
+    """Fail closed after a response crosses token or cost ceilings."""
+    if limits.max_total_tokens is not None and budget.tokens > limits.max_total_tokens:
+        raise ModelBudgetExceededError(
+            "model token limit exceeded",
+            provider=target.provider,
+            model=target.name,
+        )
+    if limits.max_cost_usd is not None and budget.cost_usd > limits.max_cost_usd:
+        raise ModelBudgetExceededError(
+            "model cost limit exceeded",
+            provider=target.provider,
+            model=target.name,
+        )
+
+
+__all__ = [
+    "GatewayBudget",
+    "PreparedTarget",
+    "TelemetrySink",
+    "check_call_limit",
+    "check_usage_limits",
+]

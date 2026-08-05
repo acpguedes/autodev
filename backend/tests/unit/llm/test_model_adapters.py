@@ -12,6 +12,7 @@ from backend.agents.provider import (
     as_model_provider,
 )
 from backend.llm import (
+    EstimatedCost,
     ExecutionMetadata,
     MessageContent,
     ModelAuthenticationError,
@@ -88,7 +89,7 @@ def test_langchain_adapter_normalizes_message_usage_tools_and_finish_reason(
         def invoke(self, messages: object) -> object:
             calls.append({"messages": messages})
             return types.SimpleNamespace(
-                content='{"ok": true}',
+                content="not-json",
                 tool_calls=[
                     {"id": "call-1", "name": "read_file", "args": {"path": "a.py"}}
                 ],
@@ -99,10 +100,22 @@ def test_langchain_adapter_normalizes_message_usage_tools_and_finish_reason(
                 },
             )
 
+    class FakeStructuredModel:
+        def invoke(self, messages: object) -> object:
+            calls.append({"structured_messages": messages})
+            raw = FakeBoundModel().invoke(messages)
+            return {"raw": raw, "parsed": {"ok": True}, "parsing_error": None}
+
     class FakeModel:
         def bind_tools(self, tools: object) -> FakeBoundModel:
             calls.append({"tools": tools})
             return FakeBoundModel()
+
+        def with_structured_output(
+            self, schema: object, **kwargs: object
+        ) -> FakeStructuredModel:
+            calls.append({"structured_schema": schema, "structured_kwargs": kwargs})
+            return FakeStructuredModel()
 
     factory_calls: list[dict[str, object]] = []
 
@@ -132,14 +145,18 @@ def test_langchain_adapter_normalizes_message_usage_tools_and_finish_reason(
             "allow_stub": False,
         }
     ]
-    assert response.message.content[0].text == '{"ok": true}'
+    assert response.message.content[0].text == "not-json"
     assert response.message.tool_calls[0].arguments["path"] == "a.py"
     assert response.usage.total_tokens == 7
     assert response.metadata.finish_reason == "tool_calls"
     assert response.metadata.request_id == "req-1"
     assert response.structured_output is not None
     assert response.structured_output.value == {"ok": True}
-    assert "tools" in calls[0]
+    assert calls[0]["structured_schema"] == {"type": "object"}
+    structured_kwargs = calls[0]["structured_kwargs"]
+    assert isinstance(structured_kwargs, dict)
+    assert structured_kwargs["include_raw"] is True
+    assert structured_kwargs["tools"]
 
 
 def test_langchain_missing_credentials_fail_closed_as_typed_redacted_error(
@@ -179,7 +196,11 @@ def test_langchain_adapter_streams_only_normalized_chunks(
                     types.SimpleNamespace(
                         content="lo",
                         tool_calls=[],
-                        usage_metadata={"input_tokens": 1, "output_tokens": 1},
+                        usage_metadata={
+                            "input_tokens": 1,
+                            "output_tokens": 1,
+                            "estimated_cost_usd": 0.02,
+                        },
                     ),
                 )
             )
@@ -199,6 +220,7 @@ def test_langchain_adapter_streams_only_normalized_chunks(
 
     assert [chunk.content_delta for chunk in chunks] == ["hel", "lo"]
     assert chunks[-1].usage == TokenUsage(1, 1)
+    assert chunks[-1].cost == EstimatedCost(0.02)
     assert chunks[-1].done is True
 
 

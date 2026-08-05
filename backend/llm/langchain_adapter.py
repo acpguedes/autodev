@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Iterable, Mapping
 from typing import Any, Protocol, cast
 
@@ -13,6 +14,7 @@ from backend.llm.contracts import (
     ExecutionMetadata,
     MessageContent,
     ModelCapabilities,
+    ModelGatewayError,
     ModelRequest,
     ModelRateLimitError,
     ModelResponse,
@@ -29,6 +31,7 @@ from backend.llm.errors import (
     ModelInvalidRequestError,
     ModelProviderError,
     redact_error_message,
+    redacted_gateway_error,
 )
 from backend.llm.factory import LLMConfigurationError, get_chat_model
 from backend.llm.model_config import ModelTarget
@@ -88,9 +91,16 @@ class LangChainModelProvider:
         """Invoke LangChain and normalize its complete response."""
         try:
             model = self._model(target)
-            runnable = cast(_Runnable, _bind_tools(model, request))
-            raw = runnable.invoke(_langchain_messages(request))
-            return _normalize_response(raw, target, metadata, request)
+            messages = _langchain_messages(request)
+            structured: StructuredOutput | None = None
+            if request.structured_output_schema is not None:
+                runnable = cast(_Runnable, _structured_runnable(model, request))
+                native = runnable.invoke(messages)
+                raw, structured = _native_structured_response(native)
+            else:
+                runnable = cast(_Runnable, _bind_tools(model, request))
+                raw = runnable.invoke(messages)
+            return _normalize_response(raw, target, metadata, structured)
         except Exception as exc:
             raise _normalize_exception(exc, target) from exc
 
@@ -186,7 +196,16 @@ def _bind_tools(model: object, request: ModelRequest) -> object:
     """Bind normalized tool definitions when the request declares tools."""
     if not request.tools:
         return model
-    definitions = [
+    definitions = _tool_definitions(request)
+    binder = getattr(model, "bind_tools", None)
+    if not callable(binder):
+        raise ModelInvalidRequestError("configured model does not support tool binding")
+    return binder(definitions)
+
+
+def _tool_definitions(request: ModelRequest) -> list[dict[str, object]]:
+    """Translate internal tool definitions for the contained LangChain boundary."""
+    return [
         {
             "type": "function",
             "function": {
@@ -197,24 +216,55 @@ def _bind_tools(model: object, request: ModelRequest) -> object:
         }
         for tool in request.tools
     ]
-    binder = getattr(model, "bind_tools", None)
-    if not callable(binder):
-        raise ModelInvalidRequestError("configured model does not support tool binding")
-    return binder(definitions)
+
+
+def _structured_runnable(model: object, request: ModelRequest) -> object:
+    """Select LangChain's native provider structured-output mode."""
+    structured = getattr(model, "with_structured_output", None)
+    if not callable(structured) or request.structured_output_schema is None:
+        raise ModelInvalidRequestError(
+            "configured model does not support native structured output"
+        )
+    tools = _tool_definitions(request)
+    kwargs: dict[str, object] = {"include_raw": True}
+    if tools:
+        kwargs.update({"tools": tools, "strict": True})
+    return structured(dict(request.structured_output_schema), **kwargs)
+
+
+def _native_structured_response(
+    native: object,
+) -> tuple[object, StructuredOutput | None]:
+    """Consume LangChain's include-raw native structured result."""
+    result = _mapping(native)
+    raw = result.get("raw")
+    if raw is None:
+        raise ModelInvalidRequestError(
+            "native structured output did not include a raw response"
+        )
+    if result.get("parsing_error") is not None:
+        raise ModelInvalidRequestError("model returned invalid structured output")
+    parsed = result.get("parsed")
+    if parsed is None:
+        return raw, None
+    model_dump = getattr(parsed, "model_dump", None)
+    if callable(model_dump):
+        parsed = model_dump(mode="json")
+    return raw, StructuredOutput(value=parsed)  # type: ignore[arg-type]
 
 
 def _normalize_response(
     raw: object,
     target: ModelTarget,
     metadata: ExecutionMetadata,
-    request: ModelRequest,
+    structured: StructuredOutput | None,
 ) -> ModelResponse:
     """Translate a LangChain message into the complete internal response."""
     response_metadata = _mapping(getattr(raw, "response_metadata", {}))
     usage = _usage(raw, response_metadata)
     content = getattr(raw, "content", "")
     text = content if isinstance(content, str) else json.dumps(content, sort_keys=True)
-    structured = _structured_output(content, request)
+    cost = _estimated_cost(raw, response_metadata)
     return ModelResponse(
         message=NormalizedMessage(
             role="assistant",
@@ -222,7 +272,7 @@ def _normalize_response(
             tool_calls=_tool_calls(getattr(raw, "tool_calls", ())),
         ),
         usage=usage,
-        cost=EstimatedCost(),
+        cost=cost or EstimatedCost(),
         metadata=ExecutionMetadata(
             provider=target.provider or "",
             model=target.name,
@@ -244,6 +294,7 @@ def _normalize_chunk(raw: object, *, index: int, done: bool) -> StreamChunk:
         content_delta=text,
         tool_calls=_tool_calls(getattr(raw, "tool_calls", ())),
         usage=_usage(raw, metadata),
+        cost=_estimated_cost(raw, metadata),
         done=done,
     )
 
@@ -286,25 +337,32 @@ def _tool_calls(raw_calls: object) -> tuple[ToolCall, ...]:
     return tuple(calls)
 
 
-def _structured_output(
-    content: object, request: ModelRequest
-) -> StructuredOutput | None:
-    """Normalize structured content when a schema was requested."""
-    if request.structured_output_schema is None:
-        return None
-    value = content
-    if isinstance(content, str):
-        try:
-            value = json.loads(content)
-        except json.JSONDecodeError as exc:
-            raise ModelInvalidRequestError(
-                "model returned invalid structured output"
-            ) from exc
-    return StructuredOutput(value=value)  # type: ignore[arg-type]
+def _estimated_cost(
+    raw: object, response_metadata: Mapping[str, object]
+) -> EstimatedCost | None:
+    """Normalize an estimated-cost snapshot when provider metadata reports one."""
+    usage = _mapping(getattr(raw, "usage_metadata", {}))
+    for source in (usage, response_metadata):
+        for key in ("estimated_cost_usd", "cost_usd"):
+            value = source.get(key)
+            if (
+                isinstance(value, (int, float))
+                and not isinstance(value, bool)
+                and math.isfinite(value)
+                and value >= 0
+            ):
+                return EstimatedCost(float(value))
+    return None
 
 
 def _normalize_exception(error: Exception, target: ModelTarget) -> Exception:
     """Map configuration, HTTP, and provider failures to stable typed errors."""
+    if isinstance(error, ModelGatewayError):
+        return redacted_gateway_error(
+            error,
+            provider=target.provider or "",
+            model=target.name,
+        )
     message = redact_error_message(error)
     kwargs = {"provider": target.provider, "model": target.name}
     if isinstance(error, (TimeoutError, httpx.TimeoutException)):

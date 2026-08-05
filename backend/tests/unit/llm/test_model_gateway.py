@@ -301,6 +301,60 @@ def test_stream_normalizes_chunks_and_enforces_streaming_capability() -> None:
     assert provider.calls[0].stream is True
 
 
+def test_stream_cost_is_accounted_in_telemetry_and_enforced_fail_closed() -> None:
+    """Streaming cost snapshots reach telemetry and cannot bypass aggregate limits."""
+    provider = StubModelProvider(
+        streams={
+            "within-budget": (
+                StreamChunk(
+                    index=0,
+                    content_delta="ok",
+                    cost=EstimatedCost(0.25),
+                    done=True,
+                ),
+            ),
+            "over-budget": (
+                StreamChunk(
+                    index=0,
+                    content_delta="blocked",
+                    cost=EstimatedCost(0.75),
+                    done=True,
+                ),
+            ),
+        }
+    )
+    gateway = ModelGateway(ModelProviderRegistry({"stub": provider}))
+
+    chunks = tuple(
+        gateway.stream(
+            _request(),
+            ModelConfig(
+                provider="stub",
+                name="within-budget",
+                limits=ModelLimits(max_cost_usd=0.5),
+            ),
+            metadata=_metadata(),
+        )
+    )
+    assert chunks[-1].cost == EstimatedCost(0.25)
+    assert gateway.attempts[-1].cost == EstimatedCost(0.25)
+
+    with pytest.raises(ModelBudgetExceededError):
+        tuple(
+            gateway.stream(
+                _request(),
+                ModelConfig(
+                    provider="stub",
+                    name="over-budget",
+                    limits=ModelLimits(max_cost_usd=0.5),
+                ),
+                metadata=_metadata(),
+            )
+        )
+    assert gateway.attempts[-1].error_code == "budget_exceeded"
+    assert gateway.attempts[-1].cost == EstimatedCost(0.75)
+
+
 def test_stream_yields_live_without_buffering_the_whole_provider_attempt() -> None:
     """The first normalized chunk reaches callers before the provider produces the second."""
     events: list[str] = []

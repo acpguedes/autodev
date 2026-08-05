@@ -140,7 +140,12 @@ def test_contracts_copy_mutable_sequences_at_the_boundary() -> None:
 def test_stream_telemetry_capabilities_and_typed_errors_use_stable_ids() -> None:
     """Streaming, telemetry, capability, and error types expose stable neutral identifiers."""
     capabilities = ModelCapabilities(supported=("text",))
-    chunk = StreamChunk(index=0, content_delta="partial", done=False)
+    chunk = StreamChunk(
+        index=0,
+        content_delta="partial",
+        cost=EstimatedCost(usd=0.02),
+        done=False,
+    )
     telemetry = AttemptTelemetry(
         attempt=1,
         provider="stub",
@@ -155,6 +160,7 @@ def test_stream_telemetry_capabilities_and_typed_errors_use_stable_ids() -> None
 
     assert capabilities.supports("text") is True
     assert chunk.content_delta == "partial"
+    assert chunk.cost == EstimatedCost(usd=0.02)
     assert telemetry.error_code == "timeout"
     assert isinstance(structured.value, Mapping)
     assert structured.value["status"] == "ok"

@@ -24,8 +24,14 @@ from backend.llm.errors import (
     ModelUnsupportedCapabilityError,
     redacted_gateway_error,
 )
-from backend.llm.gateway_state import GatewayBudget, PreparedTarget, TelemetrySink
-from backend.llm.model_config import ModelConfig, ModelLimits, ModelTarget
+from backend.llm.gateway_state import (
+    GatewayBudget,
+    PreparedTarget,
+    TelemetrySink,
+    check_call_limit,
+    check_usage_limits,
+)
+from backend.llm.model_config import ModelConfig, ModelTarget
 from backend.llm.registry import ModelProviderRegistry
 from backend.observability.tracing import trace_model_call
 
@@ -98,7 +104,7 @@ class ModelGateway:
 
             retries = item.target.retries or 0
             for retry_index in range(retries + 1):
-                self._check_call_limit(config.limits, budget, item.target)
+                check_call_limit(config.limits, budget, item.target)
                 budget.calls += 1
                 attempt_number += 1
                 started = time.perf_counter()
@@ -127,7 +133,7 @@ class ModelGateway:
                         model_trace.estimated_cost_usd = response.cost.usd
                         budget.tokens += response.usage.total_tokens
                         budget.cost_usd += response.cost.usd
-                        self._check_usage_limits(config.limits, budget, item.target)
+                        check_usage_limits(config.limits, budget, item.target)
                     self._record(
                         AttemptTelemetry(
                             attempt=attempt_number,
@@ -230,11 +236,12 @@ class ModelGateway:
                 raise item.capability_error
             retries = item.target.retries or 0
             for retry_index in range(retries + 1):
-                self._check_call_limit(config.limits, budget, item.target)
+                check_call_limit(config.limits, budget, item.target)
                 budget.calls += 1
                 attempt_number += 1
                 started = time.perf_counter()
                 usage = TokenUsage()
+                cost = EstimatedCost()
                 emitted = False
                 try:
                     provider = item.provider
@@ -254,17 +261,23 @@ class ModelGateway:
                             for chunk in provider.stream(
                                 request, item.target, metadata
                             ):
-                                emitted = True
                                 if chunk.usage is not None:
                                     usage = chunk.usage
+                                if chunk.cost is not None:
+                                    cost = chunk.cost
+                                if chunk.usage is not None or chunk.cost is not None:
+                                    model_trace.input_tokens = usage.input_tokens
+                                    model_trace.output_tokens = usage.output_tokens
+                                    model_trace.estimated_cost_usd = cost.usd
                                     projected = GatewayBudget(
                                         calls=budget.calls,
                                         tokens=budget.tokens + usage.total_tokens,
-                                        cost_usd=budget.cost_usd,
+                                        cost_usd=budget.cost_usd + cost.usd,
                                     )
-                                    self._check_usage_limits(
+                                    check_usage_limits(
                                         config.limits, projected, item.target
                                     )
+                                emitted = True
                                 yield chunk
                         except BaseException:
                             model_trace.latency_ms = (
@@ -276,7 +289,9 @@ class ModelGateway:
                         model_trace.latency_ms = duration_ms
                         model_trace.input_tokens = usage.input_tokens
                         model_trace.output_tokens = usage.output_tokens
+                        model_trace.estimated_cost_usd = cost.usd
                         budget.tokens += usage.total_tokens
+                        budget.cost_usd += cost.usd
                     self._record(
                         AttemptTelemetry(
                             attempt_number,
@@ -284,6 +299,7 @@ class ModelGateway:
                             item.target.name,
                             duration_ms,
                             usage=usage,
+                            cost=cost,
                         )
                     )
                     return
@@ -300,6 +316,7 @@ class ModelGateway:
                             item.target.name,
                             (time.perf_counter() - started) * 1000,
                             usage=usage,
+                            cost=cost,
                             error_code=error.code,
                         )
                     )
@@ -379,39 +396,6 @@ class ModelGateway:
         self._attempts.append(telemetry)
         if self._telemetry_sink is not None:
             self._telemetry_sink(telemetry)
-
-    @staticmethod
-    def _check_call_limit(
-        limits: ModelLimits, budget: GatewayBudget, target: ModelTarget
-    ) -> None:
-        """Fail before invoking a call beyond the configured ceiling."""
-        if limits.max_calls is not None and budget.calls >= limits.max_calls:
-            raise ModelBudgetExceededError(
-                "model call limit exceeded",
-                provider=target.provider,
-                model=target.name,
-            )
-
-    @staticmethod
-    def _check_usage_limits(
-        limits: ModelLimits, budget: GatewayBudget, target: ModelTarget
-    ) -> None:
-        """Fail closed after a response crosses token or cost ceilings."""
-        if (
-            limits.max_total_tokens is not None
-            and budget.tokens > limits.max_total_tokens
-        ):
-            raise ModelBudgetExceededError(
-                "model token limit exceeded",
-                provider=target.provider,
-                model=target.name,
-            )
-        if limits.max_cost_usd is not None and budget.cost_usd > limits.max_cost_usd:
-            raise ModelBudgetExceededError(
-                "model cost limit exceeded",
-                provider=target.provider,
-                model=target.name,
-            )
 
 
 def _effective_primary(config: ModelConfig) -> ModelTarget:

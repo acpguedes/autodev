@@ -161,7 +161,11 @@ class StubModelProvider:
         if isinstance(result, ModelResponse):
             text = "".join(part.text or "" for part in result.message.content)
             yield StreamChunk(
-                index=0, content_delta=text, usage=result.usage, done=True
+                index=0,
+                content_delta=text,
+                usage=result.usage,
+                cost=result.cost,
+                done=True,
             )
             return
         output = StubModelOutput(text=result) if isinstance(result, str) else result
@@ -170,6 +174,7 @@ class StubModelProvider:
             content_delta=output.text,
             tool_calls=output.tool_calls,
             usage=output.usage,
+            cost=output.cost,
             done=True,
         )
 
