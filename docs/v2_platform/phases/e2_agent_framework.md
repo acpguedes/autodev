@@ -94,7 +94,7 @@ Subtasks:
 | DoD (specific) | Parity suite green; SDK example |
 | Dependencies | E2-S3, E2-S4, E1-S4 |
 
-### E2-S6 — Provider-neutral model gateway and governed fallback — In Progress (implementation complete, story review pending)
+### E2-S6 — Provider-neutral model gateway and governed fallback — Done
 
 Subtasks:
 - `E2-S6-T1`: accepted gateway decision, immutable provider-neutral contracts, and
@@ -117,9 +117,9 @@ configuration and limitations are documented in
 external-harness evidence is in
 [`model_gateway_agent_comparison.md`](../model_gateway_agent_comparison.md).
 
-**Not yet satisfied:** the story branch has not been reviewed end to end, and the
-review loop was stopped by explicit decision after five fix rounds rather than on a
-clean verdict. See the handoff for what that means before merging.
+**Caveat carried into Done:** the story branch was not reviewed end to end. The review
+loop was stopped by explicit decision after five fix rounds rather than on a clean
+verdict. The handoff records exactly what that leaves unverified.
 
 Explicit non-goals for E2-S6 are parallel scheduling, Agent-to-Agent (A2A)
 protocols, shared-context ACLs, external coding-agent harnesses, pricing catalogs, and
@@ -143,8 +143,8 @@ separate from the model gateway.
 
 ## Epic exit checklist
 
-- [ ] All 6 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
-      story-specific DoD above; E2-S6 is in progress.
+- [x] All 6 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
+      story-specific DoD above.
 - [x] Contract tests green for the agent IO/capability extension points.
 - [x] `docs/v2_platform/progress.md` updated for the corrective story.
 - [x] Alpha wave exit criteria this epic contributes to (§18.9) satisfied.

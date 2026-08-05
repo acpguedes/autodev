@@ -1,9 +1,13 @@
 # E2-S6 Model Gateway Emergency Recovery Handoff
 
-This document is the neutral, self-contained recovery point for the interrupted
-E2-S6 implementation. E2-S6 is **not complete**. Do not merge the story or mark E2
-Done until the open review findings, runtime integration, acceptance tests, public
-documentation, and required validation are complete.
+**Status: closed.** The interrupted E2-S6 implementation was recovered and completed
+on `traycer/e2-s6-model-gateway-resume`, merged into `story/e2-s6-model-gateway`, and
+integrated through `epic/e2-agent-framework` into `main`.
+
+This document is retained as the historical record of the recovery: what was found,
+what was fixed, what was decided, and — importantly — what was **not** certified. Read
+the "Review loop stopped by explicit user decision" section before building on this
+subsystem.
 
 ## Approved objective and scope
 
@@ -125,8 +129,8 @@ The authoritative decision is
 | Task 1: contract/governance/configuration | Complete | Commits `f7e895c` and `9536482`; scoped rereview clean. |
 | Task 2: gateway/adapters/fallback/limits/tracing | **Fix rounds 1-5 applied; another confirmation rereview required** | `7090b01` + `f1d10c6`, corrected by `e3b2a0c`, `ccb6ae0`, `e321c11`, `6a308b3`, and `54f66d4`. Round 4 was the first delta a review found clean. Round 5 fixed the redaction regex itself, which had been bypassable for the whole story. |
 | Task 3: runtime/flow/global settings/acceptance telemetry | **Complete** (`c158278`) | Gateway wired into `AgentRuntime` with per-execution override, global `LLM_MODEL` default, and telemetry aggregated into `AgentRunResult.metrics`. Flow propagation needs no change: `flows/handlers.py` already accepts an injected runtime. No API endpoint constructs a runtime, so there was nothing to propagate there. |
-| Task 4: public docs/Traycer matrix/examples/versioning/story closure | **Partially complete** | Traycer evidence matrix published (`8756e88`). Public configuration/examples, versioning, and story closure remain. |
-| Final graph, story validation, epic validation, review, merge, and PR | Not started | No story/epic merge has been performed. |
+| Task 4: public docs/Traycer matrix/examples/versioning/story closure | **Complete** | Traycer evidence matrix (`8756e88`) and public configuration reference `docs/agents/model_gateway.md` (`553b87a`), including the tested limitations. |
+| Final validation, merge, and PR | **Complete** | Story merged to epic, epic merged to `main` via PR. Full backend suite green apart from 4 pre-existing environmental failures. No whole-branch review was performed — see below. |
 
 ### Work done on branch `traycer/e2-s6-model-gateway-resume`
 
