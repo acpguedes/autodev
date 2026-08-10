@@ -6,12 +6,16 @@ Versions the existing ``GET``/``PUT /config`` endpoints in
 :class:`~backend.config.runtime.RuntimeConfigService` singleton, so a change
 made through either is immediately visible to the other.
 
-Known limitation: unlike v1's ``PUT /config`` handler, this endpoint does
-not clear ``backend.api.main``'s process-wide ``get_orchestrator``/
-``get_chat_model``/``get_repository_intelligence`` caches, because routers
-must not import from ``main`` (see ``backend/api/routers/__init__.py``'s
-auto-discovery convention — every other ``/v2`` router follows the same
-rule). Those caches are invalidated the next time v1's own ``PUT /config``
+Because this endpoint writes the same ``llm`` block as
+``/v2/provider-config``, its ``PUT`` handler invalidates the caches that
+snapshot those settings: the memoized LangChain chat model and the composed
+model gateway. Neither lives in ``backend.api.main``, so clearing them
+respects the rule that routers must not import from ``main`` (see
+``backend/api/routers/__init__.py``'s auto-discovery convention).
+
+Known limitation: ``backend.api.main``'s ``get_orchestrator`` and
+``get_repository_intelligence`` caches are still not cleared here, for that
+same import rule. They are invalidated the next time v1's own ``PUT /config``
 runs, or on process restart. See the E9-S1 handoff notes for this
 cross-surface cache-invalidation gap.
 """
@@ -24,6 +28,8 @@ from pydantic import BaseModel
 from backend.api.rbac_v2 import require_v2_principal
 from backend.api.v2_common import SCHEMA_VERSION_V2
 from backend.config.runtime import RuntimeConfig, RuntimeConfigService, RuntimeInstructions, get_runtime_config_service
+from backend.llm.composition import reset_model_composition_cache
+from backend.llm.factory import get_chat_model
 
 router = APIRouter(prefix="/v2/config", tags=["config"], dependencies=[Depends(require_v2_principal)])
 
@@ -66,6 +72,10 @@ def update_runtime_config_v2(
 ) -> RuntimeConfigResponseV2:
     """Persist a new runtime configuration and apply it to the process.
 
+    The configuration includes the ``llm`` block, so the memoized chat model
+    and composed model gateway are invalidated here; otherwise an agent run
+    started after this call would keep using the previous provider and model.
+
     Args:
         request: The new configuration to persist.
         config_service: Shared runtime config service (same singleton v1's
@@ -76,6 +86,8 @@ def update_runtime_config_v2(
     """
     saved_config = config_service.update(request.config)
     config_service.apply_to_environment(saved_config)
+    get_chat_model.cache_clear()
+    reset_model_composition_cache()
     document = config_service.load_document(redact_secrets=True)
     return RuntimeConfigResponseV2(config=document.config, instructions=document.instructions)
 

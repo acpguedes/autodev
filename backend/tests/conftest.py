@@ -17,9 +17,76 @@ from pathlib import Path
 import pytest
 
 from backend.agents.provider import ScriptedLLMProvider, StubEmbeddingProvider, StubLLMProvider
+from backend.config.runtime import reset_runtime_config_cache
+from backend.config.settings import reset_settings_cache
+from backend.llm.composition import reset_model_composition_cache
+from backend.llm.factory import get_chat_model
 
 #: Fixed seed used to make any randomized test behavior reproducible.
 DETERMINISTIC_SEED = 1337
+
+#: Environment variables that can carry real provider credentials or endpoints
+#: into a test run. Cleared for every test by :func:`isolated_runtime_config`.
+_CREDENTIAL_ENV_VARS = (
+    "OPENAI_API_KEY",
+    "OPENAI_BASE_URL",
+    "OPENAI_MODEL",
+    "OLLAMA_BASE_URL",
+    "LLM_MODEL",
+)
+
+
+@pytest.fixture(autouse=True)
+def isolated_runtime_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[None]:
+    """Isolate every test from the developer's real runtime configuration.
+
+    :class:`~backend.config.runtime.RuntimeConfigService` resolves its config
+    path from ``AUTODEV_CONFIG_PATH``, falling back to
+    ``Path.cwd()/autodev.config.json``. Since the suite runs from the repository
+    root, an unisolated test reads the developer's own ``autodev.config.json`` —
+    which may hold a real provider, base URL and API key. That file is
+    gitignored, so the exposure is per-machine and invisible in CI.
+
+    This became load-bearing when :class:`~backend.flows.handlers.AgentNodeHandler`
+    started composing a gateway-carrying runtime by default: without this
+    fixture, any test exercising an agent would issue a live, credentialed model
+    call against whatever endpoint the developer had configured.
+
+    The fixture points the config path at a per-test file, forces the offline
+    ``stub`` provider, strips credential-bearing variables, and resets every
+    cache that snapshots them.
+
+    The reset runs on entry only, deliberately. Isolation is already complete:
+    the next test's own setup resets the same caches before it can observe
+    anything. A teardown reset would additionally be unsafe — this fixture
+    requests ``monkeypatch``, so it finalizes *before* monkeypatch unwinds, and
+    a test that patched one of the cached factories (as
+    ``unit/persistence/test_backup.py`` patches ``get_settings``) would still
+    have its patch installed, leaving the reset helper to call ``cache_clear``
+    on a plain function.
+
+    Tests that need a specific configuration still win: their own
+    ``monkeypatch`` calls run after this fixture and override it.
+
+    Args:
+        tmp_path: Pytest's per-test temporary directory.
+        monkeypatch: Pytest's environment patcher, scoped to the test.
+
+    Yields:
+        ``None``. The isolation is ambient for the duration of the test.
+    """
+    monkeypatch.setenv("AUTODEV_CONFIG_PATH", str(tmp_path / "autodev.config.json"))
+    monkeypatch.setenv("LLM_PROVIDER", "stub")
+    for variable in _CREDENTIAL_ENV_VARS:
+        monkeypatch.delenv(variable, raising=False)
+
+    reset_runtime_config_cache()
+    reset_settings_cache()
+    reset_model_composition_cache()
+    get_chat_model.cache_clear()
+    yield
 
 
 @pytest.fixture(autouse=True)
