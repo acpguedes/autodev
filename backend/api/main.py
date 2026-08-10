@@ -42,6 +42,7 @@ from backend.config import (
 from backend.config.settings import get_settings
 from backend.coordination import get_cache, get_lock_manager
 from backend.jobs.queue import get_queue
+from backend.llm.composition import reset_model_composition_cache
 from backend.llm.factory import get_chat_model
 from backend.observability.tracing import configure_tracing
 from backend.orchestrator.service import (
@@ -418,6 +419,7 @@ def update_runtime_config(
     saved_config = config_service.update(request.config)
     config_service.apply_to_environment(saved_config)
     get_chat_model.cache_clear()
+    reset_model_composition_cache()
     get_orchestrator.cache_clear()
     get_repository_intelligence.cache_clear()
     document = config_service.load_document(redact_secrets=True)
