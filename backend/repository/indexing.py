@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from backend.jobs.queue import get_queue, register_handler
+from backend.observability.tracing import get_tracer
 from backend.persistence.database import get_store
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
 from backend.repository.chunking import Chunk, chunk_source
@@ -50,8 +51,15 @@ def index(repo_path: str | Path, *, tenant_id: str = DEFAULT_TENANT_ID, store: A
         content hash) are not counted.
     """
     root = Path(repo_path).resolve()
-    files = [str(path) for path in _iter_source_files(root)]
-    return reindex(files, repo_root=root, tenant_id=tenant_id, store=store)
+    with get_tracer().start_as_current_span(
+        "autodev.repo.index",
+        attributes={"repo.tenant_id": tenant_id},
+    ) as span:
+        files = [str(path) for path in _iter_source_files(root)]
+        span.set_attribute("repo.files_discovered", len(files))
+        written = reindex(files, repo_root=root, tenant_id=tenant_id, store=store)
+        span.set_attribute("repo.chunks_written", written)
+        return written
 
 
 def reindex(
@@ -82,17 +90,29 @@ def reindex(
     active_store = store if store is not None else get_store()
     root = (repo_root or Path.cwd()).resolve()
     written = 0
-    for raw_path in paths:
-        candidate = Path(raw_path)
-        absolute = candidate if candidate.is_absolute() else (root / candidate)
-        relative = _relative_path(absolute, root)
-        if not absolute.is_file():
-            _delete_chunks_for_file(active_store, relative, tenant_id)
-            continue
-        code = absolute.read_text(encoding="utf-8", errors="replace")
-        chunks = chunk_source(relative, code, "python")
-        written += _persist_chunks(active_store, relative, chunks, tenant_id)
-    return written
+    deleted = 0
+    requested = list(paths)
+    with get_tracer().start_as_current_span(
+        "autodev.repo.reindex",
+        attributes={
+            "repo.tenant_id": tenant_id,
+            "repo.files_requested": len(requested),
+        },
+    ) as span:
+        for raw_path in requested:
+            candidate = Path(raw_path)
+            absolute = candidate if candidate.is_absolute() else (root / candidate)
+            relative = _relative_path(absolute, root)
+            if not absolute.is_file():
+                _delete_chunks_for_file(active_store, relative, tenant_id)
+                deleted += 1
+                continue
+            code = absolute.read_text(encoding="utf-8", errors="replace")
+            chunks = chunk_source(relative, code, "python")
+            written += _persist_chunks(active_store, relative, chunks, tenant_id)
+        span.set_attribute("repo.chunks_written", written)
+        span.set_attribute("repo.files_deleted", deleted)
+        return written
 
 
 @register_handler("repo.index.reindex_file")

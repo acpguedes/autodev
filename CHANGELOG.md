@@ -25,6 +25,22 @@ epic summaries:
   propagation and in-flight reservations (ADR-006).
 - E3-S6 (visual flow editor) deferred to Beta alongside E10.
 
+### E7 — Context & RAG (deferred-DoD closure, 2026-08-10)
+
+- Indexing is traced: `index()` and `reindex()` emit `autodev.repo.index` /
+  `autodev.repo.reindex` spans with tenant, file counts and chunks written.
+- Context composition is traced: `ContextComposer.compose` emits
+  `autodev.context.compose` with a per-provider event. Neither the query nor item
+  content is recorded, and a failing provider contributes its exception type only.
+- **Hybrid retrieval fusion is configurable.** `retrieve()` and
+  `GET /v2/context/retrieve` accept `fusion_k`, `lexical_weight` and
+  `vector_weight`, and the response echoes the effective configuration. Previously
+  `reciprocal_rank_fusion` accepted `k`/`weights` but no caller forwarded them, so
+  fusion was unreachable from every caller including HTTP
+  (`docs/api/context_retrieval.md`).
+- Documentation corrected: `SupervisorPolicy` was described as pending "not wired"
+  work in four documents. It is superseded by E5's Router/Selector, not pending.
+
 ### E0 — Foundations & Hardening (complete, 2026-07-04, PRs #51–#52)
 
 - Containerized backend dev/test runtime with Makefile `container-*` targets.

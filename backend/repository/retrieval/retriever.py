@@ -10,13 +10,14 @@ and source attribution (file path + line span + which mode(s) surfaced it).
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from backend.repository.embeddings.pgvector_store import query_top_k
 from backend.repository.embeddings.provider import EmbeddingProvider, StubEmbeddingProvider
 from backend.repository.retrieval import lexical
-from backend.repository.retrieval.fusion import reciprocal_rank_fusion
+from backend.repository.retrieval.fusion import DEFAULT_RRF_K, reciprocal_rank_fusion
 
 RetrievalMode = Literal["lexical", "vector", "hybrid"]
 
@@ -84,6 +85,8 @@ def retrieve(
     budget: int | None = None,
     limit: int = 20,
     embedding_provider: EmbeddingProvider | None = None,
+    fusion_k: int = DEFAULT_RRF_K,
+    fusion_weights: Sequence[float] | None = None,
 ) -> list[Snippet]:
     """Retrieve the most relevant code snippets for *query*.
 
@@ -105,6 +108,12 @@ def retrieve(
             before fusion/truncation.
         embedding_provider: Provider used to embed *query* in vector/hybrid
             mode; defaults to :class:`StubEmbeddingProvider`.
+        fusion_k: Reciprocal Rank Fusion smoothing constant. Higher values
+            flatten the influence of an item's exact rank position. Applies to
+            ``"hybrid"`` mode only; ignored otherwise.
+        fusion_weights: Optional per-ranking weights as
+            ``(lexical_weight, vector_weight)``, defaulting to equal weight.
+            Applies to ``"hybrid"`` mode only; ignored otherwise.
 
     Returns:
         Snippets ordered by descending relevance, truncated to *budget*
@@ -112,7 +121,8 @@ def retrieve(
 
     Raises:
         ValueError: If *mode* is not one of ``"lexical"``, ``"vector"``, or
-            ``"hybrid"``.
+            ``"hybrid"``; if *fusion_k* is not positive; or if
+            *fusion_weights* is given with a length other than two.
     """
     if mode not in _VALID_MODES:
         raise ValueError(f"unknown retrieval mode: {mode!r}")
@@ -135,7 +145,13 @@ def retrieve(
         query_vector = provider.embed([query])[0]
         vector_results = query_top_k(conn, query_vector, tenant_id=tenant_id, k=limit)
 
-    chunk_ids, scores, sources = _combine(mode, lexical_results, vector_results)
+    chunk_ids, scores, sources = _combine(
+        mode,
+        lexical_results,
+        vector_results,
+        fusion_k=fusion_k,
+        fusion_weights=fusion_weights,
+    )
     if not chunk_ids:
         return []
 
@@ -162,8 +178,27 @@ def _combine(
     mode: RetrievalMode,
     lexical_results: list[tuple[int, float]],
     vector_results: list[tuple[int, float]],
+    *,
+    fusion_k: int = DEFAULT_RRF_K,
+    fusion_weights: Sequence[float] | None = None,
 ) -> tuple[list[int], dict[int, float], dict[int, str]]:
-    """Combine per-mode ranked results into chunk ids, scores, and source labels."""
+    """Combine per-mode ranked results into chunk ids, scores, and source labels.
+
+    Args:
+        mode: Retrieval mode that produced the results.
+        lexical_results: ``(chunk_id, rank_score)`` pairs from lexical search.
+        vector_results: ``(chunk_id, distance)`` pairs from vector search.
+        fusion_k: RRF smoothing constant, used in ``"hybrid"`` mode only.
+        fusion_weights: Optional ``(lexical, vector)`` weights, ``"hybrid"``
+            mode only.
+
+    Returns:
+        Ordered chunk ids, their scores by id, and their source label by id.
+
+    Raises:
+        ValueError: If *fusion_k* is not positive, or *fusion_weights* does not
+            have exactly two entries.
+    """
     if mode == "lexical":
         ids = [chunk_id for chunk_id, _rank in lexical_results]
         scores = dict(lexical_results)
@@ -178,7 +213,9 @@ def _combine(
 
     lexical_ids = [chunk_id for chunk_id, _rank in lexical_results]
     vector_ids = [chunk_id for chunk_id, _distance in vector_results]
-    fused = reciprocal_rank_fusion([lexical_ids, vector_ids])
+    fused = reciprocal_rank_fusion(
+        [lexical_ids, vector_ids], k=fusion_k, weights=fusion_weights
+    )
     ids = [chunk_id for chunk_id, _score in fused]
     scores = dict(fused)
     lexical_set, vector_set = set(lexical_ids), set(vector_ids)

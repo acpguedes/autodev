@@ -131,6 +131,8 @@ e2e). T1 render, T2 bidirectional edit, and T3 inline validation are all met.
   execution — see `docs/implementation/dynamic_orchestration.md`. This is real
   precedent for E3-S2's executor and E3-S4/E5's routing, but it is opt-in, linear
   per selected route, and not durable/replayable.
+  `SupervisorPolicy` is **superseded** by E5's Router/Selector and is not pending
+  work for E3 — see the note in `e5_routing_selection_evaluation.md`.
 - There is no visual flow editor today; E3-S6 explicitly depends on E10's base Design
   System and can stay minimal through Alpha.
 

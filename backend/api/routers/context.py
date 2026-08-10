@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from backend.persistence.database import get_store
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
+from backend.repository.retrieval.fusion import DEFAULT_RRF_K
 from backend.repository.retrieval.retriever import RetrievalFilters, retrieve
 
 router = APIRouter(prefix="/v2/context", tags=["context"])
@@ -42,6 +43,17 @@ def retrieve_context(
     symbol: str | None = Query(default=None, description="Restrict results to this exact symbol name"),
     budget: int | None = Query(default=None, ge=1, description="Max total estimated tokens across results"),
     limit: int = Query(default=20, ge=1, le=100, description="Max chunk ids considered per retrieval mode"),
+    fusion_k: int = Query(
+        default=DEFAULT_RRF_K,
+        ge=1,
+        description="Hybrid only: RRF smoothing constant; higher flattens rank influence",
+    ),
+    lexical_weight: float = Query(
+        default=1.0, ge=0.0, description="Hybrid only: weight of the lexical ranking during fusion"
+    ),
+    vector_weight: float = Query(
+        default=1.0, ge=0.0, description="Hybrid only: weight of the vector ranking during fusion"
+    ),
     store: Any = Depends(get_durable_store),
 ) -> dict[str, Any]:
     """Retrieve the most relevant code snippets for *query* via hybrid retrieval.
@@ -57,11 +69,20 @@ def retrieve_context(
             dropped first) rather than arbitrarily cut off.
         limit: Maximum number of chunk ids considered per underlying
             retrieval mode before fusion/truncation.
+        fusion_k: Reciprocal Rank Fusion smoothing constant. Only meaningful
+            in ``"hybrid"`` mode; ignored by the single-ranker modes.
+        lexical_weight: Weight applied to the lexical ranking during fusion.
+            Hybrid mode only. Set to ``0`` to fuse on vector rank alone while
+            still restricting candidates to both rankers.
+        vector_weight: Weight applied to the vector ranking during fusion.
+            Hybrid mode only.
         store: Durable store dependency.
 
     Returns:
-        ``{"query", "mode", "results": [{"chunkId", "filePath", "symbol",
-        "startLine", "endLine", "content", "score", "source"}, ...]}``.
+        ``{"query", "mode", "fusion", "results": [{"chunkId", "filePath",
+        "symbol", "startLine", "endLine", "content", "score", "source"}, ...]}``.
+        ``fusion`` echoes the effective fusion configuration, and is ``None``
+        outside hybrid mode.
 
     Raises:
         HTTPException: 422 for an unrecognized *mode*; 501 when the active
@@ -73,6 +94,7 @@ def retrieve_context(
     _require_postgres_store(store)
 
     filters = RetrievalFilters(path_prefix=path_prefix, symbol=symbol)
+    fusion_weights = (lexical_weight, vector_weight)
     with store.connect() as conn:
         snippets = retrieve(
             conn,
@@ -82,11 +104,22 @@ def retrieve_context(
             filters=filters,
             budget=budget,
             limit=limit,
+            fusion_k=fusion_k,
+            fusion_weights=fusion_weights,
         )
 
     return {
         "query": query,
         "mode": mode,
+        "fusion": (
+            {
+                "k": fusion_k,
+                "lexicalWeight": lexical_weight,
+                "vectorWeight": vector_weight,
+            }
+            if mode == "hybrid"
+            else None
+        ),
         "results": [
             {
                 "chunkId": snippet.chunk_id,
