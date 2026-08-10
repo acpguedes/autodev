@@ -82,9 +82,16 @@ Subtasks:
 
 - `SupervisorPolicy` (`backend/orchestrator/routing.py`) is defined but **not wired
   into the execution path** (`docs/feature_matrix.md` § Agent System) — it is the
-  direct precursor to E5-S1/E5-S2 and should inform the initial classifier/selector
-  design, but it currently has no cost policy, no capability matching against a real
+  direct precursor to E5-S1/E5-S2 and informed the initial classifier/selector
+  design, but it has no cost policy, no capability matching against a real
   Agent Registry, and no evaluation feedback.
+  **Resolved as superseded, not as debt:** E5 delivered `backend/routing/`
+  (`Router`, `Selector`, `policy`, `feedback`) as its replacement rather than
+  extending the cursor. `SupervisorPolicy` is imported by nothing but its own unit
+  test and is not scheduled for wiring; treat any remaining "not wired" note about
+  it as historical. The separate, still-open question is that the Router/Selector
+  is likewise not yet wired into `POST /chat/dynamic`, whose graph is compiled as a
+  fixed linear chain with no conditional edges.
 - There is no Evaluation Service and no evals today; E5-S3/E5-S4 start from zero.
 
 ## Epic exit checklist

@@ -104,17 +104,38 @@ Subtasks:
 ## Epic exit checklist
 
 - [ ] All 4 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
-      story-specific DoD above. **Partially met** — implemented and tested, but
-      the following story-specific DoD items are explicitly deferred (not
-      done): E7-S1's "indexing traces emitted" (no OTel spans added to
-      `backend/repository/indexing.py` in this pass) and "language-support
-      docs published"; E7-S2's "Recall/latency benchmark attached" (ADR-011
-      reasons about the HNSW-vs-IVFFlat trade-off but does not measure it —
-      see the epic scope notes: formal CNF benchmark suites were explicitly
-      out of scope for this implementation); E7-S3's "Recall/latency metrics
-      in the Evaluation Service" and a dedicated fusion-configuration doc
-      page; E7-S4's "per-step context traces" (composer failures are logged,
-      not traced via OTel spans).
+      story-specific DoD above. **Partially met.** Three previously deferred items
+      were closed on 2026-08-10:
+      - [x] E7-S1 "indexing traces emitted" — `index()` and `reindex()` now open
+            `autodev.repo.index` / `autodev.repo.reindex` spans carrying tenant,
+            file counts and chunks written.
+      - [x] E7-S4 "per-step context traces" — `ContextComposer.compose` opens
+            `autodev.context.compose` with a per-provider event. Child spans per
+            provider are deliberately not emitted: providers run concurrently and
+            are collected in submission order, so a span around `future.result()`
+            would time this thread's wait rather than the provider, and a
+            timed-out provider could not be closed honestly.
+      - [x] E7-S3 "fusion configuration docs" — `retrieve()` and
+            `GET /v2/context/retrieve` now accept `fusion_k` / `lexical_weight` /
+            `vector_weight` and echo the effective configuration, documented in
+            [`docs/api/context_retrieval.md`](../../api/context_retrieval.md).
+            Previously `reciprocal_rank_fusion` accepted `k`/`weights` but no
+            caller forwarded them, so there was no configuration surface to
+            document.
+
+      Still deferred, with reasons:
+      - E7-S1 "language-support docs published" — the registry indexes Python
+        only (`_LANGUAGE_REGISTRY`, `_INDEXED_EXTENSIONS`), so the story's
+        "indexes >= 10 languages" CF is unmet in code, not merely undocumented.
+        Adding languages is its own story.
+      - E7-S2 "Recall/latency benchmark attached" — ADR-011 reasons about the
+        HNSW-vs-IVFFlat trade-off but does not measure it; formal CNF benchmark
+        suites were explicitly out of scope, and every E7 test monkeypatches the
+        database, so no honest measurement can be produced without a live
+        PostgreSQL/pgvector instance.
+      - E7-S3 "Recall/latency metrics in the Evaluation Service" —
+        `backend/evals/` carries nothing retrieval-shaped. This is a new
+        surface, not wiring.
 - [x] Contract tests green for the Context Provider, Retriever, and EmbeddingProvider
       extension points (`test_context_providers.py`, `test_retrieval_retriever.py`,
       `test_context_api.py`, `test_embeddings_pgvector.py`).
