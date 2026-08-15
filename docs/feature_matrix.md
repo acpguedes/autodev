@@ -143,10 +143,15 @@ manifest, registry, and runtime docs.
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Request-ID tracing middleware | `default` | Attached via router loader `attach(app)` hook; `backend/observability/` |
-| Prometheus metrics endpoint | `default` | `GET /metrics` (Prometheus text); in-process registry |
-| OpenTelemetry tracing | `optional` | Used only when `opentelemetry` package is importable; not in `requirements.txt` |
+| OpenTelemetry traces | `default` | `autodev.run`/`autodev.run.step.*`/`autodev.dependency.*`/`autodev.decision.*`/`autodev.model.call`/`http.server *` spans; `opentelemetry` is a hard dependency in `requirements.txt` (E11-S1) |
+| OpenTelemetry metrics | `default` | Run/step/model/decision/queue/worker histograms and counters; `GET /metrics` (Prometheus text, in-process) plus the OTel path scraped from `otel-collector:9464` |
+| Structured JSON logs | `default` | One JSON object per line, correlated by `run_id`/`trace_id`, redacted by `TelemetryRedactionFilter`; `docs/ops/observability.md` |
+| Configurable sampling | `default` | `OTEL_TRACES_SAMPLER`/`OTEL_TRACES_SAMPLER_ARG`; defaults to `parentbased_traceidratio` at `1.0` |
+| Configurable signal retention | `default` | `AUTODEV_OBSERVABILITY_TRACE_RETENTION`/`_METRIC_RETENTION`/`_LOG_RETENTION`, operator-set per backend |
+| Self-hosted Grafana dashboard | `default` | `make observability-up`; ten-panel `autodev-overview` dashboard provisioned automatically |
+| Emergency rollback | `default` | `OTEL_ENABLED=false` falls back to no-op providers with zero Collector dependency |
 | Structured execution / action trace | `planned` | Tracked as Unit 30 in `mvp_refactor_plan.md` |
-| Grafana / Loki dashboards | `planned` | Tracked in roadmap release 0.9 |
+| Alert delivery + operational runbooks | `planned` | E11-S4 |
 
 ---
 

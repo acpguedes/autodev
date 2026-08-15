@@ -43,7 +43,10 @@ from backend.config.settings import get_settings
 from backend.coordination import get_cache, get_lock_manager
 from backend.jobs.queue import get_queue
 from backend.llm.factory import get_chat_model
-from backend.observability.tracing import configure_tracing
+from backend.observability.runtime import (
+    configure_observability,
+    shutdown_observability,
+)
 from backend.orchestrator.service import (
     AgentExecution,
     ExecutionPlan,
@@ -211,17 +214,25 @@ def get_repository_intelligence() -> RepositoryIntelligenceService:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    """Initialize infrastructure clients and the orchestrator on app startup."""
+    """Initialize application services and always shut down observability."""
     settings = get_settings()
-    configure_tracing(settings)
-    if settings.autodev_profile == "prod":
-        get_cache(settings)
-        get_lock_manager(settings)
-        get_artifact_store(settings)
-        get_queue(settings)
-    get_runtime_config_service().apply_to_environment()
-    get_orchestrator()
-    yield
+    runtime = configure_observability(settings)
+    try:
+        if settings.autodev_profile == "prod":
+            get_cache(settings)
+            get_lock_manager(settings)
+            get_artifact_store(settings)
+            get_queue(settings)
+        get_runtime_config_service().apply_to_environment()
+        get_orchestrator()
+        queue = get_queue(settings)
+        runtime.metric_sink.observe_queue(
+            backend=settings.autodev_job_backend,
+            callback=queue.stats,
+        )
+        yield
+    finally:
+        shutdown_observability()
 
 
 # Single source of truth for the API name/version, shared between the FastAPI

@@ -23,16 +23,32 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Callable, Protocol, Sequence
 
-from backend.evals.contract import EvalCase, EvalError, EvalResultConflictError, EvalSpec, TraceEvent
+from backend.evals.contract import (
+    EvalCase,
+    EvalError,
+    EvalResultConflictError,
+    EvalSpec,
+    TraceEvent,
+)
 from backend.evals.results import EVAL_RESULT_SCHEMA_VERSION, EvalResult, RunMetrics
 from backend.evals.runner import EvalRunner
-from backend.routing.contract import SELECT_SCHEMA_VERSION, AgentScoreAggregate, ScoreSnapshot
+from backend.observability.metrics import get_metric_sink
+from backend.routing.contract import (
+    SELECT_SCHEMA_VERSION,
+    AgentScoreAggregate,
+    ScoreSnapshot,
+)
 
 try:  # pragma: no cover - psycopg is a hard dependency per backend/requirements.txt
     import psycopg
 
-    _STORE_INTEGRITY_ERRORS: tuple[type[Exception], ...] = (sqlite3.IntegrityError, psycopg.IntegrityError)
-except ImportError:  # pragma: no cover - defensive: psycopg missing in a SQLite-only environment
+    _STORE_INTEGRITY_ERRORS: tuple[type[Exception], ...] = (
+        sqlite3.IntegrityError,
+        psycopg.IntegrityError,
+    )
+except (
+    ImportError
+):  # pragma: no cover - defensive: psycopg missing in a SQLite-only environment
     _STORE_INTEGRITY_ERRORS = (sqlite3.IntegrityError,)
 
 
@@ -49,11 +65,15 @@ class EvalResultStore(Protocol):
         """Persist one eval result document. Never overwrites an existing run."""
         ...
 
-    def get_eval_result(self, eval_id: str, eval_version: str, run_id: str) -> dict[str, Any] | None:
+    def get_eval_result(
+        self, eval_id: str, eval_version: str, run_id: str
+    ) -> dict[str, Any] | None:
         """Fetch one eval result document, or ``None`` if it does not exist."""
         ...
 
-    def list_eval_results(self, eval_id: str, eval_version: str | None = None) -> list[dict[str, Any]]:
+    def list_eval_results(
+        self, eval_id: str, eval_version: str | None = None
+    ) -> list[dict[str, Any]]:
         """List eval result documents for an id, newest first, optionally filtered by version."""
         ...
 
@@ -112,7 +132,10 @@ class EvaluationService:
         if spec.mode != "offline":
             raise EvalError(f"run_offline requires mode='offline', got {spec.mode!r}")
         run_id = run_id or str(uuid.uuid4())
-        self._emit("eval.run.started", {"evalId": spec.id, "evalVersion": spec.version, "runId": run_id})
+        self._emit(
+            "eval.run.started",
+            {"evalId": spec.id, "evalVersion": spec.version, "runId": run_id},
+        )
         try:
             evaluator_results, metrics = self._runner.run(spec, cases)
             gate_passed, gate_reason = self._runner.evaluate_gate(spec.gate, metrics)
@@ -132,12 +155,27 @@ class EvaluationService:
                 agent_id=spec.target.agent_id,
             )
             self._store_result(
-                eval_id=spec.id, eval_version=spec.version, run_id=run_id, document=result.to_document()
+                eval_id=spec.id,
+                eval_version=spec.version,
+                run_id=run_id,
+                document=result.to_document(),
             )
+            for evaluator_id, score in metrics.quality.items():
+                get_metric_sink().record_evaluation(
+                    agent_id=spec.target.agent_id or "",
+                    evaluator_id=evaluator_id,
+                    score=score,
+                    gate_passed=gate_passed,
+                )
         except EvalError as exc:
             self._emit(
                 "eval.run.failed",
-                {"evalId": spec.id, "evalVersion": spec.version, "runId": run_id, "error": str(exc)},
+                {
+                    "evalId": spec.id,
+                    "evalVersion": spec.version,
+                    "runId": run_id,
+                    "error": str(exc),
+                },
             )
             raise
         self._emit(
@@ -151,7 +189,9 @@ class EvaluationService:
         )
         return result
 
-    def register_online(self, spec: EvalSpec, *, run_id: str | None = None) -> dict[str, Any]:
+    def register_online(
+        self, spec: EvalSpec, *, run_id: str | None = None
+    ) -> dict[str, Any]:
         """Persist a typed-but-minimal record of an ``online`` eval spec.
 
         No traffic-splitting/A-B infrastructure exists yet (E5-S4, future
@@ -172,7 +212,9 @@ class EvaluationService:
                 result for ``(spec.id, spec.version, run_id)`` already exists.
         """
         if spec.mode != "online":
-            raise EvalError(f"register_online requires mode='online', got {spec.mode!r}")
+            raise EvalError(
+                f"register_online requires mode='online', got {spec.mode!r}"
+            )
         run_id = run_id or str(uuid.uuid4())
         online = spec.online
         ab_test = None
@@ -190,24 +232,35 @@ class EvaluationService:
             "evalVersion": spec.version,
             "runId": run_id,
             "mode": "online",
-            "dataset": {"ref": spec.dataset.ref, "split": spec.dataset.split, "size": spec.dataset.size},
+            "dataset": {
+                "ref": spec.dataset.ref,
+                "split": spec.dataset.split,
+                "size": spec.dataset.size,
+            },
             "evaluators": [],
             "metrics": RunMetrics().to_document(),
-            "gate": {"passed": True, "reason": "online mode: no offline gate evaluated"},
+            "gate": {
+                "passed": True,
+                "reason": "online mode: no offline gate evaluated",
+            },
             "online": {
                 "publishScores": online.publish_scores if online is not None else False,
                 "abTest": ab_test,
             },
             "createdAt": _utcnow(),
         }
-        self._store_result(eval_id=spec.id, eval_version=spec.version, run_id=run_id, document=document)
+        self._store_result(
+            eval_id=spec.id, eval_version=spec.version, run_id=run_id, document=document
+        )
         self._emit(
             "eval.run.registered_online",
             {"evalId": spec.id, "evalVersion": spec.version, "runId": run_id},
         )
         return document
 
-    def get_result(self, eval_id: str, eval_version: str, run_id: str) -> EvalResult | None:
+    def get_result(
+        self, eval_id: str, eval_version: str, run_id: str
+    ) -> EvalResult | None:
         """Fetch one persisted result.
 
         Args:
@@ -221,7 +274,9 @@ class EvaluationService:
         document = self._store.get_eval_result(eval_id, eval_version, run_id)
         return EvalResult.from_document(document) if document is not None else None
 
-    def list_results(self, eval_id: str, eval_version: str | None = None) -> list[EvalResult]:
+    def list_results(
+        self, eval_id: str, eval_version: str | None = None
+    ) -> list[EvalResult]:
         """List persisted results for an eval id, newest first.
 
         Args:
@@ -237,7 +292,11 @@ class EvaluationService:
         ]
 
     def publish_snapshot(
-        self, eval_id: str, *, eval_version: str | None = None, snapshot_id: str | None = None
+        self,
+        eval_id: str,
+        *,
+        eval_version: str | None = None,
+        snapshot_id: str | None = None,
     ) -> ScoreSnapshot:
         """Aggregate persisted results into a new, versioned score snapshot (E5-S4).
 
@@ -282,19 +341,27 @@ class EvaluationService:
         for result in results:
             by_agent[result.agent_id or "unknown"].append(result)
 
-        agent_scores = {agent_id: _aggregate_agent_results(runs) for agent_id, runs in by_agent.items()}
+        agent_scores = {
+            agent_id: _aggregate_agent_results(runs)
+            for agent_id, runs in by_agent.items()
+        }
         snapshot_id = snapshot_id or f"{eval_id}#{uuid.uuid4()}"
         snapshot = ScoreSnapshot(
             schema_version=SELECT_SCHEMA_VERSION,
             snapshot_id=snapshot_id,
-            scores={agent_id: aggregate.quality for agent_id, aggregate in agent_scores.items()},
+            scores={
+                agent_id: aggregate.quality
+                for agent_id, aggregate in agent_scores.items()
+            },
             agent_scores=agent_scores,
             sample_count=len(results),
             created_at=_utcnow(),
             source_run_ids=tuple(result.run_id for result in results),
         )
         self._store.create_score_snapshot(
-            snapshot_id=snapshot.snapshot_id, sample_count=snapshot.sample_count, document=snapshot.to_document()
+            snapshot_id=snapshot.snapshot_id,
+            sample_count=snapshot.sample_count,
+            document=snapshot.to_document(),
         )
         self._emit(
             "eval.scores.published",
@@ -308,7 +375,9 @@ class EvaluationService:
         )
         return snapshot
 
-    def _store_result(self, *, eval_id: str, eval_version: str, run_id: str, document: dict[str, Any]) -> None:
+    def _store_result(
+        self, *, eval_id: str, eval_version: str, run_id: str, document: dict[str, Any]
+    ) -> None:
         """Persist a result document, translating a store-level uniqueness
         violation into a typed :class:`~backend.evals.contract.EvalResultConflictError`.
 
@@ -331,7 +400,10 @@ class EvaluationService:
         """
         try:
             self._store.create_eval_result(
-                eval_id=eval_id, eval_version=eval_version, run_id=run_id, document=document
+                eval_id=eval_id,
+                eval_version=eval_version,
+                run_id=run_id,
+                document=document,
             )
         except _STORE_INTEGRITY_ERRORS as exc:
             raise EvalResultConflictError(
@@ -346,7 +418,11 @@ class EvaluationService:
             payload: Structured payload for the event.
         """
         if self._on_event is not None:
-            self._on_event(TraceEvent(sequence=-1, name=name, payload=payload, timestamp=time.time()))
+            self._on_event(
+                TraceEvent(
+                    sequence=-1, name=name, payload=payload, timestamp=time.time()
+                )
+            )
 
 
 def _utcnow() -> str:
@@ -366,12 +442,17 @@ def _aggregate_agent_results(results: Sequence[EvalResult]) -> AgentScoreAggrega
         scores), mean cost, mean p95 latency, and the contributing run count.
     """
     run_qualities = [
-        statistics.fmean(result.metrics.quality.values()) if result.metrics.quality else 0.0 for result in results
+        statistics.fmean(result.metrics.quality.values())
+        if result.metrics.quality
+        else 0.0
+        for result in results
     ]
     return AgentScoreAggregate(
         quality=statistics.fmean(run_qualities),
         cost_usd=statistics.fmean(result.metrics.cost_usd_mean for result in results),
-        latency_seconds=statistics.fmean(result.metrics.latency_p95_seconds for result in results),
+        latency_seconds=statistics.fmean(
+            result.metrics.latency_p95_seconds for result in results
+        ),
         sample_count=len(results),
     )
 

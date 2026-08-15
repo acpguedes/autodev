@@ -1,7 +1,7 @@
 # E11 — Observability, Security & Multi-tenant
 
 **Wave:** Beta
-**Status:** Not started · **Stories:** 0/4 complete
+**Status:** In progress · **Stories:** 1/4 complete
 **Depends on:** E0, E8, E9-S1, E4
 **Enables:** governs access, tenants, and quotas/budgets platform-wide; integrates backups (E8-S4); audit sink (additive) for E32 isolation records (environment profile, policy denials) and E33 secret audit events (create/rotate/revoke/resolve — references only, never values)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.7.5 (E11), §18.8, §18.9
@@ -18,12 +18,12 @@ in production; tenants have quotas and budgets that fail closed.
 
 ## Stories
 
-### E11-S1 — Observability (OpenTelemetry)
+### E11-S1 — Observability (OpenTelemetry) — complete (2026-08-15)
 
 Subtasks:
-- `E11-S1-T1`: traces/metrics/logs correlated by `run_id`/`trace_id`.
-- `E11-S1-T2`: OTel exporters and latency/error/cost dashboards.
-- `E11-S1-T3`: configurable sampling and retention.
+- `E11-S1-T1`: traces/metrics/logs correlated by `run_id`/`trace_id`. **Done.**
+- `E11-S1-T2`: OTel exporters and latency/error/cost dashboards. **Done.**
+- `E11-S1-T3`: configurable sampling and retention. **Done.**
 
 | Item | Content |
 | --- | --- |
@@ -32,6 +32,7 @@ Subtasks:
 | DoR | E0 (observability base) ready; OTel backend provisioned |
 | DoD | End-to-end trace correlation verified; dashboards published; observability docs |
 | Dependencies | E0 |
+| Evidence | `docs/ops/observability.md`; `scripts/verify_observability_stack.py` (live stack check, all four backends healthy); `scripts/measure_observability_overhead.py` (instrumentation overhead ~2.6–2.8%, target <5%); ADR-017 |
 
 ### E11-S2 — RBAC and authentication
 

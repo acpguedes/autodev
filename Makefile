@@ -165,7 +165,7 @@ run-frontend: ## Start the Next.js dev server
 # --------------------------------------------------------------------------
 # Container-first E0 workflow
 # --------------------------------------------------------------------------
-.PHONY: container-build container-up container-up-full container-shell container-test container-check container-down container-logs docker-up docker-down run_secret_scanning security-scan
+.PHONY: container-build container-up container-up-full container-shell container-test container-check container-down container-logs docker-up docker-down observability-up observability-verify observability-down run_secret_scanning security-scan
 
 container-build: ## Build the backend dev/test container
 	$(COMPOSE) build backend
@@ -204,6 +204,17 @@ container-logs: ## Follow backend container logs
 docker-up: container-up ## Alias for container-up
 
 docker-down: container-down ## Alias for container-down
+
+observability-up: ## Boot the backend and local OSS three-signal stack
+	OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 \
+	$(COMPOSE) --profile observability up --build -d \
+	backend tempo loki otel-collector prometheus grafana
+
+observability-verify: ## Emit and query a deterministic metric, trace, and log
+	$(PY) scripts/verify_observability_stack.py
+
+observability-down: ## Stop the observability profile while preserving its volumes
+	$(COMPOSE) --profile observability down
 
 # --------------------------------------------------------------------------
 # CI parity: everything the pipelines run

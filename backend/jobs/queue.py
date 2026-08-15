@@ -1,32 +1,26 @@
-"""Async job-queue abstraction with an in-process default.
-
-``InProcessJobQueue`` runs jobs in a ``ThreadPoolExecutor`` and keeps results
-in a plain dict — suitable for development and single-process deployments.
-
-``RedisJobQueue`` persists job state in Redis and runs registered handlers from
-the current worker process.
-
-``get_queue()`` returns the module-level ``InProcessJobQueue`` singleton by
-default.
-"""
+"""Async in-process and Redis job-queue implementations."""
 
 from __future__ import annotations
 
-import os
 import json
+import os
 import threading
 import time
 import uuid
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
+from opentelemetry.trace import SpanKind
+
 from backend.config.settings import Settings
-
-# ---------------------------------------------------------------------------
-# Abstract base
-# ---------------------------------------------------------------------------
-
+from backend.observability.context import (
+    attach_execution_context,
+    capture_execution_context,
+)
+from backend.observability.metrics import QueueSnapshot
+from backend.observability.tracing import get_tracer
 
 class AbstractJobQueue(ABC):
     """Minimal async-job-queue interface."""
@@ -37,23 +31,14 @@ class AbstractJobQueue(ABC):
 
     @abstractmethod
     def get(self, job_id: str) -> dict:
-        """Return the current state of *job_id*.
+        """Return the five-field public state record for *job_id*."""
 
-        The returned dict always contains:
-        - ``job_id``: str
-        - ``job_type``: str
-        - ``status``: one of ``"pending"`` | ``"running"`` | ``"done"`` | ``"error"``
-        - ``result``: any (``None`` while pending/running)
-        - ``error``: str | None
-        """
+    @abstractmethod
+    def stats(self) -> QueueSnapshot:
+        """Return a bounded snapshot of queue and worker state."""
 
-
-# ---------------------------------------------------------------------------
-# Built-in job handlers
-# ---------------------------------------------------------------------------
 
 _JobHandler = Callable[[dict], Any]
-
 _HANDLERS: dict[str, _JobHandler] = {}
 
 
@@ -74,10 +59,6 @@ def _echo(payload: dict) -> dict:
     return {"echoed": payload}
 
 
-# ---------------------------------------------------------------------------
-# In-process queue
-# ---------------------------------------------------------------------------
-
 _STATUS_PENDING = "pending"
 _STATUS_RUNNING = "running"
 _STATUS_DONE = "done"
@@ -94,12 +75,10 @@ class InProcessJobQueue(AbstractJobQueue):
             max_workers: Maximum number of jobs to run concurrently.
         """
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
+        self._max_workers = max_workers
         self._store: dict[str, dict] = {}
+        self._execution_contexts: dict[str, dict[str, str]] = {}
         self._lock = threading.Lock()
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def enqueue(self, job_type: str, payload: dict) -> str:
         """Submit a job to the thread pool for asynchronous execution.
@@ -111,18 +90,31 @@ class InProcessJobQueue(AbstractJobQueue):
         Returns:
             The generated job id.
         """
-        job_id = str(uuid.uuid4())
-        record: dict = {
-            "job_id": job_id,
-            "job_type": job_type,
-            "status": _STATUS_PENDING,
-            "result": None,
-            "error": None,
-        }
-        with self._lock:
-            self._store[job_id] = record
-
-        self._executor.submit(self._run, job_id, job_type, payload)
+        with get_tracer().start_as_current_span(
+            "autodev.job.enqueue",
+            kind=SpanKind.PRODUCER,
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            carrier = capture_execution_context()
+            for name, value in _correlation_span_attributes(carrier).items():
+                span.set_attribute(name, value)
+            job_id = str(uuid.uuid4())
+            record: dict = {
+                "job_id": job_id, "job_type": job_type,
+                "status": _STATUS_PENDING,
+                "result": None, "error": None,
+            }
+            with self._lock:
+                self._store[job_id] = record
+                self._execution_contexts[job_id] = carrier
+            try:
+                self._executor.submit(self._run, job_id, job_type, payload)
+            except Exception:
+                with self._lock:
+                    self._store.pop(job_id, None)
+                    self._execution_contexts.pop(job_id, None)
+                raise
         return job_id
 
     def get(self, job_id: str) -> dict:
@@ -138,17 +130,26 @@ class InProcessJobQueue(AbstractJobQueue):
             record = self._store.get(job_id)
         if record is None:
             return {
-                "job_id": job_id,
-                "job_type": "unknown",
+                "job_id": job_id, "job_type": "unknown",
                 "status": _STATUS_ERROR,
-                "result": None,
-                "error": f"Unknown job_id: {job_id!r}",
+                "result": None, "error": f"Unknown job_id: {job_id!r}",
             }
         return dict(record)
 
-    # ------------------------------------------------------------------
-    # Internal
-    # ------------------------------------------------------------------
+    def stats(self) -> QueueSnapshot:
+        """Return pending/running counts and in-process worker utilization.
+
+        Returns:
+            A snapshot captured atomically under the queue state lock.
+        """
+        with self._lock:
+            pending = sum(
+                record["status"] == _STATUS_PENDING for record in self._store.values()
+            )
+            running = sum(
+                record["status"] == _STATUS_RUNNING for record in self._store.values()
+            )
+        return QueueSnapshot(pending, running, self._max_workers, running)
 
     def _run(self, job_id: str, job_type: str, payload: dict) -> None:
         """Execute a job's handler in the worker thread and record its outcome.
@@ -160,16 +161,26 @@ class InProcessJobQueue(AbstractJobQueue):
         """
         with self._lock:
             self._store[job_id]["status"] = _STATUS_RUNNING
-
-        handler = _HANDLERS.get(job_type)
-        if handler is None:
-            with self._lock:
-                self._store[job_id]["status"] = _STATUS_ERROR
-                self._store[job_id]["error"] = f"No handler registered for job_type {job_type!r}."
-            return
-
+            carrier = self._execution_contexts[job_id]
         try:
-            result = handler(payload)
+            with attach_execution_context(carrier):
+                with get_tracer().start_as_current_span(
+                    "autodev.job.execute",
+                    kind=SpanKind.CONSUMER,
+                    attributes=_correlation_span_attributes(carrier),
+                    record_exception=False,
+                    set_status_on_exception=False,
+                ):
+                    handler = _HANDLERS.get(job_type)
+                    if handler is None:
+                        with self._lock:
+                            self._store[job_id]["status"] = _STATUS_ERROR
+                            self._store[job_id]["error"] = (
+                                "No handler registered for job_type "
+                                f"{job_type!r}."
+                            )
+                        return
+                    result = handler(payload)
             with self._lock:
                 self._store[job_id]["status"] = _STATUS_DONE
                 self._store[job_id]["result"] = result
@@ -177,11 +188,9 @@ class InProcessJobQueue(AbstractJobQueue):
             with self._lock:
                 self._store[job_id]["status"] = _STATUS_ERROR
                 self._store[job_id]["error"] = str(exc)
-
-
-# ---------------------------------------------------------------------------
-# Redis queue
-# ---------------------------------------------------------------------------
+        finally:
+            with self._lock:
+                self._execution_contexts.pop(job_id, None)
 
 
 class RedisJobQueue(AbstractJobQueue):
@@ -215,15 +224,16 @@ class RedisJobQueue(AbstractJobQueue):
                 import redis as _redis  # type: ignore[import-untyped]
             except ImportError as exc:
                 raise RuntimeError("redis package is not installed.") from exc
-
             redis_url = (url or os.environ.get("AUTODEV_REDIS_URL", "")).strip()
             if not redis_url:
                 raise RuntimeError("AUTODEV_REDIS_URL is required for RedisJobQueue.")
             client = _redis.from_url(redis_url)
-
         self._client = client
         self._client.ping()
         self._poll_interval = poll_interval
+        self._worker_enabled = start_worker
+        self._busy_workers = 0
+        self._busy_lock = threading.Lock()
         if start_worker:
             thread = threading.Thread(target=self._worker_loop, daemon=True)
             thread.start()
@@ -238,19 +248,38 @@ class RedisJobQueue(AbstractJobQueue):
         Returns:
             The generated job id.
         """
-        job_id = str(uuid.uuid4())
-        self._client.hset(
-            self._job_key(job_id),
-            mapping={
-                "job_id": job_id,
-                "job_type": job_type,
+        with get_tracer().start_as_current_span(
+            "autodev.job.enqueue",
+            kind=SpanKind.PRODUCER,
+            record_exception=False,
+            set_status_on_exception=False,
+        ) as span:
+            carrier = capture_execution_context()
+            for name, value in _correlation_span_attributes(carrier).items():
+                span.set_attribute(name, value)
+            job_id = str(uuid.uuid4())
+            key = self._job_key(job_id)
+            mapping: Mapping[Any, Any] = {
+                "job_id": job_id, "job_type": job_type,
                 "payload": json.dumps(payload),
                 "status": _STATUS_PENDING,
-                "result": "null",
-                "error": "",
-            },
-        )
-        self._client.rpush(self._pending_key, job_id)
+                "result": "null", "error": "",
+                "otel_traceparent": carrier.get("traceparent", ""),
+                "otel_tracestate": carrier.get("tracestate", ""),
+                "otel_baggage": carrier.get("baggage", ""),
+                "correlation_request_id": carrier.get("correlation_request_id", ""),
+                "correlation_run_id": carrier.get("correlation_run_id", ""),
+                "correlation_tenant_id": carrier.get("correlation_tenant_id", ""),
+            }
+            self._client.hset(key, mapping=mapping)
+            try:
+                self._client.rpush(self._pending_key, job_id)
+            except Exception:
+                try:
+                    self._client.delete(key)
+                except Exception:
+                    self._client.hdel(key, *mapping)
+                raise
         return job_id
 
     def get(self, job_id: str) -> dict:
@@ -265,19 +294,29 @@ class RedisJobQueue(AbstractJobQueue):
         record = _decode_hash(self._client.hgetall(self._job_key(job_id)))
         if not record:
             return {
-                "job_id": job_id,
-                "job_type": "unknown",
+                "job_id": job_id, "job_type": "unknown",
                 "status": _STATUS_ERROR,
-                "result": None,
-                "error": f"Unknown job_id: {job_id!r}",
+                "result": None, "error": f"Unknown job_id: {job_id!r}",
             }
         return {
-            "job_id": record["job_id"],
-            "job_type": record["job_type"],
+            "job_id": record["job_id"], "job_type": record["job_type"],
             "status": record["status"],
             "result": json.loads(record.get("result") or "null"),
             "error": record.get("error") or None,
         }
+
+    def stats(self) -> QueueSnapshot:
+        """Return Redis queue depth and worker activity owned by this process.
+
+        Returns:
+            Pending list depth plus current-process worker state.
+        """
+        pending = int(self._client.llen(self._pending_key))
+        with self._busy_lock:
+            busy_workers = self._busy_workers
+        return QueueSnapshot(
+            pending, busy_workers, 1 if self._worker_enabled else 0, busy_workers
+        )
 
     def run_pending_once(self) -> bool:
         """Pop and run a single pending job, if any.
@@ -309,21 +348,38 @@ class RedisJobQueue(AbstractJobQueue):
         record = _decode_hash(self._client.hgetall(key))
         if not record:
             return
-
-        self._client.hset(key, mapping={"status": _STATUS_RUNNING})
-        handler = _HANDLERS.get(record["job_type"])
-        if handler is None:
-            self._client.hset(
-                key,
-                mapping={
-                    "status": _STATUS_ERROR,
-                    "error": f"No handler registered for job_type {record['job_type']!r}.",
-                },
-            )
-            return
-
+        carrier = {
+            "traceparent": record.get("otel_traceparent", ""),
+            "tracestate": record.get("otel_tracestate", ""),
+            "baggage": record.get("otel_baggage", ""),
+            "correlation_request_id": record.get("correlation_request_id", ""),
+            "correlation_run_id": record.get("correlation_run_id", ""),
+            "correlation_tenant_id": record.get("correlation_tenant_id", ""),
+        }
+        with self._busy_lock:
+            self._busy_workers += 1
         try:
-            result = handler(json.loads(record.get("payload") or "{}"))
+            self._client.hset(key, mapping={"status": _STATUS_RUNNING})
+            with attach_execution_context(carrier):
+                with get_tracer().start_as_current_span(
+                    "autodev.job.execute",
+                    kind=SpanKind.CONSUMER,
+                    attributes=_correlation_span_attributes(carrier),
+                    record_exception=False,
+                    set_status_on_exception=False,
+                ):
+                    handler = _HANDLERS.get(record["job_type"])
+                    if handler is None:
+                        self._client.hset(
+                            key,
+                            mapping={
+                                "status": _STATUS_ERROR,
+                                "error": "No handler registered for job_type "
+                                f"{record['job_type']!r}.",
+                            },
+                        )
+                        return
+                    result = handler(json.loads(record.get("payload") or "{}"))
             self._client.hset(
                 key,
                 mapping={
@@ -336,21 +392,16 @@ class RedisJobQueue(AbstractJobQueue):
             self._client.hset(
                 key,
                 mapping={
-                    "status": _STATUS_ERROR,
-                    "result": "null",
-                    "error": str(exc),
+                    "status": _STATUS_ERROR, "result": "null", "error": str(exc),
                 },
             )
+        finally:
+            self._client.hdel(key, *_REDIS_EXECUTION_CONTEXT_FIELDS)
+            with self._busy_lock:
+                self._busy_workers -= 1
 
     def _job_key(self, job_id: str) -> str:
-        """Build the Redis hash key storing a job's record.
-
-        Args:
-            job_id: Identifier of the job.
-
-        Returns:
-            The fully qualified Redis key.
-        """
+        """Build the Redis hash key storing ``job_id``."""
         return f"autodev:jobs:{job_id}"
 
 
@@ -380,21 +431,37 @@ def _decode_hash(record: dict[Any, Any]) -> dict[str, str]:
     return {_decode_value(key): _decode_value(value) for key, value in record.items()}
 
 
-# ---------------------------------------------------------------------------
-# Factory / singleton
-# ---------------------------------------------------------------------------
+_REDIS_EXECUTION_CONTEXT_FIELDS = (
+    "otel_traceparent",
+    "otel_tracestate",
+    "otel_baggage",
+    "correlation_request_id",
+    "correlation_run_id",
+    "correlation_tenant_id",
+)
+
+
+def _correlation_span_attributes(carrier: Mapping[str, str]) -> dict[str, str]:
+    """Build content-free span attributes from a sanitized execution carrier."""
+    keys = {
+        "correlation_request_id": "autodev.request_id",
+        "correlation_run_id": "autodev.run_id",
+        "correlation_step_id": "autodev.step_id",
+        "correlation_tenant_id": "autodev.tenant_id",
+    }
+    return {
+        attribute: carrier[key]
+        for key, attribute in keys.items()
+        if carrier.get(key)
+    }
+
 
 _queue_singleton: AbstractJobQueue | None = None
 _queue_lock = threading.Lock()
 
 
 def get_queue(settings: Settings | None = None) -> AbstractJobQueue:
-    """Return the active job queue (singleton).
-
-    Returns :class:`RedisJobQueue` only when ``redis`` is importable **and**
-    ``AUTODEV_JOB_BACKEND`` equals ``"redis"`` (case-insensitive).
-    Otherwise returns :class:`InProcessJobQueue`.
-    """
+    """Return the configured process-wide queue singleton."""
     global _queue_singleton
 
     with _queue_lock:

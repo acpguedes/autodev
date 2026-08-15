@@ -1,0 +1,16 @@
+groups:
+  - name: autodev-observability
+    rules:
+      - record: autodev:http_error_ratio:rate5m
+        expr: |
+          sum(rate(http_server_request_duration_count{http_response_status_code=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(http_server_request_duration_count[5m])), 1)
+      - record: autodev:http_latency_p95_seconds:rate5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, http_route) (
+              rate(http_server_request_duration_bucket[5m])
+            )
+          )

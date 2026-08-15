@@ -22,6 +22,10 @@ import shutil
 import subprocess
 from typing import Sequence
 
+from opentelemetry import trace
+
+from backend.observability.context import sanitize_identifier
+from backend.observability.tracing import trace_dependency
 from backend.validation.models import ValidationJob, ValidationResult
 
 # Default allowlist used when none is supplied.  All entries are allow-listed
@@ -55,6 +59,37 @@ class SandboxRunner:
 
         Returns a *skipped* result (no subprocess is spawned) when the
         ``AUTODEV_ENABLE_SANDBOX`` environment variable is not set.
+        """
+        with trace_dependency(kind="sandbox", name="validation") as dependency_trace:
+            result = self._execute(job)
+            trace.get_current_span().set_attribute(
+                "autodev.sandbox.backend", sanitize_identifier(result.backend)
+            )
+            if result.skipped:
+                status = "skipped"
+            elif result.returncode == 0:
+                status = "success"
+            else:
+                status = "failed"
+            if result.backend == "blocked":
+                error_code = "command_blocked"
+            elif result.backend == "unavailable":
+                error_code = "sandbox_unavailable"
+            elif status == "failed":
+                error_code = "validation_failed"
+            else:
+                error_code = ""
+            dependency_trace.finish(status=status, error_code=error_code)
+            return result
+
+    def _execute(self, job: ValidationJob) -> ValidationResult:
+        """Execute the existing sandbox policy inside dependency tracing.
+
+        Args:
+            job: Validation command and working directory.
+
+        Returns:
+            The bounded validation result.
         """
         if not os.environ.get("AUTODEV_ENABLE_SANDBOX"):
             return ValidationResult(

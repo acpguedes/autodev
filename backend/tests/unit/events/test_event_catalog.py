@@ -7,6 +7,7 @@ import re
 import pytest
 from pydantic import BaseModel, ValidationError
 
+from backend.events.bus import InMemoryEventBus
 from backend.events.catalog import (
     EVENT_CATALOG,
     SCHEMA_VERSION_EVENTS,
@@ -16,6 +17,9 @@ from backend.events.catalog import (
     is_compatible_evolution,
     make_envelope,
 )
+from backend.events.runtime import emit_event
+from backend.observability.tracing import get_tracer
+from backend.tests.observability_helpers import capture_observability
 
 _NAME_RE = re.compile(r"^[a-z]+(\.[a-z]+){1,2}$")
 
@@ -63,6 +67,23 @@ def test_make_envelope_stamps_canonical_fields() -> None:
     assert envelope.partitionKey == "run_1"
     assert envelope.traceId == "trace-1"
     assert envelope.data == {"stepKey": "coder", "status": "succeeded", "attempt": 1}
+
+
+def test_event_envelope_inherits_active_w3c_trace_id() -> None:
+    """An omitted event trace id inherits the active operational trace."""
+    bus = InMemoryEventBus()
+    with capture_observability():
+        with get_tracer().start_as_current_span("producer") as span:
+            emit_event(
+                "flow.run.started",
+                tenant_id="tenant-1",
+                partition_key="run-1",
+                data={"flowId": "autodev/test", "flowVersion": "1.0.0"},
+                bus=bus,
+            )
+            expected = f"{span.get_span_context().trace_id:032x}"
+
+    assert bus.replay("run-1")[0].traceId == expected
 
 
 def test_make_envelope_rejects_unknown_type_and_bad_payload() -> None:

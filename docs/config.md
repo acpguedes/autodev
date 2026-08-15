@@ -149,7 +149,15 @@ expire.
 | `AUTODEV_MINIO_ACCESS_KEY` | empty | MinIO/S3 access key. |
 | `AUTODEV_MINIO_SECRET_KEY` | empty | MinIO/S3 secret key. |
 | `AUTODEV_MINIO_SECURE` | `false` | Use TLS for MinIO/S3. |
+| `OTEL_ENABLED` | `true` | Master switch for tracing/metrics/logging export. `false` is the emergency rollback: spans, metrics, and structured logs still run in-process (no-op export), with zero Collector dependency. |
 | `OTEL_SERVICE_NAME` | `autodev-backend` | OpenTelemetry service name. |
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | OTLP collector endpoint. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | Default OTLP/HTTP collector endpoint for all three signals. |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | empty | Per-signal trace endpoint override. |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | empty | Per-signal metric endpoint override. |
+| `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | empty | Per-signal log endpoint override. |
 | `OTEL_TRACES_SAMPLER` | `parentbased_traceidratio` | Trace sampler. |
 | `OTEL_TRACES_SAMPLER_ARG` | `1.0` | Sampling ratio argument. |
+| `OTEL_METRIC_EXPORT_INTERVAL_MS` | `5000` | Periodic metric export interval. |
+| `AUTODEV_OBSERVABILITY_TRACE_RETENTION` | `168h` | Tempo compactor retention for `make observability-up`. |
+| `AUTODEV_OBSERVABILITY_METRIC_RETENTION` | `15d` | Prometheus `--storage.tsdb.retention.time`. |
+| `AUTODEV_OBSERVABILITY_LOG_RETENTION` | `168h` | Loki `limits_config.retention_period`. |

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+
 try:
     from enum import StrEnum
 except ImportError:  # pragma: no cover - Python < 3.11 compatibility
@@ -13,6 +14,7 @@ except ImportError:  # pragma: no cover - Python < 3.11 compatibility
         """Fallback StrEnum compatible with Python 3.10."""
 
         pass
+
 
 from typing import Any, Dict, Iterable, List, Mapping, TypedDict
 from pathlib import Path
@@ -37,7 +39,7 @@ from backend.agents import (
 from backend.events.runtime import emit_event
 from backend.persistence import DurableStore, get_store
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
-from backend.observability.tracing import trace_run_step
+from backend.observability.tracing import trace_run, trace_run_step
 
 
 @dataclass(slots=True)
@@ -166,7 +168,11 @@ class OrchestratorRun:
             "current_state": self.current_state,
             "history": [item.to_dict() for item in self.history],
             "results": [
-                {"agent": result.agent, "content": result.content, "metadata": dict(result.metadata)}
+                {
+                    "agent": result.agent,
+                    "content": result.content,
+                    "metadata": dict(result.metadata),
+                }
                 for result in self.results
             ],
             "steps": [step.to_dict() for step in self.steps],
@@ -301,7 +307,9 @@ class OrchestratorService:
             tenant_id=DEFAULT_TENANT_ID,
         )
 
-        return PlanSession(session_id=session_id, goal=goal, plan=plan_steps, status=status)
+        return PlanSession(
+            session_id=session_id, goal=goal, plan=plan_steps, status=status
+        )
 
     def handle_message(self, session_id: str, message: str) -> OrchestratorRun:
         """Run the agent graph for a new message in an existing session.
@@ -316,7 +324,9 @@ class OrchestratorService:
         Raises:
             KeyError: If ``session_id`` does not exist.
         """
-        session_record = self._store.get_session(session_id, tenant_id=DEFAULT_TENANT_ID)
+        session_record = self._store.get_session(
+            session_id, tenant_id=DEFAULT_TENANT_ID
+        )
         if session_record is None:
             raise KeyError(f"Unknown session_id: {session_id}")
 
@@ -334,17 +344,58 @@ class OrchestratorService:
             steps=[],
             tenant_id=DEFAULT_TENANT_ID,
         )
+        flow_id = f"orchestrator.{run_type}"
+        with trace_run(
+            run_id=run_id,
+            tenant_id=DEFAULT_TENANT_ID,
+            flow_id=flow_id,
+        ) as run_trace:
+            result = self._execute_message_run(
+                session_record=session_record,
+                session_id=session_id,
+                message=message,
+                run_id=run_id,
+                run_type=run_type,
+                flow_id=flow_id,
+            )
+            run_trace.finish(status="completed")
+            return result
+
+    def _execute_message_run(
+        self,
+        *,
+        session_record: dict[str, Any],
+        session_id: str,
+        message: str,
+        run_id: str,
+        run_type: RunType,
+        flow_id: str,
+    ) -> OrchestratorRun:
+        """Execute and durably persist one already-created orchestration run.
+
+        Args:
+            session_record: Persisted session state used to build agent context.
+            session_id: Session being continued.
+            message: User message driving the run.
+            run_id: Already-persisted run identifier.
+            run_type: Explicit workflow category selected for the message.
+            flow_id: Stable observability flow identifier.
+
+        Returns:
+            The completed orchestration run after all persistence succeeds.
+        """
         emit_event(
             "flow.run.started",
             tenant_id=DEFAULT_TENANT_ID,
             partition_key=run_id,
-            data={"flowId": f"orchestrator.{run_type}", "flowVersion": "1.0.0"},
+            data={"flowId": flow_id, "flowVersion": "1.0.0"},
             subject={"runId": run_id, "sessionId": session_id},
         )
-
         history = [
             HistoryItem(role=record["role"], content=record["content"])
-            for record in self._store.list_messages(session_id, tenant_id=DEFAULT_TENANT_ID)
+            for record in self._store.list_messages(
+                session_id, tenant_id=DEFAULT_TENANT_ID
+            )
         ]
         user_entry = HistoryItem(role="user", content=message)
         context = AgentContext(
@@ -354,7 +405,6 @@ class OrchestratorService:
             history=[item.to_dict() for item in history] + [user_entry.to_dict()],
             artifacts=dict(session_record["artifacts"] or {}),
         )
-
         initial_state: AgentGraphState = {
             "context": context,
             "results": [],
@@ -367,7 +417,18 @@ class OrchestratorService:
         results = list(final_state["results"])
         steps = list(final_state["steps"])
         current_state = final_state["current_state"]
-
+        next_history = [HistoryItem(**item) for item in final_context.history]
+        self._store.append_messages(
+            session_id,
+            run_id,
+            [item.to_dict() for item in next_history],
+            tenant_id=DEFAULT_TENANT_ID,
+        )
+        self._store.update_session_artifacts(
+            session_id,
+            self._clone_artifacts(final_context.artifacts),
+            tenant_id=DEFAULT_TENANT_ID,
+        )
         self._store.update_run(
             run_id=run_id,
             status=RunStatus.COMPLETED,
@@ -390,18 +451,6 @@ class OrchestratorService:
             data={"status": "completed", "costUsd": 0.0, "tokens": 0},
             subject={"runId": run_id, "sessionId": session_id},
         )
-
-        next_history = [HistoryItem(**item) for item in final_context.history]
-        self._store.append_messages(
-            session_id,
-            run_id,
-            [item.to_dict() for item in next_history],
-            tenant_id=DEFAULT_TENANT_ID,
-        )
-        self._store.update_session_artifacts(
-            session_id, self._clone_artifacts(final_context.artifacts), tenant_id=DEFAULT_TENANT_ID
-        )
-
         return OrchestratorRun(
             run_id=run_id,
             session_id=session_id,
@@ -459,7 +508,9 @@ class OrchestratorService:
         Raises:
             KeyError: If ``session_id`` does not exist.
         """
-        session_record = self._store.get_session(session_id, tenant_id=DEFAULT_TENANT_ID)
+        session_record = self._store.get_session(
+            session_id, tenant_id=DEFAULT_TENANT_ID
+        )
         if session_record is None:
             raise KeyError(f"Unknown session_id: {session_id}")
         return [
@@ -473,7 +524,9 @@ class OrchestratorService:
         Raises:
             KeyError: If ``session_id`` does not exist.
         """
-        session_record = self._store.get_session(session_id, tenant_id=DEFAULT_TENANT_ID)
+        session_record = self._store.get_session(
+            session_id, tenant_id=DEFAULT_TENANT_ID
+        )
         if session_record is None:
             raise KeyError(f"Unknown session_id: {session_id}")
 
@@ -509,7 +562,9 @@ class OrchestratorService:
         """
         execution_plan = self.build_execution_plan(session_id)
         if not execution_plan.tasks:
-            raise ValueError("No executable tasks are available for the requested session.")
+            raise ValueError(
+                "No executable tasks are available for the requested session."
+            )
 
         run_id = str(uuid4())
         self._store.create_run(
@@ -526,7 +581,9 @@ class OrchestratorService:
 
         history = [
             HistoryItem(role=record["role"], content=record["content"])
-            for record in self._store.list_messages(session_id, tenant_id=DEFAULT_TENANT_ID)
+            for record in self._store.list_messages(
+                session_id, tenant_id=DEFAULT_TENANT_ID
+            )
         ]
         execution_entry = HistoryItem(
             role="executor",
@@ -609,7 +666,9 @@ class OrchestratorService:
         """Build a :class:`SessionSummary` from a raw store session record."""
         history = [
             HistoryItem(role=item["role"], content=item["content"])
-            for item in self._store.list_messages(record["id"], tenant_id=DEFAULT_TENANT_ID)
+            for item in self._store.list_messages(
+                record["id"], tenant_id=DEFAULT_TENANT_ID
+            )
         ]
         return SessionSummary(
             session_id=record["id"],
@@ -789,6 +848,7 @@ class OrchestratorService:
         }
         try:
             from backend.agents.registry import discover_agents
+
             for n, a in discover_agents(self._project_root).items():
                 agents.setdefault(n, a)
         except Exception:
@@ -824,6 +884,7 @@ class OrchestratorService:
                 step_id=agent_name,
                 agent=agent.name,
                 status=StepStatus.COMPLETED,
+                tenant_id=DEFAULT_TENANT_ID,
             ):
                 agent_result: AgentResult = agent.run(context)
             execution = AgentExecution(
@@ -856,7 +917,9 @@ class OrchestratorService:
 
         return node
 
-    def _clone_artifacts(self, artifacts: Mapping[str, Mapping[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    def _clone_artifacts(
+        self, artifacts: Mapping[str, Mapping[str, Any]]
+    ) -> Dict[str, Dict[str, Any]]:
         """Deep-copy one level of an artifacts mapping so callers can mutate it safely."""
         return {name: dict(meta) for name, meta in artifacts.items()}
 
@@ -865,15 +928,26 @@ class OrchestratorService:
         combined = f"{goal} {message}".lower()
         if any(keyword in combined for keyword in ("doc", "readme", "documentation")):
             return RunType.DOCUMENTATION_UPDATE
-        if any(keyword in combined for keyword in ("infra", "deploy", "docker", "kubernetes", "terraform")):
+        if any(
+            keyword in combined
+            for keyword in ("infra", "deploy", "docker", "kubernetes", "terraform")
+        ):
             return RunType.DEVOPS_CHANGE
-        if any(keyword in combined for keyword in ("validate", "validation", "test", "lint", "typecheck")):
+        if any(
+            keyword in combined
+            for keyword in ("validate", "validation", "test", "lint", "typecheck")
+        ):
             return RunType.VALIDATION_ONLY
-        if any(keyword in combined for keyword in ("bootstrap", "greenfield", "new project", "from scratch")):
+        if any(
+            keyword in combined
+            for keyword in ("bootstrap", "greenfield", "new project", "from scratch")
+        ):
             return RunType.GREENFIELD_BOOTSTRAP
         return RunType.EXISTING_REPO_CHANGE
 
-    def _normalize_execution_history(self, history: List[HistoryItem]) -> List[HistoryItem]:
+    def _normalize_execution_history(
+        self, history: List[HistoryItem]
+    ) -> List[HistoryItem]:
         """Reorder history so non-executor entries precede executor progress entries."""
         if not history:
             return []
@@ -884,4 +958,9 @@ class OrchestratorService:
 
     def _timestamp(self) -> str:
         """Return the current UTC timestamp, second precision, in ``Z``-suffixed ISO 8601."""
-        return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        return (
+            datetime.now(timezone.utc)
+            .replace(microsecond=0)
+            .isoformat()
+            .replace("+00:00", "Z")
+        )

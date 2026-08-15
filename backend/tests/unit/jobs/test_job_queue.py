@@ -24,6 +24,7 @@ from backend.jobs.queue import (
     _reset_queue_singleton,
     get_queue,
 )
+from backend.observability.metrics import QueueSnapshot
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +94,19 @@ def test_inprocess_initial_status_is_pending_or_running_or_done() -> None:
     assert rec["status"] in {"pending", "running", "done", "error"}
 
 
+def test_inprocess_enqueue_rolls_back_when_executor_rejects_submission() -> None:
+    """A rejected executor submission leaves no pending record or carrier."""
+    queue = InProcessJobQueue(max_workers=1)
+    queue._executor.shutdown(wait=True)  # noqa: SLF001 - force deterministic rejection
+
+    with pytest.raises(RuntimeError, match="cannot schedule new futures"):
+        queue.enqueue("echo", {"message": "not-scheduled"})
+
+    assert queue.stats() == QueueSnapshot(0, 0, 1, 0)
+    assert queue._store == {}  # noqa: SLF001 - rollback contract
+    assert queue._execution_contexts == {}  # noqa: SLF001 - carrier rollback contract
+
+
 class _FakeRedisQueueClient:
     """In-memory stand-in for a Redis client, used to test :class:`RedisJobQueue`."""
 
@@ -114,6 +128,14 @@ class _FakeRedisQueueClient:
         """Return a copy of an in-memory hash's fields."""
         return dict(self.hashes.get(key, {}))
 
+    def hdel(self, key: str, *fields: str) -> int:
+        """Delete fields from an in-memory hash."""
+        record = self.hashes.setdefault(key, {})
+        deleted = sum(field in record for field in fields)
+        for field in fields:
+            record.pop(field, None)
+        return deleted
+
     def rpush(self, key: str, value: str) -> int:
         """Append a value to an in-memory list."""
         self.queues.setdefault(key, []).append(value)
@@ -125,6 +147,10 @@ class _FakeRedisQueueClient:
         if not values:
             return None
         return values.pop(0)
+
+    def llen(self, key: str) -> int:
+        """Return the current length of an in-memory list."""
+        return len(self.queues.setdefault(key, []))
 
 
 def test_redis_queue_persists_pending_job_and_runs_registered_handler() -> None:

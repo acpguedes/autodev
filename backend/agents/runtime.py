@@ -11,7 +11,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-from backend.agents.manifest import AgentBudgets, AgentManifest, ValidationError, validate_agent_io
+from opentelemetry.trace import Status, StatusCode
+
+from backend.agents.manifest import (
+    AgentBudgets,
+    AgentManifest,
+    ValidationError,
+    validate_agent_io,
+)
 from backend.agents.provider import LLMProvider, StubLLMProvider
 from backend.agents.tools import AgentToolBroker
 from backend.context.composer import ContextComposer
@@ -26,7 +33,8 @@ from backend.llm.contracts import (
 from backend.llm.gateway import ModelGateway
 from backend.llm.model_config import ModelConfig
 from backend.llm.registry import resolve_model_config
-from backend.observability.tracing import trace_run_step
+from backend.observability.context import bind_correlation_context, sanitize_identifier
+from backend.observability.tracing import get_tracer, trace_dependency, trace_run_step
 
 
 def _model_metrics(attempts: list[AttemptTelemetry]) -> dict[str, float | int]:
@@ -233,7 +241,14 @@ class AgentRuntimeContext:
             tool_call=tool_call,
         )
 
-    def record_step(self, name: str, *, status: str = "completed", reason: str = "", detail: str = "") -> None:
+    def record_step(
+        self,
+        name: str,
+        *,
+        status: str = "completed",
+        reason: str = "",
+        detail: str = "",
+    ) -> None:
         """Record a traced step in the run's execution timeline.
 
         Args:
@@ -247,8 +262,14 @@ class AgentRuntimeContext:
         """
         started = time.perf_counter()
         self._ledger.record_step()
-        with trace_run_step(run_id=self.run_id, step_id=name, agent=self.manifest.id, status=status):
-            pass
+        with trace_run_step(
+            run_id=self.run_id,
+            step_id=name,
+            agent=self.manifest.id,
+            status=status,
+            tenant_id=self.tenant_id,
+        ) as step_trace:
+            step_trace.finish(status=status, error_code=reason)
         elapsed_ms = (time.perf_counter() - started) * 1000
         self._steps.append(AgentRuntimeStep(name, status, reason, detail, elapsed_ms))
 
@@ -267,7 +288,19 @@ class AgentRuntimeContext:
             ToolAccessDenied: If the tool is not granted or not registered.
         """
         self._ledger.consume(tool_call=True)
-        return self._broker.call_tool(tool_id, **kwargs)
+        with trace_dependency(
+            kind="tool",
+            name=tool_id,
+            run_id=self.run_id,
+            tenant_id=self.tenant_id,
+        ) as dependency_trace:
+            try:
+                result = self._broker.call_tool(tool_id, **kwargs)
+            except Exception:
+                dependency_trace.finish(status="failed", error_code="dependency_failed")
+                raise
+            dependency_trace.finish(status="completed")
+            return result
 
     def call_skill(self, skill_id: str, **kwargs: Any) -> Any:
         """Invoke a granted skill, counting it against the tool-call budget.
@@ -284,7 +317,19 @@ class AgentRuntimeContext:
             ToolAccessDenied: If the skill is not granted or not registered.
         """
         self._ledger.consume(tool_call=True)
-        return self._broker.call_skill(skill_id, **kwargs)
+        with trace_dependency(
+            kind="skill",
+            name=skill_id,
+            run_id=self.run_id,
+            tenant_id=self.tenant_id,
+        ) as dependency_trace:
+            try:
+                result = self._broker.call_skill(skill_id, **kwargs)
+            except Exception:
+                dependency_trace.finish(status="failed", error_code="dependency_failed")
+                raise
+            dependency_trace.finish(status="completed")
+            return result
 
     def call_llm(self, prompt: str) -> str:
         """Complete a prompt and track usage against the run's budgets.
@@ -449,33 +494,133 @@ class AgentRuntime:
             model_override,
             self._model_config,
         )
-        if self._context_composer is not None:
-            ctx.context_items = self._context_composer.compose(context_query, tenant_id=tenant_id).items
+        with bind_correlation_context(run_id=active_run_id, tenant_id=tenant_id):
+            with get_tracer().start_as_current_span(
+                "autodev.agent.run",
+                attributes={
+                    "autodev.agent_id": sanitize_identifier(manifest.id),
+                    "autodev.run_id": sanitize_identifier(active_run_id),
+                    "autodev.tenant_id": sanitize_identifier(tenant_id),
+                },
+                record_exception=False,
+                set_status_on_exception=False,
+            ) as span:
+                try:
+                    if self._context_composer is not None:
+                        ctx.context_items = self._context_composer.compose(
+                            context_query, tenant_id=tenant_id
+                        ).items
+                    result = self._execute_agent(ctx, handler, active_budgets)
+                except BaseException:
+                    span.set_status(Status(StatusCode.ERROR, "unhandled_error"))
+                    raise
+                span.set_attributes(
+                    {
+                        "autodev.status": sanitize_identifier(result.status),
+                        "autodev.stop_reason": sanitize_identifier(result.stop_reason),
+                    }
+                )
+                if result.status in {"failed", "interrupted", "blocked"}:
+                    span.set_status(Status(StatusCode.ERROR, result.stop_reason))
+                return result
 
+    def _execute_agent(
+        self,
+        ctx: AgentRuntimeContext,
+        handler: AgentHandler | Any,
+        budgets: AgentBudgets,
+    ) -> AgentRunResult:
+        """Execute validation, handler, and guardrails inside an agent span.
+
+        Args:
+            ctx: Prepared runtime context for the run.
+            handler: Callable or object exposing ``run(ctx)``.
+            budgets: Effective budgets enforced for the run.
+
+        Returns:
+            The terminal run result while preserving the public timeline.
+        """
         try:
-            validate_agent_io(manifest, payload, "input")
+            validate_agent_io(ctx.manifest, ctx.input, "input")
             ctx.record_step("validate-input", status="completed")
-            ctx.record_step("run-handler", status="running")
-            output = self._invoke_handler(handler, ctx)
+            handler_started = time.perf_counter()
+            ctx._ledger.record_step()
+            with trace_run_step(
+                run_id=ctx.run_id,
+                step_id="run-handler",
+                agent=ctx.manifest.id,
+                tenant_id=ctx.tenant_id,
+            ) as handler_trace:
+                try:
+                    output = self._invoke_handler(handler, ctx)
+                except BudgetExceeded:
+                    handler_trace.finish(status="failed", error_code="budget_exhausted")
+                    ctx._steps.append(
+                        AgentRuntimeStep(
+                            "run-handler",
+                            "failed",
+                            "budget_exhausted",
+                            elapsed_ms=(time.perf_counter() - handler_started) * 1000,
+                        )
+                    )
+                    raise
+                except ValidationError:
+                    handler_trace.finish(status="failed", error_code="invalid_output")
+                    ctx._steps.append(
+                        AgentRuntimeStep(
+                            "run-handler",
+                            "failed",
+                            "invalid_output",
+                            elapsed_ms=(time.perf_counter() - handler_started) * 1000,
+                        )
+                    )
+                    raise
+                except Exception:
+                    handler_trace.finish(status="failed", error_code="handler_failed")
+                    ctx._steps.append(
+                        AgentRuntimeStep(
+                            "run-handler",
+                            "failed",
+                            "handler_failed",
+                            elapsed_ms=(time.perf_counter() - handler_started) * 1000,
+                        )
+                    )
+                    raise
+                handler_trace.finish(status="completed")
+            elapsed_ms = (time.perf_counter() - handler_started) * 1000
+            ctx._steps.append(
+                AgentRuntimeStep("run-handler", "completed", "", "", elapsed_ms)
+            )
             ctx.record_step("handler-completed", status="completed")
-            validate_agent_io(manifest, output, "output")
+            validate_agent_io(ctx.manifest, output, "output")
             ctx.record_step("validate-output", status="completed")
-            violation = self._guardrail_violation(manifest, output)
+            violation = self._guardrail_violation(ctx.manifest, output)
             if violation:
-                ctx.record_step("guardrail-output", status="failed", reason="guardrail_blocked", detail=violation)
-                return self._result(ctx, "blocked", "guardrail_blocked", True, None, active_budgets)
-            return self._result(ctx, "completed", "completed", False, output, active_budgets)
+                ctx.record_step(
+                    "guardrail-output",
+                    status="failed",
+                    reason="guardrail_blocked",
+                    detail=violation,
+                )
+                return self._result(
+                    ctx, "blocked", "guardrail_blocked", True, None, budgets
+                )
+            return self._result(ctx, "completed", "completed", False, output, budgets)
         except BudgetExceeded as exc:
             self._append_failed_step(ctx, "budget", "budget_exhausted", str(exc))
-            return self._result(ctx, "interrupted", "budget_exhausted", True, None, active_budgets)
+            return self._result(
+                ctx, "interrupted", "budget_exhausted", True, None, budgets
+            )
         except ValidationError as exc:
             self._append_failed_step(ctx, "validate-output", "invalid_output", str(exc))
-            return self._result(ctx, "failed", "invalid_output", True, None, active_budgets)
+            return self._result(ctx, "failed", "invalid_output", True, None, budgets)
         except Exception as exc:  # noqa: BLE001 - runtime isolates agent failures
             self._append_failed_step(ctx, "handler-error", "handler_failed", str(exc))
-            return self._result(ctx, "failed", "handler_failed", True, None, active_budgets)
+            return self._result(ctx, "failed", "handler_failed", True, None, budgets)
 
-    def _invoke_handler(self, handler: AgentHandler | Any, ctx: AgentRuntimeContext) -> dict[str, Any]:
+    def _invoke_handler(
+        self, handler: AgentHandler | Any, ctx: AgentRuntimeContext
+    ) -> dict[str, Any]:
         """Invoke a handler, accepting either a callable or a ``run(ctx)``-style object.
 
         Args:
@@ -499,7 +644,9 @@ class AgentRuntime:
             raise ValidationError("agent output must be an object")
         return output
 
-    def _guardrail_violation(self, manifest: AgentManifest, output: dict[str, Any]) -> str:
+    def _guardrail_violation(
+        self, manifest: AgentManifest, output: dict[str, Any]
+    ) -> str:
         """Check agent output against denylist guardrails declared in its policy.
 
         Args:
@@ -518,11 +665,18 @@ class AgentRuntime:
                 continue
             action = guardrail.get("onViolation", "block")
             for term in guardrail.get("terms", []):
-                if isinstance(term, str) and term and term in rendered and action == "block":
+                if (
+                    isinstance(term, str)
+                    and term
+                    and term in rendered
+                    and action == "block"
+                ):
                     return f"denylist term {term!r} matched output"
         return ""
 
-    def _append_failed_step(self, ctx: AgentRuntimeContext, name: str, reason: str, detail: str) -> None:
+    def _append_failed_step(
+        self, ctx: AgentRuntimeContext, name: str, reason: str, detail: str
+    ) -> None:
         """Append a failed step to the run's timeline and emit a trace event.
 
         Args:
@@ -531,9 +685,17 @@ class AgentRuntime:
             reason: Machine-readable failure reason code.
             detail: Human-readable failure detail.
         """
-        with trace_run_step(run_id=ctx.run_id, step_id=name, agent=ctx.manifest.id, status="failed"):
-            pass
-        ctx._steps.append(AgentRuntimeStep(name=name, status="failed", reason=reason, detail=detail))
+        with trace_run_step(
+            run_id=ctx.run_id,
+            step_id=name,
+            agent=ctx.manifest.id,
+            status="failed",
+            tenant_id=ctx.tenant_id,
+        ) as step_trace:
+            step_trace.finish(status="failed", error_code=reason)
+        ctx._steps.append(
+            AgentRuntimeStep(name=name, status="failed", reason=reason, detail=detail)
+        )
 
     def _result(
         self,
@@ -608,7 +770,9 @@ class AgentRuntime:
         """
         module_file = base_dir / f"{module_name.rsplit('.', 1)[-1]}.py"
         if module_file.exists():
-            spec = importlib.util.spec_from_file_location(f"_autodev_agent_{module_name}", module_file)
+            spec = importlib.util.spec_from_file_location(
+                f"_autodev_agent_{module_name}", module_file
+            )
             if spec is None or spec.loader is None:
                 raise ImportError(f"Cannot import {module_name} from {module_file}")
             module = importlib.util.module_from_spec(spec)
