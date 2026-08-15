@@ -49,6 +49,14 @@ class _FakeRedisQueueClient:
         """Return a copy of an in-memory hash's fields."""
         return dict(self.hashes.get(key, {}))
 
+    def hdel(self, key: str, *fields: str) -> int:
+        """Delete fields from an in-memory hash."""
+        record = self.hashes.setdefault(key, {})
+        deleted = sum(field in record for field in fields)
+        for field in fields:
+            record.pop(field, None)
+        return deleted
+
     def rpush(self, key: str, value: str) -> int:
         """Append a value to an in-memory list."""
         self.queues.setdefault(key, []).append(value)
@@ -60,6 +68,10 @@ class _FakeRedisQueueClient:
         if not values:
             return None
         return values.pop(0)
+
+    def llen(self, key: str) -> int:
+        """Return the current length of an in-memory list."""
+        return len(self.queues.setdefault(key, []))
 
 
 @pytest.fixture(autouse=True)

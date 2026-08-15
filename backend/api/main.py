@@ -216,7 +216,7 @@ def get_repository_intelligence() -> RepositoryIntelligenceService:
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """Initialize application services and always shut down observability."""
     settings = get_settings()
-    configure_observability(settings)
+    runtime = configure_observability(settings)
     try:
         if settings.autodev_profile == "prod":
             get_cache(settings)
@@ -225,6 +225,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             get_queue(settings)
         get_runtime_config_service().apply_to_environment()
         get_orchestrator()
+        queue = get_queue(settings)
+        runtime.metric_sink.observe_queue(
+            backend=settings.autodev_job_backend,
+            callback=queue.stats,
+        )
         yield
     finally:
         shutdown_observability()
