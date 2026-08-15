@@ -1512,7 +1512,7 @@ receivers:
 
 This retains and groups alerts in the OSS Alertmanager UI. The observability runbook must explain how operators replace or mount this receiver with their SMTP/webhook integration; do not hardcode external credentials.
 
-- [ ] Add the Alertmanager service to the existing `observability` profile, exposing port `9093`, mounting the config read-only, enabling `no-new-privileges`, and using a named data volume for silences. Pin the image to the current production release `prom/alertmanager:v0.32.1`. Do not create a second observability profile.
+- [ ] Add the Alertmanager service to the existing `observability` profile, exposing port `9093`, mounting the config read-only, enabling `no-new-privileges`, and using a named data volume for silences. Pin the image to the current production release `prom/alertmanager:v0.33.1`. Do not create a second observability profile.
 
 - [ ] Write `e11_incident_response.md` with executable sections:
 

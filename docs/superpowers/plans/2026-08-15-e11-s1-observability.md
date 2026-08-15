@@ -1319,23 +1319,23 @@ autodev_worker_utilization
 
 ```yaml
 otel-collector:
-  image: otel/opentelemetry-collector-contrib:0.153.0
+  image: otel/opentelemetry-collector-contrib:0.158.0
   profiles: ["observability"]
 
 prometheus:
-  image: prom/prometheus:v3.12.0
+  image: prom/prometheus:v3.13.1
   profiles: ["observability"]
 
 tempo:
-  image: grafana/tempo:2.10.7
+  image: grafana/tempo:2.10.8
   profiles: ["observability"]
 
 loki:
-  image: grafana/loki:3.7.3
+  image: grafana/loki:3.7.6
   profiles: ["observability"]
 
 grafana:
-  image: grafana/grafana:13.1.1
+  image: grafana/grafana:13.1.3
   profiles: ["observability"]
 ```
 
