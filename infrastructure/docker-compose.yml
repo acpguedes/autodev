@@ -194,10 +194,27 @@ services:
       - "9090:9090"
     depends_on:
       - otel-collector
+      - alertmanager
     security_opt:
       - no-new-privileges:true
     mem_limit: 512m
     pids_limit: 256
+
+  alertmanager:
+    image: prom/alertmanager:v0.33.1
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - autodev_alertmanager:/alertmanager
+    ports:
+      - "9093:9093"
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 128
 
   tempo:
     image: grafana/tempo:2.10.8
@@ -263,6 +280,7 @@ volumes:
   autodev_redis:
   autodev_minio:
   autodev_prometheus:
+  autodev_alertmanager:
   autodev_tempo:
   autodev_loki:
   autodev_grafana:

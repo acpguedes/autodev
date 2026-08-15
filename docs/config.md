@@ -134,6 +134,8 @@ expire.
 | `AUTODEV_ENABLE_SANDBOX` | `false` | Enables validation command execution. |
 | `AUTODEV_SANDBOX_ALLOW_LOCAL` | `false` | Allows unsandboxed local fallback. |
 | `AUTODEV_SANDBOX_DOCKER_NETWORK` | `none` | Docker network mode for sandbox jobs. |
+| `AUTODEV_SANDBOX_TIMEOUT_SECONDS` | `300` | Maximum wall-clock duration for one sandboxed job (1-3600s); a killed job returns code `124` (E11-S4). |
+| `AUTODEV_TRUSTED_IN_PROCESS_PLUGINS` | empty | Comma-separated operator allowlist of `in-process` plugin ids permitted in production; ADR-020 (E11-S4). |
 | `AUTODEV_DYNAMIC_ORCH` | `false` | Enables dynamic orchestration endpoint behavior. |
 | `AUTODEV_REPO_PROVIDER` | `lexical` | Repository provider selector. |
 | `AUTODEV_JOB_BACKEND` | `inprocess` | `inprocess` or `redis`. |
@@ -146,9 +148,11 @@ expire.
 | `AUTODEV_ARTIFACT_RETENTION_DAYS` | `7` | Age guard for unreferenced-artifact GC; `-1` keeps objects forever (E8-S3). |
 | `AUTODEV_MINIO_ENDPOINT` | empty | MinIO/S3 endpoint. |
 | `AUTODEV_MINIO_BUCKET` | `autodev-artifacts` | Reserved legacy setting; v2 E0-S6 uses logical buckets documented in `docs/ops/storage.md`. |
-| `AUTODEV_MINIO_ACCESS_KEY` | empty | MinIO/S3 access key. |
-| `AUTODEV_MINIO_SECRET_KEY` | empty | MinIO/S3 secret key. |
+| `AUTODEV_MINIO_ACCESS_KEY` | empty | MinIO/S3 access key. **Required in production**; rejected if it equals a known-default value (E11-S4). |
+| `AUTODEV_MINIO_SECRET_KEY` | empty | MinIO/S3 secret key. **Required in production**; rejected if it equals a known-default value (E11-S4). |
 | `AUTODEV_MINIO_SECURE` | `false` | Use TLS for MinIO/S3. |
+| `AUTODEV_POSTGRES_PASSWORD` | empty | PostgreSQL password substituted into `DATABASE_URL`/Compose. **Required in production** when `DATABASE_URL` is `postgresql://`/`postgres://`; rejected if it equals a known-default value (`autodev`, `minioadmin`, `password`, `changeme`, `change-me`, case-insensitive) — E11-S4. |
+| `AUTODEV_BACKUP_STATUS_PATH` | `.autodev/backup-status.json` | Durable, sanitized backup-health status file (mode `0600`); source of the `autodev_backup_*` Prometheus gauges (E11-S4). |
 | `OTEL_ENABLED` | `true` | Master switch for tracing/metrics/logging export. `false` is the emergency rollback: spans, metrics, and structured logs still run in-process (no-op export), with zero Collector dependency. |
 | `OTEL_SERVICE_NAME` | `autodev-backend` | OpenTelemetry service name. |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | empty | Default OTLP/HTTP collector endpoint for all three signals. |

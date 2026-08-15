@@ -9,6 +9,43 @@ The v2.0 platform rewrite is underway on `main`. Per-story detail lives in
 [`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) (Changelog section);
 epic summaries:
 
+### E11-S4 — Execution Security and Runbooks (Beta slice, 2026-08-15)
+
+- Trusted-only in-process plugin boundary (ADR-020): production requires an
+  explicit `AUTODEV_TRUSTED_IN_PROCESS_PLUGINS` grant, and rejects a trusted
+  `in-process` plugin outright if it declares `runtime.isolation` or requests
+  a privileged permission block. `plugin.yaml`/`hostApi` are unchanged.
+- Typed `SandboxPolicy` replaces raw environment reads in the validation
+  sandbox: read-only container root filesystem with a bounded `/tmp`, a
+  read-only mount of only the resolved/guarded workspace, a bounded timeout
+  (return code `124` on kill), and a mandatory, non-skippable real-Docker CI
+  security contract (network denial, workspace-only exposure, no privilege
+  escalation).
+- `make run_secret_scanning` scans the full working tree (tracked and
+  untracked, git-ignored excluded) via a read-only bind mount instead of a
+  stale container-image copy. The Trivy SCA gate widened to
+  `HIGH,CRITICAL` severity across both vulnerabilities and licenses with
+  `ignore-unfixed: false`, governed by an expiring, auditable exception
+  policy (`.trivyignore.yaml` + `scripts/validate_security_exceptions.py`).
+- `Settings.redacted_model_dump()` is the sole credential-redaction policy:
+  `DATABASE_URL`/`AUTODEV_REDIS_URL` mask when they embed a password,
+  `AUTODEV_MINIO_ACCESS_KEY`/`_SECRET_KEY` always mask. Production rejects
+  an empty or known-default PostgreSQL/MinIO credential; Compose no longer
+  bakes in a fallback credential for either.
+- PostgreSQL backup/restore fails closed (previously silently skipped) when
+  configured but `pg_dump`/`pg_restore` is missing, and passes the database
+  password only via `PGPASSWORD`, never argv or error text. Every backup
+  attempt is durably recorded (sanitized, `0600`) and exposed as
+  `autodev_backup_*` Prometheus gauges through the E11-S1 meter.
+- New Alertmanager service under the existing `observability` Compose
+  profile; `AutoDevBackupNeverSucceeded`/`AutoDevBackupStale`/
+  `AutoDevBackupFailing` alerts each link
+  `docs/v2_platform/runbooks/e11_incident_response.md`.
+- **Production compatibility note:** a deployment relying on the previous
+  silent-skip behavior for a misconfigured PostgreSQL backup, or on a
+  default PostgreSQL/MinIO credential, must supply real tooling/credentials
+  before upgrading — both now fail closed instead of degrading silently.
+
 ### E11-S1 — Observability (OpenTelemetry) (Beta slice, 2026-08-15)
 
 - Self-hosted three-signal stack — OpenTelemetry Collector, Prometheus, Tempo,

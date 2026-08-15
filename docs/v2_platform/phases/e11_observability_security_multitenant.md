@@ -64,12 +64,12 @@ Subtasks:
 | DoD | Isolation and budget-overrun tests; quota dashboard; docs |
 | Dependencies | E8, E4, E11-S2 |
 
-### E11-S4 — Execution security and runbooks
+### E11-S4 — Execution security and runbooks — complete (2026-08-15)
 
 Subtasks:
-- `E11-S4-T1`: no-network-by-default sandbox and explicit plugin permissions.
-- `E11-S4-T2`: secret management and dependency/secret scanning.
-- `E11-S4-T3`: incident/restore runbooks and alerts.
+- `E11-S4-T1`: no-network-by-default sandbox and explicit plugin permissions. **Done.**
+- `E11-S4-T2`: secret management and dependency/secret scanning. **Done.**
+- `E11-S4-T3`: incident/restore runbooks and alerts. **Done.**
 
 | Item | Content |
 | --- | --- |
@@ -78,6 +78,7 @@ Subtasks:
 | DoR | E1 (plugin permissions) and a base Execution Sandbox available |
 | DoD | Sandbox network-denial test; runbooks published; alerts configured |
 | Dependencies | E1, E8-S4 |
+| Evidence | ADR-020 (trusted-only in-process plugin boundary); `backend/tests/integration/test_sandbox_security_contract.py` (3/3 passed, zero skips, live Docker); `.trivyignore.yaml` + `scripts/validate_security_exceptions.py` (HIGH/CRITICAL vuln+license Trivy gate); `infrastructure/observability/alertmanager.yml` + `prometheus-rules.yml` `autodev-e11-s4-backup` group (`promtool`/`amtool` both SUCCESS, live-verified against a running Prometheus/Alertmanager); `docs/v2_platform/runbooks/e11_incident_response.md` |
 
 ## v1 precursor / starting point
 
