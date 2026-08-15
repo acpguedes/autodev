@@ -8,20 +8,12 @@ from typing import Any, Iterator
 
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
-    BatchSpanProcessor,
-    SimpleSpanProcessor,
     SpanExporter,
 )
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 from backend.config.settings import Settings, get_settings
-
-_configured = False
-_provider: TracerProvider | None = None
 
 
 def configure_tracing(
@@ -42,30 +34,14 @@ def configure_tracing(
             back to ``settings.otel_service_name``.
     """
 
-    global _configured, _provider
-    if _provider is not None and span_exporter is not None:
-        _provider.add_span_processor(SimpleSpanProcessor(span_exporter))
-        return
-    if _configured:
-        return
+    from backend.observability.runtime import configure_observability
 
-    active = settings or get_settings()
-    provider = TracerProvider(
-        resource=Resource.create(
-            {"service.name": service_name or active.otel_service_name}
-        )
+    configure_observability(
+        settings or get_settings(),
+        span_exporter=span_exporter,
+        service_name=service_name,
+        install_global=span_exporter is None,
     )
-    if span_exporter is not None:
-        provider.add_span_processor(SimpleSpanProcessor(span_exporter))
-    elif active.otel_exporter_otlp_endpoint.strip():
-        provider.add_span_processor(
-            BatchSpanProcessor(
-                OTLPSpanExporter(endpoint=active.otel_exporter_otlp_endpoint)
-            )
-        )
-    trace.set_tracer_provider(provider)
-    _provider = provider
-    _configured = True
 
 
 def get_tracer() -> trace.Tracer:
@@ -74,8 +50,9 @@ def get_tracer() -> trace.Tracer:
     Returns:
         The ``"backend.observability"`` tracer.
     """
-    configure_tracing()
-    return trace.get_tracer("backend.observability")
+    from backend.observability.runtime import get_tracer as runtime_get_tracer
+
+    return runtime_get_tracer()
 
 
 def step_span_attributes(

@@ -60,6 +60,7 @@ neither.
 | ADR-014 | Secret Store Format | Proposed | E33 | 2026-07-17 |
 | ADR-015 | Global Installation Strategy | Proposed | E34 | 2026-07-17 |
 | ADR-016 | AutoDev-Owned Provider-Neutral Model Gateway Boundary | Accepted | E2-S6 | 2026-08-05 |
+| ADR-017 | Three-Signal Observability Runtime and OSS Backends | Accepted | E11-S1 | 2026-08-15 |
 
 > Update this table whenever an ADR or RFC is added or changes status. This index,
 > together with `docs/v2_platform/progress.md`, is the fastest way to see which

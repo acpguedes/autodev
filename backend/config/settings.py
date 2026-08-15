@@ -21,12 +21,25 @@ _SECRET_FIELDS = {
     "openai_api_key",
     "autodev_api_token",
     "autodev_minio_secret_key",
+    "otel_exporter_otlp_endpoint",
+    "otel_exporter_otlp_traces_endpoint",
+    "otel_exporter_otlp_metrics_endpoint",
+    "otel_exporter_otlp_logs_endpoint",
 }
 
 # Shared defaults so the UI URL and the CORS allowlist can never drift: the
 # default UI URL is, by definition, the first default CORS origin.
 _DEFAULT_CORS_ORIGINS = "http://localhost:3000,http://127.0.0.1:3000"
 _DEFAULT_UI_URL = _DEFAULT_CORS_ORIGINS.split(",")[0]
+
+OtelSamplerName = Literal[
+    "always_on",
+    "always_off",
+    "traceidratio",
+    "parentbased_always_on",
+    "parentbased_always_off",
+    "parentbased_traceidratio",
+]
 
 
 class Settings(BaseSettings):
@@ -102,10 +115,24 @@ class Settings(BaseSettings):
     autodev_mcp_exposed_skills: str = ""
 
     # --- observability ---
+    otel_enabled: bool = True
     otel_service_name: str = "autodev-backend"
     otel_exporter_otlp_endpoint: str = ""
-    otel_traces_sampler: str = "parentbased_traceidratio"
+    otel_exporter_otlp_traces_endpoint: str = ""
+    otel_exporter_otlp_metrics_endpoint: str = ""
+    otel_exporter_otlp_logs_endpoint: str = ""
+    otel_traces_sampler: OtelSamplerName = "parentbased_traceidratio"
     otel_traces_sampler_arg: float = Field(default=1.0, ge=0.0, le=1.0)
+    otel_metric_export_interval_ms: int = Field(default=5_000, ge=1_000)
+    autodev_observability_trace_retention: str = Field(
+        default="168h", pattern=r"^[1-9]\d*(?:s|m|h|d|w)$"
+    )
+    autodev_observability_metric_retention: str = Field(
+        default="15d", pattern=r"^[1-9]\d*(?:s|m|h|d|w)$"
+    )
+    autodev_observability_log_retention: str = Field(
+        default="168h", pattern=r"^[1-9]\d*(?:s|m|h|d|w)$"
+    )
 
     @classmethod
     def settings_customise_sources(
@@ -271,4 +298,4 @@ def reset_settings_cache() -> None:
     get_settings.cache_clear()
 
 
-__all__ = ["Settings", "get_settings", "reset_settings_cache"]
+__all__ = ["OtelSamplerName", "Settings", "get_settings", "reset_settings_cache"]
