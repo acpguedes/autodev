@@ -169,13 +169,21 @@ door: root service descriptor, self-hosted `/docs` under the strict CSP, and
 single-command `make run`. A visual-parity audit of the screens against the prototype
 (fonts, tokens, spacing, per-screen interaction details, per-screen checklist derived
 from ADR-012 and the prototype `shots/`) remains deferred as a proposed **E19**.
-**E11-S1 (Observability) is complete** (2026-08-15): correlated OpenTelemetry
-traces/metrics/logs, a self-hosted Collector/Prometheus/Tempo/Loki/Grafana
-stack (`make observability-up|verify|down`, ADR-017), configurable sampling
-and retention, and verified sub-5% instrumentation overhead — see
-`docs/ops/observability.md`. **Next action: E11-S2 (RBAC and authentication —
-deps E9-S1 Done); follow `agent_guide.md` §1-4 quality rules (mandatory from
-E3 onward).**
+**E11-S1 (Observability) and E11-S4 (Execution security and runbooks) are
+complete** (2026-08-15, E11 now 2/4): correlated OpenTelemetry
+traces/metrics/logs on a self-hosted Collector/Prometheus/Tempo/Loki/Grafana
+stack (ADR-017); a trusted-only in-process plugin boundary and a hardened,
+read-only-root sandbox with a mandatory Docker network-denial CI gate
+(ADR-020); a widened HIGH/CRITICAL secret/vulnerability/license CI gate with
+an expiring-exception policy; full settings/backup credential redaction; and
+fail-closed, Alertmanager-alerted PostgreSQL backups with an executable
+incident-response runbook — see `docs/ops/observability.md`,
+`docs/security.md`, `docs/v2_platform/runbooks/e11_incident_response.md`.
+E11-S4 was implemented in parallel with E11-S2 in a separate worktree since
+both depend only on E11-S1. **E11-S2 (RBAC and authentication) is in
+progress. Next action once it lands: E11-S3 (multi-tenant and quotas/budgets
+— deps E11-S2); follow `agent_guide.md` §1-4 quality rules (mandatory from E3
+onward).**
 
 ## Epic status
 
@@ -192,7 +200,7 @@ E3 onward).**
 | E8 | Persistence & Data | Alpha/Beta | Done | 4/4 | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
 | E9 | APIs, Events & MCP | Alpha/Beta | Done | 4/4 | E8, E2, E6 | [phases/e9_apis_events_mcp.md](phases/e9_apis_events_mcp.md) |
 | E10 | UI/UX & Design System | Beta | Done | 4/4 | E3, E9, E1 | [phases/e10_ui_ux_design_system.md](phases/e10_ui_ux_design_system.md) |
-| E11 | Observability, Security & Multi-tenant | Beta | In progress | 1/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
+| E11 | Observability, Security & Multi-tenant | Beta | In progress | 2/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
 | E12 | Quality & Evals | Alpha/Beta | Complete | 4/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |

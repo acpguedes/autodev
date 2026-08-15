@@ -1,7 +1,7 @@
 # E11 — Observability, Security & Multi-tenant
 
 **Wave:** Beta
-**Status:** In progress · **Stories:** 1/4 complete
+**Status:** In progress · **Stories:** 2/4 complete
 **Depends on:** E0, E8, E9-S1, E4
 **Enables:** governs access, tenants, and quotas/budgets platform-wide; integrates backups (E8-S4); audit sink (additive) for E32 isolation records (environment profile, policy denials) and E33 secret audit events (create/rotate/revoke/resolve — references only, never values)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.7.5 (E11), §18.8, §18.9
