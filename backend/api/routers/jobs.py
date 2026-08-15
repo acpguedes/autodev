@@ -13,6 +13,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from backend.api.authorization import requires_scope
 from backend.jobs.queue import get_queue
 
 router = APIRouter(tags=["jobs"])
@@ -45,6 +46,7 @@ class JobStatusResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+@requires_scope("run:write")
 @router.post("/jobs", response_model=EnqueueResponse, status_code=202)
 def enqueue_job(request: EnqueueRequest) -> EnqueueResponse:
     """Submit a new job and return its ``job_id``."""
@@ -53,6 +55,7 @@ def enqueue_job(request: EnqueueRequest) -> EnqueueResponse:
     return EnqueueResponse(job_id=job_id)
 
 
+@requires_scope("run:read")
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)
 def get_job_status(job_id: str) -> JobStatusResponse:
     """Return the current status (and result) of *job_id*."""

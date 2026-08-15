@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 
 from backend.agents.registry_v2 import AgentRegistry
+from backend.api.authorization import requires_scope
 
 router = APIRouter(prefix="/v2/agents", tags=["agents"])
 
@@ -20,6 +21,7 @@ def get_agent_registry() -> AgentRegistry:
     return AgentRegistry()
 
 
+@requires_scope("agent:read")
 @router.get("/catalog")
 def list_agent_catalog(
     capability: str | None = Query(default=None),

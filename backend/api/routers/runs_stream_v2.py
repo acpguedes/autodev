@@ -47,6 +47,7 @@ from typing import AsyncIterator
 from fastapi import APIRouter, Depends, Header, Query, Request
 from starlette.responses import StreamingResponse
 
+from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import require_v2_principal
 from backend.api.v2_common import SCHEMA_VERSION_V2, v2_error
 from backend.events.bus import EventBus, WILDCARD
@@ -188,6 +189,7 @@ async def _stream_events(
         return
 
 
+@requires_scope("run:read")
 @router.get("/{run_id}/events/stream", tags=["runs"])
 async def stream_run_events(
     request: Request,

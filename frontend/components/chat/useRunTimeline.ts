@@ -63,7 +63,11 @@ export function useRunTimeline(
       try {
         const response = await fetch(
           runEventsStreamUrl(runId as string, { types: [...TIMELINE_EVENT_TYPES] }),
-          { signal: controller.signal, headers: { Accept: "text/event-stream" } }
+          {
+            signal: controller.signal,
+            headers: { Accept: "text/event-stream" },
+            credentials: "include",
+          }
         );
         if (!response.ok || !response.body) {
           if (!cancelled) {

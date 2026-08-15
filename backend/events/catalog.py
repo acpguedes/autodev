@@ -214,6 +214,28 @@ class PlanStepMutationData(BaseModel):
     actor: str
 
 
+class AccessRequestData(BaseModel):
+    """Shared payload of ``access.request.allowed``/``access.request.denied`` (E11-S2).
+
+    Best-effort mirror of the authoritative :class:`~backend.auth.contracts.AccessAuditRecord`
+    durable row — never contains credentials, cookies, raw headers, request
+    bodies, or prompts.
+    """
+
+    subjectId: str
+    authMethod: str
+    credentialId: str | None = None
+    roles: list[str]
+    requiredScope: str
+    resourceType: str
+    resourceId: str | None = None
+    method: str
+    routeTemplate: str
+    decision: str
+    reason: str
+    requestId: str
+
+
 @dataclass(frozen=True)
 class EventDefinition:
     """Catalog entry describing one event type (§14.5 table).
@@ -268,6 +290,8 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition("plan.step.removed", "Control Plane API", "tenantId", PlanStepMutationData),
     EventDefinition("patch.changedfiles.listed", "Control Plane API", "runId", PatchChangedFilesListedData),
     EventDefinition("patch.discarded", "Control Plane API", "runId", PatchDiscardedData),
+    EventDefinition("access.request.allowed", "Control Plane API", "tenantId", AccessRequestData),
+    EventDefinition("access.request.denied", "Control Plane API", "tenantId", AccessRequestData),
 )
 
 

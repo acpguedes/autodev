@@ -23,6 +23,7 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import require_v2_principal
 from backend.api.v2_common import SCHEMA_VERSION_V2, PageMetaV2, PaginationParams, paginate, v2_error
 from backend.config.runtime import get_runtime_config_service
@@ -255,6 +256,7 @@ def _to_executed_run_v2(run: OrchestratorRun) -> ExecutedRunV2:
     )
 
 
+@requires_scope("session:write")
 @router.post("", response_model=SessionV2, status_code=201, tags=["sessions"])
 def create_session_v2(
     request: SessionCreateRequestV2,
@@ -279,6 +281,7 @@ def create_session_v2(
     )
 
 
+@requires_scope("session:read")
 @router.get("", response_model=SessionListV2, tags=["sessions"])
 def list_sessions_v2(
     pagination: PaginationParams = Depends(),
@@ -298,6 +301,7 @@ def list_sessions_v2(
     return SessionListV2(items=[_to_session_v2(summary) for summary in page], page=page_meta)
 
 
+@requires_scope("session:read")
 @router.get("/{session_id}", response_model=SessionV2, tags=["sessions"])
 def get_session_v2(
     session_id: str,
@@ -322,6 +326,7 @@ def get_session_v2(
     return _to_session_v2(summary)
 
 
+@requires_scope("run:read")
 @router.get("/{session_id}/runs", response_model=RunListV2, tags=["runs"])
 def list_session_runs_v2(
     session_id: str,
@@ -349,6 +354,7 @@ def list_session_runs_v2(
     return RunListV2(items=[_to_run_v2(summary) for summary in page], page=page_meta)
 
 
+@requires_scope("session:read")
 @router.get("/{session_id}/execution-plan", response_model=ExecutionPlanV2, tags=["planning"])
 def get_execution_plan_v2(
     session_id: str,
@@ -373,6 +379,7 @@ def get_execution_plan_v2(
     return _to_execution_plan_v2(plan)
 
 
+@requires_scope("run:write")
 @router.post("/{session_id}/execution-plan/execute", response_model=ExecutedRunV2, tags=["planning"])
 def execute_execution_plan_v2(
     session_id: str,

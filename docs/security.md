@@ -19,19 +19,91 @@ The default deployment is local-first and zero-config. Anything that broadens
 exposure (opening the bind address, enabling execution, disabling TLS) is
 explicit opt-in via an environment variable.
 
-## Authentication
+## Authentication, RBAC, and access audit (Control Plane API)
 
-API authentication is **opt-in** and off by default so local development stays
-frictionless.
+The `/v2` Control Plane API (and every router under `backend/api/routers/`)
+is governed by real authentication and role-based authorization (E11-S2,
+ADR-018: `docs/v2_platform/decisions/ADR-018-control-plane-authentication-rbac-audit.md`).
+The legacy root-relative v1 endpoints (`/plan`, `/sessions`, `/chat`, `/config`,
+`/agents/contracts`, `/repository/context`, frozen at the `v1` release tag)
+are unaffected — they remain public, exactly as before.
 
-- Set `AUTODEV_API_TOKEN` to require `Authorization: Bearer <token>` on every
-  request. `/health` and the OpenAPI/docs endpoints stay public so health
-  checks keep working.
-- Token comparison uses `hmac.compare_digest` (constant-time).
-- Implemented as a global FastAPI dependency in `backend/api/security.py`, so it
-  covers auto-discovered plugin routers as well as the core endpoints.
+**AutoDev does not manage user identity.** There is no password store, no
+user directory, no MFA, and no group synchronization. Every human identity
+question — who a user is, whether their account is active, what groups they
+belong to — is answered by your OIDC provider, not by AutoDev. AutoDev only
+maps the identity your provider already vouches for onto its own role/scope
+model.
 
-When exposing the API beyond loopback, **always** set a strong token.
+### Local zero-config
+
+With no OIDC settings and no active service credential configured, every
+request resolves to subject `local`, tenant `default`, role `owner` —
+regardless of bind address. This is a deliberate trust boundary for local,
+single-operator use: don't bind a zero-config instance beyond loopback.
+
+### Canonical roles and scopes
+
+Five roles, strictly cumulative: `viewer` < `operator` < `maintainer` <
+`admin` < `owner`. The legacy `author` spelling is accepted only as an input
+alias for `maintainer`; it is never emitted or persisted. See ADR-018 for the
+full capability matrix. Each role's exact `resource:action` scope grants are
+defined in `backend/auth/roles.py`.
+
+### Credential mechanisms
+
+| Mechanism | Use | Notes |
+|---|---|---|
+| Legacy PAT (`AUTODEV_API_TOKEN`) | Local/single-tenant convenience | Maps to `admin`. Constant-time comparison (`hmac.compare_digest`). **Never satisfies production readiness.** |
+| OIDC bearer JWT | Machine-to-machine or SPA callers holding a provider-issued token | `iss`/`aud`/`exp`/`sub`/tenant/role/scope claims and the JWKS signature are all validated; the algorithm allowlist is applied explicitly — the JWT header's own `alg` is never trusted to pick it (prevents algorithm-confusion downgrade). |
+| Governed service key | CI, automation, other backends | `adk_live_<key-id>_<secret>`, created via `autodev auth service-key create`. Stored as a SHA-256 hash only — the raw secret is shown once and never recoverable. 1–90 day expiry, immediately revocable (`autodev auth service-key revoke`). |
+| Browser session | Human users via the Control Center UI | External OIDC authorization-code + PKCE login (`GET /v2/auth/oidc/login`). Session id lives in an HttpOnly, Secure, `SameSite=Lax` cookie; the OIDC refresh token is encrypted at rest (Fernet) and never leaves the server. |
+
+### Production readiness
+
+Production startup (`AUTODEV_PROFILE=prod`) refuses to serve traffic unless
+either complete OIDC/JWKS settings are configured, or at least one active
+service credential already exists in the durable Auth Store
+(`backend/auth/readiness.py`). The legacy PAT alone never satisfies this.
+
+### Request outcomes
+
+- Missing/invalid credentials: `401`.
+- Valid credentials, missing required scope: `403`.
+- A resource that exists but belongs to another tenant: concealed as `404`,
+  identical to a genuinely unknown resource — the API never confirms
+  cross-tenant existence.
+- A Control Plane route (including one added by an auto-discovered plugin
+  router) that ships with no declared scope: `403` in production
+  (`authorization.policy_missing`). Local/dev does not enforce this
+  fail-closed default — a repo-wide contract test
+  (`backend/tests/contract/test_control_plane_authorization.py`) is the
+  guardrail that catches an unannotated route before it ever reaches
+  production.
+
+### Access audit
+
+Every allow/deny decision made against a resolved principal is durably
+written to a tenant-scoped `access_audit` table before the caller sees the
+result — an otherwise-allowed request whose audit write fails is denied
+(`503 security.audit_unavailable`) rather than let through unaudited. Audit
+rows never contain credentials, cookies, raw headers, request bodies, or
+prompts — only stable operational identifiers (subject, roles, scope,
+resource type, decision, reason). Read your own tenant's trail via
+`GET /v2/audit/access` (requires `audit:read`, admin-tier).
+
+### Implementation
+
+- `backend/auth/` — contracts, roles, crypto, OIDC/JWKS validation, service
+  lifecycle, durable persistence, audit.
+- `backend/api/authorization.py` — the single global FastAPI dependency
+  (`enforce_control_plane_access`) that authenticates then authorizes every
+  request, covering auto-discovered plugin routers automatically.
+- `backend/api/security.py` — the separate, independent legacy PAT gate,
+  unchanged by E11-S2.
+
+When exposing the API beyond loopback, configure real OIDC or a governed
+service credential — do not rely on the legacy PAT.
 
 ## Secret handling
 

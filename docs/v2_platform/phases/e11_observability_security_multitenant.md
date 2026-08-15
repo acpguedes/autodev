@@ -1,7 +1,7 @@
 # E11 — Observability, Security & Multi-tenant
 
 **Wave:** Beta
-**Status:** In progress · **Stories:** 2/4 complete
+**Status:** In progress · **Stories:** 3/4 complete
 **Depends on:** E0, E8, E9-S1, E4
 **Enables:** governs access, tenants, and quotas/budgets platform-wide; integrates backups (E8-S4); audit sink (additive) for E32 isolation records (environment profile, policy denials) and E33 secret audit events (create/rotate/revoke/resolve — references only, never values)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.7.5 (E11), §18.8, §18.9
@@ -34,12 +34,12 @@ Subtasks:
 | Dependencies | E0 |
 | Evidence | `docs/ops/observability.md`; `scripts/verify_observability_stack.py` (live stack check, all four backends healthy); `scripts/measure_observability_overhead.py` (instrumentation overhead ~2.6–2.8%, target <5%); ADR-017 |
 
-### E11-S2 — RBAC and authentication
+### E11-S2 — RBAC and authentication — complete (2026-08-15)
 
 Subtasks:
-- `E11-S2-T1`: role/permission model and enforcement in the Control Plane API.
-- `E11-S2-T2`: authentication (tokens/sessions) and per-resource scopes.
-- `E11-S2-T3`: access and denial auditing.
+- `E11-S2-T1`: role/permission model and enforcement in the Control Plane API. **Done.**
+- `E11-S2-T2`: authentication (tokens/sessions) and per-resource scopes. **Done.**
+- `E11-S2-T3`: access and denial auditing. **Done.**
 
 | Item | Content |
 | --- | --- |
@@ -48,6 +48,9 @@ Subtasks:
 | DoR | E9-S1 (API) ready; role matrix approved |
 | DoD | Negative authorization tests; verifiable audit; RBAC docs |
 | Dependencies | E9-S1 |
+| Evidence | ADR-018 (`docs/v2_platform/decisions/ADR-018-control-plane-authentication-rbac-audit.md`); `docs/security.md`; `backend/tests/contract/test_control_plane_authorization.py` (every non-public Control Plane route declares a scope); `backend/tests/unit/auth/`, `backend/tests/integration/test_auth_api.py`, `backend/tests/integration/test_v2_api_contract.py` (OpenAPI auth metadata) |
+
+Note: per-resource cross-tenant concealment (`AuthorizationRequirement.resource_parameter`/`conceal_cross_tenant`) is implemented as a mechanism but not yet enforced against real data — no domain object carries a `tenant_id` to compare against before E11-S3 lands. `backend/api/routers/context.py`'s `GET /v2/context/retrieve` still accepts a caller-supplied `tenant_id` query parameter with no check against the authenticated principal; closing that is E11-S3's job, not re-flagged here as an S2 gap.
 
 ### E11-S3 — Multi-tenant and quotas/budgets
 

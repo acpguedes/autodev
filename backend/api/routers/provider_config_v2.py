@@ -25,6 +25,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import require_v2_principal
 from backend.api.v2_common import SCHEMA_VERSION_V2
 from backend.config.runtime import LLMSettings, RuntimeConfigService, get_runtime_config_service
@@ -64,6 +65,7 @@ def _redacted_llm(config_service: RuntimeConfigService) -> LLMSettings:
     return config_service.load_document(redact_secrets=True).config.llm
 
 
+@requires_scope("config:read_redacted")
 @router.get("", response_model=ProviderConfigResponseV2)
 def get_provider_config_v2(
     config_service: RuntimeConfigService = Depends(get_runtime_config_service),
@@ -79,6 +81,7 @@ def get_provider_config_v2(
     return ProviderConfigResponseV2(llm=_redacted_llm(config_service))
 
 
+@requires_scope("config:write_safe")
 @router.put("", response_model=ProviderConfigResponseV2)
 def update_provider_config_v2(
     request: ProviderConfigUpdateRequestV2,
@@ -105,6 +108,7 @@ def update_provider_config_v2(
     return ProviderConfigResponseV2(llm=_redacted_llm(config_service))
 
 
+@requires_scope("config:read_redacted")
 @router.get("/status", response_model=ProviderStatusResponseV2)
 def get_provider_status_v2(
     config_service: RuntimeConfigService = Depends(get_runtime_config_service),

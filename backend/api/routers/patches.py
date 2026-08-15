@@ -22,6 +22,8 @@ import logging
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from backend.api.authorization import requires_scope
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["patches"])
@@ -79,6 +81,7 @@ class PatchResultResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+@requires_scope("patch:propose")
 @router.post("/patches/generate", response_model=PatchResponse)
 def generate_patch_endpoint(body: GenerateRequest) -> PatchResponse:
     """Generate a unified diff between *original* and *updated* for *path*."""
@@ -92,6 +95,7 @@ def generate_patch_endpoint(body: GenerateRequest) -> PatchResponse:
     )
 
 
+@requires_scope("patch:apply")
 @router.post("/patches/apply", response_model=PatchResultResponse)
 def apply_patch_endpoint(body: ApplyRequest) -> PatchResultResponse:
     """Apply a patch, honoring AUTODEV_ENABLE_PATCH_APPLY env flag.

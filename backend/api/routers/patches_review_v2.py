@@ -58,6 +58,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends
 
+from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
 from backend.api.routers.patches_review_v2_models import (
     ChangedFileListV2,
@@ -223,6 +224,7 @@ def _now() -> str:
 # ---------------------------------------------------------------------------
 
 
+@requires_scope("patch:propose")
 @router.post("", response_model=PatchDetailV2, status_code=201)
 def propose_patch_v2(
     session_id: str,
@@ -262,6 +264,7 @@ def propose_patch_v2(
         return _to_patch_detail_v2(record)
 
 
+@requires_scope("plan:read")
 @router.get("", response_model=ChangedFileListV2)
 def list_changed_files_v2(
     session_id: str,
@@ -293,6 +296,7 @@ def list_changed_files_v2(
     return ChangedFileListV2(session_id=session_id, items=page, page=page_meta)
 
 
+@requires_scope("plan:read")
 @router.get("/{patch_id}", response_model=PatchDetailV2)
 def get_patch_diff_v2(session_id: str, patch_id: str) -> PatchDetailV2:
     """Retrieve a single changed file's unified diff and current status.
@@ -312,6 +316,7 @@ def get_patch_diff_v2(session_id: str, patch_id: str) -> PatchDetailV2:
         return _to_patch_detail_v2(record)
 
 
+@requires_scope("patch:review")
 @router.put("/{patch_id}/content", response_model=PatchDetailV2)
 def override_patch_content_v2(
     session_id: str,
@@ -350,6 +355,7 @@ def override_patch_content_v2(
         return _to_patch_detail_v2(record)
 
 
+@requires_scope("patch:apply")
 @router.post("/{patch_id}/apply", response_model=PatchApplyResultV2)
 def apply_patch_v2(
     session_id: str,
@@ -428,6 +434,7 @@ def apply_patch_v2(
     return response
 
 
+@requires_scope("patch:review")
 @router.post("/{patch_id}/discard", response_model=PatchDetailV2)
 def discard_patch_v2(
     session_id: str,
