@@ -129,6 +129,31 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _configure_cli_observability() -> None:
+    """Configure the observability runtime once, with JSON logs on stderr.
+
+    ``configure_observability`` binds its structured JSON log handler to
+    whichever stream is current ``sys.stdout`` when it runs, which is the
+    right default for a long-lived service but not for a CLI: any WARNING
+    or INFO log emitted while a command runs (agent fallback notices, for
+    example) would otherwise interleave with the command's own JSON result
+    on stdout and break the single-JSON-object-on-stdout contract every
+    downstream machine-readable consumer relies on. Configuring eagerly
+    here, with stdout swapped to stderr for just this call, binds that
+    handler to stderr instead; any later lazy ``get_tracer()``/
+    ``get_meter()`` call reuses this already-configured runtime rather than
+    reconfiguring against whatever stream happens to be current then.
+    """
+    from backend.observability.runtime import get_observability_runtime
+
+    previous_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    try:
+        get_observability_runtime()
+    finally:
+        sys.stdout = previous_stdout
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Parse CLI arguments and dispatch to the selected subcommand handler.
 
@@ -138,6 +163,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     Returns:
         The process exit code returned by the dispatched handler.
     """
+    _configure_cli_observability()
     parser = build_parser()
     args = parser.parse_args(argv)
     return int(args.handler(args))
