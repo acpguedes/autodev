@@ -24,7 +24,12 @@ from backend.reasoning import (
     default_reasoning_policy,
 )
 from backend.reasoning.strategies import register_builtin_strategies
-from backend.routing.contract import ROUTE_SCHEMA_VERSION, RouteInput, RouteRequest
+from backend.routing.contract import (
+    ROUTE_SCHEMA_VERSION,
+    RouteInput,
+    RouteRequest,
+    TraceEvent,
+)
 from backend.routing.policy import default_routing_policy
 from backend.routing.service import RoutingService
 from backend.tests.observability_helpers import capture_observability
@@ -76,8 +81,8 @@ def test_reasoning_output_keeps_a_domain_uuid_distinct_from_w3c_trace() -> None:
 
 def test_routing_records_a_safe_decision_and_preserves_callback() -> None:
     """Routing telemetry excludes task/rationale/path and keeps replay events."""
-    secret_task = "sk-sensitive-routing-task"
-    events = []
+    secret_task = "sk-sensitive-routing"
+    events: list[TraceEvent] = []
     request = RouteRequest(
         schema_version=ROUTE_SCHEMA_VERSION,
         session_id="session-1",
@@ -95,8 +100,10 @@ def test_routing_records_a_safe_decision_and_preserves_callback() -> None:
         if span.name == "autodev.decision.router.decision.recorded"
     ]
     assert len(spans) == 1
-    assert spans[0].attributes["autodev.decision.task_type"] == decision.task_type
-    assert spans[0].attributes["autodev.run_id"] == "run-1"
+    attributes = spans[0].attributes
+    assert attributes is not None
+    assert attributes["autodev.decision.task_type"] == decision.task_type
+    assert attributes["autodev.run_id"] == "run-1"
     assert len(events) == 1
     assert events[0].payload["path"] == list(decision.path)
     assert secret_task not in repr(spans)
@@ -120,9 +127,11 @@ def test_sandbox_dependency_records_only_bounded_operational_fields(
         if span.name == "autodev.dependency.sandbox"
     )
     assert result.skipped is True
-    assert span.attributes["autodev.status"] == "skipped"
-    assert span.attributes["autodev.sandbox.backend"] == "disabled"
-    assert secret_command not in repr(span.attributes)
+    attributes = span.attributes
+    assert attributes is not None
+    assert attributes["autodev.status"] == "skipped"
+    assert attributes["autodev.sandbox.backend"] == "disabled"
+    assert secret_command not in repr(attributes)
     assert secret_command not in repr(span.events)
 
 
@@ -166,8 +175,10 @@ def test_evaluation_metrics_are_recorded_after_persistence(tmp_path: Path) -> No
         for point in metric.data.data_points
     ]
     assert len(quality_points) == 1
-    assert quality_points[0].attributes["autodev.evaluator"] == "tests_pass"
-    assert quality_points[0].attributes["autodev.gate.result"] == "passed"
+    point_attributes = quality_points[0].attributes
+    assert point_attributes is not None
+    assert point_attributes["autodev.evaluator"] == "tests_pass"
+    assert point_attributes["autodev.gate.result"] == "passed"
 
 
 def test_orchestrator_run_span_closes_after_durable_completion(
@@ -187,5 +198,7 @@ def test_orchestrator_run_span_closes_after_durable_completion(
         if span.name == "autodev.run"
     ]
     assert len(run_spans) == 1
-    assert run_spans[0].attributes["autodev.run_id"] == result.run_id
-    assert run_spans[0].attributes["autodev.status"] == "completed"
+    attributes = run_spans[0].attributes
+    assert attributes is not None
+    assert attributes["autodev.run_id"] == result.run_id
+    assert attributes["autodev.status"] == "completed"

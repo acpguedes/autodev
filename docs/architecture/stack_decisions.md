@@ -1,11 +1,13 @@
 # Stack Decisions
 
-> **Current status (2026-07-04):** This document records the *recommended target stack*. As of
-> E0, PostgreSQL (selected via `DATABASE_URL`), Redis (queue/cache/locks), MinIO/S3 artifact
-> storage, and OpenTelemetry + Prometheus are **now wired** in the production-like Compose
-> profile; local mode stays FastAPI + SQLite + an in-process thread queue for dependency-free
-> operation. Still **planned, not yet wired**: LangGraph, pgvector, Kubernetes, Grafana, and Loki.
-> See [`docs/feature_matrix.md`](../feature_matrix.md), [`docs/ops/storage.md`](../ops/storage.md),
+> **Current status (2026-08-15):** This document records the *recommended target stack*. As of
+> E0, PostgreSQL (selected via `DATABASE_URL`), Redis (queue/cache/locks), and MinIO/S3 artifact
+> storage are **now wired** in the production-like Compose profile; local mode stays FastAPI +
+> SQLite + an in-process thread queue for dependency-free operation. As of E11-S1 (ADR-017), the
+> full self-hosted observability stack — OpenTelemetry Collector, Prometheus, Tempo, Loki, and
+> Grafana — is **now wired** behind the `observability` Compose profile (`make
+> observability-up|verify|down`). Still **planned, not yet wired**: LangGraph, pgvector, and
+> Kubernetes. See [`docs/feature_matrix.md`](../feature_matrix.md), [`docs/ops/storage.md`](../ops/storage.md),
 > and [`docs/ops/observability.md`](../ops/observability.md) for the accurate per-feature status.
 
 This document records the recommended stack for AutoDev Architect and the rationale behind each choice.
@@ -176,21 +178,33 @@ Why:
 
 ## Observability
 
-### OpenTelemetry
-**Chosen for:** tracing instrumentation standard.
+See ADR-017 (`docs/v2_platform/decisions/ADR-017-observability-signals-backends.md`)
+for the full E11-S1 signal-and-backend decision record.
+
+### OpenTelemetry (SDK + Collector)
+**Chosen for:** tracing/metrics/logging instrumentation standard and a single
+export fan-out point (`otel-collector`) so backend processes never depend on
+Prometheus, Tempo, or Loki directly.
 
 ### Prometheus
-**Chosen for:** metrics collection.
+**Chosen for:** metrics collection, recording rules, and (E11-S4) alert
+evaluation.
+
+### Tempo
+**Chosen for:** trace storage and query, exemplar navigation from Prometheus,
+and trace-to-logs navigation into Loki.
 
 ### Grafana
-**Chosen for:** dashboards.
+**Chosen for:** dashboards and cross-signal navigation across the three
+provisioned datasources.
 
 ### Loki
-**Chosen for:** logs.
+**Chosen for:** logs, queried by the same correlation identifiers
+(`run_id`/`trace_id`) as traces and metrics.
 
 Why this set:
 - open source;
-- cohesive ecosystem;
+- cohesive ecosystem with first-class OTLP support;
 - broad community adoption.
 
 ---

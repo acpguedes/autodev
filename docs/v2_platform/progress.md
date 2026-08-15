@@ -169,9 +169,13 @@ door: root service descriptor, self-hosted `/docs` under the strict CSP, and
 single-command `make run`. A visual-parity audit of the screens against the prototype
 (fonts, tokens, spacing, per-screen interaction details, per-screen checklist derived
 from ADR-012 and the prototype `shots/`) remains deferred as a proposed **E19**.
-**Next action: E11-S1 (Observability, Security & Multi-tenant — the next
-unblocked Beta epic; deps E0/E8/E9-S1/E4 all Done); follow `agent_guide.md`
-§1-4 quality rules (mandatory from E3 onward).**
+**E11-S1 (Observability) is complete** (2026-08-15): correlated OpenTelemetry
+traces/metrics/logs, a self-hosted Collector/Prometheus/Tempo/Loki/Grafana
+stack (`make observability-up|verify|down`, ADR-017), configurable sampling
+and retention, and verified sub-5% instrumentation overhead — see
+`docs/ops/observability.md`. **Next action: E11-S2 (RBAC and authentication —
+deps E9-S1 Done); follow `agent_guide.md` §1-4 quality rules (mandatory from
+E3 onward).**
 
 ## Epic status
 
@@ -188,7 +192,7 @@ unblocked Beta epic; deps E0/E8/E9-S1/E4 all Done); follow `agent_guide.md`
 | E8 | Persistence & Data | Alpha/Beta | Done | 4/4 | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
 | E9 | APIs, Events & MCP | Alpha/Beta | Done | 4/4 | E8, E2, E6 | [phases/e9_apis_events_mcp.md](phases/e9_apis_events_mcp.md) |
 | E10 | UI/UX & Design System | Beta | Done | 4/4 | E3, E9, E1 | [phases/e10_ui_ux_design_system.md](phases/e10_ui_ux_design_system.md) |
-| E11 | Observability, Security & Multi-tenant | Beta | Not started | 0/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
+| E11 | Observability, Security & Multi-tenant | Beta | In progress | 1/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
 | E12 | Quality & Evals | Alpha/Beta | Complete | 4/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
@@ -308,6 +312,24 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-15** — **E11-S1 — Observability (OpenTelemetry) is complete**
+  (Beta epic **E11 now 1/4 In Progress**; dependency E0 Done). Correlated
+  traces/metrics/logs by `run_id`/32-character W3C `trace_id`; self-hosted
+  OpenTelemetry Collector + Prometheus + Tempo + Loki + Grafana stack behind
+  the `observability` Compose profile (`make observability-up|verify|down`,
+  ADR-017); configurable sampling (`OTEL_TRACES_SAMPLER`/`_ARG`) and
+  per-signal retention (`AUTODEV_OBSERVABILITY_TRACE_RETENTION`/
+  `_METRIC_RETENTION`/`_LOG_RETENTION`); `OTEL_ENABLED=false` emergency
+  rollback. Instrumentation overhead verified at ~2.6–2.8% (target <5%) after
+  caching the runtime's tracer lookup and switching the benchmark's
+  synthetic I/O wait from `time.sleep` to a monotonic busy-wait, which
+  otherwise buried the ~80us/operation instrumentation signal under this
+  environment's OS scheduler jitter (`scripts/measure_observability_overhead.py`).
+  Live-verified: `make observability-up && make observability-verify` reports
+  Grafana/Prometheus/Tempo/Loki all healthy, including a fix for Prometheus's
+  default scrape relabeling silently overwriting the exporter's own `job`
+  label (`honor_labels: true`). Next: E11-S2 (RBAC and authentication).
 
 - **2026-08-05** — Opened corrective story **E2-S6 — Provider-neutral model
   gateway and governed fallback** (E2 temporarily **5/6 In Progress**; dependencies

@@ -9,6 +9,22 @@ The v2.0 platform rewrite is underway on `main`. Per-story detail lives in
 [`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) (Changelog section);
 epic summaries:
 
+### E11-S1 — Observability (OpenTelemetry) (Beta slice, 2026-08-15)
+
+- Self-hosted three-signal stack — OpenTelemetry Collector, Prometheus, Tempo,
+  Loki, and a provisioned Grafana dashboard — behind the `observability`
+  Compose profile (`make observability-up|verify|down`; ADR-017).
+- Correlated `autodev.run`/`autodev.run.step.*`/`autodev.dependency.*`/
+  `autodev.decision.*`/`autodev.model.call` spans, run/step/model/decision/
+  queue/worker metrics, and redacted JSON logs tied together by `run_id`/
+  32-character W3C `trace_id` (`docs/ops/observability.md`).
+- Configurable sampling (`OTEL_TRACES_SAMPLER`/`_ARG`) and per-signal
+  retention (`AUTODEV_OBSERVABILITY_TRACE_RETENTION`/`_METRIC_RETENTION`/
+  `_LOG_RETENTION`).
+- `OTEL_ENABLED=false` emergency rollback to no-op providers with zero
+  Collector dependency; instrumentation overhead verified under 5%
+  (`scripts/measure_observability_overhead.py`).
+
 ### E3 — Orchestration Engine (Alpha slice S1–S5, 2026-07-05)
 
 - Declarative `flow.yaml` manifests (7 canonical node types, guarded edges, SemVer +

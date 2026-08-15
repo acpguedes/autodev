@@ -190,7 +190,7 @@ def test_abstract_queue_requires_stats_implementation() -> None:
             }
 
     with pytest.raises(TypeError, match="stats"):
-        _QueueWithoutStats()
+        _QueueWithoutStats()  # type: ignore[abstract]
 
 
 def test_inprocess_queue_reports_pending_running_and_worker_use(
@@ -245,8 +245,10 @@ def test_job_consumer_continues_producer_trace_and_domain_context() -> None:
         assert consumer.kind is SpanKind.CONSUMER
         assert consumer.parent is not None
         assert consumer.parent.span_id == producer.context.span_id
-        assert consumer.attributes["autodev.run_id"] == "run-1"
-        assert consumer.attributes["autodev.tenant_id"] == "tenant-1"
+        consumer_attributes = consumer.attributes
+        assert consumer_attributes is not None
+        assert consumer_attributes["autodev.run_id"] == "run-1"
+        assert consumer_attributes["autodev.tenant_id"] == "tenant-1"
     finally:
         _shutdown_inprocess_queue(queue)
 

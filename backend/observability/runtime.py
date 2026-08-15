@@ -706,6 +706,9 @@ class ObservabilityRuntime:
     log_handlers: tuple[logging.Handler, ...]
     _shutdown: bool = field(default=False, init=False, repr=False)
     _installed_global: bool = field(default=False, init=False, repr=False)
+    _tracer_cache: dict[str, trace.Tracer] = field(
+        default_factory=dict, init=False, repr=False
+    )
 
     def force_flush(self, timeout_millis: int = 10_000) -> bool:
         """Flush all three providers within their configured processor semantics.
@@ -941,6 +944,12 @@ def get_observability_runtime() -> ObservabilityRuntime:
 def get_tracer(scope: str = "backend.observability") -> trace.Tracer:
     """Return a tracer from the runtime-owned provider.
 
+    Cached per runtime instance and scope: the SDK's own ``get_tracer``
+    re-resolves an ``InstrumentationScope`` by equality on every call, and
+    this helper sits on the hot path of every run, step, dependency, and
+    model-call span, so a redundant provider lookup there is measurable
+    instrumentation overhead.
+
     Args:
         scope: Instrumentation scope name.
 
@@ -948,9 +957,16 @@ def get_tracer(scope: str = "backend.observability") -> trace.Tracer:
         An SDK tracer, or a non-recording tracer when OTel is disabled.
     """
     runtime = get_observability_runtime()
-    if isinstance(runtime.metric_sink, NoopMetricSink):
-        return trace.NoOpTracerProvider().get_tracer(scope)
-    return runtime.tracer_provider.get_tracer(scope)
+    cached = runtime._tracer_cache.get(scope)
+    if cached is not None:
+        return cached
+    tracer = (
+        trace.NoOpTracerProvider().get_tracer(scope)
+        if isinstance(runtime.metric_sink, NoopMetricSink)
+        else runtime.tracer_provider.get_tracer(scope)
+    )
+    runtime._tracer_cache[scope] = tracer
+    return tracer
 
 
 def get_meter(scope: str = "backend.observability") -> metrics.Meter:

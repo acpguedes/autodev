@@ -139,16 +139,17 @@ class TestGraphExecution:
         step_spans = [
             span for span in spans if span.name.startswith("autodev.run.step.")
         ]
-        assert run_span.attributes["autodev.run_id"] == result.run_id
-        assert run_span.attributes["autodev.status"] == "completed"
+        run_span_attributes = run_span.attributes
+        assert run_span_attributes is not None
+        assert run_span_attributes["autodev.run_id"] == result.run_id
+        assert run_span_attributes["autodev.status"] == "completed"
         assert step_spans
-        assert all(
-            span.attributes["autodev.status"] == "completed" for span in step_spans
-        )
-        assert all(span.parent is not None for span in step_spans)
-        assert all(
-            span.parent.span_id == run_span.context.span_id for span in step_spans
-        )
+        for step_span in step_spans:
+            step_span_attributes = step_span.attributes
+            assert step_span_attributes is not None
+            assert step_span_attributes["autodev.status"] == "completed"
+            assert step_span.parent is not None
+            assert step_span.parent.span_id == run_span.context.span_id
 
     def test_steps_persist_status_and_attempts(self, tmp_path: Path) -> None:
         """Each activation persists a step with status/attempt/sequence."""

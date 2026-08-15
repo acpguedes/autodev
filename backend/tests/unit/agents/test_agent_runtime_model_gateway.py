@@ -215,9 +215,11 @@ def test_model_span_carries_runtime_context_without_prompt_content() -> None:
         if span.name == "autodev.model.call"
     )
     assert result.status == "completed"
-    assert model_span.attributes["autodev.run_id"] == "run-1"
-    assert model_span.attributes["autodev.tenant_id"] == "tenant-1"
-    assert secret_prompt not in repr(model_span.attributes)
+    model_span_attributes = model_span.attributes
+    assert model_span_attributes is not None
+    assert model_span_attributes["autodev.run_id"] == "run-1"
+    assert model_span_attributes["autodev.tenant_id"] == "tenant-1"
+    assert secret_prompt not in repr(model_span_attributes)
     assert secret_prompt not in repr(model_span.events)
 
 
