@@ -25,6 +25,8 @@ _SECRET_FIELDS = {
     "otel_exporter_otlp_traces_endpoint",
     "otel_exporter_otlp_metrics_endpoint",
     "otel_exporter_otlp_logs_endpoint",
+    "autodev_oidc_client_secret",
+    "autodev_session_encryption_key",
 }
 
 # Shared defaults so the UI URL and the CORS allowlist can never drift: the
@@ -133,6 +135,22 @@ class Settings(BaseSettings):
     autodev_observability_log_retention: str = Field(
         default="168h", pattern=r"^[1-9]\d*(?:s|m|h|d|w)$"
     )
+
+    # --- Control Plane authentication / RBAC / audit (E11-S2) ---
+    autodev_oidc_issuer: str = ""
+    autodev_oidc_audience: str = ""
+    autodev_oidc_jwks_url: str = ""
+    autodev_oidc_authorization_url: str = ""
+    autodev_oidc_token_url: str = ""
+    autodev_oidc_client_id: str = ""
+    autodev_oidc_client_secret: str = ""
+    autodev_oidc_role_claim: str = "roles"
+    autodev_oidc_tenant_claim: str = "tenant_id"
+    autodev_oidc_scope_claim: str = "scope"
+    autodev_oidc_algorithms: str = "RS256"
+    autodev_oidc_jwks_ttl_seconds: int = Field(default=3_600, ge=60)
+    autodev_session_encryption_key: str = ""
+    autodev_session_ttl_seconds: int = Field(default=28_800, ge=60)
 
     @classmethod
     def settings_customise_sources(

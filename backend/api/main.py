@@ -31,6 +31,8 @@ from pydantic import BaseModel, Field
 
 from backend.api.security import require_api_token
 from backend.api.security_headers import SecurityHeadersMiddleware
+from backend.auth.readiness import validate_auth_readiness
+from backend.auth.service import get_auth_service
 
 from backend.artifacts import get_artifact_store
 from backend.config import (
@@ -223,6 +225,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             get_lock_manager(settings)
             get_artifact_store(settings)
             get_queue(settings)
+            validate_auth_readiness(settings, get_auth_service().store)
         get_runtime_config_service().apply_to_environment()
         get_orchestrator()
         queue = get_queue(settings)
