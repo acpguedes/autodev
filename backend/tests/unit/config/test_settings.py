@@ -60,14 +60,14 @@ def test_prod_profile_accepts_explicit_postgres_redis_and_s3() -> None:
     """The prod profile accepts a fully configured Postgres/Redis/S3 setup."""
     settings = Settings(
         autodev_profile="prod",
-        database_url="postgresql://autodev:autodev@postgres:5432/autodev",
+        database_url="postgresql://autodev:svc-db-secret@postgres:5432/autodev",
         autodev_job_backend="redis",
         autodev_event_bus="redis",
         autodev_redis_url="redis://redis:6379/0",
         storage_backend="s3",
         autodev_minio_endpoint="minio:9000",
-        autodev_minio_access_key="minioadmin",
-        autodev_minio_secret_key="minioadmin",
+        autodev_minio_access_key="svc-access-key",
+        autodev_minio_secret_key="svc-secret-key",
     )
 
     assert settings.autodev_job_backend == "redis"
@@ -80,14 +80,14 @@ def test_prod_profile_rejects_invalid_redis_url() -> None:
     with pytest.raises(ValidationError) as excinfo:
         Settings(
             autodev_profile="prod",
-            database_url="postgresql://autodev:autodev@postgres:5432/autodev",
+            database_url="postgresql://autodev:svc-db-secret@postgres:5432/autodev",
             autodev_job_backend="redis",
             autodev_event_bus="redis",
             autodev_redis_url="http://redis:6379/0",
             storage_backend="s3",
             autodev_minio_endpoint="minio:9000",
-            autodev_minio_access_key="minioadmin",
-            autodev_minio_secret_key="minioadmin",
+            autodev_minio_access_key="svc-access-key",
+            autodev_minio_secret_key="svc-secret-key",
         )
 
     assert "AUTODEV_REDIS_URL must start with redis:// or rediss://" in str(excinfo.value)
@@ -143,3 +143,95 @@ def test_trusted_in_process_plugin_ids_are_normalized() -> None:
     assert settings.trusted_in_process_plugin_ids() == frozenset(
         {"acme/one", "acme/two"}
     )
+
+
+def test_redacted_dump_masks_credential_bearing_urls() -> None:
+    """Passwords embedded in DATABASE_URL/AUTODEV_REDIS_URL never reach a dump."""
+    settings = Settings(
+        autodev_profile="prod",
+        database_url="postgresql://svc:db-secret@postgres:5432/autodev",
+        autodev_job_backend="redis",
+        autodev_event_bus="redis",
+        autodev_redis_url="redis://:redis-secret@redis:6379/0",
+        storage_backend="s3",
+        autodev_minio_endpoint="minio:9000",
+        autodev_minio_access_key="service-access-key",
+        autodev_minio_secret_key="service-secret-key",
+    )
+
+    redacted = settings.redacted_model_dump()
+
+    assert redacted["database_url"] == "***"
+    assert redacted["autodev_redis_url"] == "***"
+    assert redacted["autodev_minio_access_key"] == "***"
+    assert redacted["autodev_minio_secret_key"] == "***"
+    assert "db-secret" not in repr(redacted)
+    assert "redis-secret" not in repr(redacted)
+
+
+def test_redacted_dump_keeps_credential_free_urls_usable() -> None:
+    """A SQLite/local-mode URL with no embedded password is not masked."""
+    settings = Settings(database_url="sqlite:///./autodev.db", autodev_redis_url="")
+
+    redacted = settings.redacted_model_dump()
+
+    assert redacted["database_url"] == "sqlite:///./autodev.db"
+    assert redacted["autodev_redis_url"] == ""
+
+
+def test_prod_profile_requires_a_postgres_password() -> None:
+    """An empty PostgreSQL password is rejected in production."""
+    with pytest.raises(ValidationError) as excinfo:
+        Settings(
+            autodev_profile="prod",
+            database_url="postgresql://svc@postgres:5432/autodev",
+            autodev_job_backend="redis",
+            autodev_event_bus="redis",
+            autodev_redis_url="redis://redis:6379/0",
+            storage_backend="s3",
+            autodev_minio_endpoint="minio:9000",
+            autodev_minio_access_key="svc-access-key",
+            autodev_minio_secret_key="svc-secret-key",
+        )
+
+    assert "prod profile requires a PostgreSQL password" in str(excinfo.value)
+
+
+@pytest.mark.parametrize(
+    "password", ["autodev", "minioadmin", "password", "changeme", "change-me", "PASSWORD"]
+)
+def test_prod_profile_rejects_known_default_postgres_password(password: str) -> None:
+    """Every known insecure default PostgreSQL password is rejected, case-insensitively."""
+    with pytest.raises(ValidationError) as excinfo:
+        Settings(
+            autodev_profile="prod",
+            database_url=f"postgresql://svc:{password}@postgres:5432/autodev",
+            autodev_job_backend="redis",
+            autodev_event_bus="redis",
+            autodev_redis_url="redis://redis:6379/0",
+            storage_backend="s3",
+            autodev_minio_endpoint="minio:9000",
+            autodev_minio_access_key="svc-access-key",
+            autodev_minio_secret_key="svc-secret-key",
+        )
+
+    assert "prod profile rejects known default PostgreSQL credentials" in str(excinfo.value)
+
+
+@pytest.mark.parametrize("default_value", ["autodev", "minioadmin", "password", "changeme", "change-me"])
+def test_prod_profile_rejects_known_default_minio_credentials(default_value: str) -> None:
+    """Known default MinIO access/secret keys are rejected in production."""
+    with pytest.raises(ValidationError) as excinfo:
+        Settings(
+            autodev_profile="prod",
+            database_url="postgresql://svc:svc-db-secret@postgres:5432/autodev",
+            autodev_job_backend="redis",
+            autodev_event_bus="redis",
+            autodev_redis_url="redis://redis:6379/0",
+            storage_backend="s3",
+            autodev_minio_endpoint="minio:9000",
+            autodev_minio_access_key=default_value,
+            autodev_minio_secret_key="svc-secret-key",
+        )
+
+    assert "prod profile rejects known default AUTODEV_MINIO_ACCESS_KEY" in str(excinfo.value)

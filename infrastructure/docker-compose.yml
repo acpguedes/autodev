@@ -53,14 +53,14 @@ services:
     working_dir: /workspace
     environment:
       AUTODEV_PROFILE: prod
-      DATABASE_URL: postgresql://autodev:autodev@postgres:5432/autodev
+      DATABASE_URL: "postgresql://autodev:${AUTODEV_POSTGRES_PASSWORD:-}@postgres:5432/autodev"
       LLM_PROVIDER: stub
       AUTODEV_JOB_BACKEND: redis
       AUTODEV_REDIS_URL: redis://redis:6379/0
       STORAGE_BACKEND: s3
       AUTODEV_MINIO_ENDPOINT: minio:9000
-      AUTODEV_MINIO_ACCESS_KEY: "${AUTODEV_MINIO_ACCESS_KEY:-minioadmin}"
-      AUTODEV_MINIO_SECRET_KEY: "${AUTODEV_MINIO_SECRET_KEY:-minioadmin}"
+      AUTODEV_MINIO_ACCESS_KEY: "${AUTODEV_MINIO_ACCESS_KEY:-}"
+      AUTODEV_MINIO_SECRET_KEY: "${AUTODEV_MINIO_SECRET_KEY:-}"
       AUTODEV_CONFIG_PATH: /data/autodev.config.json
       AUTODEV_PROJECT_ROOT: /workspace
       OTEL_ENABLED: "${OTEL_ENABLED:-true}"
@@ -116,7 +116,7 @@ services:
     environment:
       POSTGRES_DB: autodev
       POSTGRES_USER: autodev
-      POSTGRES_PASSWORD: autodev
+      POSTGRES_PASSWORD: "${AUTODEV_POSTGRES_PASSWORD:-}"
     ports:
       - "5432:5432"
     volumes:
@@ -146,8 +146,8 @@ services:
     profiles: ["prod", "minio"]
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
-      MINIO_ROOT_USER: "${AUTODEV_MINIO_ACCESS_KEY:-minioadmin}"
-      MINIO_ROOT_PASSWORD: "${AUTODEV_MINIO_SECRET_KEY:-minioadmin}"
+      MINIO_ROOT_USER: "${AUTODEV_MINIO_ACCESS_KEY:-}"
+      MINIO_ROOT_PASSWORD: "${AUTODEV_MINIO_SECRET_KEY:-}"
     ports:
       - "9000:9000"
       - "9001:9001"
