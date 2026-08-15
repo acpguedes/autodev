@@ -22,6 +22,7 @@ from backend.observability.context import bind_correlation_context  # noqa: E402
 from backend.observability.runtime import configure_observability  # noqa: E402
 
 SMOKE_SERVICE_NAME = "autodev-observability-smoke"
+PROMETHEUS_SMOKE_METRIC = "autodev_run_step_duration_count"
 COLLECTOR_ENDPOINT = "http://localhost:4318"
 POLL_TIMEOUT_SECONDS = 30.0
 POLL_INTERVAL_SECONDS = 1.0
@@ -79,11 +80,22 @@ def _grafana_ready(payload: Mapping[str, Any]) -> bool:
 def _prometheus_ready(payload: Mapping[str, Any]) -> bool:
     """Return whether Prometheus found the emitted step histogram."""
     data = payload.get("data")
-    return (
-        payload.get("status") == "success"
-        and isinstance(data, Mapping)
-        and bool(data.get("result"))
-    )
+    if payload.get("status") != "success" or not isinstance(data, Mapping):
+        return False
+    result = data.get("result")
+    if not isinstance(result, Sequence) or isinstance(result, (str, bytes)):
+        return False
+    for series in result:
+        if not isinstance(series, Mapping):
+            continue
+        metric = series.get("metric")
+        if (
+            isinstance(metric, Mapping)
+            and metric.get("__name__") == PROMETHEUS_SMOKE_METRIC
+            and metric.get("job") == SMOKE_SERVICE_NAME
+        ):
+            return True
+    return False
 
 
 def _tempo_ready(payload: Mapping[str, Any]) -> bool:
@@ -107,7 +119,9 @@ def build_backend_checks() -> tuple[BackendCheck, ...]:
     Returns:
         Grafana, Prometheus, Tempo, and Loki checks in display order.
     """
-    prometheus_query = urlencode({"query": "autodev_run_step_duration_count"})
+    prometheus_query = urlencode(
+        {"query": f'{PROMETHEUS_SMOKE_METRIC}{{job="{SMOKE_SERVICE_NAME}"}}'}
+    )
     tempo_query = urlencode(
         {"q": f'{{resource.service.name="{SMOKE_SERVICE_NAME}"}}'}
     )

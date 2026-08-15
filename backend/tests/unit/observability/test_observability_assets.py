@@ -116,6 +116,7 @@ def test_prometheus_scrapes_collector_and_loads_recording_rules() -> None:
     assert config["scrape_configs"] == [
         {
             "job_name": "otel-collector",
+            "honor_labels": True,
             "static_configs": [{"targets": ["otel-collector:9464"]}],
         }
     ]
@@ -267,7 +268,8 @@ def test_verifier_has_one_deadline_and_actionable_backend_failures() -> None:
         "Grafana": "http://localhost:3001/api/health",
         "Prometheus": (
             "http://localhost:9090/api/v1/query?"
-            "query=autodev_run_step_duration_count"
+            "query=autodev_run_step_duration_count%7Bjob%3D%22"
+            "autodev-observability-smoke%22%7D"
         ),
         "Tempo": (
             "http://localhost:3200/api/search?"
@@ -294,6 +296,46 @@ def test_verifier_has_one_deadline_and_actionable_backend_failures() -> None:
     for check in checks:
         assert check.name in message
         assert check.url in message
+
+
+def test_prometheus_readiness_rejects_unrelated_persisted_series() -> None:
+    """A stale metric from another service cannot satisfy the smoke contract."""
+    verifier = _load_verifier()
+    prometheus = next(
+        check for check in verifier.build_backend_checks() if check.name == "Prometheus"
+    )
+
+    unrelated = {
+        "status": "success",
+        "data": {
+            "result": [
+                {
+                    "metric": {
+                        "__name__": "autodev_run_step_duration_count",
+                        "job": "unrelated-service",
+                    },
+                    "value": [1, "1"],
+                }
+            ]
+        },
+    }
+    smoke = {
+        "status": "success",
+        "data": {
+            "result": [
+                {
+                    "metric": {
+                        "__name__": "autodev_run_step_duration_count",
+                        "job": verifier.SMOKE_SERVICE_NAME,
+                    },
+                    "value": [1, "1"],
+                }
+            ]
+        },
+    }
+
+    assert prometheus.ready(unrelated) is False
+    assert prometheus.ready(smoke) is True
 
 
 def test_verifier_bootstraps_repo_imports_for_direct_script_execution() -> None:
