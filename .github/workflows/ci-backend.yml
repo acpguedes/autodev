@@ -78,15 +78,19 @@ jobs:
           docker pull python:3.11-slim
           python -m pytest backend/tests/integration/test_sandbox_security_contract.py -q -rs
 
-      - name: Run critical-CVE scan
+      - name: Validate expiring security exceptions
+        run: python scripts/validate_security_exceptions.py .trivyignore.yaml
+
+      - name: Run HIGH/CRITICAL vulnerability and license scan
         uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
-          scanners: vuln
-          severity: CRITICAL
+          scanners: vuln,license
+          severity: HIGH,CRITICAL
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
+          trivyignores: .trivyignore.yaml
           timeout: 3m
 
   backend-tests:
