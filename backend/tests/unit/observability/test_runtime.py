@@ -6,6 +6,14 @@ import asyncio
 from types import SimpleNamespace
 
 import pytest
+from opentelemetry import _logs as otel_logs
+from opentelemetry import metrics as otel_metrics
+from opentelemetry import trace as otel_trace
+from opentelemetry.sdk._logs.export import InMemoryLogRecordExporter
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 
 from backend.api import main as api_main
 from backend.config.settings import Settings
@@ -22,6 +30,131 @@ from backend.observability.metrics import NoopMetricSink, QueueSnapshot
 from backend.observability.runtime import configure_observability
 from backend.observability.tracing import get_tracer
 from backend.tests.observability_helpers import capture_observability
+
+
+def test_global_providers_route_to_the_live_runtime_after_restart() -> None:
+    """Stable global providers delegate every signal to the restarted runtime."""
+    span_exporter_a = InMemorySpanExporter()
+    metric_reader_a = InMemoryMetricReader()
+    log_exporter_a = InMemoryLogRecordExporter()
+    runtime_a = configure_observability(
+        Settings(),
+        span_exporter=span_exporter_a,
+        metric_reader=metric_reader_a,
+        log_exporter=log_exporter_a,
+        install_global=True,
+    )
+    global_providers = (
+        otel_trace.get_tracer_provider(),
+        otel_metrics.get_meter_provider(),
+        otel_logs.get_logger_provider(),
+    )
+    with otel_trace.get_tracer("restart-test").start_as_current_span("runtime-a"):
+        pass
+    otel_metrics.get_meter("restart-test").create_counter(
+        "autodev.test.restart.count"
+    ).add(1)
+    otel_logs.get_logger("restart-test").emit(body="runtime-a")
+    runtime_a.force_flush()
+    assert [span.name for span in span_exporter_a.get_finished_spans()] == ["runtime-a"]
+    assert [
+        record.log_record.body for record in log_exporter_a.get_finished_logs()
+    ] == ["runtime-a"]
+    assert metric_reader_a.get_metrics_data() is not None
+    runtime_a.shutdown()
+
+    span_exporter_b = InMemorySpanExporter()
+    metric_reader_b = InMemoryMetricReader()
+    log_exporter_b = InMemoryLogRecordExporter()
+    runtime_b = configure_observability(
+        Settings(),
+        span_exporter=span_exporter_b,
+        metric_reader=metric_reader_b,
+        log_exporter=log_exporter_b,
+        install_global=True,
+    )
+    try:
+        assert (
+            otel_trace.get_tracer_provider(),
+            otel_metrics.get_meter_provider(),
+            otel_logs.get_logger_provider(),
+        ) == global_providers
+        with otel_trace.get_tracer("restart-test").start_as_current_span("runtime-b"):
+            pass
+        otel_metrics.get_meter("restart-test").create_counter(
+            "autodev.test.restart.count"
+        ).add(2)
+        otel_logs.get_logger("restart-test").emit(body="runtime-b")
+        runtime_b.force_flush()
+
+        assert [span.name for span in span_exporter_b.get_finished_spans()] == [
+            "runtime-b"
+        ]
+        assert [
+            record.log_record.body for record in log_exporter_b.get_finished_logs()
+        ] == ["runtime-b"]
+        metric_data_b = metric_reader_b.get_metrics_data()
+        assert metric_data_b is not None
+        metric_names_b = {
+            metric.name
+            for resource_metric in metric_data_b.resource_metrics
+            for scope_metric in resource_metric.scope_metrics
+            for metric in scope_metric.metrics
+        }
+        assert "autodev.test.restart.count" in metric_names_b
+        assert "runtime-b" not in {
+            span.name for span in span_exporter_a.get_finished_spans()
+        }
+        assert "runtime-b" not in {
+            record.log_record.body for record in log_exporter_a.get_finished_logs()
+        }
+    finally:
+        runtime_b.shutdown()
+
+    with otel_trace.get_tracer("restart-test").start_as_current_span(
+        "after-shutdown"
+    ) as stopped_span:
+        assert not stopped_span.is_recording()
+    otel_metrics.get_meter("restart-test").create_counter(
+        "autodev.test.restart.count"
+    ).add(3)
+    otel_logs.get_logger("restart-test").emit(body="after-shutdown")
+    assert "after-shutdown" not in {
+        span.name for span in span_exporter_b.get_finished_spans()
+    }
+    assert "after-shutdown" not in {
+        record.log_record.body for record in log_exporter_b.get_finished_logs()
+    }
+
+    isolated_span_exporter = InMemorySpanExporter()
+    isolated_metric_reader = InMemoryMetricReader()
+    isolated_log_exporter = InMemoryLogRecordExporter()
+    isolated_runtime = configure_observability(
+        Settings(),
+        span_exporter=isolated_span_exporter,
+        metric_reader=isolated_metric_reader,
+        log_exporter=isolated_log_exporter,
+        install_global=False,
+    )
+    try:
+        with otel_trace.get_tracer("restart-test").start_as_current_span(
+            "global-during-isolated-runtime"
+        ):
+            pass
+        otel_metrics.get_meter("restart-test").create_counter(
+            "autodev.test.isolated.count"
+        ).add(1)
+        otel_logs.get_logger("restart-test").emit(body="global-during-isolated-runtime")
+        with get_tracer().start_as_current_span("owned-isolated-runtime"):
+            pass
+        isolated_runtime.force_flush()
+        assert [span.name for span in isolated_span_exporter.get_finished_spans()] == [
+            "owned-isolated-runtime"
+        ]
+        assert not isolated_log_exporter.get_finished_logs()
+        assert isolated_metric_reader.get_metrics_data() is None
+    finally:
+        isolated_runtime.shutdown()
 
 
 def test_lifespan_shuts_down_observability_when_startup_fails(

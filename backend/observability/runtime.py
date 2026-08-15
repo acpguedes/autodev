@@ -5,9 +5,11 @@ from __future__ import annotations
 import importlib.metadata
 import logging
 import sys
+import threading
 import uuid
 import warnings
 from dataclasses import dataclass, field
+from typing import Any, Generic, TypeVar
 
 from opentelemetry import _logs as logs
 from opentelemetry import metrics, trace
@@ -32,6 +34,7 @@ from opentelemetry.sdk.trace.export import (
     SimpleSpanProcessor,
     SpanExporter,
 )
+from opentelemetry.util.types import Attributes
 
 from backend.config.settings import Settings, get_settings
 from backend.observability.configuration import build_sampler, resolve_signal_endpoint
@@ -46,10 +49,161 @@ from backend.observability.metrics import (
     set_metric_sink,
 )
 
+_ProviderT = TypeVar("_ProviderT")
+
+
+class _ProviderDelegate(Generic[_ProviderT]):
+    """Thread-safe mutable reference behind a process-lifetime provider facade."""
+
+    def __init__(self, provider: _ProviderT) -> None:
+        """Initialize the reference with a no-op provider.
+
+        Args:
+            provider: Initial delegate returned until a runtime is installed.
+        """
+        self._provider = provider
+        self._lock = threading.RLock()
+
+    def get(self) -> _ProviderT:
+        """Return the provider currently serving global instrumentation.
+
+        Returns:
+            The current live or no-op provider.
+        """
+        with self._lock:
+            return self._provider
+
+    def set(self, provider: _ProviderT) -> None:
+        """Switch global instrumentation to a new live provider.
+
+        Args:
+            provider: Newly active runtime provider.
+        """
+        with self._lock:
+            self._provider = provider
+
+    def clear(self, provider: _ProviderT, replacement: _ProviderT) -> None:
+        """Replace an expected retiring provider with a no-op provider.
+
+        Args:
+            provider: Provider being retired by its runtime.
+            replacement: No-op provider used until the next global runtime.
+        """
+        with self._lock:
+            if self._provider is provider:
+                self._provider = replacement
+
+
+class _DelegatingTracerProvider(trace.TracerProvider):
+    """Stable global tracer provider forwarding to the active runtime."""
+
+    def __init__(self) -> None:
+        """Initialize the facade with a public no-op tracer provider."""
+        self._delegate = _ProviderDelegate[trace.TracerProvider](
+            trace.NoOpTracerProvider()
+        )
+
+    def get_tracer(
+        self,
+        instrumenting_module_name: str,
+        instrumenting_library_version: str | None = None,
+        schema_url: str | None = None,
+        attributes: Attributes = None,
+    ) -> trace.Tracer:
+        """Return a tracer from the active runtime provider.
+
+        Args:
+            instrumenting_module_name: Instrumentation scope name.
+            instrumenting_library_version: Optional scope version.
+            schema_url: Optional scope schema URL.
+            attributes: Optional scope attributes.
+
+        Returns:
+            A tracer from the current live or no-op provider.
+        """
+        return self._delegate.get().get_tracer(
+            instrumenting_module_name,
+            instrumenting_library_version,
+            schema_url,
+            attributes,
+        )
+
+
+class _DelegatingMeterProvider(metrics.MeterProvider):
+    """Stable global meter provider forwarding to the active runtime."""
+
+    def __init__(self) -> None:
+        """Initialize the facade with a public no-op meter provider."""
+        self._delegate = _ProviderDelegate[metrics.MeterProvider](
+            metrics.NoOpMeterProvider()
+        )
+
+    def get_meter(
+        self,
+        name: str,
+        version: str | None = None,
+        schema_url: str | None = None,
+        attributes: Attributes = None,
+    ) -> metrics.Meter:
+        """Return a meter from the active runtime provider.
+
+        Args:
+            name: Instrumentation scope name.
+            version: Optional scope version.
+            schema_url: Optional scope schema URL.
+            attributes: Optional scope attributes.
+
+        Returns:
+            A meter from the current live or no-op provider.
+        """
+        return self._delegate.get().get_meter(
+            name,
+            version,
+            schema_url,
+            attributes,
+        )
+
+
+class _DelegatingLoggerProvider(logs.LoggerProvider):
+    """Stable global logger provider forwarding to the active runtime."""
+
+    def __init__(self) -> None:
+        """Initialize the facade with a public no-op logger provider."""
+        self._delegate = _ProviderDelegate[logs.LoggerProvider](
+            logs.NoOpLoggerProvider()
+        )
+
+    def get_logger(
+        self,
+        name: str,
+        version: str | None = None,
+        schema_url: str | None = None,
+        attributes: Any = None,
+    ) -> logs.Logger:
+        """Return a logger from the active runtime provider.
+
+        Args:
+            name: Instrumentation scope name.
+            version: Optional scope version.
+            schema_url: Optional scope schema URL.
+            attributes: Optional scope attributes.
+
+        Returns:
+            A logger from the current live or no-op provider.
+        """
+        return self._delegate.get().get_logger(
+            name,
+            version,
+            schema_url,
+            attributes,
+        )
+
+
 _runtime: ObservabilityRuntime | None = None
-_trace_global_installed = False
-_metric_global_installed = False
-_log_global_installed = False
+_global_facades_installed = False
+_global_tracer_provider = _DelegatingTracerProvider()
+_global_meter_provider = _DelegatingMeterProvider()
+_global_logger_provider = _DelegatingLoggerProvider()
 
 
 def _service_version() -> str:
@@ -74,6 +228,7 @@ class ObservabilityRuntime:
     metric_sink: MetricSink
     log_handlers: tuple[logging.Handler, ...]
     _shutdown: bool = field(default=False, init=False, repr=False)
+    _installed_global: bool = field(default=False, init=False, repr=False)
 
     def force_flush(self, timeout_millis: int = 10_000) -> bool:
         """Flush all three providers within their configured processor semantics.
@@ -99,6 +254,8 @@ class ObservabilityRuntime:
         if self._shutdown:
             return
         self._shutdown = True
+        if self._installed_global:
+            _clear_global_delegates(self)
         root_logger = logging.getLogger()
         for handler in self.log_handlers:
             root_logger.removeHandler(handler)
@@ -112,21 +269,39 @@ class ObservabilityRuntime:
 
 
 def _install_globals(runtime: ObservabilityRuntime) -> None:
-    """Install providers into OTel global APIs at most once per process.
+    """Install stable global facades and point them at the active runtime.
 
     Args:
         runtime: Runtime whose providers should serve third-party instrumentation.
     """
-    global _trace_global_installed, _metric_global_installed, _log_global_installed
-    if not _trace_global_installed:
-        trace.set_tracer_provider(runtime.tracer_provider)
-        _trace_global_installed = True
-    if not _metric_global_installed:
-        metrics.set_meter_provider(runtime.meter_provider)
-        _metric_global_installed = True
-    if not _log_global_installed:
-        logs.set_logger_provider(runtime.logger_provider)
-        _log_global_installed = True
+    global _global_facades_installed
+    _global_tracer_provider._delegate.set(runtime.tracer_provider)
+    _global_meter_provider._delegate.set(runtime.meter_provider)
+    _global_logger_provider._delegate.set(runtime.logger_provider)
+    if not _global_facades_installed:
+        trace.set_tracer_provider(_global_tracer_provider)
+        metrics.set_meter_provider(_global_meter_provider)
+        logs.set_logger_provider(_global_logger_provider)
+        _global_facades_installed = True
+    runtime._installed_global = True
+
+
+def _clear_global_delegates(runtime: ObservabilityRuntime) -> None:
+    """Detach a retiring runtime from the process-lifetime global facades.
+
+    Args:
+        runtime: Runtime whose providers are about to be shut down.
+    """
+    _global_tracer_provider._delegate.clear(
+        runtime.tracer_provider, trace.NoOpTracerProvider()
+    )
+    _global_meter_provider._delegate.clear(
+        runtime.meter_provider, metrics.NoOpMeterProvider()
+    )
+    _global_logger_provider._delegate.clear(
+        runtime.logger_provider, logs.NoOpLoggerProvider()
+    )
+    runtime._installed_global = False
 
 
 def _build_log_handlers(
