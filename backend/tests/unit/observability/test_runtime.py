@@ -160,6 +160,44 @@ def test_global_providers_route_to_the_live_runtime_after_restart() -> None:
         isolated_runtime.shutdown()
 
 
+def test_cached_global_gauge_routes_to_restarted_runtime() -> None:
+    """A gauge acquired before shutdown records through the next runtime."""
+    metric_reader_a = InMemoryMetricReader()
+    runtime_a = configure_observability(
+        Settings(),
+        metric_reader=metric_reader_a,
+        install_global=True,
+    )
+    cached_gauge = otel_metrics.get_meter("restart-gauge-test").create_gauge(
+        "autodev.test.restart.gauge"
+    )
+    cached_gauge.set(1)
+    runtime_a.force_flush()
+    assert metric_reader_a.get_metrics_data() is not None
+    runtime_a.shutdown()
+
+    metric_reader_b = InMemoryMetricReader()
+    runtime_b = configure_observability(
+        Settings(),
+        metric_reader=metric_reader_b,
+        install_global=True,
+    )
+    try:
+        cached_gauge.set(2)
+        runtime_b.force_flush()
+        metric_data_b = metric_reader_b.get_metrics_data()
+        assert metric_data_b is not None
+        metric_names_b = {
+            metric.name
+            for resource_metric in metric_data_b.resource_metrics
+            for scope_metric in resource_metric.scope_metrics
+            for metric in scope_metric.metrics
+        }
+        assert "autodev.test.restart.gauge" in metric_names_b
+    finally:
+        runtime_b.shutdown()
+
+
 def test_lifespan_shuts_down_observability_when_startup_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

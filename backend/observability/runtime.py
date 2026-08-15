@@ -326,6 +326,53 @@ class _DelegatingHistogram(metrics.Histogram):
         ).record(amount, attributes, context)
 
 
+class _DelegatingGauge:
+    """Gauge handle resolving its SDK instrument for every measurement."""
+
+    def __init__(
+        self,
+        meter: "_DelegatingMeter",
+        name: str,
+        unit: str,
+        description: str,
+    ) -> None:
+        """Store the meter and instrument descriptor.
+
+        Args:
+            meter: Stable meter used to resolve the current SDK meter.
+            name: Instrument name.
+            unit: Instrument unit.
+            description: Instrument description.
+        """
+        self._meter = meter
+        self._descriptor = (name, unit, description)
+        self._provider: metrics.MeterProvider | None = None
+        self._gauge: Any = None
+        self._lock = threading.RLock()
+
+    def set(
+        self,
+        amount: int | float,
+        attributes: Attributes = None,
+        context: Context | None = None,
+    ) -> None:
+        """Set the gauge on the active meter provider.
+
+        Args:
+            amount: Current gauge value.
+            attributes: Optional measurement attributes.
+            context: Optional measurement context.
+        """
+        provider = self._meter._providers.get()
+        with self._lock:
+            if self._provider is not provider:
+                self._gauge = provider.get_meter(
+                    *self._meter._scope
+                ).create_gauge(*self._descriptor)
+                self._provider = provider
+            self._gauge.set(amount, attributes, context)
+
+
 class _DelegatingMeter(metrics.Meter):
     """Meter handle producing restart-safe synchronous instruments."""
 
@@ -413,6 +460,21 @@ class _DelegatingMeter(metrics.Meter):
             description,
             explicit_bucket_boundaries_advisory,
         )
+
+    def create_gauge(
+        self, name: str, unit: str = "", description: str = ""
+    ) -> Any:
+        """Create a restart-safe gauge handle.
+
+        Args:
+            name: Instrument name.
+            unit: Instrument unit.
+            description: Instrument description.
+
+        Returns:
+            A gauge resolving its SDK instrument per measurement.
+        """
+        return _DelegatingGauge(self, name, unit, description)
 
     def create_observable_counter(
         self,
