@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -19,12 +20,12 @@ def _store(tmp_path: Path) -> AuthStore:
     return AuthStore(SQLiteStore(f"sqlite:///{tmp_path / 'auth.db'}"))
 
 
-def local_settings(**overrides: object) -> Settings:
+def local_settings(**overrides: Any) -> Settings:
     """Build local-profile settings with SQLite persistence."""
     return Settings(autodev_profile="local", database_url="sqlite:///./unused.db", **overrides)
 
 
-def prod_settings(**overrides: object) -> Settings:
+def prod_settings(**overrides: Any) -> Settings:
     """Build production-profile settings satisfying every non-auth constraint."""
     return Settings(
         autodev_profile="prod",

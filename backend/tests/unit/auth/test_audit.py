@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -18,13 +18,18 @@ from backend.persistence.database import reset_store_cache
 from backend.persistence.sqlite_adapter import SQLiteStore
 
 
-class FailingAuditWriter:
+class FailingAuditWriter(AuditWriter):
     """An audit writer that always fails to persist — for RED verification."""
+
+    def __init__(self) -> None:  # noqa: D107 - intentionally skips AuditWriter's store setup
+        pass
 
     def record(self, record: AccessAuditRecord, *, required: bool) -> None:
         raise RuntimeError("audit store unavailable")
 
-    def list(self, *, tenant_id: str, limit: int, before: object) -> list[AccessAuditRecord]:
+    def list(
+        self, *, tenant_id: str, limit: int, before: datetime | None
+    ) -> list[AccessAuditRecord]:
         return []
 
 
@@ -117,7 +122,7 @@ def test_audit_rows_never_contain_credentials_or_bodies(client: TestClient) -> N
     """Audit rows carry only stable identifiers, never the presented secret or a body."""
     viewer = _viewer_token()
     admin = _admin_token()
-    secret_goal = "sk-do-not-audit-this-body-value"
+    secret_goal = "do-not-audit-this-request-body-value"
 
     client.get("/v2/sessions", headers=_bearer(viewer))
     client.post("/v2/sessions", headers=_bearer(viewer), json={"goal": secret_goal})

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -13,7 +15,7 @@ from backend.persistence.database import reset_store_cache
 
 
 @pytest.fixture(autouse=True)
-def _sqlite_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _sqlite_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'cli_auth.db'}")
     reset_settings_cache()
     reset_store_cache()
@@ -22,7 +24,7 @@ def _sqlite_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     reset_store_cache()
 
 
-def _run(args: list[str], capsys: pytest.CaptureFixture[str]) -> tuple[int, object]:
+def _run(args: list[str], capsys: pytest.CaptureFixture[str]) -> tuple[int, Any]:
     parser = build_parser()
     namespace = parser.parse_args(args)
     exit_code = namespace.handler(namespace)

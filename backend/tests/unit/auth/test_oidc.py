@@ -23,7 +23,7 @@ ISSUER = "https://idp.example.com"
 AUDIENCE = "autodev"
 
 
-def _keypair() -> tuple[object, object]:
+def _keypair() -> tuple[rsa.RSAPrivateKey, rsa.RSAPublicKey]:
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     return private_key, private_key.public_key()
 
@@ -47,7 +47,9 @@ def _settings(**overrides: object) -> OidcSettings:
     return OidcSettings(**base)  # type: ignore[arg-type]
 
 
-def _validator_with_key(monkeypatch: pytest.MonkeyPatch, public_key: object) -> OidcValidator:
+def _validator_with_key(
+    monkeypatch: pytest.MonkeyPatch, public_key: rsa.RSAPublicKey
+) -> OidcValidator:
     validator = OidcValidator(_settings())
     monkeypatch.setattr(
         validator._jwks_client,  # noqa: SLF001 - internal test wiring
@@ -57,7 +59,7 @@ def _validator_with_key(monkeypatch: pytest.MonkeyPatch, public_key: object) -> 
     return validator
 
 
-def _token(private_key: object, **claim_overrides: object) -> str:
+def _token(private_key: rsa.RSAPrivateKey, **claim_overrides: object) -> str:
     now = datetime.now(timezone.utc)
     payload: dict[str, object] = {
         "iss": ISSUER,

@@ -200,6 +200,13 @@ AutoDev Architect is intended to be fully operable with open source infrastructu
   via `make observability-up|verify|down` — see
   [`docs/ops/observability.md`](docs/ops/observability.md).
 
+### Authentication & RBAC
+- **Identity**: delegated to an external OIDC provider (authorization-code + PKCE)
+- **Machine credentials**: governed, hash-only service keys
+- **Authorization**: canonical five-role RBAC (`viewer`…`owner`) enforced on every `/v2` route
+- **Available now** (E11-S2): local zero-config access is unchanged; production requires
+  OIDC or a service credential — see [`docs/security.md`](docs/security.md).
+
 ### Optional local model path
 - **Inference gateway**: vLLM or Ollama
 - **Embeddings**: local embedding models served through Ollama/vLLM or sentence-transformers services

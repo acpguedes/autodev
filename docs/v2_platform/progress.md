@@ -313,6 +313,37 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-08-15** — **E11-S2 — RBAC and authentication is complete**
+  (dependency E9-S1 Done; see ADR-018). Real Control Plane authentication
+  and authorization replace the permissive placeholder: OIDC bearer JWTs
+  (full `iss`/`aud`/`exp`/tenant/role/scope claim + JWKS-signature
+  validation, algorithm allowlist never inferred from the token header),
+  governed hash-only service keys (`adk_live_...`, 1–90 day expiry,
+  immediately revocable, `autodev auth service-key create|list|revoke`),
+  and browser sessions via OIDC authorization-code + PKCE (HttpOnly/Secure
+  cookie, encrypted refresh token). Canonical five-role RBAC
+  (`viewer`<`operator`<`maintainer`<`admin`<`owner`; legacy `author` accepted
+  only as an input alias for `maintainer`) enforced by one global FastAPI
+  dependency, covering every route across all 26 `backend/api/routers/*.py`
+  modules including auto-discovered plugin routers — a repo-wide contract
+  test (`test_every_non_public_route_declares_policy`) now fails CI if a new
+  route ships unannotated. Local zero-config access is unchanged; production
+  startup refuses to serve traffic without complete OIDC/JWKS settings or an
+  active service credential. Every allow/deny decision against a resolved
+  principal is durably audited before the caller sees the result — a
+  required-audit-write failure denies an otherwise-allowed request
+  (`503 security.audit_unavailable`) rather than letting an unauditable
+  allow through — retrievable per-tenant via `GET /v2/audit/access`.
+  Closed the "trusted actor" gap by name: flow human-decisions and every
+  plan-approval/plan mutation now record the authenticated principal as the
+  actor, never a client-supplied body/query field. OpenAPI now publishes
+  `oidcBearer`/`serviceBearer`/`sessionCookie` security schemes and derives
+  each operation's `x-autodev-required-scope` directly from its
+  `@requires_scope` declaration — no second, hand-maintained scope registry.
+  Flagged for E11-S3, not fixed here (no per-resource tenant data exists
+  yet): `GET /v2/context/retrieve` accepts a caller-supplied `tenant_id`
+  query parameter with no check against the authenticated principal.
+
 - **2026-08-15** — **E11-S1 — Observability (OpenTelemetry) is complete**
   (Beta epic **E11 now 1/4 In Progress**; dependency E0 Done). Correlated
   traces/metrics/logs by `run_id`/32-character W3C `trace_id`; self-hosted
