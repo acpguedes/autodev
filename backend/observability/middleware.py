@@ -9,6 +9,7 @@ OpenTelemetry spans and RED metrics use the runtime-owned three-signal APIs.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import uuid
@@ -183,7 +184,9 @@ class RequestTracingMiddleware:
             ) as span:
                 try:
                     await self._app(scope, receive, send_with_header)
-                except BaseException:
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
                     response_status = 500
                     span.set_status(Status(StatusCode.ERROR, "internal_error"))
                     raise
