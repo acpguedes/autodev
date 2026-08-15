@@ -62,6 +62,7 @@ neither.
 | ADR-016 | AutoDev-Owned Provider-Neutral Model Gateway Boundary | Accepted | E2-S6 | 2026-08-05 |
 | ADR-017 | Three-Signal Observability Runtime and OSS Backends | Accepted | E11-S1 | 2026-08-15 |
 | ADR-018 | Control Plane Authentication, RBAC, and Access Audit | Accepted | E11-S2 | 2026-08-15 |
+| ADR-019 | Multi-Tenant Isolation, Quotas, and Run Budgets | Accepted | E11-S3 | 2026-08-15 |
 | ADR-020 | Trusted-Only In-Process Plugin Boundary | Accepted | E11-S4 | 2026-08-15 |
 
 > Update this table whenever an ADR or RFC is added or changes status. This index,

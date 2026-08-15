@@ -185,6 +185,33 @@ class Settings(BaseSettings):
     autodev_session_encryption_key: str = ""
     autodev_session_ttl_seconds: int = Field(default=28_800, ge=60)
 
+    # --- Tenant quotas and run budgets (E11-S3, ADR-019) ---
+    #: Local-mode (no explicit tenant policy) finite defaults.
+    autodev_quota_local_max_concurrent_runs: int = Field(default=4, ge=1)
+    autodev_quota_local_max_storage_bytes: int = Field(
+        default=1 * 1024 * 1024 * 1024, ge=1
+    )
+    autodev_quota_local_requests_per_second: int = Field(default=20, ge=1)
+    autodev_quota_local_monthly_token_limit: int = Field(default=20_000_000, ge=1)
+    autodev_quota_local_monthly_cost_microusd: int = Field(
+        default=100_000_000, ge=1
+    )
+    #: Default per-run budget, applied everywhere unless narrowed further.
+    autodev_quota_default_run_max_tokens: int = Field(default=2_000_000, ge=1)
+    autodev_quota_default_run_max_cost_microusd: int = Field(
+        default=10_000_000, ge=1
+    )
+    autodev_quota_default_run_max_wall_clock_ms: int = Field(
+        default=3_600_000, ge=1
+    )
+    autodev_quota_default_run_max_steps: int = Field(default=1_000, ge=1)
+    #: Concurrency-lease lifecycle.
+    autodev_quota_run_lease_seconds: int = Field(default=90, ge=1)
+    autodev_quota_run_heartbeat_seconds: int = Field(default=30, ge=1)
+    #: Production requires an explicit, durably-stored policy per tenant;
+    #: local mode falls back to the finite defaults above.
+    autodev_quota_production_requires_policy: bool = True
+
     @classmethod
     def settings_customise_sources(
         cls,
