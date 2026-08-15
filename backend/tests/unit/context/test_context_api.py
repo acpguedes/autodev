@@ -123,3 +123,31 @@ def test_retrieve_context_requires_non_empty_query(monkeypatch: pytest.MonkeyPat
     resp = client.get("/v2/context/retrieve", params={"query": ""})
 
     assert resp.status_code == 422
+
+
+def test_retrieve_context_ignores_a_caller_supplied_tenant_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The authenticated principal's tenant is the only source of scope.
+
+    A client cannot select another tenant by adding a ``tenant_id`` query
+    parameter (E11-S3, ADR-019) — the retriever must always be called with
+    the resolved principal's tenant, never a client-supplied value.
+    """
+    monkeypatch.setattr(context_router, "get_store", lambda: _fake_store())
+    captured: dict[str, object] = {}
+
+    def fake_search(conn, query, *, tenant_id, limit, path_prefix, symbol):  # noqa: ANN001, ARG001
+        captured["tenant_id"] = tenant_id
+        return []
+
+    monkeypatch.setattr(retriever_module.lexical, "search", fake_search)
+    monkeypatch.setattr(retriever_module, "query_top_k", lambda *a, **k: [])
+
+    resp = client.get(
+        "/v2/context/retrieve",
+        params={"query": "add", "mode": "lexical", "tenant_id": "other-tenant"},
+    )
+
+    assert resp.status_code == 200
+    assert captured["tenant_id"] != "other-tenant"

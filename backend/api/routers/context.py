@@ -16,9 +16,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from backend.api.authorization import requires_scope
+from backend.api.authorization import require_v2_principal, requires_scope
+from backend.auth.contracts import PrincipalV2
 from backend.persistence.database import get_store
-from backend.persistence.tenancy import DEFAULT_TENANT_ID
 from backend.repository.retrieval.retriever import RetrievalFilters, retrieve
 
 router = APIRouter(prefix="/v2/context", tags=["context"])
@@ -39,19 +39,18 @@ def get_durable_store() -> Any:
 def retrieve_context(
     query: str = Query(..., min_length=1, description="Free-text/semantic search query"),
     mode: str = Query(default="hybrid", description="One of: lexical, vector, hybrid"),
-    tenant_id: str = Query(default=DEFAULT_TENANT_ID),
     path_prefix: str | None = Query(default=None, description="Restrict results to this file path prefix"),
     symbol: str | None = Query(default=None, description="Restrict results to this exact symbol name"),
     budget: int | None = Query(default=None, ge=1, description="Max total estimated tokens across results"),
     limit: int = Query(default=20, ge=1, le=100, description="Max chunk ids considered per retrieval mode"),
     store: Any = Depends(get_durable_store),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> dict[str, Any]:
     """Retrieve the most relevant code snippets for *query* via hybrid retrieval.
 
     Args:
         query: Free-text (and, in vector/hybrid mode, embedded) search query.
         mode: ``"lexical"``, ``"vector"``, or ``"hybrid"`` (default).
-        tenant_id: Tenant to scope the search to.
         path_prefix: Optional file path prefix filter.
         symbol: Optional exact symbol name filter.
         budget: Optional maximum total estimated token count across results;
@@ -60,6 +59,8 @@ def retrieve_context(
         limit: Maximum number of chunk ids considered per underlying
             retrieval mode before fusion/truncation.
         store: Durable store dependency.
+        principal: Authenticated caller; its ``tenant_id`` is the only
+            source of the tenant scope — a client cannot select a tenant.
 
     Returns:
         ``{"query", "mode", "results": [{"chunkId", "filePath", "symbol",
@@ -79,7 +80,7 @@ def retrieve_context(
         snippets = retrieve(
             conn,
             query,
-            tenant_id=tenant_id,
+            tenant_id=principal.tenant_id,
             mode=mode,  # type: ignore[arg-type]
             filters=filters,
             budget=budget,
