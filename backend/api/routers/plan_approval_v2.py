@@ -121,27 +121,48 @@ def _to_plan_v2(session_id: str, records: list[PlanStepRecord]) -> PlanV2:
     )
 
 
-def _seeded_records(store: StepApprovalStore, session_id: str) -> list[PlanStepRecord]:
+def _seeded_records(
+    store: StepApprovalStore, session_id: str, *, tenant_id: str
+) -> list[PlanStepRecord]:
     """Fetch the legacy plan and seed/return its tracked step records.
+
+    The legacy plan document (``plan_documents``, E8-S1/ADR-010) is the
+    only tenant-scoped parent this subsystem actually has — plan documents
+    are not required to reference a durable orchestrator session row, so
+    the tenant check happens here, at the plan document, not against
+    ``backend.persistence.database``'s sessions table.
+
+    :class:`StepApprovalStore` (``plan_step_state``) itself carries no
+    ``tenant_id`` column of its own (a known gap — see ADR-019's E11-S3
+    evidence note): it is only ever reached through a ``session_id`` that
+    already passed this tenant-scoped plan-document lookup, so access is
+    transitively scoped as long as every entry point calls this function
+    first, which every handler in this module does.
 
     Args:
         store: The step-approval store.
         session_id: The owning session.
+        tenant_id: Tenant the plan document must belong to (the
+            authenticated principal's tenant — never a client-supplied
+            value).
 
     Returns:
         Every tracked step for the session, ordered by index.
 
     Raises:
-        HTTPException: 404 if no plan document exists for the session.
+        HTTPException: 404 if no plan document exists for ``session_id``
+            under ``tenant_id``.
     """
     plan_store = _legacy_plan_store()
-    plan = plan_store.get_plan(session_id)
+    plan = plan_store.get_plan(session_id, tenant_id=tenant_id)
     if plan is None:
         v2_error(404, f"Plan for session {session_id!r} not found.")
     return store.ensure_steps(session_id, plan.steps)
 
 
-def _sync_legacy_plan(session_id: str, store: StepApprovalStore) -> list[PlanStepRecord]:
+def _sync_legacy_plan(
+    session_id: str, store: StepApprovalStore, *, tenant_id: str
+) -> list[PlanStepRecord]:
     """Mirror the tracked step list back onto the legacy plan document.
 
     Structural add/remove operations only mutate :class:`StepApprovalStore`;
@@ -154,13 +175,17 @@ def _sync_legacy_plan(session_id: str, store: StepApprovalStore) -> list[PlanSte
     Args:
         session_id: The owning session.
         store: The step-approval store.
+        tenant_id: Tenant the plan document belongs to (the authenticated
+            principal's tenant — never a client-supplied value).
 
     Returns:
         Every tracked step for the session after the sync, ordered by index.
     """
     records = store.list_steps(session_id)
     plan_store = _legacy_plan_store()
-    plan_store.upsert_plan(session_id, [record.content for record in records])
+    plan_store.upsert_plan(
+        session_id, [record.content for record in records], tenant_id=tenant_id
+    )
     return records
 
 
@@ -215,20 +240,27 @@ def _ensure_under_review(store: StepApprovalStore, session_id: str, record: Plan
 
 @requires_scope("plan:read")
 @router.get("/{session_id}", response_model=PlanV2)
-def get_plan_v2(session_id: str, store: StepApprovalStore = Depends(get_step_store)) -> PlanV2:
+def get_plan_v2(
+    session_id: str,
+    store: StepApprovalStore = Depends(get_step_store),
+    principal: PrincipalV2 = Depends(require_v2_principal),
+) -> PlanV2:
     """List a session's plan steps with each step's current approval state.
 
     Args:
         session_id: Identifier of the session.
         store: Step-approval store dependency.
+        principal: Authenticated caller; its tenant is the only source of
+            scope for the referenced session.
 
     Returns:
         The plan, with a rolled-up plan-level status.
 
     Raises:
-        HTTPException: 404 if no plan document exists for the session.
+        HTTPException: 404 if the session does not exist for the caller's
+            tenant, or no plan document exists for the session.
     """
-    records = _seeded_records(store, session_id)
+    records = _seeded_records(store, session_id, tenant_id=principal.tenant_id)
     records = [_ensure_under_review(store, session_id, record) for record in records]
     return _to_plan_v2(session_id, records)
 
@@ -236,7 +268,10 @@ def get_plan_v2(session_id: str, store: StepApprovalStore = Depends(get_step_sto
 @requires_scope("plan:read")
 @router.get("/{session_id}/steps/{step_index}", response_model=PlanStepV2)
 def get_plan_step_v2(
-    session_id: str, step_index: int, store: StepApprovalStore = Depends(get_step_store)
+    session_id: str,
+    step_index: int,
+    store: StepApprovalStore = Depends(get_step_store),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> PlanStepV2:
     """Read a single plan step's content and current approval state.
 
@@ -244,14 +279,17 @@ def get_plan_step_v2(
         session_id: Identifier of the session.
         step_index: Zero-based step position.
         store: Step-approval store dependency.
+        principal: Authenticated caller; its tenant is the only source of
+            scope for the referenced session.
 
     Returns:
         The requested step.
 
     Raises:
-        HTTPException: 404 if the plan or the step does not exist.
+        HTTPException: 404 if the session does not exist for the caller's
+            tenant, or the plan/step does not exist.
     """
-    _seeded_records(store, session_id)
+    _seeded_records(store, session_id, tenant_id=principal.tenant_id)
     record = store.get_step(session_id, step_index)
     if record is None:
         v2_error(404, f"Step {step_index} not found for session {session_id!r}.")
@@ -266,6 +304,7 @@ def update_plan_step_v2(
     step_index: int,
     body: StepContentUpdateRequestV2,
     store: StepApprovalStore = Depends(get_step_store),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> PlanStepV2:
     """Edit a step's content prior to its approval decision.
 
@@ -274,16 +313,18 @@ def update_plan_step_v2(
         step_index: Zero-based step position.
         body: The new step content.
         store: Step-approval store dependency.
+        principal: Authenticated caller; its tenant is the only source of
+            scope for the referenced session.
 
     Returns:
         The updated step.
 
     Raises:
-        HTTPException: 404 if the plan or the step does not exist; 400 if
-            the step is no longer editable (already approved/rejected/
-            executing/completed).
+        HTTPException: 404 if the session does not exist for the caller's
+            tenant, or the plan/step does not exist; 400 if the step is no
+            longer editable (already approved/rejected/executing/completed).
     """
-    _seeded_records(store, session_id)
+    _seeded_records(store, session_id, tenant_id=principal.tenant_id)
     record = store.get_step(session_id, step_index)
     if record is None:
         v2_error(404, f"Step {step_index} not found for session {session_id!r}.")
@@ -328,7 +369,7 @@ def approve_plan_step_v2(
             the step is not under review (e.g. already approved/rejected).
     """
     del body
-    _seeded_records(store, session_id)
+    _seeded_records(store, session_id, tenant_id=principal.tenant_id)
     record = store.get_step(session_id, step_index)
     if record is None:
         v2_error(404, f"Step {step_index} not found for session {session_id!r}.")
@@ -365,7 +406,7 @@ def reject_plan_step_v2(
             the step is not under review (e.g. already approved/rejected).
     """
     del body
-    _seeded_records(store, session_id)
+    _seeded_records(store, session_id, tenant_id=principal.tenant_id)
     record = store.get_step(session_id, step_index)
     if record is None:
         v2_error(404, f"Step {step_index} not found for session {session_id!r}.")
@@ -407,7 +448,7 @@ def execute_approved_steps_v2(
             if a named step is not ``approved``, or if no steps are
             approved and none were named explicitly.
     """
-    records = _seeded_records(store, session_id)
+    records = _seeded_records(store, session_id, tenant_id=principal.tenant_id)
     by_index = {record.step_index: record for record in records}
 
     if body.step_indices is not None:
@@ -459,9 +500,9 @@ def add_plan_step_v2(
     Raises:
         HTTPException: 404 if no plan document exists for the session.
     """
-    _seeded_records(store, session_id)
+    _seeded_records(store, session_id, tenant_id=principal.tenant_id)
     record = store.append_step(session_id, body.content)
-    _sync_legacy_plan(session_id, store)
+    _sync_legacy_plan(session_id, store, tenant_id=principal.tenant_id)
     emit_mutation(session_id, record.step_index, "added", principal.subject)
     final_records = store.list_steps(session_id)
     return _to_plan_v2(session_id, final_records)
@@ -496,14 +537,14 @@ def remove_plan_step_v2(
         HTTPException: 404 if the plan or the step does not exist; 400 if
             the step is not in a removable state.
     """
-    _seeded_records(store, session_id)
+    _seeded_records(store, session_id, tenant_id=principal.tenant_id)
     try:
         store.delete_step(session_id, step_index)
     except KeyError as exc:
         v2_error(404, str(exc))
     except ValueError as exc:
         v2_error(400, str(exc))
-    _sync_legacy_plan(session_id, store)
+    _sync_legacy_plan(session_id, store, tenant_id=principal.tenant_id)
     emit_mutation(session_id, step_index, "removed", principal.subject)
     final_records = store.list_steps(session_id)
     return _to_plan_v2(session_id, final_records)
