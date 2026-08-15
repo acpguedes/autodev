@@ -132,3 +132,14 @@ def test_redacted_dump_never_exposes_secret_values() -> None:
     assert redacted["openai_api_key"] == "***"
     assert redacted["autodev_api_token"] == "***"
     assert redacted["autodev_minio_secret_key"] == "***"
+
+
+def test_trusted_in_process_plugin_ids_are_normalized() -> None:
+    """The trust allowlist is parsed, stripped, and deduplicated."""
+    settings = Settings(
+        autodev_trusted_in_process_plugins="acme/one, acme/two,acme/one"
+    )
+
+    assert settings.trusted_in_process_plugin_ids() == frozenset(
+        {"acme/one", "acme/two"}
+    )

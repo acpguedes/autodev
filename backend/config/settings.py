@@ -90,6 +90,9 @@ class Settings(BaseSettings):
     autodev_dynamic_orch: bool = False
     autodev_repo_provider: str = "lexical"
 
+    # --- plugin security (E11-S4) ---
+    autodev_trusted_in_process_plugins: str = ""
+
     # --- Redis / jobs / locks ---
     autodev_job_backend: Literal["inprocess", "redis"] = "inprocess"
     autodev_redis_url: str = ""
@@ -269,6 +272,18 @@ class Settings(BaseSettings):
             for skill_id in self.autodev_mcp_exposed_skills.split(",")
             if skill_id.strip()
         ]
+
+    def trusted_in_process_plugin_ids(self) -> frozenset[str]:
+        """Parse the operator trust allowlist for in-process plugins.
+
+        Returns:
+            Normalized, non-empty plugin identifiers.
+        """
+        return frozenset(
+            plugin_id.strip()
+            for plugin_id in self.autodev_trusted_in_process_plugins.split(",")
+            if plugin_id.strip()
+        )
 
     def redacted_model_dump(self) -> dict[str, Any]:
         """Dump settings to a dict with secret fields masked.
