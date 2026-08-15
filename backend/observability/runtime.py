@@ -8,11 +8,13 @@ import sys
 import threading
 import uuid
 import warnings
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Generic, TypeVar
 
 from opentelemetry import _logs as logs
 from opentelemetry import metrics, trace
+from opentelemetry.context import Context
 from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -94,6 +96,416 @@ class _ProviderDelegate(Generic[_ProviderT]):
                 self._provider = replacement
 
 
+class _DelegatingTracer(trace.Tracer):
+    """Tracer handle resolving its SDK tracer at span creation time."""
+
+    def __init__(
+        self,
+        providers: _ProviderDelegate[trace.TracerProvider],
+        name: str,
+        version: str | None,
+        schema_url: str | None,
+        attributes: Attributes,
+    ) -> None:
+        """Store the stable provider reference and instrumentation scope.
+
+        Args:
+            providers: Mutable reference to the active tracer provider.
+            name: Instrumentation scope name.
+            version: Optional scope version.
+            schema_url: Optional scope schema URL.
+            attributes: Optional scope attributes.
+        """
+        self._providers = providers
+        self._scope = (name, version, schema_url, attributes)
+
+    def _tracer(self) -> trace.Tracer:
+        """Resolve a tracer from the provider active for this operation.
+
+        Returns:
+            A tracer from the current live or no-op provider.
+        """
+        return self._providers.get().get_tracer(*self._scope)
+
+    def start_span(
+        self,
+        name: str,
+        context: Context | None = None,
+        kind: trace.SpanKind = trace.SpanKind.INTERNAL,
+        attributes: Attributes = None,
+        links: Sequence[trace.Link] | None = None,
+        start_time: int | None = None,
+        record_exception: bool = True,
+        set_status_on_exception: bool = True,
+    ) -> trace.Span:
+        """Start a span through the provider active at call time.
+
+        Args:
+            name: Span name.
+            context: Optional parent context.
+            kind: Span kind.
+            attributes: Optional span attributes.
+            links: Optional span links.
+            start_time: Optional start timestamp in nanoseconds.
+            record_exception: Whether context-manager exceptions are recorded.
+            set_status_on_exception: Whether exceptions set error status.
+
+        Returns:
+            A span from the current live or no-op provider.
+        """
+        return self._tracer().start_span(
+            name,
+            context,
+            kind,
+            attributes,
+            links,
+            start_time,
+            record_exception,
+            set_status_on_exception,
+        )
+
+    def start_as_current_span(
+        self,
+        name: str,
+        context: Context | None = None,
+        kind: trace.SpanKind = trace.SpanKind.INTERNAL,
+        attributes: Attributes = None,
+        links: Sequence[trace.Link] | None = None,
+        start_time: int | None = None,
+        record_exception: bool = True,
+        set_status_on_exception: bool = True,
+        end_on_exit: bool = True,
+    ) -> Any:
+        """Start and activate a span through the current provider.
+
+        Args:
+            name: Span name.
+            context: Optional parent context.
+            kind: Span kind.
+            attributes: Optional span attributes.
+            links: Optional span links.
+            start_time: Optional start timestamp in nanoseconds.
+            record_exception: Whether context-manager exceptions are recorded.
+            set_status_on_exception: Whether exceptions set error status.
+            end_on_exit: Whether the span ends when the context exits.
+
+        Returns:
+            A context manager activating a span from the current provider.
+        """
+        return self._tracer().start_as_current_span(
+            name,
+            context,
+            kind,
+            attributes,
+            links,
+            start_time,
+            record_exception,
+            set_status_on_exception,
+            end_on_exit,
+        )
+
+
+class _DelegatingCounter(metrics.Counter):
+    """Counter handle resolving its SDK instrument for every measurement."""
+
+    def __init__(
+        self,
+        meter: "_DelegatingMeter",
+        name: str,
+        unit: str,
+        description: str,
+    ) -> None:
+        """Store the meter and instrument descriptor.
+
+        Args:
+            meter: Stable meter used to resolve the current SDK meter.
+            name: Instrument name.
+            unit: Instrument unit.
+            description: Instrument description.
+        """
+        self._meter = meter
+        self._descriptor = (name, unit, description)
+
+    def add(
+        self,
+        amount: int | float,
+        attributes: Attributes = None,
+        context: Context | None = None,
+    ) -> None:
+        """Add through the counter owned by the active meter provider.
+
+        Args:
+            amount: Non-negative increment.
+            attributes: Optional measurement attributes.
+            context: Optional measurement context.
+        """
+        self._meter._meter().create_counter(*self._descriptor).add(
+            amount, attributes, context
+        )
+
+
+class _DelegatingUpDownCounter(metrics.UpDownCounter):
+    """Up-down counter resolving its SDK instrument for every measurement."""
+
+    def __init__(
+        self,
+        meter: "_DelegatingMeter",
+        name: str,
+        unit: str,
+        description: str,
+    ) -> None:
+        """Store the meter and instrument descriptor.
+
+        Args:
+            meter: Stable meter used to resolve the current SDK meter.
+            name: Instrument name.
+            unit: Instrument unit.
+            description: Instrument description.
+        """
+        self._meter = meter
+        self._descriptor = (name, unit, description)
+
+    def add(
+        self,
+        amount: int | float,
+        attributes: Attributes = None,
+        context: Context | None = None,
+    ) -> None:
+        """Add through the up-down counter on the active meter provider.
+
+        Args:
+            amount: Positive or negative increment.
+            attributes: Optional measurement attributes.
+            context: Optional measurement context.
+        """
+        self._meter._meter().create_up_down_counter(*self._descriptor).add(
+            amount, attributes, context
+        )
+
+
+class _DelegatingHistogram(metrics.Histogram):
+    """Histogram resolving its SDK instrument for every measurement."""
+
+    def __init__(
+        self,
+        meter: "_DelegatingMeter",
+        name: str,
+        unit: str,
+        description: str,
+        boundaries: Sequence[float] | None,
+    ) -> None:
+        """Store the meter and complete histogram descriptor.
+
+        Args:
+            meter: Stable meter used to resolve the current SDK meter.
+            name: Instrument name.
+            unit: Instrument unit.
+            description: Instrument description.
+            boundaries: Optional explicit bucket-boundary advisory.
+        """
+        self._meter = meter
+        self._descriptor = (name, unit, description)
+        self._boundaries = boundaries
+
+    def record(
+        self,
+        amount: int | float,
+        attributes: Attributes = None,
+        context: Context | None = None,
+    ) -> None:
+        """Record through the histogram on the active meter provider.
+
+        Args:
+            amount: Histogram measurement.
+            attributes: Optional measurement attributes.
+            context: Optional measurement context.
+        """
+        self._meter._meter().create_histogram(
+            *self._descriptor,
+            explicit_bucket_boundaries_advisory=self._boundaries,
+        ).record(amount, attributes, context)
+
+
+class _DelegatingMeter(metrics.Meter):
+    """Meter handle producing restart-safe synchronous instruments."""
+
+    def __init__(
+        self,
+        providers: _ProviderDelegate[metrics.MeterProvider],
+        name: str,
+        version: str | None,
+        schema_url: str | None,
+        attributes: Attributes,
+    ) -> None:
+        """Store the stable provider reference and instrumentation scope.
+
+        Args:
+            providers: Mutable reference to the active meter provider.
+            name: Instrumentation scope name.
+            version: Optional scope version.
+            schema_url: Optional scope schema URL.
+            attributes: Optional scope attributes.
+        """
+        self._providers = providers
+        self._scope = (name, version, schema_url, attributes)
+
+    def _meter(self) -> metrics.Meter:
+        """Resolve a meter from the provider active for this operation.
+
+        Returns:
+            A meter from the current live or no-op provider.
+        """
+        return self._providers.get().get_meter(*self._scope)
+
+    def create_counter(
+        self, name: str, unit: str = "", description: str = ""
+    ) -> metrics.Counter:
+        """Create a restart-safe counter handle.
+
+        Args:
+            name: Instrument name.
+            unit: Instrument unit.
+            description: Instrument description.
+
+        Returns:
+            A counter resolving its SDK instrument at measurement time.
+        """
+        return _DelegatingCounter(self, name, unit, description)
+
+    def create_up_down_counter(
+        self, name: str, unit: str = "", description: str = ""
+    ) -> metrics.UpDownCounter:
+        """Create a restart-safe up-down counter handle.
+
+        Args:
+            name: Instrument name.
+            unit: Instrument unit.
+            description: Instrument description.
+
+        Returns:
+            An up-down counter resolving its SDK instrument per measurement.
+        """
+        return _DelegatingUpDownCounter(self, name, unit, description)
+
+    def create_histogram(
+        self,
+        name: str,
+        unit: str = "",
+        description: str = "",
+        *,
+        explicit_bucket_boundaries_advisory: Sequence[float] | None = None,
+    ) -> metrics.Histogram:
+        """Create a restart-safe histogram handle.
+
+        Args:
+            name: Instrument name.
+            unit: Instrument unit.
+            description: Instrument description.
+            explicit_bucket_boundaries_advisory: Optional bucket boundaries.
+
+        Returns:
+            A histogram resolving its SDK instrument per measurement.
+        """
+        return _DelegatingHistogram(
+            self,
+            name,
+            unit,
+            description,
+            explicit_bucket_boundaries_advisory,
+        )
+
+    def create_observable_counter(
+        self,
+        name: str,
+        callbacks: Sequence[metrics.CallbackT] | None = None,
+        unit: str = "",
+        description: str = "",
+    ) -> metrics.ObservableCounter:
+        """Create an observable counter on the currently active SDK meter."""
+        return self._meter().create_observable_counter(
+            name, callbacks, unit, description
+        )
+
+    def create_observable_up_down_counter(
+        self,
+        name: str,
+        callbacks: Sequence[metrics.CallbackT] | None = None,
+        unit: str = "",
+        description: str = "",
+    ) -> metrics.ObservableUpDownCounter:
+        """Create an observable up-down counter on the active SDK meter."""
+        return self._meter().create_observable_up_down_counter(
+            name, callbacks, unit, description
+        )
+
+    def create_observable_gauge(
+        self,
+        name: str,
+        callbacks: Sequence[metrics.CallbackT] | None = None,
+        unit: str = "",
+        description: str = "",
+    ) -> metrics.ObservableGauge:
+        """Create an observable gauge on the currently active SDK meter."""
+        return self._meter().create_observable_gauge(
+            name, callbacks, unit, description
+        )
+
+
+class _DelegatingLogger(logs.Logger):
+    """Logger handle resolving its SDK logger for every emitted record."""
+
+    def __init__(
+        self,
+        providers: _ProviderDelegate[logs.LoggerProvider],
+        name: str,
+        version: str | None,
+        schema_url: str | None,
+        attributes: Any,
+    ) -> None:
+        """Store the stable provider reference and instrumentation scope.
+
+        Args:
+            providers: Mutable reference to the active logger provider.
+            name: Instrumentation scope name.
+            version: Optional scope version.
+            schema_url: Optional scope schema URL.
+            attributes: Optional scope attributes.
+        """
+        self._providers = providers
+        self._scope = (name, version, schema_url, attributes)
+
+    def emit(
+        self,
+        record: logs.LogRecord | None = None,
+        *,
+        timestamp: int | None = None,
+        observed_timestamp: int | None = None,
+        context: Context | None = None,
+        severity_number: logs.SeverityNumber | None = None,
+        severity_text: str | None = None,
+        body: Any = None,
+        attributes: Any = None,
+        event_name: str | None = None,
+        exception: BaseException | None = None,
+    ) -> None:
+        """Emit through the logger owned by the provider active at call time."""
+        logger = self._providers.get().get_logger(*self._scope)
+        if record is not None:
+            logger.emit(record)
+            return
+        logger.emit(
+            timestamp=timestamp,
+            observed_timestamp=observed_timestamp,
+            context=context,
+            severity_number=severity_number,
+            severity_text=severity_text,
+            body=body,
+            attributes=attributes,
+            event_name=event_name,
+            exception=exception,
+        )
+
+
 class _DelegatingTracerProvider(trace.TracerProvider):
     """Stable global tracer provider forwarding to the active runtime."""
 
@@ -121,7 +533,8 @@ class _DelegatingTracerProvider(trace.TracerProvider):
         Returns:
             A tracer from the current live or no-op provider.
         """
-        return self._delegate.get().get_tracer(
+        return _DelegatingTracer(
+            self._delegate,
             instrumenting_module_name,
             instrumenting_library_version,
             schema_url,
@@ -156,7 +569,8 @@ class _DelegatingMeterProvider(metrics.MeterProvider):
         Returns:
             A meter from the current live or no-op provider.
         """
-        return self._delegate.get().get_meter(
+        return _DelegatingMeter(
+            self._delegate,
             name,
             version,
             schema_url,
@@ -191,7 +605,8 @@ class _DelegatingLoggerProvider(logs.LoggerProvider):
         Returns:
             A logger from the current live or no-op provider.
         """
-        return self._delegate.get().get_logger(
+        return _DelegatingLogger(
+            self._delegate,
             name,
             version,
             schema_url,

@@ -49,12 +49,14 @@ def test_global_providers_route_to_the_live_runtime_after_restart() -> None:
         otel_metrics.get_meter_provider(),
         otel_logs.get_logger_provider(),
     )
-    with otel_trace.get_tracer("restart-test").start_as_current_span("runtime-a"):
+    cached_tracer = otel_trace.get_tracer("restart-test")
+    cached_meter = otel_metrics.get_meter("restart-test")
+    cached_counter = cached_meter.create_counter("autodev.test.restart.count")
+    cached_logger = otel_logs.get_logger("restart-test")
+    with cached_tracer.start_as_current_span("runtime-a"):
         pass
-    otel_metrics.get_meter("restart-test").create_counter(
-        "autodev.test.restart.count"
-    ).add(1)
-    otel_logs.get_logger("restart-test").emit(body="runtime-a")
+    cached_counter.add(1)
+    cached_logger.emit(body="runtime-a")
     runtime_a.force_flush()
     assert [span.name for span in span_exporter_a.get_finished_spans()] == ["runtime-a"]
     assert [
@@ -79,20 +81,28 @@ def test_global_providers_route_to_the_live_runtime_after_restart() -> None:
             otel_metrics.get_meter_provider(),
             otel_logs.get_logger_provider(),
         ) == global_providers
-        with otel_trace.get_tracer("restart-test").start_as_current_span("runtime-b"):
+        fresh_tracer = otel_trace.get_tracer("restart-test-fresh")
+        fresh_counter = otel_metrics.get_meter("restart-test-fresh").create_counter(
+            "autodev.test.restart.fresh.count"
+        )
+        fresh_logger = otel_logs.get_logger("restart-test-fresh")
+        with cached_tracer.start_as_current_span("runtime-b-cached"):
             pass
-        otel_metrics.get_meter("restart-test").create_counter(
-            "autodev.test.restart.count"
-        ).add(2)
-        otel_logs.get_logger("restart-test").emit(body="runtime-b")
+        with fresh_tracer.start_as_current_span("runtime-b-fresh"):
+            pass
+        cached_counter.add(2)
+        fresh_counter.add(3)
+        cached_logger.emit(body="runtime-b-cached")
+        fresh_logger.emit(body="runtime-b-fresh")
         runtime_b.force_flush()
 
         assert [span.name for span in span_exporter_b.get_finished_spans()] == [
-            "runtime-b"
+            "runtime-b-cached",
+            "runtime-b-fresh",
         ]
         assert [
             record.log_record.body for record in log_exporter_b.get_finished_logs()
-        ] == ["runtime-b"]
+        ] == ["runtime-b-cached", "runtime-b-fresh"]
         metric_data_b = metric_reader_b.get_metrics_data()
         assert metric_data_b is not None
         metric_names_b = {
@@ -102,23 +112,20 @@ def test_global_providers_route_to_the_live_runtime_after_restart() -> None:
             for metric in scope_metric.metrics
         }
         assert "autodev.test.restart.count" in metric_names_b
-        assert "runtime-b" not in {
+        assert "autodev.test.restart.fresh.count" in metric_names_b
+        assert not {"runtime-b-cached", "runtime-b-fresh"} & {
             span.name for span in span_exporter_a.get_finished_spans()
         }
-        assert "runtime-b" not in {
+        assert not {"runtime-b-cached", "runtime-b-fresh"} & {
             record.log_record.body for record in log_exporter_a.get_finished_logs()
         }
     finally:
         runtime_b.shutdown()
 
-    with otel_trace.get_tracer("restart-test").start_as_current_span(
-        "after-shutdown"
-    ) as stopped_span:
+    with cached_tracer.start_as_current_span("after-shutdown") as stopped_span:
         assert not stopped_span.is_recording()
-    otel_metrics.get_meter("restart-test").create_counter(
-        "autodev.test.restart.count"
-    ).add(3)
-    otel_logs.get_logger("restart-test").emit(body="after-shutdown")
+    cached_counter.add(3)
+    cached_logger.emit(body="after-shutdown")
     assert "after-shutdown" not in {
         span.name for span in span_exporter_b.get_finished_spans()
     }
@@ -137,14 +144,10 @@ def test_global_providers_route_to_the_live_runtime_after_restart() -> None:
         install_global=False,
     )
     try:
-        with otel_trace.get_tracer("restart-test").start_as_current_span(
-            "global-during-isolated-runtime"
-        ):
+        with cached_tracer.start_as_current_span("global-during-isolated-runtime"):
             pass
-        otel_metrics.get_meter("restart-test").create_counter(
-            "autodev.test.isolated.count"
-        ).add(1)
-        otel_logs.get_logger("restart-test").emit(body="global-during-isolated-runtime")
+        cached_counter.add(1)
+        cached_logger.emit(body="global-during-isolated-runtime")
         with get_tracer().start_as_current_span("owned-isolated-runtime"):
             pass
         isolated_runtime.force_flush()
