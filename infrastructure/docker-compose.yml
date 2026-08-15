@@ -18,6 +18,7 @@ services:
       PYTEST_ADDOPTS: -p no:cacheprovider
       UVICORN_RELOAD: "false"
       AUTODEV_CONFIG_PATH: /data/autodev.config.json
+      AUTODEV_BACKUP_STATUS_PATH: /data/backup-status.json
       AUTODEV_PROJECT_ROOT: /workspace
       OTEL_ENABLED: "${OTEL_ENABLED:-true}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
@@ -53,15 +54,16 @@ services:
     working_dir: /workspace
     environment:
       AUTODEV_PROFILE: prod
-      DATABASE_URL: postgresql://autodev:autodev@postgres:5432/autodev
+      DATABASE_URL: "postgresql://autodev:${AUTODEV_POSTGRES_PASSWORD:-}@postgres:5432/autodev"
       LLM_PROVIDER: stub
       AUTODEV_JOB_BACKEND: redis
       AUTODEV_REDIS_URL: redis://redis:6379/0
       STORAGE_BACKEND: s3
       AUTODEV_MINIO_ENDPOINT: minio:9000
-      AUTODEV_MINIO_ACCESS_KEY: "${AUTODEV_MINIO_ACCESS_KEY:-minioadmin}"
-      AUTODEV_MINIO_SECRET_KEY: "${AUTODEV_MINIO_SECRET_KEY:-minioadmin}"
+      AUTODEV_MINIO_ACCESS_KEY: "${AUTODEV_MINIO_ACCESS_KEY:-}"
+      AUTODEV_MINIO_SECRET_KEY: "${AUTODEV_MINIO_SECRET_KEY:-}"
       AUTODEV_CONFIG_PATH: /data/autodev.config.json
+      AUTODEV_BACKUP_STATUS_PATH: /data/backup-status.json
       AUTODEV_PROJECT_ROOT: /workspace
       OTEL_ENABLED: "${OTEL_ENABLED:-true}"
       OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
@@ -116,7 +118,7 @@ services:
     environment:
       POSTGRES_DB: autodev
       POSTGRES_USER: autodev
-      POSTGRES_PASSWORD: autodev
+      POSTGRES_PASSWORD: "${AUTODEV_POSTGRES_PASSWORD:-}"
     ports:
       - "5432:5432"
     volumes:
@@ -146,8 +148,8 @@ services:
     profiles: ["prod", "minio"]
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
-      MINIO_ROOT_USER: "${AUTODEV_MINIO_ACCESS_KEY:-minioadmin}"
-      MINIO_ROOT_PASSWORD: "${AUTODEV_MINIO_SECRET_KEY:-minioadmin}"
+      MINIO_ROOT_USER: "${AUTODEV_MINIO_ACCESS_KEY:-}"
+      MINIO_ROOT_PASSWORD: "${AUTODEV_MINIO_SECRET_KEY:-}"
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -192,10 +194,27 @@ services:
       - "9090:9090"
     depends_on:
       - otel-collector
+      - alertmanager
     security_opt:
       - no-new-privileges:true
     mem_limit: 512m
     pids_limit: 256
+
+  alertmanager:
+    image: prom/alertmanager:v0.33.1
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - autodev_alertmanager:/alertmanager
+    ports:
+      - "9093:9093"
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 128
 
   tempo:
     image: grafana/tempo:2.10.8
@@ -261,6 +280,7 @@ volumes:
   autodev_redis:
   autodev_minio:
   autodev_prometheus:
+  autodev_alertmanager:
   autodev_tempo:
   autodev_loki:
   autodev_grafana:

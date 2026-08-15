@@ -165,7 +165,7 @@ run-frontend: ## Start the Next.js dev server
 # --------------------------------------------------------------------------
 # Container-first E0 workflow
 # --------------------------------------------------------------------------
-.PHONY: container-build container-up container-up-full container-shell container-test container-check container-down container-logs docker-up docker-down observability-up observability-verify observability-down run_secret_scanning security-scan
+.PHONY: container-build container-up container-up-full container-shell container-test container-check container-down container-logs docker-up docker-down observability-up observability-verify observability-down run_secret_scanning validate_security_exceptions security-scan
 
 container-build: ## Build the backend dev/test container
 	$(COMPOSE) build backend
@@ -184,13 +184,17 @@ container-test: ## Run backend tests inside the backend container
 		--cov=backend --cov-report=term-missing --cov-fail-under=85
 
 run_secret_scanning: ## Run the repository secret scanner inside the backend container
-	$(COMPOSE) run --rm backend python scripts/run_secret_scanning.py .
+	$(COMPOSE) run --rm -v "$(CURDIR):/repo:ro" backend \
+		python scripts/run_secret_scanning.py /repo
 
-security-scan: run_secret_scanning ## Alias for local/container secret scanning
+validate_security_exceptions: ## Validate .trivyignore.yaml exception metadata and expiration
+	$(PY) scripts/validate_security_exceptions.py .trivyignore.yaml
+
+security-scan: run_secret_scanning validate_security_exceptions ## Repository secret scanning plus exception-policy validation; the Trivy vuln/license gate itself runs in CI
 
 container-check: ## Run backend lint, typecheck, and tests inside the backend container
-	$(COMPOSE) run --build --rm backend sh -c '\
-		python scripts/run_secret_scanning.py . && \
+	$(COMPOSE) run --build --rm -v "$(CURDIR):/repo:ro" backend sh -c '\
+		python scripts/run_secret_scanning.py /repo && \
 		ruff check backend tests && \
 		mypy backend && \
 		pytest $(PYTEST_PATHS) -q --cov=backend --cov-report=term-missing --cov-fail-under=85'

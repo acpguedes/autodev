@@ -20,12 +20,38 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _SECRET_FIELDS = {
     "openai_api_key",
     "autodev_api_token",
+    "autodev_minio_access_key",
     "autodev_minio_secret_key",
     "otel_exporter_otlp_endpoint",
     "otel_exporter_otlp_traces_endpoint",
     "otel_exporter_otlp_metrics_endpoint",
     "otel_exporter_otlp_logs_endpoint",
 }
+
+_CREDENTIAL_URL_FIELDS = {
+    "database_url",
+    "autodev_redis_url",
+}
+
+_KNOWN_INSECURE_DEFAULT_CREDENTIALS = frozenset(
+    {"autodev", "minioadmin", "password", "changeme", "change-me"}
+)
+
+
+def _contains_url_password(value: str) -> bool:
+    """Return whether a URL contains embedded password material.
+
+    Args:
+        value: Candidate URL.
+
+    Returns:
+        ``True`` if the URL has a password component, or if it cannot be
+        parsed at all (treated as unsafe to display verbatim).
+    """
+    try:
+        return urlparse(value).password is not None
+    except ValueError:
+        return True
 
 # Shared defaults so the UI URL and the CORS allowlist can never drift: the
 # default UI URL is, by definition, the first default CORS origin.
@@ -87,8 +113,12 @@ class Settings(BaseSettings):
     autodev_enable_sandbox: bool = False
     autodev_sandbox_allow_local: bool = False
     autodev_sandbox_docker_network: str = "none"
+    autodev_sandbox_timeout_seconds: int = Field(default=300, ge=1, le=3600)
     autodev_dynamic_orch: bool = False
     autodev_repo_provider: str = "lexical"
+
+    # --- plugin security (E11-S4) ---
+    autodev_trusted_in_process_plugins: str = ""
 
     # --- Redis / jobs / locks ---
     autodev_job_backend: Literal["inprocess", "redis"] = "inprocess"
@@ -110,6 +140,9 @@ class Settings(BaseSettings):
     autodev_minio_access_key: str = ""
     autodev_minio_secret_key: str = ""
     autodev_minio_secure: bool = False
+
+    # --- backups (E8-S4, E11-S4) ---
+    autodev_backup_status_path: str = ".autodev/backup-status.json"
 
     # --- MCP (Model Context Protocol) ---
     autodev_mcp_exposed_skills: str = ""
@@ -221,6 +254,14 @@ class Settings(BaseSettings):
                 or self.database_url.startswith("postgres://")
             ):
                 errors.append("prod profile requires DATABASE_URL to use PostgreSQL")
+            else:
+                database_password = urlparse(self.database_url).password or ""
+                if not database_password:
+                    errors.append("prod profile requires a PostgreSQL password")
+                elif database_password.casefold() in _KNOWN_INSECURE_DEFAULT_CREDENTIALS:
+                    errors.append(
+                        "prod profile rejects known default PostgreSQL credentials"
+                    )
             if self.autodev_job_backend != "redis":
                 errors.append("prod profile requires AUTODEV_JOB_BACKEND=redis")
             if self.autodev_event_bus != "redis":
@@ -237,6 +278,12 @@ class Settings(BaseSettings):
                 and self.autodev_minio_secret_key.strip()
             ):
                 errors.append("prod profile requires MinIO/S3 settings")
+            for field_name, value in (
+                ("AUTODEV_MINIO_ACCESS_KEY", self.autodev_minio_access_key),
+                ("AUTODEV_MINIO_SECRET_KEY", self.autodev_minio_secret_key),
+            ):
+                if value.casefold() in _KNOWN_INSECURE_DEFAULT_CREDENTIALS:
+                    errors.append(f"prod profile rejects known default {field_name}")
 
         if errors:
             raise ValueError("; ".join(errors))
@@ -270,15 +317,35 @@ class Settings(BaseSettings):
             if skill_id.strip()
         ]
 
-    def redacted_model_dump(self) -> dict[str, Any]:
-        """Dump settings to a dict with secret fields masked.
+    def trusted_in_process_plugin_ids(self) -> frozenset[str]:
+        """Parse the operator trust allowlist for in-process plugins.
 
         Returns:
-            The settings as a dict, with values in :data:`_SECRET_FIELDS` replaced by ``"***"``.
+            Normalized, non-empty plugin identifiers.
+        """
+        return frozenset(
+            plugin_id.strip()
+            for plugin_id in self.autodev_trusted_in_process_plugins.split(",")
+            if plugin_id.strip()
+        )
+
+    def redacted_model_dump(self) -> dict[str, Any]:
+        """Dump settings with secret and credential-bearing values masked.
+
+        Returns:
+            The settings as a dict. Values in :data:`_SECRET_FIELDS` are
+            always replaced by ``"***"``; values in
+            :data:`_CREDENTIAL_URL_FIELDS` are replaced by ``"***"`` only
+            when they embed a URL password, so credential-free SQLite/Redis
+            URLs remain usable for display.
         """
         data = self.model_dump()
         for key in _SECRET_FIELDS:
             if data.get(key):
+                data[key] = "***"
+        for key in _CREDENTIAL_URL_FIELDS:
+            value = data.get(key)
+            if isinstance(value, str) and value and _contains_url_password(value):
                 data[key] = "***"
         return data
 

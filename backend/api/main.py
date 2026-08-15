@@ -43,8 +43,10 @@ from backend.config.settings import get_settings
 from backend.coordination import get_cache, get_lock_manager
 from backend.jobs.queue import get_queue
 from backend.llm.factory import get_chat_model
+from backend.observability.backup_metrics import register_backup_observables
 from backend.observability.runtime import (
     configure_observability,
+    get_meter,
     shutdown_observability,
 )
 from backend.orchestrator.service import (
@@ -59,6 +61,7 @@ from backend.orchestrator.service import (
     RunSummary,
     SessionSummary,
 )
+from backend.persistence.backup_status import BackupStatusStore
 from backend.api.routers import include_all_routers
 from backend.repository import RepositoryContext, RepositoryIntelligenceService
 
@@ -217,6 +220,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """Initialize application services and always shut down observability."""
     settings = get_settings()
     runtime = configure_observability(settings)
+    register_backup_observables(
+        meter=get_meter("backend.persistence.backup"),
+        status_store=BackupStatusStore(Path(settings.autodev_backup_status_path)),
+    )
     try:
         if settings.autodev_profile == "prod":
             get_cache(settings)

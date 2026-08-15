@@ -18,9 +18,25 @@ autodev patches generate --path f.py --original-file old.py --updated-file new.p
 ## Validation sandbox (`backend/validation/`, `backend/api/routers/validation.py`, `backend/cli_plugins/validation.py`)
 
 - `SandboxRunner().run(ValidationJob(...)) -> ValidationResult`. **Disabled by default**
-  (`skipped=true, backend="disabled"`); enable with `AUTODEV_ENABLE_SANDBOX`. When enabled it
-  prefers Docker (`python:3.11-slim`) and falls back to a local subprocess, with a command
-  allowlist (`pytest`, `ruff`, `npm`, `python`).
+  (`skipped=true, backend="disabled"`); enable with `AUTODEV_ENABLE_SANDBOX`. All sandbox
+  decisions come from one typed `SandboxPolicy` (`sandbox_policy_from_settings()`), not raw
+  `os.environ` reads (E11-S4).
+- When enabled it prefers Docker (`python:3.11-slim`), hardened: `--network=none` by default
+  (override with `AUTODEV_SANDBOX_DOCKER_NETWORK`), non-root `--user=65534:65534`,
+  `--cap-drop=ALL`, `--security-opt=no-new-privileges`, CPU/memory/pids limits, a **read-only
+  root filesystem** with a bounded `/tmp`, and a **read-only mount of only the resolved,
+  guarded workspace** — `job.cwd` is resolved against `AUTODEV_PROJECT_ROOT` and rejected
+  (`backend="blocked"`, no process spawned) if it escapes that root (E11-S4).
+- Every job has a bounded timeout (`AUTODEV_SANDBOX_TIMEOUT_SECONDS`, default 300s); a killed
+  job returns code `124` with a sanitized message, not a hang (E11-S4).
+- **Without Docker**, the runner falls back to a local subprocess only when
+  `AUTODEV_SANDBOX_ALLOW_LOCAL=1` is explicitly set — the default is fail-closed, not a silent
+  unsandboxed fallback. Local execution still runs only inside the guarded workspace.
+- A command allowlist (`pytest`, `ruff`, `npm`, `python`) is enforced regardless of backend.
+- The real-Docker security contract
+  (`backend/tests/integration/test_sandbox_security_contract.py`) is a mandatory CI gate —
+  network denial, workspace-only filesystem exposure, and no privilege escalation must all pass
+  with zero skips (`.github/workflows/ci-backend.yml`, `security-baseline` job).
 
 ```bash
 curl -X POST localhost:8000/validation/run -H 'Content-Type: application/json' \

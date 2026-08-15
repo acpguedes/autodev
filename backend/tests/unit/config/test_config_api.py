@@ -102,6 +102,8 @@ def test_update_runtime_config_persists_file_and_updates_repository_context(
     payload = response.json()
     assert payload["config"]["llm"]["provider"] == "openai"
     assert payload["config"]["repository"]["repository_label"] == "Custom Repo"
+    assert payload["config"]["llm"]["api_key"] == "***"
+    assert "test-key" not in response.text
     assert (tmp_path / "autodev.config.json").exists()
 
     saved_document = RuntimeConfigService(

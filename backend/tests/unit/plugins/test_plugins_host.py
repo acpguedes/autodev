@@ -18,8 +18,20 @@ def _write_plugin(
     *,
     host_api: str = ">=2.0 <3.0",
     entrypoint: str | None = None,
+    permissions_yaml: str = "",
+    isolation: str | None = None,
 ) -> Path:
-    """Write a minimal plugin project (module + manifest) under ``root``."""
+    """Write a minimal plugin project (module + manifest) under ``root``.
+
+    Args:
+        root: Directory the plugin project is created under.
+        name: Plugin name; the plugin id becomes ``acme/<name>``.
+        host_api: Declared ``hostApi`` SemVer range.
+        entrypoint: Runtime entrypoint override.
+        permissions_yaml: Raw YAML block substituted for ``permissions: {}``,
+            indented to sit under the manifest's ``permissions:`` key.
+        isolation: Optional ``runtime.isolation`` value.
+    """
     plugin_dir = root / name
     plugin_dir.mkdir()
     module_name = name.replace("-", "_")
@@ -28,25 +40,31 @@ def _write_plugin(
         "    host.register_extension('skill', 'acme/%s.skill', {'ok': True})\n" % name,
         encoding="utf-8",
     )
-    (plugin_dir / "plugin.yaml").write_text(
-        textwrap.dedent(
-            f"""
-            schemaVersion: "1"
-            id: "acme/{name}"
-            version: "0.1.0"
-            hostApi: "{host_api}"
-            runtime:
-              loader: "in-process"
-              entrypoint: "{entrypoint or module_name + ':register'}"
-            permissions: {{}}
-            extensionPoints:
-              - kind: "skill"
-                id: "acme/{name}.skill"
-                contract: "^1.0"
-            """
-        ).strip(),
-        encoding="utf-8",
+    isolation_line = f'\n  isolation: "{isolation}"' if isolation else ""
+    manifest = textwrap.dedent(
+        f"""\
+        schemaVersion: "1"
+        id: "acme/{name}"
+        version: "0.1.0"
+        hostApi: "{host_api}"
+        runtime:
+          loader: "in-process"
+          entrypoint: "{entrypoint or module_name + ':register'}"{isolation_line}
+        """
     )
+    if permissions_yaml:
+        manifest += "permissions:\n" + textwrap.indent(permissions_yaml, "  ") + "\n"
+    else:
+        manifest += "permissions: {}\n"
+    manifest += textwrap.dedent(
+        f"""\
+        extensionPoints:
+          - kind: "skill"
+            id: "acme/{name}.skill"
+            contract: "^1.0"
+        """
+    )
+    (plugin_dir / "plugin.yaml").write_text(manifest, encoding="utf-8")
     return plugin_dir
 
 
@@ -135,3 +153,76 @@ def test_discovering_50_plugins_stays_under_one_second(host: PluginHost, tmp_pat
 
     assert len(discovered) == 50
     assert elapsed < 1
+
+
+def test_production_rejects_untrusted_in_process_plugin(
+    tmp_path: Path,
+) -> None:
+    """An in-process plugin without an operator trust grant is rejected in production."""
+    plugin_dir = _write_plugin(tmp_path, "untrusted-plugin")
+    host = PluginHost(
+        store=DurableStore(f"sqlite:///{tmp_path / 'plugins.db'}"),
+        production_mode=True,
+        trusted_in_process_plugins=(),
+    )
+
+    record = host.install(plugin_dir)
+
+    assert record.state is PluginState.REJECTED
+    assert record.reason == (
+        "production requires an explicit operator trust grant for "
+        "in-process plugin acme/untrusted-plugin"
+    )
+
+
+def test_production_rejects_privileged_trusted_in_process_plugin(
+    tmp_path: Path,
+) -> None:
+    """A trusted in-process plugin requesting sensitive permissions is still rejected."""
+    plugin_dir = _write_plugin(
+        tmp_path,
+        "network-plugin",
+        permissions_yaml=("network:\n" "  egress:\n" "    - api.example.com:443"),
+    )
+    host = PluginHost(
+        store=DurableStore(f"sqlite:///{tmp_path / 'plugins.db'}"),
+        production_mode=True,
+        trusted_in_process_plugins=("acme/network-plugin",),
+    )
+
+    record = host.install(plugin_dir)
+
+    assert record.state is PluginState.REJECTED
+    assert "permissions.network.egress" in record.reason
+
+
+def test_production_accepts_explicitly_trusted_unprivileged_plugin(
+    tmp_path: Path,
+) -> None:
+    """An explicitly trusted, unprivileged in-process plugin installs in production."""
+    plugin_dir = _write_plugin(tmp_path, "trusted-plugin")
+    host = PluginHost(
+        store=DurableStore(f"sqlite:///{tmp_path / 'plugins.db'}"),
+        production_mode=True,
+        trusted_in_process_plugins=("acme/trusted-plugin",),
+    )
+
+    assert host.install(plugin_dir).state is PluginState.INSTALLED
+
+
+def test_local_mode_preserves_current_in_process_behavior(
+    tmp_path: Path,
+) -> None:
+    """Local (non-production) mode installs in-process plugins without a trust grant."""
+    plugin_dir = _write_plugin(
+        tmp_path,
+        "local-plugin",
+        permissions_yaml=("filesystem:\n" "  read:\n" "    - ${workspace}"),
+    )
+    host = PluginHost(
+        store=DurableStore(f"sqlite:///{tmp_path / 'plugins.db'}"),
+        production_mode=False,
+        trusted_in_process_plugins=(),
+    )
+
+    assert host.install(plugin_dir).state is PluginState.INSTALLED

@@ -31,6 +31,7 @@ from backend.persistence.backup import (
     ComponentResult,
     main,
 )
+from backend.persistence.backup_status import BackupStatusStore
 
 
 def _make_sqlite_db(path: Path) -> None:
@@ -69,14 +70,49 @@ def test_backup_postgres_skipped_when_database_url_not_postgres(tmp_path: Path) 
     assert manifest["components"]["postgres"] == {"status": "skipped"}
 
 
-def test_backup_postgres_skipped_when_pg_dump_absent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A postgresql:// URL with no ``pg_dump`` on PATH skips, not fails."""
-    monkeypatch.setattr("shutil.which", lambda name: None)
-    manager = BackupManager(database_url="postgresql://autodev@localhost/autodev")
-    manifest: dict[str, Any] = {"components": {}}
-    result = manager._backup_postgres(tmp_path, manifest)
-    assert result.status == "skipped"
-    assert "pg_dump not found" in result.detail
+def test_backup_postgres_fails_when_pg_dump_is_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A configured PostgreSQL backup with no ``pg_dump`` on PATH fails closed."""
+    monkeypatch.setattr("shutil.which", lambda _: None)
+    manager = BackupManager(
+        database_url="postgresql://svc:db-secret@postgres/autodev"
+    )
+
+    with pytest.raises(
+        BackupError,
+        match="PostgreSQL backup is configured but pg_dump is not available",
+    ):
+        manager._backup_postgres(tmp_path, {"components": {}})
+
+
+def test_backup_postgres_uses_pgpassword_and_omits_password_from_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The password reaches pg_dump only via PGPASSWORD, never argv or errors."""
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/pg_dump")
+    captured: dict[str, Any] = {}
+
+    def fake_run(cmd: list[str], **kwargs: Any) -> _FakeCompletedProcess:
+        captured["cmd"] = cmd
+        captured["env"] = kwargs.get("env")
+        for arg in cmd:
+            if arg.startswith("--file="):
+                Path(arg.removeprefix("--file=")).write_bytes(b"dump-bytes")
+        return _FakeCompletedProcess(returncode=1, stderr="auth failed for svc")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    manager = BackupManager(
+        database_url="postgresql://svc:db-secret@localhost/autodev"
+    )
+
+    with pytest.raises(BackupError) as excinfo:
+        manager._backup_postgres(tmp_path, {"components": {}})
+
+    assert "db-secret" not in str(excinfo.value)
+    assert not any("db-secret" in arg for arg in captured["cmd"])
+    assert captured["env"]["PGPASSWORD"] == "db-secret"
 
 
 def test_backup_postgres_completed_writes_manifest_entry(
@@ -126,16 +162,48 @@ def test_restore_postgres_skipped_when_not_in_backup() -> None:
     assert result == ComponentResult("postgres", "skipped", "not in backup")
 
 
-def test_restore_postgres_skipped_when_pg_restore_absent(
+def test_restore_postgres_fails_when_pg_restore_is_missing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A completed spec with no ``pg_restore`` on PATH skips, not fails."""
-    monkeypatch.setattr("shutil.which", lambda name: None)
-    manager = BackupManager(database_url="postgresql://autodev@localhost/autodev")
+    """A completed PostgreSQL manifest entry with no ``pg_restore`` fails closed."""
+    monkeypatch.setattr("shutil.which", lambda _: None)
+    manager = BackupManager(
+        database_url="postgresql://svc:db-secret@localhost/autodev"
+    )
     spec = {"status": "completed", "file": "state_store.pgdump"}
-    result = manager._restore_postgres(tmp_path, spec)
-    assert result.status == "skipped"
-    assert "pg_restore not found" in result.detail
+
+    with pytest.raises(
+        BackupError,
+        match="PostgreSQL restore is configured but pg_restore is not available",
+    ):
+        manager._restore_postgres(tmp_path, spec)
+
+
+def test_restore_postgres_uses_pgpassword_and_omits_password_from_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The password reaches pg_restore only via PGPASSWORD, never argv or errors."""
+    (tmp_path / "state_store.pgdump").write_bytes(b"dump-bytes")
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/pg_restore")
+    captured: dict[str, Any] = {}
+
+    def fake_run(cmd: list[str], **kwargs: Any) -> _FakeCompletedProcess:
+        captured["cmd"] = cmd
+        captured["env"] = kwargs.get("env")
+        return _FakeCompletedProcess(returncode=1, stderr="auth failed for svc")
+
+    monkeypatch.setattr("subprocess.run", fake_run)
+    manager = BackupManager(
+        database_url="postgresql://svc:db-secret@localhost/autodev"
+    )
+    spec = {"status": "completed", "file": "state_store.pgdump"}
+
+    with pytest.raises(BackupError) as excinfo:
+        manager._restore_postgres(tmp_path, spec)
+
+    assert "db-secret" not in str(excinfo.value)
+    assert not any("db-secret" in arg for arg in captured["cmd"])
+    assert captured["env"]["PGPASSWORD"] == "db-secret"
 
 
 def test_restore_postgres_raises_when_database_url_not_postgres(
@@ -436,8 +504,9 @@ def test_backup_report_skipped_property_filters_by_status(tmp_path: Path) -> Non
 class _FakeSettings:
     """Stand-in for :class:`backend.config.settings.Settings` used by ``main()``."""
 
-    def __init__(self, database_url: str) -> None:
+    def __init__(self, database_url: str, *, backup_status_path: str = "") -> None:
         self.database_url = database_url
+        self.autodev_backup_status_path = backup_status_path
 
 
 def test_main_backup_command_success(
@@ -447,9 +516,12 @@ def test_main_backup_command_success(
     db_path = tmp_path / "state.db"
     _make_sqlite_db(db_path)
     store = LocalArtifactStore(tmp_path / "artifacts")
+    status_path = tmp_path / "backup-status.json"
     monkeypatch.setattr(
         "backend.config.settings.get_settings",
-        lambda: _FakeSettings(f"sqlite:///{db_path}"),
+        lambda: _FakeSettings(
+            f"sqlite:///{db_path}", backup_status_path=str(status_path)
+        ),
     )
     monkeypatch.setattr("backend.artifacts.store.get_artifact_store", lambda settings: store)
 
@@ -460,6 +532,10 @@ def test_main_backup_command_success(
     assert "sqlite: completed" in out
     assert (tmp_path / "out" / MANIFEST_FILENAME).is_file()
 
+    status = BackupStatusStore(status_path).read()
+    assert status is not None
+    assert status.last_result == "success"
+
 
 def test_main_restore_command_success(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -468,7 +544,10 @@ def test_main_restore_command_success(
     db_path = tmp_path / "state.db"
     _make_sqlite_db(db_path)
     store = LocalArtifactStore(tmp_path / "artifacts")
-    settings = _FakeSettings(f"sqlite:///{db_path}")
+    settings = _FakeSettings(
+        f"sqlite:///{db_path}",
+        backup_status_path=str(tmp_path / "backup-status.json"),
+    )
     monkeypatch.setattr("backend.config.settings.get_settings", lambda: settings)
     monkeypatch.setattr("backend.artifacts.store.get_artifact_store", lambda s: store)
     BackupManager(database_url=settings.database_url, artifact_store=store).backup(
@@ -486,9 +565,13 @@ def test_main_returns_1_and_prints_error_on_backup_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """``main()`` reports a non-zero exit and an ``error:`` line on ``BackupError``."""
+    status_path = tmp_path / "backup-status.json"
     monkeypatch.setattr(
         "backend.config.settings.get_settings",
-        lambda: _FakeSettings(f"sqlite:///{tmp_path / 'missing.db'}"),
+        lambda: _FakeSettings(
+            f"sqlite:///{tmp_path / 'missing.db'}",
+            backup_status_path=str(status_path),
+        ),
     )
     monkeypatch.setattr(
         "backend.artifacts.store.get_artifact_store", lambda settings: None
@@ -501,6 +584,31 @@ def test_main_returns_1_and_prints_error_on_backup_error(
     assert "error:" in err
 
 
+def test_main_records_backup_failure_in_status_store(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A failed configured backup is durably recorded as a failure, not silently lost."""
+    status_path = tmp_path / "backup-status.json"
+    monkeypatch.setattr(
+        "backend.config.settings.get_settings",
+        lambda: _FakeSettings(
+            f"sqlite:///{tmp_path / 'missing.db'}",
+            backup_status_path=str(status_path),
+        ),
+    )
+    monkeypatch.setattr(
+        "backend.artifacts.store.get_artifact_store", lambda settings: None
+    )
+
+    exit_code = main(["backup", "--out", str(tmp_path / "out")])
+
+    assert exit_code == 1
+    status = BackupStatusStore(status_path).read()
+    assert status is not None
+    assert status.last_result == "failure"
+    assert status.consecutive_failures == 1
+
+
 def test_main_verify_command_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """``main(["verify", ...])`` only reads the manifest and needs no artifact store."""
     db_path = tmp_path / "state.db"
@@ -509,7 +617,10 @@ def test_main_verify_command_success(tmp_path: Path, monkeypatch: pytest.MonkeyP
     manager.backup(tmp_path / "out")
     monkeypatch.setattr(
         "backend.config.settings.get_settings",
-        lambda: _FakeSettings(f"sqlite:///{db_path}"),
+        lambda: _FakeSettings(
+            f"sqlite:///{db_path}",
+            backup_status_path=str(tmp_path / "backup-status.json"),
+        ),
     )
 
     assert main(["verify", "--from", str(tmp_path / "out")]) == 0

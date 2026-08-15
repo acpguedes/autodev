@@ -17,6 +17,8 @@ backend (FastAPI, Flow engine, Agent Runtime, jobs)
 prometheus:9090 --(datasource)--> grafana:3001
 tempo:3200      --(datasource)--> grafana:3001
 loki:3100       --(datasource)--> grafana:3001
+
+prometheus:9090 --(alerts)--> alertmanager:9093
 ```
 
 `infrastructure/observability/otel-collector.yaml` receives OTLP/gRPC and
@@ -47,6 +49,31 @@ volumes explicitly.
 | `tempo` | `3200` | Store and query traces. |
 | `loki` | `3100` | Store and query structured logs. |
 | `grafana` | `3001` | Dashboards, provisioned datasources, exemplar/trace-to-logs navigation. |
+| `alertmanager` | `9093` | Receive, group, and route firing alerts from Prometheus (E11-S4). |
+
+## Alert routing (E11-S4)
+
+Prometheus evaluates alert rules from the same shared
+`infrastructure/observability/prometheus-rules.yml` used for recording rules
+(`rule_files`), and delivers firing alerts to
+`infrastructure/observability/alertmanager.yml` per its `alerting.alertmanagers`
+static config. The E11-S4 backup alerts
+(`AutoDevBackupNeverSucceeded`/`AutoDevBackupStale`/`AutoDevBackupFailing`)
+are the current alert set; each carries `severity`, `service`, `summary`,
+`description`, and an HTTPS `runbook_url` pointing at
+`docs/v2_platform/runbooks/e11_incident_response.md`.
+
+Alertmanager ships with one `operator-ui` receiver and a default route
+(`infrastructure/observability/alertmanager.yml`) — alerts are visible and
+groupable in Alertmanager's own UI (`http://localhost:9093`) out of the box,
+with no external notification service required. To route alerts to
+email/Slack/PagerDuty/webhook, replace or extend the `receivers:` list with
+your integration (see the [Alertmanager configuration
+docs](https://prometheus.io/docs/alerting/latest/configuration/)) and update
+`route.receiver` accordingly. **Never hardcode external notification
+credentials into `alertmanager.yml`** — mount them via a separate,
+untracked config file or environment-templated secret, matching the
+credential-handling posture in `docs/security.md`.
 
 ## Span and metric naming
 
@@ -213,6 +240,26 @@ ships ten panels:
   reason per backend; start with that URL against `curl` before assuming the
   stack is unhealthy.
 
+## Validating alert and rule configuration
+
+Validate rule and Alertmanager syntax without needing a live incident:
+
+```bash
+docker compose -f infrastructure/docker-compose.yml --profile observability config -q
+docker compose -f infrastructure/docker-compose.yml --profile observability run --rm \
+  --entrypoint /bin/promtool prometheus check rules /etc/prometheus/prometheus-rules.yml
+docker compose -f infrastructure/docker-compose.yml --profile observability run --rm \
+  --entrypoint /bin/amtool alertmanager check-config /etc/alertmanager/alertmanager.yml
+```
+
+With the stack up (`make observability-up`), confirm Prometheus actually
+reached Alertmanager and loaded the rule group:
+
+```bash
+curl -s http://localhost:9090/api/v1/alertmanagers
+curl -s http://localhost:9090/api/v1/rules | jq '.data.groups[] | select(.name=="autodev-e11-s4-backup")'
+```
+
 ## Emergency rollback
 
 Set `OTEL_ENABLED=false` and restart the backend. Tracing, metrics, and
@@ -220,8 +267,10 @@ logging fall back to no-op providers with zero Collector dependency — the
 application starts and serves requests identically, it just stops emitting
 telemetry. No code change or redeploy of the observability stack is required.
 
-## Out of scope for E11-S1
+## Out of scope for E11-S1 (delivered by E11-S4)
 
-Alert delivery (Alertmanager receivers), backup/security operational
-runbooks, and quota/budget alerts are E11-S4 work, not part of this story's
-completion.
+Alert delivery (Alertmanager, the backup alert rules, and the incident
+response runbook) and backup/security operational runbooks were out of scope
+for E11-S1 and are now delivered by E11-S4 — see "Alert routing" above and
+`docs/v2_platform/runbooks/e11_incident_response.md`. Quota/budget alerts
+remain E11-S3 work.

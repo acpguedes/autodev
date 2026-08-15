@@ -313,6 +313,46 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-08-15** — **E11-S4 — Execution security and runbooks is complete**
+  (story `E11-S4-T1`-`T3` done; dependencies E1, E8-S4). Trusted-only
+  in-process plugin boundary (ADR-020): production requires an explicit
+  `AUTODEV_TRUSTED_IN_PROCESS_PLUGINS` grant and still rejects
+  `runtime.isolation` or privileged-permission `in-process` plugins. The
+  validation sandbox is now driven by one typed `SandboxPolicy`: read-only
+  root filesystem with a bounded `/tmp`, a read-only mount of only the
+  resolved/guarded workspace (a `cwd` escaping `AUTODEV_PROJECT_ROOT` is
+  blocked before any process spawns), a bounded timeout (return code `124`
+  on kill), and a real-Docker security contract
+  (`backend/tests/integration/test_sandbox_security_contract.py`) that is a
+  mandatory, non-skippable CI gate. `make run_secret_scanning` now scans the
+  full working tree (tracked and untracked) via a read-only bind mount, not
+  a stale container-image copy. The Trivy SCA gate widened from
+  CRITICAL-only/vuln-only/ignore-unfixed to
+  `HIGH,CRITICAL`/`vuln,license`/`ignore-unfixed: false`, gated by an
+  expiring-exception policy (`.trivyignore.yaml`,
+  `scripts/validate_security_exceptions.py`). `Settings.redacted_model_dump()`
+  is now the sole credential-redaction policy (`DATABASE_URL`/
+  `AUTODEV_REDIS_URL` masked when they embed a password;
+  `AUTODEV_MINIO_ACCESS_KEY`/`_SECRET_KEY` always masked), production rejects
+  an empty or known-default PostgreSQL/MinIO credential, and
+  `infrastructure/docker-compose.yml` no longer bakes in a fallback
+  credential. PostgreSQL backup/restore now fails closed when configured but
+  missing `pg_dump`/`pg_restore` (previously silently skipped), passes the
+  database password only via `PGPASSWORD` (never argv/error text), and
+  records every attempt to a durable, sanitized, `0600` status file exposed
+  as `autodev_backup_*` Prometheus gauges through the E11-S1 meter.
+  `AutoDevBackupNeverSucceeded`/`AutoDevBackupStale`/`AutoDevBackupFailing`
+  alert through a new Alertmanager service under the existing
+  `observability` Compose profile, each linking
+  `docs/v2_platform/runbooks/e11_incident_response.md`. Live-verified:
+  `promtool check rules` and `amtool check-config` both SUCCESS; a live
+  Prometheus instance confirmed `activeAlertmanagers` reachable and the
+  `autodev-e11-s4-backup` rule group evaluating (`AutoDevBackupNeverSucceeded`
+  correctly `pending` with no prior backup). This story was implemented in a
+  separate worktree in parallel with E11-S2 (both depend only on E11-S1);
+  epic-level story count and "Next action" above are reconciled by whichever
+  story lands second.
+
 - **2026-08-15** — **E11-S1 — Observability (OpenTelemetry) is complete**
   (Beta epic **E11 now 1/4 In Progress**; dependency E0 Done). Correlated
   traces/metrics/logs by `run_id`/32-character W3C `trace_id`; self-hosted
