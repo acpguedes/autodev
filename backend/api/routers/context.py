@@ -16,6 +16,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from backend.api.authorization import requires_scope
 from backend.persistence.database import get_store
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
 from backend.repository.retrieval.retriever import RetrievalFilters, retrieve
@@ -33,6 +34,7 @@ def get_durable_store() -> Any:
     return get_store()
 
 
+@requires_scope("flow:read")
 @router.get("/retrieve")
 def retrieve_context(
     query: str = Query(..., min_length=1, description="Free-text/semantic search query"),

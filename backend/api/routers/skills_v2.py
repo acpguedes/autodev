@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from backend.api.authorization import requires_scope
 from backend.skills.registry_v2 import SkillRegistry
 
 router = APIRouter(prefix="/v2/skills", tags=["skills"])
@@ -20,6 +21,7 @@ def get_skill_registry() -> SkillRegistry:
     return SkillRegistry()
 
 
+@requires_scope("skill:read")
 @router.get("")
 def list_skill_catalog(registry: SkillRegistry = Depends(get_skill_registry)) -> dict[str, Any]:
     """List the full skill catalog.
@@ -34,6 +36,7 @@ def list_skill_catalog(registry: SkillRegistry = Depends(get_skill_registry)) ->
     return registry.catalog()
 
 
+@requires_scope("skill:read")
 @router.get("/search")
 def search_skills(
     trigger: str = Query(...),
@@ -52,6 +55,7 @@ def search_skills(
     return registry.catalog(trigger=trigger)
 
 
+@requires_scope("skill:read")
 @router.get("/{skill_id:path}")
 def get_skill(
     skill_id: str,

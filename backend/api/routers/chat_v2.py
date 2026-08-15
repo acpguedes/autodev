@@ -29,6 +29,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
+from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import require_v2_principal
 from backend.api.routers.sessions_v2 import AgentExecutionV2, HistoryItemV2, RunStepV2, get_orchestrator_v2
 from backend.api.v2_common import SCHEMA_VERSION_V2, PageMetaV2, PaginationParams, paginate, v2_error
@@ -168,6 +169,7 @@ def _find_turn_by_id(orchestrator: OrchestratorService, turn_id: str) -> RunSumm
     return None
 
 
+@requires_scope("session:write")
 @router.post("/sessions/{session_id}/turns", response_model=TurnV2, status_code=201, tags=["chat"])
 def create_turn_v2(
     session_id: str,
@@ -198,6 +200,7 @@ def create_turn_v2(
     return _to_turn_v2_from_run(run, request.message)
 
 
+@requires_scope("session:read")
 @router.get("/turns/{turn_id}", response_model=TurnV2, tags=["chat"])
 def get_turn_v2(
     turn_id: str,
@@ -221,6 +224,7 @@ def get_turn_v2(
     return _to_turn_v2_from_run_summary(summary)
 
 
+@requires_scope("session:read")
 @router.get("/sessions/{session_id}/turns", response_model=TurnListV2, tags=["chat"])
 def list_session_turns_v2(
     session_id: str,

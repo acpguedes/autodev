@@ -25,6 +25,7 @@ _ROLE_TIER_ADDITIONS: tuple[tuple[Role, frozenset[str]], ...] = (
         Role.VIEWER,
         frozenset(
             {
+                "auth:self",
                 "session:read",
                 "run:read",
                 "flow:read",

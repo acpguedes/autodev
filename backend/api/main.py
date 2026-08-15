@@ -29,6 +29,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from backend.api.authorization import enforce_control_plane_access, public_endpoint
 from backend.api.security import require_api_token
 from backend.api.security_headers import SecurityHeadersMiddleware
 from backend.auth.readiness import validate_auth_readiness
@@ -252,8 +253,11 @@ app = FastAPI(
     # A self-hosted, CSP-clean /docs route is defined below instead.
     docs_url=None,
     redoc_url=None,
-    # Global gate — a no-op unless AUTODEV_API_TOKEN is configured.
-    dependencies=[Depends(require_api_token)],
+    # Global gates, in order: legacy compatibility PAT (no-op unless
+    # AUTODEV_API_TOKEN is configured; unaffected by and independent of
+    # E11-S2), then real Control Plane authentication/authorization
+    # (E11-S2 Task 3).
+    dependencies=[Depends(require_api_token), Depends(enforce_control_plane_access)],
 )
 
 # Vendored same-origin assets (Swagger UI — see static/swagger/VERSION).
@@ -334,6 +338,7 @@ def _prefers_html(accept_header: str) -> bool:
     return bool(offered & {"text/html", "application/xhtml+xml"})
 
 
+@public_endpoint
 @app.get("/", tags=["meta"], response_model=None, include_in_schema=True)
 def service_descriptor(request: Request) -> Response:
     """Describe the service and point clients at the UI, docs, and health.
@@ -397,6 +402,7 @@ _SWAGGER_UI_HTML: Final[str] = """<!DOCTYPE html>
 """
 
 
+@public_endpoint
 @app.get("/docs", include_in_schema=False)
 def swagger_ui_page() -> HTMLResponse:
     """Serve the self-hosted, CSP-compliant Swagger UI page.
@@ -408,12 +414,14 @@ def swagger_ui_page() -> HTMLResponse:
     return HTMLResponse(content=_SWAGGER_UI_HTML)
 
 
+@public_endpoint
 @app.get("/health", tags=["meta"])
 def healthcheck() -> Dict[str, str]:
     """Report basic liveness of the API process."""
     return {"status": "ok"}
 
 
+@public_endpoint
 @app.get("/config", response_model=RuntimeConfigResponse, tags=["config"])
 def get_runtime_config(
     config_service: RuntimeConfigService = Depends(get_runtime_config_service),
@@ -423,6 +431,7 @@ def get_runtime_config(
     return RuntimeConfigResponse(config=document.config, instructions=document.instructions)
 
 
+@public_endpoint
 @app.put("/config", response_model=RuntimeConfigResponse, tags=["config"])
 def update_runtime_config(
     request: RuntimeConfigUpdateRequest,
@@ -438,6 +447,7 @@ def update_runtime_config(
     return RuntimeConfigResponse(config=document.config, instructions=document.instructions)
 
 
+@public_endpoint
 @app.get("/agents/contracts", response_model=AgentContractsResponse, tags=["agents"])
 def get_agent_contracts(
     orchestrator: OrchestratorService = Depends(get_orchestrator),
@@ -446,6 +456,7 @@ def get_agent_contracts(
     return AgentContractsResponse(contracts=orchestrator.describe_agent_contracts())
 
 
+@public_endpoint
 @app.post("/plan", response_model=PlanResponse, tags=["planning"])
 def create_plan(request: PlanRequest, orchestrator: OrchestratorService = Depends(get_orchestrator)) -> PlanResponse:
     """Create a new planning session for a user-provided goal."""
@@ -453,6 +464,7 @@ def create_plan(request: PlanRequest, orchestrator: OrchestratorService = Depend
     return PlanResponse(**plan_session.to_dict())
 
 
+@public_endpoint
 @app.get("/sessions", response_model=List[SessionResponse], tags=["sessions"])
 def list_sessions(orchestrator: OrchestratorService = Depends(get_orchestrator)) -> List[SessionResponse]:
     """List all known orchestration sessions."""
@@ -469,6 +481,7 @@ def list_sessions(orchestrator: OrchestratorService = Depends(get_orchestrator))
     ]
 
 
+@public_endpoint
 @app.get("/sessions/{session_id}", response_model=SessionResponse, tags=["sessions"])
 def get_session(
     session_id: str,
@@ -489,6 +502,7 @@ def get_session(
     )
 
 
+@public_endpoint
 @app.get("/sessions/{session_id}/runs", response_model=List[RunResponse], tags=["runs"])
 def list_runs(
     session_id: str,
@@ -503,6 +517,7 @@ def list_runs(
     return [_to_run_response(run) for run in runs]
 
 
+@public_endpoint
 @app.get(
     "/sessions/{session_id}/execution-plan",
     response_model=ExecutionPlanResponse,
@@ -530,6 +545,7 @@ def get_execution_plan(
     )
 
 
+@public_endpoint
 @app.post(
     "/sessions/{session_id}/execution-plan/execute",
     response_model=ChatResponse,
@@ -562,6 +578,7 @@ def execute_execution_plan(
     )
 
 
+@public_endpoint
 @app.get("/repository/context", response_model=RepositoryContextResponse, tags=["repository"])
 def get_repository_context(
     query: str = "",
@@ -584,6 +601,7 @@ def get_repository_context(
     )
 
 
+@public_endpoint
 @app.post("/chat", response_model=ChatResponse, tags=["chat"])
 def chat(
     request: ChatRequest,

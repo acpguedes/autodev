@@ -24,8 +24,11 @@ import os
 from pathlib import Path
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
+from backend.api.authorization import requires_scope
+from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +88,9 @@ class PlanUpsertRequest(BaseModel):
 
 
 class ApprovalRequest(BaseModel):
-    actor: str
+    # `actor` remains parseable for backward compatibility but is ignored
+    # (ADR-018): the recorded actor is always the authenticated principal.
+    actor: str = ""
     note: str = ""
 
 
@@ -94,6 +99,7 @@ class ApprovalRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+@requires_scope("plan:read")
 @router.get("/plans/{session_id}")
 def get_plan(session_id: str) -> dict:
     """Return the plan document for *session_id*; 404 if not found."""
@@ -102,6 +108,7 @@ def get_plan(session_id: str) -> dict:
     return _plan_to_dict(plan)
 
 
+@requires_scope("plan:write")
 @router.put("/plans/{session_id}")
 def upsert_plan(session_id: str, body: PlanUpsertRequest) -> dict:
     """Insert or replace the steps for *session_id*.
@@ -114,27 +121,37 @@ def upsert_plan(session_id: str, body: PlanUpsertRequest) -> dict:
     return _plan_to_dict(plan)
 
 
+@requires_scope("plan:approve")
 @router.post("/plans/{session_id}/approve")
-def approve_plan(session_id: str, body: ApprovalRequest) -> dict:
+def approve_plan(
+    session_id: str,
+    body: ApprovalRequest,
+    principal: PrincipalV2 = Depends(require_v2_principal),
+) -> dict:
     """Approve the plan for *session_id*.
 
     404 if the plan does not exist yet.
     """
     store = _make_store()
     _require_plan(store, session_id)  # assert existence
-    store.approve(session_id, actor=body.actor, note=body.note)
+    store.approve(session_id, actor=principal.subject, note=body.note)
     plan = store.get_plan(session_id)
     return _plan_to_dict(plan)
 
 
+@requires_scope("plan:approve")
 @router.post("/plans/{session_id}/reject")
-def reject_plan(session_id: str, body: ApprovalRequest) -> dict:
+def reject_plan(
+    session_id: str,
+    body: ApprovalRequest,
+    principal: PrincipalV2 = Depends(require_v2_principal),
+) -> dict:
     """Reject the plan for *session_id*.
 
     404 if the plan does not exist yet.
     """
     store = _make_store()
     _require_plan(store, session_id)  # assert existence
-    store.reject(session_id, actor=body.actor, note=body.note)
+    store.reject(session_id, actor=principal.subject, note=body.note)
     plan = store.get_plan(session_id)
     return _plan_to_dict(plan)

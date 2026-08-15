@@ -33,6 +33,8 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from backend.api.authorization import public_endpoint, requires_scope
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["agents"])
@@ -92,6 +94,7 @@ def _get_orchestrator_lazy() -> Any:
         ) from exc
 
 
+@public_endpoint
 @router.get("/agents/contracts", include_in_schema=False)
 def agents_contracts_shim() -> Any:
     """Shim that delegates to the orchestrator's contract listing.
@@ -211,6 +214,7 @@ def _build_agent_map() -> Dict[str, Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
+@requires_scope("agent:read")
 @router.get("/agents", response_model=List[AgentSummary])
 def list_agents() -> List[AgentSummary]:
     """Return all known agents (defaults + registry-discovered)."""
@@ -225,6 +229,7 @@ def list_agents() -> List[AgentSummary]:
     ]
 
 
+@requires_scope("agent:read")
 @router.get("/agents/{name}", response_model=AgentDetail)
 def describe_agent(name: str) -> AgentDetail:
     """Return details for one agent; 404 if the name is unknown."""

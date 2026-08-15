@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 
+from backend.api.authorization import requires_scope
 from backend.plugins.registry import ActivePluginRegistry
 
 router = APIRouter(prefix="/v2/plugins", tags=["plugins"])
@@ -20,6 +21,7 @@ def get_active_plugin_registry() -> ActivePluginRegistry:
     return ActivePluginRegistry()
 
 
+@requires_scope("plugin:read")
 @router.get("/active")
 def list_active_plugins(
     registry: ActivePluginRegistry = Depends(get_active_plugin_registry),

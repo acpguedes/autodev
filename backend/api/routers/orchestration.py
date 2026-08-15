@@ -24,6 +24,8 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from backend.api.authorization import requires_scope
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["orchestration"])
@@ -223,6 +225,7 @@ def _run_fallback(orchestrator: Any, session_id: str, message: str) -> DynamicCh
 # ---------------------------------------------------------------------------
 
 
+@requires_scope("session:write")
 @router.post("/chat/dynamic", response_model=DynamicChatResponse)
 def dynamic_chat(
     body: DynamicChatRequest,

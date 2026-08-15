@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hmac
 import secrets
+import threading
 from datetime import timedelta
 from typing import Any
 
@@ -42,6 +43,38 @@ from backend.auth.store import AuthStore, utcnow
 SESSION_COOKIE_NAME = "autodev_session"
 _MIN_SERVICE_KEY_TTL = timedelta(days=1)
 _MAX_SERVICE_KEY_TTL = timedelta(days=90)
+# A caller (or CLI/API request) computes `expires_at` from its own `now()`
+# reading, then this validation re-reads `now()` again slightly later —
+# without slack, any request for exactly the 1-day minimum would always be
+# rejected as a few milliseconds "too short".
+_SERVICE_KEY_TTL_CLOCK_SLACK = timedelta(minutes=5)
+
+_ephemeral_session_key: str | None = None
+_ephemeral_session_key_lock = threading.Lock()
+
+
+def _local_ephemeral_session_key() -> str:
+    """Return one process-lifetime random session-encryption key.
+
+    Used only when ``AUTODEV_SESSION_ENCRYPTION_KEY`` is unset (local mode).
+    Cached at module level rather than per :class:`AuthService` instance —
+    :class:`AuthService` is constructed fresh per request/call (matching
+    this codebase's other per-request service providers, e.g.
+    ``sessions_v2.get_orchestrator_v2``), so a per-instance key would make a
+    session encrypted by one request undecryptable by the next.
+    """
+    global _ephemeral_session_key
+    if _ephemeral_session_key is None:
+        with _ephemeral_session_key_lock:
+            if _ephemeral_session_key is None:
+                _ephemeral_session_key = secrets.token_urlsafe(32)
+    return _ephemeral_session_key
+
+
+def _reset_ephemeral_session_key() -> None:
+    """Clear the cached local ephemeral session key — for use in tests."""
+    global _ephemeral_session_key
+    _ephemeral_session_key = None
 
 
 class AuthService:
@@ -60,7 +93,9 @@ class AuthService:
         self._validator = (
             OidcValidator(self._oidc_settings) if self._oidc_settings.jwks_url else None
         )
-        key_material = settings.autodev_session_encryption_key.strip() or secrets.token_urlsafe(32)
+        key_material = (
+            settings.autodev_session_encryption_key.strip() or _local_ephemeral_session_key()
+        )
         self._fernet = derive_fernet(key_material)
 
     @property
@@ -261,7 +296,11 @@ class AuthService:
         """
         now = utcnow()
         ttl = expires_at - now
-        if not (_MIN_SERVICE_KEY_TTL <= ttl <= _MAX_SERVICE_KEY_TTL):
+        if not (
+            _MIN_SERVICE_KEY_TTL - _SERVICE_KEY_TTL_CLOCK_SLACK
+            <= ttl
+            <= _MAX_SERVICE_KEY_TTL + _SERVICE_KEY_TTL_CLOCK_SLACK
+        ):
             raise ValueError("service key expiry must be between 1 and 90 days from now")
         granted = effective_scopes(roles, None)
         if scopes and not scopes <= granted:
@@ -397,31 +436,44 @@ class AuthService:
         )
 
 
-_auth_service_cache: AuthService | None = None
-
-
 def get_auth_service() -> AuthService:
-    """Return the process-wide :class:`AuthService` singleton.
+    """Build an :class:`AuthService` bound to the current application settings.
 
-    Cached (rather than constructed per-request) so the derived Fernet
-    session-encryption key stays stable across requests when
-    ``AUTODEV_SESSION_ENCRYPTION_KEY`` is unset (local mode's ephemeral key).
+    Constructed fresh on every call, from an uncached ``Settings()`` read —
+    matching both this codebase's per-request ``/v2`` service-provider
+    convention (``get_orchestrator_v2``, ``get_flow_engine``, ...) *and*
+    ``backend.api.security.require_api_token``'s existing pattern of
+    reading a fresh ``Settings()`` rather than the ``lru_cache``d
+    ``get_settings()``. That second point matters here specifically: many
+    existing tests toggle env vars (``AUTODEV_API_TOKEN``, OIDC settings)
+    mid-test via ``monkeypatch.setenv`` without calling
+    ``reset_settings_cache()``, and this security-gating path must observe
+    that change on the very next request, the same way ``require_api_token``
+    already does.
+
+    Local mode's ephemeral session-encryption key stays stable across these
+    fresh constructions via a separate, narrowly-scoped module cache (see
+    :func:`_local_ephemeral_session_key`); the underlying Auth Store
+    connection is likewise shared via :func:`backend.persistence.database.get_store`'s
+    own cache, so this is not a fresh SQLite connection per call.
 
     Returns:
-        The cached :class:`AuthService`.
+        A new :class:`AuthService` bound to a freshly read ``Settings()``.
     """
-    global _auth_service_cache
-    if _auth_service_cache is None:
-        from backend.config.settings import get_settings  # noqa: PLC0415
+    from backend.config.settings import Settings  # noqa: PLC0415
 
-        _auth_service_cache = AuthService(get_settings())
-    return _auth_service_cache
+    return AuthService(Settings())
 
 
 def reset_auth_service_cache() -> None:
-    """Clear the cached :class:`AuthService` — for use in tests."""
-    global _auth_service_cache
-    _auth_service_cache = None
+    """Clear auth-service-adjacent process caches — for use in tests.
+
+    ``get_auth_service()`` itself is no longer cached, but the local
+    ephemeral session-encryption key is; this resets that, so a test that
+    wants a truly clean slate (e.g. asserting session behavior in
+    isolation) can get one.
+    """
+    _reset_ephemeral_session_key()
 
 
 __all__ = [

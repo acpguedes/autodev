@@ -1,13 +1,11 @@
 """v2 Control Plane API — OIDC login, sessions, and service credentials (E11-S2).
 
-OIDC login/callback are public (no credential is presented yet). Every other
-route here authenticates the request itself via
-:meth:`~backend.auth.service.AuthService.authenticate_request` rather than
-depending on the router-wide RBAC seam (:mod:`backend.api.rbac_v2`), because
-this module ships before Task 3's global enforcement dependency exists and
-must be independently correct. Service-credential management additionally
-requires ``service_credential:admin`` once Task 3's authorization
-enforcement is wired in (declared there, not here).
+OIDC login/callback are public (no credential is presented yet). Every
+other route requires ``auth:self`` (any authenticated principal reading or
+managing its own identity/session — granted starting at ``viewer``) or
+``service_credential:admin`` for service-credential management, enforced by
+:func:`backend.api.authorization.enforce_control_plane_access` before the
+handler runs.
 """
 
 from __future__ import annotations
@@ -16,10 +14,11 @@ import threading
 import time
 from datetime import timedelta
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from backend.api.authorization import public_endpoint, require_v2_principal, requires_scope
 from backend.auth.contracts import AuthMethod, InvalidCredentialError, PrincipalV2
 from backend.auth.oidc import build_authorization_url, exchange_code_for_tokens, generate_pkce_challenge
 from backend.auth.roles import effective_scopes, normalize_role, normalize_scopes
@@ -38,9 +37,9 @@ def _redirect_uri() -> str:
     """Build this application's registered OIDC callback URL.
 
     Returns:
-        The absolute callback URL, derived from ``AUTODEV_UI_URL``'s origin
-        joined with the callback path (the callback is served by this same
-        backend, not the frontend).
+        The absolute callback URL, derived from the first configured CORS
+        origin (the callback is served by this same backend, not the
+        frontend).
     """
     settings = get_settings()
     origins = settings.cors_origins()
@@ -57,31 +56,6 @@ def _prune_expired_logins(now: float) -> None:
     expired = [state for state, (_, _, deadline) in _pending_logins.items() if deadline <= now]
     for state in expired:
         _pending_logins.pop(state, None)
-
-
-async def _authenticated_principal(request: Request) -> PrincipalV2:
-    """Authenticate one request and stash the principal on ``request.state``.
-
-    Args:
-        request: The incoming request.
-
-    Returns:
-        The authenticated principal.
-
-    Raises:
-        HTTPException: 401 if no configured method authenticates the request.
-    """
-    service = get_auth_service()
-    try:
-        principal = await service.authenticate_request(request)
-    except InvalidCredentialError as exc:
-        raise HTTPException(
-            status_code=401,
-            detail=str(exc),
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
-    request.state.principal = principal
-    return principal
 
 
 class PrincipalResponseV2(BaseModel):
@@ -149,6 +123,7 @@ def _to_credential_response(record: object, *, key: str | None = None) -> Servic
     )
 
 
+@public_endpoint
 @router.get("/oidc/login", include_in_schema=True)
 def oidc_login_v2(returnTo: str = "/") -> RedirectResponse:  # noqa: N803 - query param name is a public contract
     """Start an OIDC authorization-code + PKCE login.
@@ -182,6 +157,7 @@ def oidc_login_v2(returnTo: str = "/") -> RedirectResponse:  # noqa: N803 - quer
     return RedirectResponse(authorization_url, status_code=302)
 
 
+@public_endpoint
 @router.get("/oidc/callback", include_in_schema=True)
 async def oidc_callback_v2(code: str, state: str) -> Response:
     """Complete an OIDC login: exchange the code, mint a session.
@@ -236,27 +212,30 @@ async def oidc_callback_v2(code: str, state: str) -> Response:
     return response
 
 
+@requires_scope("auth:self")
 @router.get("/me", response_model=PrincipalResponseV2)
-async def get_me_v2(request: Request) -> PrincipalResponseV2:
+def get_me_v2(principal: PrincipalV2 = Depends(require_v2_principal)) -> PrincipalResponseV2:
     """Return the calling principal's identity, roles, and effective scopes.
 
     Args:
-        request: The incoming request, authenticated inline.
+        principal: The authenticated caller.
 
     Returns:
         The authenticated principal's public representation.
     """
-    principal = await _authenticated_principal(request)
     return _to_principal_response(principal)
 
 
+@requires_scope("auth:self")
 @router.post("/session/refresh", response_model=PrincipalResponseV2)
-async def refresh_session_v2(request: Request, response: Response) -> PrincipalResponseV2:
+async def refresh_session_v2(
+    response: Response, principal: PrincipalV2 = Depends(require_v2_principal)
+) -> PrincipalResponseV2:
     """Rotate the caller's browser session using its refresh token.
 
     Args:
-        request: The incoming request, authenticated inline.
         response: Outgoing response, updated with the rotated session cookie.
+        principal: The authenticated caller.
 
     Returns:
         The refreshed principal.
@@ -264,7 +243,6 @@ async def refresh_session_v2(request: Request, response: Response) -> PrincipalR
     Raises:
         HTTPException: 400 if the caller does not have an active session.
     """
-    principal = await _authenticated_principal(request)
     if principal.auth_method != AuthMethod.SESSION or principal.credential_id is None:
         raise HTTPException(status_code=400, detail="no active session to refresh")
     service = get_auth_service()
@@ -294,18 +272,20 @@ async def refresh_session_v2(request: Request, response: Response) -> PrincipalR
     )
 
 
+@requires_scope("auth:self")
 @router.delete("/session", status_code=204)
-async def logout_v2(request: Request, response: Response) -> Response:
+def logout_v2(
+    response: Response, principal: PrincipalV2 = Depends(require_v2_principal)
+) -> Response:
     """Log out: revoke the caller's session and clear its cookie.
 
     Args:
-        request: The incoming request, authenticated inline.
         response: Outgoing response, updated to clear the session cookie.
+        principal: The authenticated caller.
 
     Returns:
         An empty ``204`` response.
     """
-    principal = await _authenticated_principal(request)
     service = get_auth_service()
     if principal.credential_id and principal.auth_method == AuthMethod.SESSION:
         service.revoke_session(principal.credential_id)
@@ -313,35 +293,39 @@ async def logout_v2(request: Request, response: Response) -> Response:
     return Response(status_code=204)
 
 
+@requires_scope("service_credential:admin")
 @router.get("/service-credentials", response_model=list[ServiceCredentialResponseV2])
-async def list_service_credentials_v2(request: Request) -> list[ServiceCredentialResponseV2]:
+def list_service_credentials_v2(
+    principal: PrincipalV2 = Depends(require_v2_principal),
+) -> list[ServiceCredentialResponseV2]:
     """List every service credential for the caller's tenant.
 
     Args:
-        request: The incoming request, authenticated inline.
+        principal: The authenticated caller.
 
     Returns:
         The tenant's service credentials. Never includes a secret.
     """
-    principal = await _authenticated_principal(request)
     service = get_auth_service()
     records = service.list_service_keys(tenant_id=principal.tenant_id)
     return [_to_credential_response(record) for record in records]
 
 
+@requires_scope("service_credential:admin")
 @router.post(
     "/service-credentials",
     response_model=ServiceCredentialResponseV2,
     status_code=201,
 )
-async def create_service_credential_v2(
-    request: Request, body: ServiceCredentialCreateRequestV2
+def create_service_credential_v2(
+    body: ServiceCredentialCreateRequestV2,
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> ServiceCredentialResponseV2:
     """Mint a new service credential for the caller's tenant.
 
     Args:
-        request: The incoming request, authenticated inline.
         body: The credential's subject, roles, scopes, and expiry.
+        principal: The authenticated caller.
 
     Returns:
         The persisted credential, including the one-time presented key.
@@ -350,7 +334,6 @@ async def create_service_credential_v2(
         HTTPException: 400 if the requested scopes exceed the requested
             roles' grants.
     """
-    principal = await _authenticated_principal(request)
     service = get_auth_service()
     try:
         roles = tuple(normalize_role(item) for item in body.roles)
@@ -367,13 +350,16 @@ async def create_service_credential_v2(
     return _to_credential_response(record, key=key)
 
 
+@requires_scope("service_credential:admin")
 @router.delete("/service-credentials/{key_id}", status_code=204)
-async def revoke_service_credential_v2(request: Request, key_id: str) -> Response:
+def revoke_service_credential_v2(
+    key_id: str, principal: PrincipalV2 = Depends(require_v2_principal)
+) -> Response:
     """Immediately revoke a service credential owned by the caller's tenant.
 
     Args:
-        request: The incoming request, authenticated inline.
         key_id: The credential's non-secret identifier.
+        principal: The authenticated caller.
 
     Returns:
         An empty ``204`` response.
@@ -382,20 +368,13 @@ async def revoke_service_credential_v2(request: Request, key_id: str) -> Respons
         HTTPException: 404 if the credential does not exist or belongs to
             another tenant.
     """
-    principal = await _authenticated_principal(request)
     service = get_auth_service()
     if not service.revoke_service_key(tenant_id=principal.tenant_id, key_id=key_id):
         raise HTTPException(status_code=404, detail="unknown service credential")
     return Response(status_code=204)
 
 
-# Exposed for Task 3's authorization enforcement, which marks the login and
-# callback routes as public without needing to know this module's internals.
-PUBLIC_ROUTE_NAMES: frozenset[str] = frozenset({"oidc_login_v2", "oidc_callback_v2"})
-
-
 __all__ = [
-    "PUBLIC_ROUTE_NAMES",
     "PrincipalResponseV2",
     "ServiceCredentialResponseV2",
     "router",

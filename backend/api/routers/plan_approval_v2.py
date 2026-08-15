@@ -28,7 +28,8 @@ from typing import Any, Optional
 
 from fastapi import APIRouter, Depends
 
-from backend.api.rbac_v2 import require_v2_principal
+from backend.api.authorization import requires_scope
+from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
 from backend.api.routers.plan_approval_v2_models import (
     ExecuteApprovedRequestV2,
     PlanStepV2,
@@ -212,6 +213,7 @@ def _ensure_under_review(store: StepApprovalStore, session_id: str, record: Plan
     return record
 
 
+@requires_scope("plan:read")
 @router.get("/{session_id}", response_model=PlanV2)
 def get_plan_v2(session_id: str, store: StepApprovalStore = Depends(get_step_store)) -> PlanV2:
     """List a session's plan steps with each step's current approval state.
@@ -231,6 +233,7 @@ def get_plan_v2(session_id: str, store: StepApprovalStore = Depends(get_step_sto
     return _to_plan_v2(session_id, records)
 
 
+@requires_scope("plan:read")
 @router.get("/{session_id}/steps/{step_index}", response_model=PlanStepV2)
 def get_plan_step_v2(
     session_id: str, step_index: int, store: StepApprovalStore = Depends(get_step_store)
@@ -256,6 +259,7 @@ def get_plan_step_v2(
     return _to_step_v2(record)
 
 
+@requires_scope("plan:write")
 @router.put("/{session_id}/steps/{step_index}", response_model=PlanStepV2)
 def update_plan_step_v2(
     session_id: str,
@@ -296,20 +300,25 @@ def update_plan_step_v2(
     return _to_step_v2(record)
 
 
+@requires_scope("plan:approve")
 @router.post("/{session_id}/steps/{step_index}/approve", response_model=PlanStepV2)
 def approve_plan_step_v2(
     session_id: str,
     step_index: int,
     body: StepDecisionRequestV2 = StepDecisionRequestV2(),
     store: StepApprovalStore = Depends(get_step_store),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> PlanStepV2:
     """Approve a single plan step.
 
     Args:
         session_id: Identifier of the session.
         step_index: Zero-based step position.
-        body: The approval decision (actor/note).
+        body: The approval decision (a legacy ``actor``/note field remains
+            parseable but is ignored — see ``principal``).
         store: Step-approval store dependency.
+        principal: The authenticated caller; recorded as the transition's
+            actor (ADR-018), superseding any body-supplied actor.
 
     Returns:
         The approved step.
@@ -318,29 +327,35 @@ def approve_plan_step_v2(
         HTTPException: 404 if the plan or the step does not exist; 400 if
             the step is not under review (e.g. already approved/rejected).
     """
+    del body
     _seeded_records(store, session_id)
     record = store.get_step(session_id, step_index)
     if record is None:
         v2_error(404, f"Step {step_index} not found for session {session_id!r}.")
     record = _ensure_under_review(store, session_id, record)
-    record = _transition(store, session_id, step_index, "approve", actor=body.actor)
+    record = _transition(store, session_id, step_index, "approve", actor=principal.subject)
     return _to_step_v2(record)
 
 
+@requires_scope("plan:approve")
 @router.post("/{session_id}/steps/{step_index}/reject", response_model=PlanStepV2)
 def reject_plan_step_v2(
     session_id: str,
     step_index: int,
     body: StepDecisionRequestV2 = StepDecisionRequestV2(),
     store: StepApprovalStore = Depends(get_step_store),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> PlanStepV2:
     """Reject a single plan step.
 
     Args:
         session_id: Identifier of the session.
         step_index: Zero-based step position.
-        body: The rejection decision (actor/note).
+        body: The rejection decision (a legacy ``actor``/note field remains
+            parseable but is ignored — see ``principal``).
         store: Step-approval store dependency.
+        principal: The authenticated caller; recorded as the transition's
+            actor (ADR-018), superseding any body-supplied actor.
 
     Returns:
         The rejected step.
@@ -349,20 +364,23 @@ def reject_plan_step_v2(
         HTTPException: 404 if the plan or the step does not exist; 400 if
             the step is not under review (e.g. already approved/rejected).
     """
+    del body
     _seeded_records(store, session_id)
     record = store.get_step(session_id, step_index)
     if record is None:
         v2_error(404, f"Step {step_index} not found for session {session_id!r}.")
     record = _ensure_under_review(store, session_id, record)
-    record = _transition(store, session_id, step_index, "reject", actor=body.actor)
+    record = _transition(store, session_id, step_index, "reject", actor=principal.subject)
     return _to_step_v2(record)
 
 
+@requires_scope("flow:execute")
 @router.post("/{session_id}/execute-approved", response_model=PlanV2)
 def execute_approved_steps_v2(
     session_id: str,
     body: ExecuteApprovedRequestV2 = ExecuteApprovedRequestV2(),
     store: StepApprovalStore = Depends(get_step_store),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> PlanV2:
     """Execute only the plan's already-``approved`` steps.
 
@@ -375,8 +393,11 @@ def execute_approved_steps_v2(
 
     Args:
         session_id: Identifier of the session.
-        body: Optional explicit step selection and actor.
+        body: Optional explicit step selection (a legacy ``actor`` field
+            remains parseable but is ignored — see ``principal``).
         store: Step-approval store dependency.
+        principal: The authenticated caller; recorded as each transition's
+            actor (ADR-018), superseding any body-supplied actor.
 
     Returns:
         The plan after executing the targeted steps.
@@ -407,25 +428,30 @@ def execute_approved_steps_v2(
             v2_error(400, f"No approved steps to execute for session {session_id!r}.")
 
     for index in target_indices:
-        _transition(store, session_id, index, "execute", actor=body.actor)
-        _transition(store, session_id, index, "complete", actor=body.actor)
+        _transition(store, session_id, index, "execute", actor=principal.subject)
+        _transition(store, session_id, index, "complete", actor=principal.subject)
 
     final_records = store.list_steps(session_id)
     return _to_plan_v2(session_id, final_records)
 
 
+@requires_scope("plan:write")
 @router.post("/{session_id}/steps", response_model=PlanV2, status_code=201)
 def add_plan_step_v2(
     session_id: str,
     body: StepCreateRequestV2,
     store: StepApprovalStore = Depends(get_step_store),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> PlanV2:
     """Append a new ``draft`` step to the end of a session's plan.
 
     Args:
         session_id: Identifier of the session.
-        body: The new step's content and actor.
+        body: The new step's content (a legacy ``actor`` field remains
+            parseable but is ignored — see ``principal``).
         store: Step-approval store dependency.
+        principal: The authenticated caller; recorded as the mutation's
+            actor (ADR-018), superseding any body-supplied actor.
 
     Returns:
         The plan after the step is appended.
@@ -436,17 +462,18 @@ def add_plan_step_v2(
     _seeded_records(store, session_id)
     record = store.append_step(session_id, body.content)
     _sync_legacy_plan(session_id, store)
-    emit_mutation(session_id, record.step_index, "added", body.actor)
+    emit_mutation(session_id, record.step_index, "added", principal.subject)
     final_records = store.list_steps(session_id)
     return _to_plan_v2(session_id, final_records)
 
 
+@requires_scope("plan:write")
 @router.delete("/{session_id}/steps/{step_index}", response_model=PlanV2)
 def remove_plan_step_v2(
     session_id: str,
     step_index: int,
-    actor: str = "anonymous",
     store: StepApprovalStore = Depends(get_step_store),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> PlanV2:
     """Remove a step and reindex subsequent steps to stay contiguous.
 
@@ -458,8 +485,9 @@ def remove_plan_step_v2(
     Args:
         session_id: Identifier of the session.
         step_index: Zero-based step position to remove.
-        actor: Who (or what) triggered the removal.
         store: Step-approval store dependency.
+        principal: The authenticated caller; recorded as the removal's
+            actor (ADR-018).
 
     Returns:
         The plan after the step is removed and remaining steps reindexed.
@@ -476,7 +504,7 @@ def remove_plan_step_v2(
     except ValueError as exc:
         v2_error(400, str(exc))
     _sync_legacy_plan(session_id, store)
-    emit_mutation(session_id, step_index, "removed", actor)
+    emit_mutation(session_id, step_index, "removed", principal.subject)
     final_records = store.list_steps(session_id)
     return _to_plan_v2(session_id, final_records)
 
