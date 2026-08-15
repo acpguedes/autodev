@@ -16,15 +16,17 @@ from opentelemetry.trace import SpanKind
 from backend.api import main as api_main
 from backend.config.settings import Settings
 from backend.jobs.queue import (
+    _HANDLERS,
     AbstractJobQueue,
     InProcessJobQueue,
     RedisJobQueue,
-    register_handler,
 )
 from backend.observability.context import bind_correlation_context
 from backend.observability.metrics import QueueSnapshot, get_metric_sink
 from backend.observability.tracing import get_tracer
 from backend.tests.observability_helpers import capture_observability
+
+_TEST_HANDLER_NAMES = {"observability-blocking", "observability-raising", "observability-returning", "redis-observability-blocking"}
 
 
 class _FakeRedisQueueClient:
@@ -191,10 +193,14 @@ def test_abstract_queue_requires_stats_implementation() -> None:
         _QueueWithoutStats()
 
 
-def test_inprocess_queue_reports_pending_running_and_worker_use() -> None:
+def test_inprocess_queue_reports_pending_running_and_worker_use(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """In-process snapshots distinguish queued work from one busy worker."""
     release = threading.Event()
-    register_handler("observability-blocking")(lambda payload: release.wait(timeout=1))
+    monkeypatch.setitem(
+        _HANDLERS, "observability-blocking", lambda payload: release.wait(timeout=1)
+    )
     queue = InProcessJobQueue(max_workers=1)
     second_job: str | None = None
     try:
@@ -258,19 +264,21 @@ def test_job_context_is_internal_and_cleaned_after_completion() -> None:
         _shutdown_inprocess_queue(queue)
 
 
-def test_job_spans_never_record_payload_result_or_raw_error() -> None:
+def test_job_spans_never_record_payload_result_or_raw_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Queue spans omit payloads, results, and raw handler exceptions."""
 
-    @register_handler("observability-returning")
     def _return_private_content(_payload: dict) -> dict[str, str]:
         """Return domain content that must stay outside telemetry."""
         return {"private": "raw-private-result"}
 
-    @register_handler("observability-raising")
     def _raise_with_private_content(_payload: dict) -> None:
         """Raise an error containing text that must stay outside telemetry."""
         raise RuntimeError("raw-private-error")
 
+    monkeypatch.setitem(_HANDLERS, "observability-returning", _return_private_content)
+    monkeypatch.setitem(_HANDLERS, "observability-raising", _raise_with_private_content)
     queue = InProcessJobQueue(max_workers=1)
     try:
         with capture_observability() as capture:
@@ -347,11 +355,15 @@ def test_redis_queue_persists_private_carrier_outside_public_record() -> None:
     assert not carrier_fields & set(client.hgetall(f"autodev:jobs:{job_id}"))
 
 
-def test_redis_queue_reports_llen_and_current_process_busy_state() -> None:
+def test_redis_queue_reports_llen_and_current_process_busy_state(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Redis snapshots use LLEN and count only work active in this process."""
     release = threading.Event()
-    register_handler("redis-observability-blocking")(
-        lambda payload: release.wait(timeout=1)
+    monkeypatch.setitem(
+        _HANDLERS,
+        "redis-observability-blocking",
+        lambda payload: release.wait(timeout=1),
     )
     client = _FakeRedisQueueClient()
     queue = RedisJobQueue(client=client, start_worker=False)
@@ -480,3 +492,8 @@ def test_lifespan_registers_selected_queue_snapshot_with_runtime(
         asyncio.run(_exercise_lifespan())
     finally:
         _shutdown_inprocess_queue(queue)
+
+
+def test_observability_tests_do_not_leak_global_handlers() -> None:
+    """Test-owned handlers are absent from the process-global registry."""
+    assert _TEST_HANDLER_NAMES.isdisjoint(_HANDLERS)

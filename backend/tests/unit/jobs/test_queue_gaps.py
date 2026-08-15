@@ -31,10 +31,14 @@ from backend.jobs.queue import (
 class _FakeRedisQueueClient:
     """In-memory stand-in for a Redis client, used to test :class:`RedisJobQueue`."""
 
-    def __init__(self) -> None:
-        """Initialize empty in-memory hashes and lists."""
+    def __init__(
+        self, *, fail_rpush: bool = False, fail_delete: bool = False
+    ) -> None:
+        """Initialize storage and optional deterministic write failures."""
         self.hashes: dict[str, dict[str, str]] = {}
         self.queues: dict[str, list[str]] = {}
+        self.fail_rpush = fail_rpush
+        self.fail_delete = fail_delete
 
     def ping(self) -> bool:
         """Report the fake connection as always reachable."""
@@ -55,10 +59,20 @@ class _FakeRedisQueueClient:
         deleted = sum(field in record for field in fields)
         for field in fields:
             record.pop(field, None)
+        if not record:
+            self.hashes.pop(key, None)
         return deleted
+
+    def delete(self, key: str) -> int:
+        """Delete one hash or raise a configured cleanup failure."""
+        if self.fail_delete:
+            raise RuntimeError("redis delete failed")
+        return int(self.hashes.pop(key, None) is not None)
 
     def rpush(self, key: str, value: str) -> int:
         """Append a value to an in-memory list."""
+        if self.fail_rpush:
+            raise RuntimeError("redis rpush failed")
         self.queues.setdefault(key, []).append(value)
         return len(self.queues[key])
 
@@ -157,6 +171,30 @@ def test_run_pending_once_returns_false_when_queue_is_empty() -> None:
     queue = RedisJobQueue(client=_FakeRedisQueueClient(), start_worker=False)
 
     assert queue.run_pending_once() is False
+
+
+def test_redis_enqueue_removes_orphan_hash_when_rpush_fails() -> None:
+    """An RPUSH failure compensates the preceding hash and carrier write."""
+    client = _FakeRedisQueueClient(fail_rpush=True)
+    queue = RedisJobQueue(client=client, start_worker=False)
+
+    with pytest.raises(RuntimeError, match="redis rpush failed"):
+        queue.enqueue("echo", {"message": "not-queued"})
+
+    assert client.hashes == {}
+    assert queue.stats().pending == 0
+
+
+def test_redis_enqueue_scrubs_hash_when_primary_cleanup_fails() -> None:
+    """Failed DELETE falls back to HDEL while preserving the RPUSH error."""
+    client = _FakeRedisQueueClient(fail_rpush=True, fail_delete=True)
+    queue = RedisJobQueue(client=client, start_worker=False)
+
+    with pytest.raises(RuntimeError, match="redis rpush failed"):
+        queue.enqueue("echo", {"message": "not-queued"})
+
+    assert client.hashes == {}
+    assert queue.stats().pending == 0
 
 
 # ---------------------------------------------------------------------------

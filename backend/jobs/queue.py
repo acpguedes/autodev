@@ -108,8 +108,13 @@ class InProcessJobQueue(AbstractJobQueue):
             with self._lock:
                 self._store[job_id] = record
                 self._execution_contexts[job_id] = carrier
-
-            self._executor.submit(self._run, job_id, job_type, payload)
+            try:
+                self._executor.submit(self._run, job_id, job_type, payload)
+            except Exception:
+                with self._lock:
+                    self._store.pop(job_id, None)
+                    self._execution_contexts.pop(job_id, None)
+                raise
         return job_id
 
     def get(self, job_id: str) -> dict:
@@ -157,7 +162,6 @@ class InProcessJobQueue(AbstractJobQueue):
         with self._lock:
             self._store[job_id]["status"] = _STATUS_RUNNING
             carrier = self._execution_contexts[job_id]
-
         try:
             with attach_execution_context(carrier):
                 with get_tracer().start_as_current_span(
@@ -220,12 +224,10 @@ class RedisJobQueue(AbstractJobQueue):
                 import redis as _redis  # type: ignore[import-untyped]
             except ImportError as exc:
                 raise RuntimeError("redis package is not installed.") from exc
-
             redis_url = (url or os.environ.get("AUTODEV_REDIS_URL", "")).strip()
             if not redis_url:
                 raise RuntimeError("AUTODEV_REDIS_URL is required for RedisJobQueue.")
             client = _redis.from_url(redis_url)
-
         self._client = client
         self._client.ping()
         self._poll_interval = poll_interval
@@ -256,22 +258,28 @@ class RedisJobQueue(AbstractJobQueue):
             for name, value in _correlation_span_attributes(carrier).items():
                 span.set_attribute(name, value)
             job_id = str(uuid.uuid4())
-            self._client.hset(
-                self._job_key(job_id),
-                mapping={
-                    "job_id": job_id, "job_type": job_type,
-                    "payload": json.dumps(payload),
-                    "status": _STATUS_PENDING,
-                    "result": "null", "error": "",
-                    "otel_traceparent": carrier.get("traceparent", ""),
-                    "otel_tracestate": carrier.get("tracestate", ""),
-                    "otel_baggage": carrier.get("baggage", ""),
-                    "correlation_request_id": carrier.get("correlation_request_id", ""),
-                    "correlation_run_id": carrier.get("correlation_run_id", ""),
-                    "correlation_tenant_id": carrier.get("correlation_tenant_id", ""),
-                },
-            )
-            self._client.rpush(self._pending_key, job_id)
+            key = self._job_key(job_id)
+            mapping: Mapping[Any, Any] = {
+                "job_id": job_id, "job_type": job_type,
+                "payload": json.dumps(payload),
+                "status": _STATUS_PENDING,
+                "result": "null", "error": "",
+                "otel_traceparent": carrier.get("traceparent", ""),
+                "otel_tracestate": carrier.get("tracestate", ""),
+                "otel_baggage": carrier.get("baggage", ""),
+                "correlation_request_id": carrier.get("correlation_request_id", ""),
+                "correlation_run_id": carrier.get("correlation_run_id", ""),
+                "correlation_tenant_id": carrier.get("correlation_tenant_id", ""),
+            }
+            self._client.hset(key, mapping=mapping)
+            try:
+                self._client.rpush(self._pending_key, job_id)
+            except Exception:
+                try:
+                    self._client.delete(key)
+                except Exception:
+                    self._client.hdel(key, *mapping)
+                raise
         return job_id
 
     def get(self, job_id: str) -> dict:
@@ -340,7 +348,6 @@ class RedisJobQueue(AbstractJobQueue):
         record = _decode_hash(self._client.hgetall(key))
         if not record:
             return
-
         carrier = {
             "traceparent": record.get("otel_traceparent", ""),
             "tracestate": record.get("otel_tracestate", ""),
@@ -351,7 +358,6 @@ class RedisJobQueue(AbstractJobQueue):
         }
         with self._busy_lock:
             self._busy_workers += 1
-
         try:
             self._client.hset(key, mapping={"status": _STATUS_RUNNING})
             with attach_execution_context(carrier):

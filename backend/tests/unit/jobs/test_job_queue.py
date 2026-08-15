@@ -24,6 +24,7 @@ from backend.jobs.queue import (
     _reset_queue_singleton,
     get_queue,
 )
+from backend.observability.metrics import QueueSnapshot
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +92,19 @@ def test_inprocess_initial_status_is_pending_or_running_or_done() -> None:
     job_id = q.enqueue("echo", {})
     rec = q.get(job_id)
     assert rec["status"] in {"pending", "running", "done", "error"}
+
+
+def test_inprocess_enqueue_rolls_back_when_executor_rejects_submission() -> None:
+    """A rejected executor submission leaves no pending record or carrier."""
+    queue = InProcessJobQueue(max_workers=1)
+    queue._executor.shutdown(wait=True)  # noqa: SLF001 - force deterministic rejection
+
+    with pytest.raises(RuntimeError, match="cannot schedule new futures"):
+        queue.enqueue("echo", {"message": "not-scheduled"})
+
+    assert queue.stats() == QueueSnapshot(0, 0, 1, 0)
+    assert queue._store == {}  # noqa: SLF001 - rollback contract
+    assert queue._execution_contexts == {}  # noqa: SLF001 - carrier rollback contract
 
 
 class _FakeRedisQueueClient:
