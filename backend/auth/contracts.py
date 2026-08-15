@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 
 class Role(StrEnum):
@@ -150,6 +151,50 @@ class AuthSessionRecord:
         return self.revoked_at is None
 
 
+@dataclass(frozen=True, slots=True)
+class AccessAuditRecord:
+    """One durable, tenant-scoped access-decision audit row (Task 4).
+
+    Never contains credentials, cookies, raw headers, request bodies, or
+    prompts (ADR-018) — only stable operational identifiers.
+
+    Attributes:
+        audit_id: Opaque unique id of this audit row.
+        occurred_at: When the decision was made.
+        tenant_id: Tenant the decision was scoped to (``"system"`` for a
+            failed-authentication row with no resolved principal).
+        subject: The principal's subject (``"anonymous"`` if unauthenticated).
+        auth_method: How the principal was authenticated.
+        credential_id: Opaque id of the presented credential, if any.
+        roles: The principal's canonical roles.
+        required_scope: The route's declared required scope.
+        resource_type: Stable resource-area identifier (the route's tag).
+        resource_id: Path-derived resource id, if the route addresses one.
+        method: HTTP method.
+        route_template: The matched route's path template (never the raw
+            path, which may embed identifiers).
+        decision: Whether the request was allowed or denied.
+        reason: Stable machine-readable reason code.
+        request_id: Correlation id for cross-referencing traces/logs.
+    """
+
+    audit_id: str
+    occurred_at: datetime
+    tenant_id: str
+    subject: str
+    auth_method: AuthMethod
+    credential_id: str | None
+    roles: tuple[Role, ...]
+    required_scope: str
+    resource_type: str
+    resource_id: str | None
+    method: str
+    route_template: str
+    decision: Literal["allowed", "denied"]
+    reason: str
+    request_id: str
+
+
 class AuthError(Exception):
     """Base class for typed authentication/authorization failures."""
 
@@ -163,6 +208,7 @@ class AuthReadinessError(RuntimeError):
 
 
 __all__ = [
+    "AccessAuditRecord",
     "AuthError",
     "AuthMethod",
     "AuthReadinessError",

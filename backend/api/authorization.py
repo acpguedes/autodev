@@ -15,15 +15,23 @@ easily-stale path list.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import Callable, Iterable, Iterator
 from typing import Any, TypeVar
 
 from fastapi import HTTPException, Request
 from fastapi.routing import APIRoute
 
-from backend.auth.contracts import AuthorizationRequirement, InvalidCredentialError, PrincipalV2
+from backend.auth.audit import get_audit_writer, new_audit_id, publish_access_event
+from backend.auth.contracts import (
+    AccessAuditRecord,
+    AuthorizationRequirement,
+    InvalidCredentialError,
+    PrincipalV2,
+)
 from backend.auth.roles import effective_scopes
 from backend.auth.service import get_auth_service
+from backend.auth.store import utcnow
 from backend.config.settings import Settings
 
 F = TypeVar("F", bound=Callable[..., Any])
@@ -186,6 +194,71 @@ def require_v2_principal(request: Request) -> PrincipalV2:
     return principal
 
 
+def _resource_type(route: Any) -> str:
+    """Derive a stable resource-area identifier from a matched route.
+
+    Uses the route's first FastAPI tag (e.g. ``"sessions"``, ``"flows"``) as
+    the audit trail's resource-area label; falls back to ``"unknown"`` for
+    an unmatched route (should not occur once routing has resolved).
+
+    Args:
+        route: The Starlette/FastAPI route object from ``request.scope["route"]``.
+
+    Returns:
+        The resource-area label.
+    """
+    tags = getattr(route, "tags", None) or []
+    return str(tags[0]) if tags else "unknown"
+
+
+def _publish_unauthenticated_denial(
+    *,
+    resource_type: str,
+    method: str,
+    route_template: str,
+    required_scope: str,
+    request_id: str,
+) -> None:
+    """Best-effort publish a denial event for a failed authentication attempt.
+
+    Not durably audited (ADR-018): there is no resolved tenant/subject to
+    scope a durable row to, and requiring durability here would make
+    anonymous/unauthenticated traffic able to trigger the same
+    ``503 security.audit_unavailable`` fate reserved for genuine allowed
+    requests.
+
+    Args:
+        resource_type: The matched route's resource-area label.
+        method: HTTP method.
+        route_template: The matched route's path template.
+        required_scope: The route's declared required scope, if any.
+        request_id: Correlation id for this request.
+    """
+    from backend.events.catalog import AccessRequestData  # noqa: PLC0415
+    from backend.events.runtime import emit_event  # noqa: PLC0415
+
+    payload = AccessRequestData(
+        subjectId="anonymous",
+        authMethod="unauthenticated",
+        credentialId=None,
+        roles=[],
+        requiredScope=required_scope,
+        resourceType=resource_type,
+        resourceId=None,
+        method=method,
+        routeTemplate=route_template,
+        decision="denied",
+        reason="unauthenticated",
+        requestId=request_id,
+    )
+    emit_event(
+        "access.request.denied",
+        tenant_id="system",
+        partition_key="system",
+        data=payload.model_dump(),
+    )
+
+
 async def enforce_control_plane_access(request: Request) -> None:
     """App-level dependency: authenticate, then authorize, every request.
 
@@ -194,7 +267,13 @@ async def enforce_control_plane_access(request: Request) -> None:
     routers that never import this module. Order: public marker (skip
     entirely), authenticate (401 on failure), authorize against the
     route's declared scope (403 on missing policy in production, 403 on
-    missing scope).
+    missing scope). Every decision made against a resolved principal —
+    allowed or denied — is durably audited before the caller sees the
+    result; a required-audit failure for an about-to-be-allowed request
+    denies it (``503``) rather than letting an unauditable allow through
+    (ADR-018). A failed *authentication* attempt (no principal resolved)
+    is not durably audited — there is no tenant/subject to scope a durable
+    row to — but still publishes a best-effort denial event.
 
     Args:
         request: The incoming request.
@@ -202,7 +281,8 @@ async def enforce_control_plane_access(request: Request) -> None:
     Raises:
         HTTPException: 401 if no configured method authenticates the
             request; 403 if production finds no declared policy, or the
-            principal lacks the required scope.
+            principal lacks the required scope; 503 if a required audit
+            write fails for an about-to-be-allowed request.
     """
     route = request.scope.get("route")
     endpoint = getattr(route, "endpoint", None)
@@ -211,19 +291,62 @@ async def enforce_control_plane_access(request: Request) -> None:
 
     settings = Settings()
     service = get_auth_service()
+    route_template = getattr(route, "path", request.url.path)
+    resource_type = _resource_type(route)
+    requirement = get_authorization_requirement(endpoint) if endpoint is not None else None
+    required_scope = requirement.scope if requirement is not None else ""
+    request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
+
     try:
         principal = await service.authenticate_request(request)
     except InvalidCredentialError as exc:
+        _publish_unauthenticated_denial(
+            resource_type=resource_type,
+            method=request.method,
+            route_template=route_template,
+            required_scope=required_scope,
+            request_id=request_id,
+        )
         raise HTTPException(
             status_code=401,
             detail={"code": "authorization.unauthenticated", "message": str(exc)},
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
     request.state.principal = principal
+    resource_id = (
+        request.path_params.get(requirement.resource_parameter)
+        if requirement is not None and requirement.resource_parameter
+        else None
+    )
 
-    requirement = get_authorization_requirement(endpoint) if endpoint is not None else None
+    def _audit(*, decision: str, reason: str) -> AccessAuditRecord:
+        return AccessAuditRecord(
+            audit_id=new_audit_id(),
+            occurred_at=utcnow(),
+            tenant_id=principal.tenant_id,
+            subject=principal.subject,
+            auth_method=principal.auth_method,
+            credential_id=principal.credential_id,
+            roles=principal.roles,
+            required_scope=required_scope,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            method=request.method,
+            route_template=route_template,
+            decision=decision,  # type: ignore[arg-type]
+            reason=reason,
+            request_id=request_id,
+        )
+
     if requirement is None:
         if settings.autodev_profile == "prod":
+            record = _audit(decision="denied", reason="policy_missing")
+            try:
+                get_audit_writer().record(record, required=False)
+            except Exception:  # noqa: BLE001 - denial stands regardless of audit outcome
+                pass
+            else:
+                publish_access_event(record)
             raise HTTPException(
                 status_code=403,
                 detail={
@@ -235,6 +358,13 @@ async def enforce_control_plane_access(request: Request) -> None:
 
     effective = effective_scopes(principal.roles, principal.scopes or None)
     if requirement.scope not in effective:
+        record = _audit(decision="denied", reason="scope_missing")
+        try:
+            get_audit_writer().record(record, required=False)
+        except Exception:  # noqa: BLE001 - denial stands regardless of audit outcome
+            pass
+        else:
+            publish_access_event(record)
         raise HTTPException(
             status_code=403,
             detail={
@@ -242,6 +372,19 @@ async def enforce_control_plane_access(request: Request) -> None:
                 "message": f"missing required scope: {requirement.scope}",
             },
         )
+
+    record = _audit(decision="allowed", reason="ok")
+    try:
+        get_audit_writer().record(record, required=True)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "security.audit_unavailable",
+                "message": "access audit is unavailable; request denied",
+            },
+        ) from exc
+    publish_access_event(record)
 
 
 __all__ = [

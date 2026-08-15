@@ -29,9 +29,10 @@ def test_catalog_covers_all_reference_types_with_valid_names() -> None:
 
     Append-only (E9-S3-T1): 20 baseline + 4 E16-S1 ``run.timeline.*`` +
     5 E16-S2 ``plan.step.*`` + 2 E16-S3 ``patch.*`` +
-    2 E17-S2 ``plan.step.added``/``plan.step.removed`` = 33 types.
+    2 E17-S2 ``plan.step.added``/``plan.step.removed`` +
+    2 E11-S2 ``access.request.allowed``/``access.request.denied`` = 35 types.
     """
-    assert len(EVENT_CATALOG) == 33
+    assert len(EVENT_CATALOG) == 35
     for name, definition in EVENT_CATALOG.items():
         assert name == definition.name
         assert _NAME_RE.fullmatch(name)

@@ -12,7 +12,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Any
 
-from backend.auth.contracts import AuthSessionRecord, Role, ServiceCredentialRecord
+from backend.auth.contracts import AccessAuditRecord, AuthMethod, AuthSessionRecord, Role, ServiceCredentialRecord
 from backend.auth.migrations import auth_store_statements
 from backend.auth.roles import normalize_scopes
 from backend.persistence.database import get_store
@@ -292,6 +292,117 @@ class AuthStore:
         except Exception:
             self._drop_connection()
             raise
+
+    # ------------------------------------------------------- access audit
+
+    def append_access_audit(self, record: AccessAuditRecord) -> None:
+        """Durably append one access-decision audit row.
+
+        Args:
+            record: The audit row to persist.
+
+        Raises:
+            Exception: Any persistence failure (connection, disk, etc.) is
+                re-raised uncaught — the caller (Task 4's enforcement
+                wiring) treats an audit-write failure for an otherwise
+                allowed request as a hard denial (``503``), so silently
+                swallowing it here would defeat that guarantee.
+        """
+        conn = self._connect()
+        try:
+            self._begin_write(conn)
+            conn.execute(
+                self._sql(
+                    "INSERT INTO access_audit "
+                    "(audit_id, occurred_at, tenant_id, subject, auth_method, "
+                    "credential_id, roles, required_scope, resource_type, "
+                    "resource_id, method, route_template, decision, reason, "
+                    "request_id) "
+                    "VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, "
+                    "{p}, {p}, {p}, {p}, {p})"
+                ),
+                (
+                    record.audit_id,
+                    _iso(record.occurred_at),
+                    record.tenant_id,
+                    record.subject,
+                    record.auth_method.value,
+                    record.credential_id,
+                    _encode_roles(record.roles),
+                    record.required_scope,
+                    record.resource_type,
+                    record.resource_id,
+                    record.method,
+                    record.route_template,
+                    record.decision,
+                    record.reason,
+                    record.request_id,
+                ),
+            )
+            conn.commit()
+        except Exception:
+            self._drop_connection()
+            raise
+
+    def list_access_audit(
+        self, *, tenant_id: str, limit: int, before: datetime | None
+    ) -> list[AccessAuditRecord]:
+        """List a tenant's access-audit rows, most recent first.
+
+        Args:
+            tenant_id: Tenant to scope the listing to.
+            limit: Maximum rows to return.
+            before: If given, only rows strictly older than this timestamp.
+
+        Returns:
+            The tenant's audit rows, most recently occurred first.
+        """
+        if before is not None:
+            rows = self._connect().execute(
+                self._sql(
+                    "SELECT audit_id, occurred_at, tenant_id, subject, auth_method, "
+                    "credential_id, roles, required_scope, resource_type, "
+                    "resource_id, method, route_template, decision, reason, "
+                    "request_id FROM access_audit "
+                    "WHERE tenant_id = {p} AND occurred_at < {p} "
+                    "ORDER BY occurred_at DESC LIMIT {p}"
+                ),
+                (tenant_id, _iso(before), limit),
+            ).fetchall()
+        else:
+            rows = self._connect().execute(
+                self._sql(
+                    "SELECT audit_id, occurred_at, tenant_id, subject, auth_method, "
+                    "credential_id, roles, required_scope, resource_type, "
+                    "resource_id, method, route_template, decision, reason, "
+                    "request_id FROM access_audit "
+                    "WHERE tenant_id = {p} "
+                    "ORDER BY occurred_at DESC LIMIT {p}"
+                ),
+                (tenant_id, limit),
+            ).fetchall()
+        return [self._decode_audit(row) for row in rows]
+
+    def _decode_audit(self, row: Any) -> AccessAuditRecord:
+        """Decode one ``access_audit`` row into its typed record."""
+        values = list(row)
+        return AccessAuditRecord(
+            audit_id=values[0],
+            occurred_at=_parse_iso(values[1]),
+            tenant_id=values[2],
+            subject=values[3],
+            auth_method=AuthMethod(values[4]),
+            credential_id=values[5],
+            roles=_decode_roles(values[6]),
+            required_scope=values[7],
+            resource_type=values[8],
+            resource_id=values[9],
+            method=values[10],
+            route_template=values[11],
+            decision=values[12],
+            reason=values[13],
+            request_id=values[14],
+        )
 
     # ----------------------------------------------------------- helpers
 
