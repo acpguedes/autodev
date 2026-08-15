@@ -558,7 +558,8 @@ class AgentRuntime:
                     ctx._steps.append(
                         AgentRuntimeStep(
                             "run-handler",
-                            "running",
+                            "failed",
+                            "budget_exhausted",
                             elapsed_ms=(time.perf_counter() - handler_started) * 1000,
                         )
                     )
@@ -568,7 +569,8 @@ class AgentRuntime:
                     ctx._steps.append(
                         AgentRuntimeStep(
                             "run-handler",
-                            "running",
+                            "failed",
+                            "invalid_output",
                             elapsed_ms=(time.perf_counter() - handler_started) * 1000,
                         )
                     )
@@ -578,7 +580,8 @@ class AgentRuntime:
                     ctx._steps.append(
                         AgentRuntimeStep(
                             "run-handler",
-                            "running",
+                            "failed",
+                            "handler_failed",
                             elapsed_ms=(time.perf_counter() - handler_started) * 1000,
                         )
                     )
@@ -586,7 +589,7 @@ class AgentRuntime:
                 handler_trace.finish(status="completed")
             elapsed_ms = (time.perf_counter() - handler_started) * 1000
             ctx._steps.append(
-                AgentRuntimeStep("run-handler", "running", "", "", elapsed_ms)
+                AgentRuntimeStep("run-handler", "completed", "", "", elapsed_ms)
             )
             ctx.record_step("handler-completed", status="completed")
             validate_agent_io(ctx.manifest, output, "output")

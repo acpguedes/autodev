@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from backend.agents.manifest import AgentManifest, validate_agent_manifest
 from backend.agents.provider import StubLLMProvider
-from backend.agents.runtime import AgentRuntime, AgentRuntimeContext
+from backend.agents.runtime import (
+    AgentRuntime,
+    AgentRuntimeContext,
+    AgentRuntimeStep,
+    BudgetExceeded,
+)
 from backend.llm import EstimatedCost, ModelProviderNotConfiguredError, TokenUsage
 from backend.llm.gateway import ModelGateway
 from backend.llm.model_config import ModelConfig, ModelTarget
@@ -70,6 +77,13 @@ def _handler(ctx: AgentRuntimeContext) -> dict[str, str]:
     return {"schemaVersion": "1.0.0", "result": ctx.call_llm("hello")}
 
 
+def _run_handler_step(result_steps: list[AgentRuntimeStep]) -> AgentRuntimeStep:
+    """Return the single public run-handler timeline entry."""
+    matches = [step for step in result_steps if step.name == "run-handler"]
+    assert len(matches) == 1
+    return matches[0]
+
+
 def _gateway(**responses: StubModelOutput) -> tuple[ModelGateway, StubModelProvider]:
     """Build a gateway over a deterministic offline provider."""
     provider = StubModelProvider(responses=dict(responses))
@@ -90,6 +104,63 @@ def test_legacy_provider_injection_still_works_without_a_gateway() -> None:
     assert result.output == {"schemaVersion": "1.0.0", "result": "legacy"}
     assert result.metrics["tokens.input"] == 3
     assert result.metrics["cost.usd"] == 0.25
+
+
+def test_run_handler_timeline_entry_completes_on_success() -> None:
+    """Successful handler measurement is terminal and preserves step ordering."""
+    runtime = AgentRuntime(provider=StubLLMProvider(text="unused"))
+
+    result = runtime.run(
+        _manifest(),
+        _payload(),
+        lambda _: {"schemaVersion": "1.0.0", "result": "done"},
+    )
+
+    assert [step.name for step in result.steps] == [
+        "validate-input",
+        "run-handler",
+        "handler-completed",
+        "validate-output",
+    ]
+    assert _run_handler_step(result.steps).status == "completed"
+    assert _run_handler_step(result.steps).reason == ""
+
+
+@pytest.mark.parametrize(
+    ("handler", "expected_reason", "outer_step"),
+    [
+        (
+            lambda _: (_ for _ in ()).throw(BudgetExceeded("sensitive budget detail")),
+            "budget_exhausted",
+            "budget",
+        ),
+        (lambda _: ["not", "an", "object"], "invalid_output", "validate-output"),
+        (
+            lambda _: (_ for _ in ()).throw(RuntimeError("sensitive handler detail")),
+            "handler_failed",
+            "handler-error",
+        ),
+    ],
+)
+def test_run_handler_timeline_entry_fails_with_stable_reason(
+    handler: Any,
+    expected_reason: str,
+    outer_step: str,
+) -> None:
+    """Handler failures expose a terminal stable code without exception detail."""
+    runtime = AgentRuntime(provider=StubLLMProvider(text="unused"))
+
+    result = runtime.run(_manifest(), _payload(), handler)
+
+    assert [step.name for step in result.steps] == [
+        "validate-input",
+        "run-handler",
+        outer_step,
+    ]
+    handler_step = _run_handler_step(result.steps)
+    assert handler_step.status == "failed"
+    assert handler_step.reason == expected_reason
+    assert handler_step.detail == ""
 
 
 def test_gateway_routes_calls_and_charges_the_run_budget() -> None:

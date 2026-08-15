@@ -417,6 +417,18 @@ class OrchestratorService:
         results = list(final_state["results"])
         steps = list(final_state["steps"])
         current_state = final_state["current_state"]
+        next_history = [HistoryItem(**item) for item in final_context.history]
+        self._store.append_messages(
+            session_id,
+            run_id,
+            [item.to_dict() for item in next_history],
+            tenant_id=DEFAULT_TENANT_ID,
+        )
+        self._store.update_session_artifacts(
+            session_id,
+            self._clone_artifacts(final_context.artifacts),
+            tenant_id=DEFAULT_TENANT_ID,
+        )
         self._store.update_run(
             run_id=run_id,
             status=RunStatus.COMPLETED,
@@ -438,18 +450,6 @@ class OrchestratorService:
             partition_key=run_id,
             data={"status": "completed", "costUsd": 0.0, "tokens": 0},
             subject={"runId": run_id, "sessionId": session_id},
-        )
-        next_history = [HistoryItem(**item) for item in final_context.history]
-        self._store.append_messages(
-            session_id,
-            run_id,
-            [item.to_dict() for item in next_history],
-            tenant_id=DEFAULT_TENANT_ID,
-        )
-        self._store.update_session_artifacts(
-            session_id,
-            self._clone_artifacts(final_context.artifacts),
-            tenant_id=DEFAULT_TENANT_ID,
         )
         return OrchestratorRun(
             run_id=run_id,
