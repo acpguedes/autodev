@@ -10,7 +10,8 @@ strategy. The default (``fail_closed``) simply returns the exhausted result.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, replace
 from typing import Any, Callable, Mapping
 
 from backend.reasoning.contract import ReasoningInput, ReasoningOutput, TraceEvent
@@ -18,6 +19,7 @@ from backend.reasoning.engine import GuardrailCheck, ReasoningEngine, ToolImplem
 from backend.reasoning.registry import ReasoningStrategyRegistry
 from backend.reasoning.selection import SelectionDecision, resolve_strategy
 from backend.agents.provider import LLMProvider
+from backend.observability.tracing import record_decision
 
 _DEGRADE_PREFIX = "degrade_to:"
 
@@ -63,12 +65,13 @@ class ReasoningService:
         """
         self._registry = registry
         self._on_event = on_event
+        self._tenant_id = tenant_id
         self._engine = ReasoningEngine(
             provider=provider,
             guardrail_checks=guardrail_checks,
             tool_impls=tool_impls,
             tenant_id=tenant_id,
-            on_event=on_event,
+            on_event=self._trace_event,
         )
 
     async def run(
@@ -99,8 +102,15 @@ class ReasoningService:
             node_override=node_override,
             selector_choice=selector_choice,
         )
-        self._emit("reasoning.selection.decided", {"strategy": decision.strategy_id, "source": decision.source})
-        output = await self._engine.run(self._registry.resolve(decision.strategy_id), run_input)
+        self._emit(
+            "reasoning.selection.decided",
+            {"strategy": decision.strategy_id, "source": decision.source},
+        )
+        output = _with_canonical_trace_id(
+            await self._engine.run(
+                self._registry.resolve(decision.strategy_id), run_input
+            )
+        )
 
         degraded_to: str | None = None
         if output.stop_reason == "budget_exhausted":
@@ -114,9 +124,15 @@ class ReasoningService:
                     "reasoning.selection.degraded",
                     {"from": decision.strategy_id, "to": fallback_id},
                 )
-                output = await self._engine.run(self._registry.resolve(fallback_id), run_input)
+                output = _with_canonical_trace_id(
+                    await self._engine.run(
+                        self._registry.resolve(fallback_id), run_input
+                    )
+                )
                 degraded_to = fallback_id
-        return ReasoningRunResult(output=output, decision=decision, degraded_to=degraded_to)
+        return ReasoningRunResult(
+            output=output, decision=decision, degraded_to=degraded_to
+        )
 
     def _emit(self, name: str, payload: dict[str, Any]) -> None:
         """Emit a service-level decision event to the trace sink, if configured.
@@ -125,8 +141,37 @@ class ReasoningService:
             name: Dotted event name.
             payload: Structured payload for the event.
         """
+        self._trace_event(
+            TraceEvent(sequence=-1, name=name, payload=payload, timestamp=time.time())
+        )
+
+    def _trace_event(self, event: TraceEvent) -> None:
+        """Record safe decision telemetry, then preserve the replay callback.
+
+        Args:
+            event: Original domain trace event, forwarded without mutation.
+        """
+        payload = event.payload
+        outcome_value = payload.get("stop_reason", payload.get("source", "recorded"))
+        outcome = outcome_value if isinstance(outcome_value, str) else "recorded"
+        attributes: dict[str, str | bool] = {}
+        strategy = payload.get("strategy")
+        if isinstance(strategy, str):
+            attributes["strategy_id"] = strategy
+        source = payload.get("source")
+        if isinstance(source, str):
+            attributes["selection_source"] = source
+        passed = payload.get("passed")
+        if isinstance(passed, bool):
+            attributes["gate_result"] = "passed" if passed else "failed"
+        record_decision(
+            name=event.name,
+            outcome=outcome,
+            tenant_id=self._tenant_id,
+            attributes=attributes,
+        )
         if self._on_event is not None:
-            self._on_event(TraceEvent(sequence=-1, name=name, payload=payload, timestamp=time.time()))
+            self._on_event(event)
 
 
 def _degrade_target(on_exceed: str) -> str | None:
@@ -139,8 +184,24 @@ def _degrade_target(on_exceed: str) -> str | None:
         The fallback strategy id for ``"degrade_to:<id>"``, else ``None``.
     """
     if isinstance(on_exceed, str) and on_exceed.startswith(_DEGRADE_PREFIX):
-        return on_exceed[len(_DEGRADE_PREFIX):].strip() or None
+        return on_exceed[len(_DEGRADE_PREFIX) :].strip() or None
     return None
+
+
+def _with_canonical_trace_id(output: ReasoningOutput) -> ReasoningOutput:
+    """Render the domain replay UUID canonically without using the W3C id.
+
+    Args:
+        output: Engine output carrying its domain trace anchor.
+
+    Returns:
+        Output with the same UUID rendered in standard 36-character form.
+    """
+    try:
+        trace_id = str(uuid.UUID(output.trace_id))
+    except (ValueError, AttributeError):
+        return output
+    return replace(output, trace_id=trace_id)
 
 
 __all__ = ["ReasoningRunResult", "ReasoningService"]

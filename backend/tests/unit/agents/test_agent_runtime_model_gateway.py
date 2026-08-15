@@ -12,6 +12,7 @@ from backend.llm.gateway import ModelGateway
 from backend.llm.model_config import ModelConfig, ModelTarget
 from backend.llm.registry import ModelProviderRegistry
 from backend.llm.stub_provider import StubModelOutput, StubModelProvider
+from backend.tests.observability_helpers import capture_observability
 
 
 def _manifest(
@@ -109,6 +110,44 @@ def test_gateway_routes_calls_and_charges_the_run_budget() -> None:
     assert result.metrics["tokens.output"] == 6
     assert result.metrics["cost.usd"] == 0.5
     assert [call.target.name for call in provider.calls] == ["m"]
+
+
+def test_model_span_carries_runtime_context_without_prompt_content() -> None:
+    """Model telemetry correlates the run without recording prompt content."""
+    secret_prompt = "sk-sensitive-prompt"
+    with capture_observability() as capture:
+        gateway, _ = _gateway(
+            m=StubModelOutput(
+                text="done",
+                usage=TokenUsage(4, 6),
+                cost=EstimatedCost(0.5),
+            )
+        )
+        runtime = AgentRuntime(
+            gateway=gateway,
+            model_config=ModelConfig(provider="stub", name="m"),
+        )
+        result = runtime.run(
+            _manifest(),
+            _payload(),
+            lambda ctx: {
+                "schemaVersion": "1.0.0",
+                "result": ctx.call_llm(secret_prompt),
+            },
+            run_id="run-1",
+            tenant_id="tenant-1",
+        )
+
+    model_span = next(
+        span
+        for span in capture.span_exporter.get_finished_spans()
+        if span.name == "autodev.model.call"
+    )
+    assert result.status == "completed"
+    assert model_span.attributes["autodev.run_id"] == "run-1"
+    assert model_span.attributes["autodev.tenant_id"] == "tenant-1"
+    assert secret_prompt not in repr(model_span.attributes)
+    assert secret_prompt not in repr(model_span.events)
 
 
 def test_two_agents_use_distinct_models_in_one_execution() -> None:

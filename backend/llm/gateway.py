@@ -55,6 +55,8 @@ def _model_trace(
     model: str,
     fallback_attempt: int,
     set_current: bool = True,
+    run_id: str = "",
+    tenant_id: str = "",
 ) -> Iterator["ModelCallTrace"]:
     """Open a model span, importing observability lazily.
 
@@ -74,6 +76,8 @@ def _model_trace(
         model=model,
         fallback_attempt=fallback_attempt,
         set_current=set_current,
+        run_id=run_id,
+        tenant_id=tenant_id,
     ) as measurements:
         yield measurements
 
@@ -194,6 +198,8 @@ class ModelGateway:
                         provider=item.target.provider or "",
                         model=item.target.name,
                         fallback_attempt=target_index,
+                        run_id=_metadata_context(metadata, "run_id"),
+                        tenant_id=_metadata_context(metadata, "tenant_id"),
                     ) as model_trace:
                         try:
                             response = item.provider.complete(
@@ -370,6 +376,8 @@ class ModelGateway:
                         model=item.target.name,
                         fallback_attempt=target_index,
                         set_current=False,
+                        run_id=_metadata_context(metadata, "run_id"),
+                        tenant_id=_metadata_context(metadata, "tenant_id"),
                     ) as model_trace:
                         try:
                             for chunk in provider.stream(
@@ -634,6 +642,20 @@ def _metadata_agent_id(metadata: ExecutionMetadata) -> str:
     """Read safe agent correlation from internal execution metadata."""
     agent_id = metadata.attributes.get("agent_id")
     return agent_id if isinstance(agent_id, str) else ""
+
+
+def _metadata_context(metadata: ExecutionMetadata, key: str) -> str:
+    """Read one safe correlation identifier from execution metadata.
+
+    Args:
+        metadata: Provider-neutral execution metadata.
+        key: Internal correlation attribute name.
+
+    Returns:
+        The string value, or an empty string for absent/non-string values.
+    """
+    value = metadata.attributes.get(key)
+    return value if isinstance(value, str) else ""
 
 
 __all__ = ["ModelGateway", "TelemetrySink"]

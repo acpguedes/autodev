@@ -40,12 +40,17 @@ from backend.flows.checkpoint import (
 )
 from backend.events.runtime import emit_event
 from backend.flows.expressions import ExpressionError
-from backend.flows.handlers import FlowHandlerRegistry, FlowNodeError, build_default_handlers
+from backend.flows.handlers import (
+    FlowHandlerRegistry,
+    FlowNodeError,
+    build_default_handlers,
+)
 from backend.flows.manifest import validate_run_input
 from backend.flows.model import FlowBudgets
 from backend.flows.records import TERMINAL_RUN_STATUSES
 from backend.flows.registry import FlowRegistry
 from backend.flows.state import FlowRunRecord, FlowRunStore
+from backend.observability.tracing import trace_run
 from backend.persistence.database import get_store
 
 
@@ -95,9 +100,7 @@ class FlowEngine(NodeActivationMixin):
         self.handlers = handlers or build_default_handlers(store=self._store)
         self._clock = clock or time.monotonic
         self._sleeper = sleeper or time.sleep
-        self.now: Callable[[], datetime] = now or (
-            lambda: datetime.now(timezone.utc)
-        )
+        self.now: Callable[[], datetime] = now or (lambda: datetime.now(timezone.utc))
         self._max_steps = max_steps_per_run
 
     # ------------------------------------------------------------------ API
@@ -162,27 +165,36 @@ class FlowEngine(NodeActivationMixin):
             state=state,
             parent_run_id=parent_run_id,
         )
-        self.runs.append_event(
-            run_id=run.run_id,
-            name="flow.run.started",
-            payload={
-                "flowId": manifest.id,
-                "flowVersion": manifest.version,
-                "tenantId": tenant_id,
-                "trigger": run.trigger,
-                "entryNodeId": entry_id,
-            },
-        )
-        emit_event(
-            "flow.run.started",
-            tenant_id=tenant_id,
-            partition_key=run.run_id,
-            data={"flowId": manifest.id, "flowVersion": manifest.version},
-            subject={"runId": run.run_id},
-        )
-        if execute:
-            return self.execute_run(run.run_id)
-        return run
+        with trace_run(
+            run_id=run.run_id, tenant_id=tenant_id, flow_id=manifest.id
+        ) as run_trace:
+            self.runs.append_event(
+                run_id=run.run_id,
+                name="flow.run.started",
+                payload={
+                    "flowId": manifest.id,
+                    "flowVersion": manifest.version,
+                    "tenantId": tenant_id,
+                    "trigger": run.trigger,
+                    "entryNodeId": entry_id,
+                },
+            )
+            emit_event(
+                "flow.run.started",
+                tenant_id=tenant_id,
+                partition_key=run.run_id,
+                data={"flowId": manifest.id, "flowVersion": manifest.version},
+                subject={"runId": run.run_id},
+            )
+            result = self._run_loop(run) if execute else run
+            metrics = result.state.get("metrics", {})
+            run_trace.finish(
+                status=result.status,
+                error_code=result.stop_reason if result.status == "failed" else "",
+                output_tokens=int(metrics.get("tokens", 0.0)),
+                cost_usd=float(metrics.get("cost_usd", 0.0)),
+            )
+            return result
 
     def execute_run(
         self, run_id: str, *, budget_cap: FlowBudgets | None = None
@@ -213,7 +225,18 @@ class FlowEngine(NodeActivationMixin):
             raise FlowRunError(f"unknown run {run_id!r}")
         if run.status in TERMINAL_RUN_STATUSES:
             return run
-        return self._run_loop(run, budget_cap=budget_cap)
+        with trace_run(
+            run_id=run.run_id, tenant_id=run.tenant_id, flow_id=run.flow_id
+        ) as run_trace:
+            result = self._run_loop(run, budget_cap=budget_cap)
+            metrics = result.state.get("metrics", {})
+            run_trace.finish(
+                status=result.status,
+                error_code=result.stop_reason if result.status == "failed" else "",
+                output_tokens=int(metrics.get("tokens", 0.0)),
+                cost_usd=float(metrics.get("cost_usd", 0.0)),
+            )
+            return result
 
     def resume_run(self, run_id: str) -> FlowRunRecord:
         """Resume an interrupted run from its last persisted checkpoint.
@@ -262,7 +285,7 @@ class FlowEngine(NodeActivationMixin):
                 "cursor": run.state.get("cursor"),
             },
         )
-        return self._run_loop(run)
+        return self.execute_run(run.run_id)
 
     def replay_run(self, run_id: str) -> FlowReplayReport:
         """Verify a terminal run's decision path from persisted state alone.
@@ -352,7 +375,9 @@ class FlowEngine(NodeActivationMixin):
             )
         except ExpressionError as exc:
             return self._fail_run(
-                run.run_id, state, "predicate_error",
+                run.run_id,
+                state,
+                "predicate_error",
                 f"routing after node {node.id!r}: {exc}",
             )
         except FlowNodeError as exc:
@@ -414,7 +439,9 @@ class FlowEngine(NodeActivationMixin):
                 budgets, state, self._clock() - started, activations, self._max_steps
             )
             if budget_error is not None:
-                return self._fail_run(run.run_id, state, "budget_exhausted", budget_error)
+                return self._fail_run(
+                    run.run_id, state, "budget_exhausted", budget_error
+                )
 
             node = manifest.node(str(state["cursor"]))
             outcome_record = self._activate_node(
@@ -431,8 +458,11 @@ class FlowEngine(NodeActivationMixin):
             return self._fail_run(run.run_id, state, "budget_exhausted", budget_error)
         output = final_output(manifest, state)
         self.runs.update_run(
-            run.run_id, status="completed", stop_reason="completed",
-            state=state, output=output,
+            run.run_id,
+            status="completed",
+            stop_reason="completed",
+            state=state,
+            output=output,
         )
         self.runs.append_event(
             run_id=run.run_id,

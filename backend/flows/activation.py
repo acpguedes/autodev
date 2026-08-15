@@ -117,12 +117,12 @@ class NodeActivationMixin:
                 rendered = render_template(dict(node.input_bindings), eval_state)
             except ExpressionError as exc:
                 return self._fail_run(
-                    run.run_id, state, "binding_error",
+                    run.run_id,
+                    state,
+                    "binding_error",
                     f"node {node.id!r}: {exc}",
                 )
-            step_input = (
-                rendered if isinstance(rendered, dict) else {"value": rendered}
-            )
+            step_input = rendered if isinstance(rendered, dict) else {"value": rendered}
         policy = node.retries or manifest.defaults.retries
 
         step = None
@@ -175,10 +175,27 @@ class NodeActivationMixin:
                     run_id=run.run_id,
                     step_id=f"{node.id}#{step.attempt}",
                     agent=node.ref.id if node.ref else node.type,
-                    status="running",
-                ):
-                    handler = self.handlers.get(node.type)
-                    outcome = handler(ctx)
+                    tenant_id=run.tenant_id,
+                ) as step_trace:
+                    try:
+                        handler = self.handlers.get(node.type)
+                        outcome = handler(ctx)
+                    except Exception as exc:
+                        if isinstance(exc, UnsupportedNodeError):
+                            error_code = "unsupported_node"
+                        elif isinstance(exc, FlowBudgetExceededError):
+                            error_code = "budget_exhausted"
+                        else:
+                            error_code = "node_failed"
+                        step_trace.finish(status="failed", error_code=error_code)
+                        raise
+                    step_trace.finish(
+                        status=(
+                            "waiting_human"
+                            if outcome.status == "waiting_human"
+                            else "completed"
+                        )
+                    )
                 break
             except Exception as exc:  # noqa: BLE001 - engine isolates node failures
                 if isinstance(exc, UnsupportedNodeError):
@@ -218,7 +235,9 @@ class NodeActivationMixin:
                 delay = backoff_delay(policy, attempt)
                 if self._clock() + delay > deadline:
                     return self._fail_run(
-                        run.run_id, state, "budget_exhausted",
+                        run.run_id,
+                        state,
+                        "budget_exhausted",
                         f"retry backoff of node {node.id!r} ({delay:.1f}s) "
                         "would breach the run's wall-clock budget "
                         f"({budgets.max_wall_clock_sec}s)",
@@ -256,7 +275,9 @@ class NodeActivationMixin:
             )
         except ExpressionError as exc:
             return self._fail_run(
-                run.run_id, state, "predicate_error",
+                run.run_id,
+                state,
+                "predicate_error",
                 f"routing after node {node.id!r}: {exc}",
             )
         except FlowNodeError as exc:
