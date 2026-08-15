@@ -141,6 +141,9 @@ class Settings(BaseSettings):
     autodev_minio_secret_key: str = ""
     autodev_minio_secure: bool = False
 
+    # --- backups (E8-S4, E11-S4) ---
+    autodev_backup_status_path: str = ".autodev/backup-status.json"
+
     # --- MCP (Model Context Protocol) ---
     autodev_mcp_exposed_skills: str = ""
 

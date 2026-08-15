@@ -35,12 +35,14 @@ from dataclasses import dataclass, field
 import datetime
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import sqlite3
 import subprocess
 import sys
 from typing import Any, Iterable, Sequence
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 from backend.artifacts.store import (
     ArtifactKind,
@@ -49,6 +51,7 @@ from backend.artifacts.store import (
     MinioArtifactStore,
     all_bucket_names,
 )
+from backend.persistence.backup_status import BackupStatusStore
 
 #: Version of the backup manifest layout. Bump on breaking layout changes.
 MANIFEST_SCHEMA_VERSION = 1
@@ -92,6 +95,45 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _postgres_cli_connection(database_url: str) -> tuple[str, dict[str, str]]:
+    """Build a password-free PostgreSQL URL and subprocess environment.
+
+    ``pg_dump``/``pg_restore`` receive this sanitized URL on the command
+    line — visible in process listings and any captured error output — and
+    the real password only through the ``PGPASSWORD`` environment variable,
+    which neither appears in argv nor is echoed by the tools on failure.
+
+    Args:
+        database_url: Full ``postgresql://`` connection URL, possibly with an
+            embedded password.
+
+    Returns:
+        A ``(safe_url, environment)`` pair: the connection URL with any
+        password stripped, and a copy of the current environment with
+        ``PGPASSWORD`` set when the URL carried a password.
+    """
+    parsed = urlsplit(database_url)
+    host = parsed.hostname or ""
+    if ":" in host:
+        host = f"[{host}]"
+    username = quote(unquote(parsed.username or ""), safe="")
+    credentials = f"{username}@" if username else ""
+    port = f":{parsed.port}" if parsed.port is not None else ""
+    safe_url = urlunsplit(
+        (
+            parsed.scheme,
+            f"{credentials}{host}{port}",
+            parsed.path,
+            parsed.query,
+            parsed.fragment,
+        )
+    )
+    environment = os.environ.copy()
+    if parsed.password is not None:
+        environment["PGPASSWORD"] = unquote(parsed.password)
+    return safe_url, environment
 
 
 def _utcnow_iso() -> str:
@@ -248,18 +290,26 @@ class BackupManager:
     def _backup_postgres(
         self, target: Path, manifest: dict[str, Any]
     ) -> ComponentResult:
-        """Dump PostgreSQL with ``pg_dump`` (custom format), if available.
+        """Dump PostgreSQL with ``pg_dump`` (custom format).
+
+        A non-PostgreSQL deployment is skipped entirely — SQLite/local
+        deployments never needed ``pg_dump``. A *configured* PostgreSQL
+        deployment (``DATABASE_URL`` is ``postgresql://``/``postgres://``)
+        that is missing the ``pg_dump`` tool fails closed instead of being
+        silently skipped, so an operator cannot end up with a "successful"
+        backup run that quietly dropped its database component.
 
         Args:
             target: Backup directory.
             manifest: Manifest dict updated in place.
 
         Returns:
-            The component result. Skipped when ``DATABASE_URL`` is not
-            PostgreSQL or ``pg_dump`` is not on ``PATH``.
+            The component result. Skipped only when ``DATABASE_URL`` is not
+            PostgreSQL.
 
         Raises:
-            BackupError: If ``pg_dump`` exits non-zero.
+            BackupError: If PostgreSQL is configured but ``pg_dump`` is not
+                on ``PATH``, or ``pg_dump`` exits non-zero.
         """
         if not (
             self.database_url.startswith("postgresql://")
@@ -269,22 +319,24 @@ class BackupManager:
             return ComponentResult(
                 "postgres", "skipped", "DATABASE_URL is not postgresql://"
             )
-        if shutil.which("pg_dump") is None:
-            manifest["components"]["postgres"] = {"status": "skipped"}
-            return ComponentResult(
-                "postgres", "skipped", "pg_dump not found on PATH"
+        pg_dump = shutil.which("pg_dump")
+        if pg_dump is None:
+            raise BackupError(
+                "PostgreSQL backup is configured but pg_dump is not available"
             )
         dump_path = target / POSTGRES_DUMP_FILENAME
+        safe_url, environment = _postgres_cli_connection(self.database_url)
         result = subprocess.run(
             [
-                "pg_dump",
+                pg_dump,
                 "--format=custom",
                 f"--file={dump_path}",
-                self.database_url,
+                safe_url,
             ],
             capture_output=True,
             text=True,
             check=False,
+            env=environment,
         )
         if result.returncode != 0:
             raise BackupError(f"pg_dump failed: {result.stderr.strip()}")
@@ -518,22 +570,31 @@ class BackupManager:
     ) -> ComponentResult:
         """Restore PostgreSQL from the ``pg_dump`` custom-format dump.
 
+        A backup manifest with no PostgreSQL component is skipped — there is
+        nothing to restore. A manifest that *does* contain a completed
+        PostgreSQL dump but finds ``pg_restore`` missing fails closed instead
+        of silently skipping the restore of a component the backup actually
+        captured.
+
         Args:
             source: Backup directory.
             spec: ``postgres`` component manifest entry.
 
         Returns:
-            The component result. Skipped when the dump is absent or
-            ``pg_restore`` is not on ``PATH``.
+            The component result. Skipped only when the manifest has no
+            PostgreSQL dump.
 
         Raises:
-            BackupError: If ``pg_restore`` exits non-zero.
+            BackupError: If the manifest has a completed PostgreSQL dump but
+                ``pg_restore`` is not on ``PATH``, ``DATABASE_URL`` is not
+                PostgreSQL, or ``pg_restore`` exits non-zero.
         """
         if spec.get("status") != "completed":
             return ComponentResult("postgres", "skipped", "not in backup")
-        if shutil.which("pg_restore") is None:
-            return ComponentResult(
-                "postgres", "skipped", "pg_restore not found on PATH"
+        pg_restore = shutil.which("pg_restore")
+        if pg_restore is None:
+            raise BackupError(
+                "PostgreSQL restore is configured but pg_restore is not available"
             )
         if not (
             self.database_url.startswith("postgresql://")
@@ -544,18 +605,20 @@ class BackupManager:
                 "postgresql://"
             )
         dump_path = source / spec["file"]
+        safe_url, environment = _postgres_cli_connection(self.database_url)
         result = subprocess.run(
             [
-                "pg_restore",
+                pg_restore,
                 "--clean",
                 "--if-exists",
                 "--no-owner",
-                f"--dbname={self.database_url}",
+                f"--dbname={safe_url}",
                 str(dump_path),
             ],
             capture_output=True,
             text=True,
             check=False,
+            env=environment,
         )
         if result.returncode != 0:
             raise BackupError(f"pg_restore failed: {result.stderr.strip()}")
@@ -638,10 +701,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     from backend.config.settings import get_settings
 
     settings = get_settings()
+    status_store = BackupStatusStore(Path(settings.autodev_backup_status_path))
     try:
         if args.command == "verify":
             # Verification only reads the backup directory; it needs neither
-            # the database nor the artifact store.
+            # the database nor the artifact store, and does not represent a
+            # backup attempt, so it is not recorded in backup health.
             BackupManager(database_url=settings.database_url).verify(args.source)
             print("manifest OK")
             return 0
@@ -649,11 +714,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             database_url=settings.database_url,
             artifact_store=get_artifact_store(settings),
         )
-        report = (
-            manager.backup(args.out)
-            if args.command == "backup"
-            else manager.restore(args.source)
-        )
+        if args.command == "backup":
+            # Only success after every configured component completes is
+            # recorded as a success; any BackupError/OSError below records
+            # failure before propagating to the outer handler.
+            try:
+                report = manager.backup(args.out)
+            except (BackupError, OSError):
+                status_store.record(success=False)
+                raise
+            status_store.record(success=True)
+        else:
+            report = manager.restore(args.source)
         for component in report.components:
             print(f"{component.name}: {component.status} {component.detail}".strip())
     except (BackupError, OSError) as exc:
