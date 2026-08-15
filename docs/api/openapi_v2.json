@@ -1,6 +1,117 @@
 {
   "components": {
     "schemas": {
+      "AccessAuditEntryV2": {
+        "description": "One access-decision audit row, as returned by ``GET /v2/audit/access``.",
+        "properties": {
+          "auditId": {
+            "title": "Auditid",
+            "type": "string"
+          },
+          "authMethod": {
+            "title": "Authmethod",
+            "type": "string"
+          },
+          "credentialId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credentialid"
+          },
+          "decision": {
+            "title": "Decision",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "occurredAt": {
+            "title": "Occurredat",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "requestId": {
+            "title": "Requestid",
+            "type": "string"
+          },
+          "requiredScope": {
+            "title": "Requiredscope",
+            "type": "string"
+          },
+          "resourceId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resourceid"
+          },
+          "resourceType": {
+            "title": "Resourcetype",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "routeTemplate": {
+            "title": "Routetemplate",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "auditId",
+          "occurredAt",
+          "subject",
+          "authMethod",
+          "roles",
+          "requiredScope",
+          "resourceType",
+          "method",
+          "routeTemplate",
+          "decision",
+          "reason",
+          "requestId"
+        ],
+        "title": "AccessAuditEntryV2",
+        "type": "object"
+      },
+      "AccessAuditListV2": {
+        "description": "Paginated collection of :class:`AccessAuditEntryV2`.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AccessAuditEntryV2"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AccessAuditListV2",
+        "type": "object"
+      },
       "AgentContractsResponse": {
         "description": "Response body for ``GET /agents/contracts``.",
         "properties": {
@@ -104,6 +215,42 @@
         "title": "AgentExecutionV2",
         "type": "object"
       },
+      "AgentExtensionResponseV2": {
+        "description": "Detail view of an agent extension, including its editable fields.",
+        "properties": {
+          "allowedTools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowedtools",
+            "type": "array"
+          },
+          "item": {
+            "$ref": "#/components/schemas/ExtensionItemV2"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "systemPrompt": {
+            "title": "Systemprompt",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item",
+          "systemPrompt",
+          "model",
+          "allowedTools"
+        ],
+        "title": "AgentExtensionResponseV2",
+        "type": "object"
+      },
       "AgentSummary": {
         "properties": {
           "has_metadata_contract": {
@@ -125,6 +272,57 @@
           "source"
         ],
         "title": "AgentSummary",
+        "type": "object"
+      },
+      "AgentUpsertRequestV2": {
+        "description": "Request body for creating or editing an agent extension.",
+        "properties": {
+          "allowedTools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowedtools",
+            "type": "array"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "displayName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Displayname"
+          },
+          "model": {
+            "default": "gpt-4o-mini",
+            "title": "Model",
+            "type": "string"
+          },
+          "systemPrompt": {
+            "default": "",
+            "title": "Systemprompt",
+            "type": "string"
+          },
+          "version": {
+            "default": "1.0.0",
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "title": "AgentUpsertRequestV2",
         "type": "object"
       },
       "ApplyRequest": {
@@ -158,6 +356,7 @@
       "ApprovalRequest": {
         "properties": {
           "actor": {
+            "default": "",
             "title": "Actor",
             "type": "string"
           },
@@ -167,10 +366,77 @@
             "type": "string"
           }
         },
-        "required": [
-          "actor"
-        ],
         "title": "ApprovalRequest",
+        "type": "object"
+      },
+      "ChangedFileListV2": {
+        "description": "Paginated collection of :class:`ChangedFileV2`.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ChangedFileV2"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMetaV2"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "items",
+          "page"
+        ],
+        "title": "ChangedFileListV2",
+        "type": "object"
+      },
+      "ChangedFileV2": {
+        "description": "A single changed file entry, as returned by the changed-file list.",
+        "properties": {
+          "added_lines": {
+            "title": "Added Lines",
+            "type": "integer"
+          },
+          "patch_id": {
+            "title": "Patch Id",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "removed_lines": {
+            "title": "Removed Lines",
+            "type": "integer"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "patch_id",
+          "path",
+          "status",
+          "added_lines",
+          "removed_lines"
+        ],
+        "title": "ChangedFileV2",
         "type": "object"
       },
       "ChatRequest": {
@@ -390,6 +656,32 @@
           "job_id"
         ],
         "title": "EnqueueResponse",
+        "type": "object"
+      },
+      "ExecuteApprovedRequestV2": {
+        "description": "Request body for ``POST /v2/plans/{session_id}/execute-approved``.\n\nWhen ``step_indices`` is omitted, every currently-``approved`` step is\nexecuted. When given explicitly, every listed index must already be\n``approved`` \u2014 attempting to execute a ``rejected`` or still-pending\nstep is denied as an illegal transition (E16-S2-T2).",
+        "properties": {
+          "actor": {
+            "default": "anonymous",
+            "title": "Actor",
+            "type": "string"
+          },
+          "step_indices": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Indices"
+          }
+        },
+        "title": "ExecuteApprovedRequestV2",
         "type": "object"
       },
       "ExecutedRunV2": {
@@ -612,6 +904,95 @@
         "title": "ExecutionTaskV2",
         "type": "object"
       },
+      "ExtensionActionResponseV2": {
+        "description": "Result of an enable/disable action on a single catalog entry.",
+        "properties": {
+          "item": {
+            "$ref": "#/components/schemas/ExtensionItemV2"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "title": "ExtensionActionResponseV2",
+        "type": "object"
+      },
+      "ExtensionCatalogResponseV2": {
+        "description": "Paginated, typed listing of every known extension.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExtensionItemV2"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMetaV2"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "ExtensionCatalogResponseV2",
+        "type": "object"
+      },
+      "ExtensionItemV2": {
+        "description": "A single entry in the unified extension catalog.",
+        "properties": {
+          "detail": {
+            "additionalProperties": true,
+            "title": "Detail",
+            "type": "object"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "pluginId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pluginid"
+          }
+        },
+        "required": [
+          "kind",
+          "id",
+          "name",
+          "enabled"
+        ],
+        "title": "ExtensionItemV2",
+        "type": "object"
+      },
       "GenerateRequest": {
         "properties": {
           "original": {
@@ -815,6 +1196,211 @@
         "title": "PageMetaV2",
         "type": "object"
       },
+      "PatchApplyRequestV2": {
+        "description": "Request body for the apply endpoint.\n\n``apply`` defaults to ``False`` (dry-run): the engine computes what would\nhappen but never writes to disk. Set ``apply=True`` to perform a real\napply.",
+        "properties": {
+          "apply": {
+            "default": false,
+            "description": "Set true to perform a real, non-dry-run apply.",
+            "title": "Apply",
+            "type": "boolean"
+          }
+        },
+        "title": "PatchApplyRequestV2",
+        "type": "object"
+      },
+      "PatchApplyResultV2": {
+        "description": "Result of an apply attempt (dry-run or real).",
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "boolean"
+          },
+          "audit": {
+            "$ref": "#/components/schemas/PatchAuditEntryV2"
+          },
+          "dry_run": {
+            "title": "Dry Run",
+            "type": "boolean"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "patch_id": {
+            "title": "Patch Id",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "patch_id",
+          "session_id",
+          "path",
+          "applied",
+          "dry_run",
+          "message",
+          "audit"
+        ],
+        "title": "PatchApplyResultV2",
+        "type": "object"
+      },
+      "PatchAuditEntryV2": {
+        "description": "One audit trail entry attached to a patch record.",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "message": {
+            "default": "",
+            "title": "Message",
+            "type": "string"
+          },
+          "result": {
+            "title": "Result",
+            "type": "string"
+          },
+          "timestamp": {
+            "title": "Timestamp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "actor",
+          "timestamp",
+          "action",
+          "result"
+        ],
+        "title": "PatchAuditEntryV2",
+        "type": "object"
+      },
+      "PatchDetailV2": {
+        "description": "A single patch record, including its unified diff and audit trail.",
+        "properties": {
+          "added_lines": {
+            "title": "Added Lines",
+            "type": "integer"
+          },
+          "audit": {
+            "items": {
+              "$ref": "#/components/schemas/PatchAuditEntryV2"
+            },
+            "title": "Audit",
+            "type": "array"
+          },
+          "diff": {
+            "title": "Diff",
+            "type": "string"
+          },
+          "original": {
+            "title": "Original",
+            "type": "string"
+          },
+          "patch_id": {
+            "title": "Patch Id",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "removed_lines": {
+            "title": "Removed Lines",
+            "type": "integer"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "string"
+          }
+        },
+        "required": [
+          "patch_id",
+          "session_id",
+          "path",
+          "status",
+          "original",
+          "updated",
+          "diff",
+          "added_lines",
+          "removed_lines",
+          "audit"
+        ],
+        "title": "PatchDetailV2",
+        "type": "object"
+      },
+      "PatchOverrideRequestV2": {
+        "description": "Request body for the edited-content override endpoint.",
+        "properties": {
+          "updated": {
+            "description": "Reviewer-edited replacement for the proposed content.",
+            "title": "Updated",
+            "type": "string"
+          }
+        },
+        "required": [
+          "updated"
+        ],
+        "title": "PatchOverrideRequestV2",
+        "type": "object"
+      },
+      "PatchProposeRequestV2": {
+        "description": "Request body for ``POST /v2/sessions/{session_id}/patches``.",
+        "properties": {
+          "original": {
+            "default": "",
+            "description": "Original file content.",
+            "title": "Original",
+            "type": "string"
+          },
+          "path": {
+            "description": "Repository-relative path the patch targets.",
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "updated": {
+            "default": "",
+            "description": "Proposed new file content.",
+            "title": "Updated",
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ],
+        "title": "PatchProposeRequestV2",
+        "type": "object"
+      },
       "PatchResponse": {
         "properties": {
           "diff": {
@@ -918,6 +1504,45 @@
         "title": "PlanResponse",
         "type": "object"
       },
+      "PlanStepV2": {
+        "description": "A single plan step and its current approval state.",
+        "properties": {
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "step_index": {
+            "title": "Step Index",
+            "type": "integer"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "step_index",
+          "content",
+          "state",
+          "updated_at"
+        ],
+        "title": "PlanStepV2",
+        "type": "object"
+      },
       "PlanUpsertRequest": {
         "properties": {
           "steps": {
@@ -932,6 +1557,143 @@
           "steps"
         ],
         "title": "PlanUpsertRequest",
+        "type": "object"
+      },
+      "PlanV2": {
+        "description": "A session's plan, rolled up from its steps' individual states.",
+        "properties": {
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/PlanStepV2"
+            },
+            "title": "Steps",
+            "type": "array"
+          }
+        },
+        "required": [
+          "session_id",
+          "status",
+          "steps"
+        ],
+        "title": "PlanV2",
+        "type": "object"
+      },
+      "PrincipalResponseV2": {
+        "description": "The authenticated caller, as returned by ``GET /v2/auth/me``.",
+        "properties": {
+          "authMethod": {
+            "title": "Authmethod",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          },
+          "tenantId": {
+            "title": "Tenantid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "tenantId",
+          "roles",
+          "scopes",
+          "authMethod"
+        ],
+        "title": "PrincipalResponseV2",
+        "type": "object"
+      },
+      "ProviderConfigResponseV2": {
+        "description": "Typed, versioned envelope around the LLM provider configuration.",
+        "properties": {
+          "llm": {
+            "$ref": "#/components/schemas/LLMSettings"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "llm"
+        ],
+        "title": "ProviderConfigResponseV2",
+        "type": "object"
+      },
+      "ProviderConfigUpdateRequestV2": {
+        "description": "Request body for ``PUT /v2/provider-config``.",
+        "properties": {
+          "llm": {
+            "$ref": "#/components/schemas/LLMSettings"
+          }
+        },
+        "required": [
+          "llm"
+        ],
+        "title": "ProviderConfigUpdateRequestV2",
+        "type": "object"
+      },
+      "ProviderStatusResponseV2": {
+        "description": "Live provider status for the shell's sidebar provider card.",
+        "properties": {
+          "configured": {
+            "title": "Configured",
+            "type": "boolean"
+          },
+          "healthy": {
+            "title": "Healthy",
+            "type": "boolean"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "model",
+          "configured",
+          "healthy"
+        ],
+        "title": "ProviderStatusResponseV2",
         "type": "object"
       },
       "RepositoryContextResponse": {
@@ -1037,6 +1799,18 @@
         },
         "title": "RepositorySettings",
         "type": "object"
+      },
+      "Role": {
+        "description": "Canonical, emitted Control Plane roles (ADR-018 \u00a716.1.1).\n\n``author`` (the older \u00a714.2 spelling) is never a member of this enum: it\nis accepted only as a legacy input alias for :attr:`MAINTAINER` by\n:func:`backend.auth.roles.normalize_role`.",
+        "enum": [
+          "owner",
+          "admin",
+          "maintainer",
+          "operator",
+          "viewer"
+        ],
+        "title": "Role",
+        "type": "string"
       },
       "RouteConstraintsBody": {
         "description": "Request body for :class:`backend.routing.contract.RouteConstraints`.",
@@ -1585,6 +2359,100 @@
         "title": "SelectRequestBody",
         "type": "object"
       },
+      "ServiceCredentialCreateRequestV2": {
+        "description": "Request body for ``POST /v2/auth/service-credentials``.",
+        "properties": {
+          "expiresInDays": {
+            "maximum": 90.0,
+            "minimum": 1.0,
+            "title": "Expiresindays",
+            "type": "integer"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Roles",
+            "type": "array"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
+          "subject": {
+            "minLength": 1,
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "roles",
+          "expiresInDays"
+        ],
+        "title": "ServiceCredentialCreateRequestV2",
+        "type": "object"
+      },
+      "ServiceCredentialResponseV2": {
+        "description": "A service credential, as returned by list/create/revoke.",
+        "properties": {
+          "createdAt": {
+            "title": "Createdat",
+            "type": "string"
+          },
+          "expiresAt": {
+            "title": "Expiresat",
+            "type": "string"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "keyId": {
+            "title": "Keyid",
+            "type": "string"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "scopes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scopes",
+            "type": "array"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "keyId",
+          "subject",
+          "roles",
+          "scopes",
+          "createdAt",
+          "expiresAt"
+        ],
+        "title": "ServiceCredentialResponseV2",
+        "type": "object"
+      },
       "SessionCreateRequestV2": {
         "description": "Request body for ``POST /v2/sessions``.",
         "properties": {
@@ -1724,6 +2592,12 @@
             "title": "Autodev Artifact Dir",
             "type": "string"
           },
+          "autodev_artifact_retention_days": {
+            "default": 7,
+            "minimum": -1.0,
+            "title": "Autodev Artifact Retention Days",
+            "type": "integer"
+          },
           "autodev_config_path": {
             "default": "",
             "title": "Autodev Config Path",
@@ -1754,6 +2628,26 @@
             "title": "Autodev Enable Sandbox",
             "type": "boolean"
           },
+          "autodev_event_bus": {
+            "default": "inmemory",
+            "enum": [
+              "inmemory",
+              "redis"
+            ],
+            "title": "Autodev Event Bus",
+            "type": "string"
+          },
+          "autodev_event_retention_days": {
+            "default": 30,
+            "minimum": -1.0,
+            "title": "Autodev Event Retention Days",
+            "type": "integer"
+          },
+          "autodev_event_store_enabled": {
+            "default": true,
+            "title": "Autodev Event Store Enabled",
+            "type": "boolean"
+          },
           "autodev_host": {
             "default": "127.0.0.1",
             "title": "Autodev Host",
@@ -1766,6 +2660,11 @@
               "redis"
             ],
             "title": "Autodev Job Backend",
+            "type": "string"
+          },
+          "autodev_mcp_exposed_skills": {
+            "default": "",
+            "title": "Autodev Mcp Exposed Skills",
             "type": "string"
           },
           "autodev_minio_access_key": {
@@ -1792,6 +2691,85 @@
             "default": false,
             "title": "Autodev Minio Secure",
             "type": "boolean"
+          },
+          "autodev_observability_log_retention": {
+            "default": "168h",
+            "pattern": "^[1-9]\\d*(?:s|m|h|d|w)$",
+            "title": "Autodev Observability Log Retention",
+            "type": "string"
+          },
+          "autodev_observability_metric_retention": {
+            "default": "15d",
+            "pattern": "^[1-9]\\d*(?:s|m|h|d|w)$",
+            "title": "Autodev Observability Metric Retention",
+            "type": "string"
+          },
+          "autodev_observability_trace_retention": {
+            "default": "168h",
+            "pattern": "^[1-9]\\d*(?:s|m|h|d|w)$",
+            "title": "Autodev Observability Trace Retention",
+            "type": "string"
+          },
+          "autodev_oidc_algorithms": {
+            "default": "RS256",
+            "title": "Autodev Oidc Algorithms",
+            "type": "string"
+          },
+          "autodev_oidc_audience": {
+            "default": "",
+            "title": "Autodev Oidc Audience",
+            "type": "string"
+          },
+          "autodev_oidc_authorization_url": {
+            "default": "",
+            "title": "Autodev Oidc Authorization Url",
+            "type": "string"
+          },
+          "autodev_oidc_client_id": {
+            "default": "",
+            "title": "Autodev Oidc Client Id",
+            "type": "string"
+          },
+          "autodev_oidc_client_secret": {
+            "default": "",
+            "title": "Autodev Oidc Client Secret",
+            "type": "string"
+          },
+          "autodev_oidc_issuer": {
+            "default": "",
+            "title": "Autodev Oidc Issuer",
+            "type": "string"
+          },
+          "autodev_oidc_jwks_ttl_seconds": {
+            "default": 3600,
+            "minimum": 60.0,
+            "title": "Autodev Oidc Jwks Ttl Seconds",
+            "type": "integer"
+          },
+          "autodev_oidc_jwks_url": {
+            "default": "",
+            "title": "Autodev Oidc Jwks Url",
+            "type": "string"
+          },
+          "autodev_oidc_role_claim": {
+            "default": "roles",
+            "title": "Autodev Oidc Role Claim",
+            "type": "string"
+          },
+          "autodev_oidc_scope_claim": {
+            "default": "scope",
+            "title": "Autodev Oidc Scope Claim",
+            "type": "string"
+          },
+          "autodev_oidc_tenant_claim": {
+            "default": "tenant_id",
+            "title": "Autodev Oidc Tenant Claim",
+            "type": "string"
+          },
+          "autodev_oidc_token_url": {
+            "default": "",
+            "title": "Autodev Oidc Token Url",
+            "type": "string"
           },
           "autodev_port": {
             "default": 8000,
@@ -1832,9 +2810,25 @@
             "title": "Autodev Sandbox Docker Network",
             "type": "string"
           },
+          "autodev_session_encryption_key": {
+            "default": "",
+            "title": "Autodev Session Encryption Key",
+            "type": "string"
+          },
+          "autodev_session_ttl_seconds": {
+            "default": 28800,
+            "minimum": 60.0,
+            "title": "Autodev Session Ttl Seconds",
+            "type": "integer"
+          },
           "autodev_settings_file": {
             "default": "",
             "title": "Autodev Settings File",
+            "type": "string"
+          },
+          "autodev_ui_url": {
+            "default": "http://localhost:3000",
+            "title": "Autodev Ui Url",
             "type": "string"
           },
           "database_url": {
@@ -1856,6 +2850,11 @@
             "default": true,
             "title": "Feature Repository Intelligence",
             "type": "boolean"
+          },
+          "llm_model": {
+            "default": "",
+            "title": "Llm Model",
+            "type": "string"
           },
           "llm_provider": {
             "default": "stub",
@@ -1892,10 +2891,36 @@
             "title": "Openai Verify Ssl",
             "type": "boolean"
           },
+          "otel_enabled": {
+            "default": true,
+            "title": "Otel Enabled",
+            "type": "boolean"
+          },
           "otel_exporter_otlp_endpoint": {
             "default": "",
             "title": "Otel Exporter Otlp Endpoint",
             "type": "string"
+          },
+          "otel_exporter_otlp_logs_endpoint": {
+            "default": "",
+            "title": "Otel Exporter Otlp Logs Endpoint",
+            "type": "string"
+          },
+          "otel_exporter_otlp_metrics_endpoint": {
+            "default": "",
+            "title": "Otel Exporter Otlp Metrics Endpoint",
+            "type": "string"
+          },
+          "otel_exporter_otlp_traces_endpoint": {
+            "default": "",
+            "title": "Otel Exporter Otlp Traces Endpoint",
+            "type": "string"
+          },
+          "otel_metric_export_interval_ms": {
+            "default": 5000,
+            "minimum": 1000.0,
+            "title": "Otel Metric Export Interval Ms",
+            "type": "integer"
           },
           "otel_service_name": {
             "default": "autodev-backend",
@@ -1904,6 +2929,14 @@
           },
           "otel_traces_sampler": {
             "default": "parentbased_traceidratio",
+            "enum": [
+              "always_on",
+              "always_off",
+              "traceidratio",
+              "parentbased_always_on",
+              "parentbased_always_off",
+              "parentbased_traceidratio"
+            ],
             "title": "Otel Traces Sampler",
             "type": "string"
           },
@@ -1963,6 +2996,60 @@
         "title": "SkillSummary",
         "type": "object"
       },
+      "StepContentUpdateRequestV2": {
+        "description": "Request body for ``PUT /v2/plans/{session_id}/steps/{step_index}``.",
+        "properties": {
+          "content": {
+            "description": "New content for the step.",
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "StepContentUpdateRequestV2",
+        "type": "object"
+      },
+      "StepCreateRequestV2": {
+        "description": "Request body for ``POST /v2/plans/{session_id}/steps``.",
+        "properties": {
+          "actor": {
+            "default": "anonymous",
+            "title": "Actor",
+            "type": "string"
+          },
+          "content": {
+            "description": "Content for the new step.",
+            "minLength": 1,
+            "title": "Content",
+            "type": "string"
+          }
+        },
+        "required": [
+          "content"
+        ],
+        "title": "StepCreateRequestV2",
+        "type": "object"
+      },
+      "StepDecisionRequestV2": {
+        "description": "Request body for the ``approve``/``reject`` step actions.",
+        "properties": {
+          "actor": {
+            "default": "anonymous",
+            "title": "Actor",
+            "type": "string"
+          },
+          "note": {
+            "default": "",
+            "title": "Note",
+            "type": "string"
+          }
+        },
+        "title": "StepDecisionRequestV2",
+        "type": "object"
+      },
       "SymbolsResponse": {
         "properties": {
           "provider": {
@@ -1982,6 +3069,118 @@
           "provider"
         ],
         "title": "SymbolsResponse",
+        "type": "object"
+      },
+      "TurnCreateRequestV2": {
+        "description": "Request body for ``POST /v2/sessions/{sessionId}/turns``.",
+        "properties": {
+          "message": {
+            "description": "User message driving this turn.",
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "TurnCreateRequestV2",
+        "type": "object"
+      },
+      "TurnListV2": {
+        "description": "Paginated collection of :class:`TurnV2`.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/TurnV2"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "page": {
+            "$ref": "#/components/schemas/PageMetaV2"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "page"
+        ],
+        "title": "TurnListV2",
+        "type": "object"
+      },
+      "TurnV2": {
+        "description": "A single turn: one user message and the run it drove.",
+        "properties": {
+          "createdAt": {
+            "default": "",
+            "title": "Createdat",
+            "type": "string"
+          },
+          "currentState": {
+            "title": "Currentstate",
+            "type": "string"
+          },
+          "history": {
+            "items": {
+              "$ref": "#/components/schemas/HistoryItemV2"
+            },
+            "title": "History",
+            "type": "array"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/AgentExecutionV2"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "runType": {
+            "title": "Runtype",
+            "type": "string"
+          },
+          "schemaVersion": {
+            "default": "2.0",
+            "title": "Schemaversion",
+            "type": "string"
+          },
+          "sessionId": {
+            "title": "Sessionid",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/RunStepV2"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "turnId": {
+            "title": "Turnid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "turnId",
+          "sessionId",
+          "message",
+          "status",
+          "runType",
+          "currentState"
+        ],
+        "title": "TurnV2",
         "type": "object"
       },
       "ValidationError": {
@@ -2062,6 +3261,26 @@
         "title": "ValidationResultResponse",
         "type": "object"
       }
+    },
+    "securitySchemes": {
+      "oidcBearer": {
+        "bearerFormat": "JWT",
+        "description": "OIDC-issued bearer JWT, validated against the configured JWKS.",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "serviceBearer": {
+        "bearerFormat": "adk_live_<key-id>_<secret>",
+        "description": "Governed service credential minted via `autodev auth service-key create`.",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "sessionCookie": {
+        "description": "Browser session established by the OIDC PKCE login flow.",
+        "in": "cookie",
+        "name": "autodev_session",
+        "type": "apiKey"
+      }
     }
   },
   "info": {
@@ -2116,10 +3335,424 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "List Agent Catalog",
         "tags": [
           "agents"
-        ]
+        ],
+        "x-autodev-required-scope": "agent:read"
+      }
+    },
+    "/v2/audit/access": {
+      "get": {
+        "description": "List the caller's tenant's access-decision audit trail.\n\nArgs:\n    limit: Maximum rows to return, capped at 200.\n    before: If given, only rows strictly older than this timestamp.\n    principal: The authenticated caller; its tenant is the only tenant\n        this endpoint can ever query \u2014 no request parameter selects a\n        different one.\n\nReturns:\n    The tenant's audit rows, most recently occurred first.",
+        "operationId": "list_access_audit_v2_v2_audit_access_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessAuditListV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List Access Audit V2",
+        "tags": [
+          "audit"
+        ],
+        "x-autodev-required-scope": "audit:read"
+      }
+    },
+    "/v2/auth/me": {
+      "get": {
+        "description": "Return the calling principal's identity, roles, and effective scopes.\n\nArgs:\n    principal: The authenticated caller.\n\nReturns:\n    The authenticated principal's public representation.",
+        "operationId": "get_me_v2_v2_auth_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalResponseV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get Me V2",
+        "tags": [
+          "auth"
+        ],
+        "x-autodev-required-scope": "auth:self"
+      }
+    },
+    "/v2/auth/oidc/callback": {
+      "get": {
+        "description": "Complete an OIDC login: exchange the code, mint a session.\n\nArgs:\n    code: Authorization code returned by the provider.\n    state: Anti-CSRF state matching a pending login started by\n        :func:`oidc_login_v2`.\n\nReturns:\n    A redirect to the original ``returnTo`` path with an HttpOnly,\n    Secure session cookie set.\n\nRaises:\n    HTTPException: 400 if ``state`` does not match a pending login; 502\n        if the provider rejects the code exchange.",
+        "operationId": "oidc_callback_v2_v2_auth_oidc_callback_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "required": true,
+            "schema": {
+              "title": "Code",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": true,
+            "schema": {
+              "title": "State",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Oidc Callback V2",
+        "tags": [
+          "auth"
+        ],
+        "x-autodev-public": true
+      }
+    },
+    "/v2/auth/oidc/login": {
+      "get": {
+        "description": "Start an OIDC authorization-code + PKCE login.\n\nArgs:\n    returnTo: Relative path to redirect to after a successful login.\n        Absolute/external URLs are rejected in favor of ``/``.\n\nReturns:\n    A redirect to the OIDC provider's authorization endpoint.\n\nRaises:\n    HTTPException: 404 if OIDC is not configured.",
+        "operationId": "oidc_login_v2_v2_auth_oidc_login_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "returnTo",
+            "required": false,
+            "schema": {
+              "default": "/",
+              "title": "Returnto",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Oidc Login V2",
+        "tags": [
+          "auth"
+        ],
+        "x-autodev-public": true
+      }
+    },
+    "/v2/auth/service-credentials": {
+      "get": {
+        "description": "List every service credential for the caller's tenant.\n\nArgs:\n    principal: The authenticated caller.\n\nReturns:\n    The tenant's service credentials. Never includes a secret.",
+        "operationId": "list_service_credentials_v2_v2_auth_service_credentials_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ServiceCredentialResponseV2"
+                  },
+                  "title": "Response List Service Credentials V2 V2 Auth Service Credentials Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List Service Credentials V2",
+        "tags": [
+          "auth"
+        ],
+        "x-autodev-required-scope": "service_credential:admin"
+      },
+      "post": {
+        "description": "Mint a new service credential for the caller's tenant.\n\nArgs:\n    body: The credential's subject, roles, scopes, and expiry.\n    principal: The authenticated caller.\n\nReturns:\n    The persisted credential, including the one-time presented key.\n\nRaises:\n    HTTPException: 400 if the requested scopes exceed the requested\n        roles' grants.",
+        "operationId": "create_service_credential_v2_v2_auth_service_credentials_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ServiceCredentialCreateRequestV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceCredentialResponseV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create Service Credential V2",
+        "tags": [
+          "auth"
+        ],
+        "x-autodev-required-scope": "service_credential:admin"
+      }
+    },
+    "/v2/auth/service-credentials/{key_id}": {
+      "delete": {
+        "description": "Immediately revoke a service credential owned by the caller's tenant.\n\nArgs:\n    key_id: The credential's non-secret identifier.\n    principal: The authenticated caller.\n\nReturns:\n    An empty ``204`` response.\n\nRaises:\n    HTTPException: 404 if the credential does not exist or belongs to\n        another tenant.",
+        "operationId": "revoke_service_credential_v2_v2_auth_service_credentials__key_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "title": "Key Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Revoke Service Credential V2",
+        "tags": [
+          "auth"
+        ],
+        "x-autodev-required-scope": "service_credential:admin"
+      }
+    },
+    "/v2/auth/session": {
+      "delete": {
+        "description": "Log out: revoke the caller's session and clear its cookie.\n\nArgs:\n    response: Outgoing response, updated to clear the session cookie.\n    principal: The authenticated caller.\n\nReturns:\n    An empty ``204`` response.",
+        "operationId": "logout_v2_v2_auth_session_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Logout V2",
+        "tags": [
+          "auth"
+        ],
+        "x-autodev-required-scope": "auth:self"
+      }
+    },
+    "/v2/auth/session/refresh": {
+      "post": {
+        "description": "Rotate the caller's browser session using its refresh token.\n\nArgs:\n    response: Outgoing response, updated with the rotated session cookie.\n    principal: The authenticated caller.\n\nReturns:\n    The refreshed principal.\n\nRaises:\n    HTTPException: 400 if the caller does not have an active session.",
+        "operationId": "refresh_session_v2_v2_auth_session_refresh_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalResponseV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Refresh Session V2",
+        "tags": [
+          "auth"
+        ],
+        "x-autodev-required-scope": "auth:self"
       }
     },
     "/v2/config": {
@@ -2138,10 +3771,22 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Get Runtime Config V2",
         "tags": [
           "config"
-        ]
+        ],
+        "x-autodev-required-scope": "config:read_redacted"
       },
       "put": {
         "description": "Persist a new runtime configuration and apply it to the process.\n\nArgs:\n    request: The new configuration to persist.\n    config_service: Shared runtime config service (same singleton v1's\n        ``PUT /config`` uses).\n\nReturns:\n    The versioned configuration document after the update.",
@@ -2178,10 +3823,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Update Runtime Config V2",
         "tags": [
           "config"
-        ]
+        ],
+        "x-autodev-required-scope": "config:write_safe"
       }
     },
     "/v2/context/retrieve": {
@@ -2317,10 +3974,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Retrieve Context",
         "tags": [
           "context"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:read"
       }
     },
     "/v2/evals/results/{namespace}/{name}": {
@@ -2387,10 +4056,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "List Eval Results",
         "tags": [
           "evals"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:read"
       }
     },
     "/v2/evals/results/{namespace}/{name}/{version}/{run_id}": {
@@ -2459,10 +4140,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Get Eval Result",
         "tags": [
           "evals"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:read"
       }
     },
     "/v2/evals/run": {
@@ -2505,10 +4198,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Run Eval",
         "tags": [
           "evals"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:execute"
       }
     },
     "/v2/evals/{namespace}/{name}/publish": {
@@ -2571,10 +4276,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Publish Snapshot",
         "tags": [
           "evals"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:write"
       }
     },
     "/v2/evals/{namespace}/{name}/snapshots": {
@@ -2641,10 +4358,389 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "List Snapshots",
         "tags": [
           "evals"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:read"
+      }
+    },
+    "/v2/extensions": {
+      "get": {
+        "description": "List the unified extension catalog (agents, skills, plugins, MCP servers).\n\nArgs:\n    kind: Optional filter restricting the listing to one extension kind.\n    pagination: Shared ``limit``/``offset`` window.\n    agent_registry: Agent registry dependency.\n    skill_registry: Skill registry dependency.\n    plugin_registry: Active plugin registry dependency.\n\nReturns:\n    The paginated, typed catalog.",
+        "operationId": "list_extensions_v2_extensions_get",
+        "parameters": [
+          {
+            "description": "Filter to a single extension kind.",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "agent",
+                    "skill",
+                    "plugin",
+                    "mcp"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter to a single extension kind.",
+              "title": "Kind"
+            }
+          },
+          {
+            "description": "Max items to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "Max items to return.",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of items to skip.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Number of items to skip.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionCatalogResponseV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List Extensions",
+        "tags": [
+          "extensions"
+        ],
+        "x-autodev-required-scope": "plugin:read"
+      }
+    },
+    "/v2/extensions/agents/{agent_id}": {
+      "get": {
+        "description": "Read a single agent extension's editable configuration.\n\nArgs:\n    agent_id: Fully qualified agent id.\n    version: SemVer range to resolve.\n    registry: Agent registry dependency.\n\nReturns:\n    The agent's catalog item plus its system prompt, model, and allowed tools.",
+        "operationId": "get_agent_extension_v2_extensions_agents__agent_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "SemVer range to resolve, or '*' for the latest.",
+            "in": "query",
+            "name": "version",
+            "required": false,
+            "schema": {
+              "default": "*",
+              "description": "SemVer range to resolve, or '*' for the latest.",
+              "title": "Version",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentExtensionResponseV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get Agent Extension",
+        "tags": [
+          "extensions"
+        ],
+        "x-autodev-required-scope": "plugin:read"
+      },
+      "put": {
+        "description": "Create or edit an agent extension's system prompt, model, and allowed tools.\n\nThis is a new surface with no legacy equivalent\n(``frontend/lib/api_ext.ts::listAgents`` is read-only). The manifest is\nvalidated against the existing agent manifest schema\n(:func:`backend.agents.manifest.validate_agent_manifest`) before being\npersisted through :meth:`~backend.agents.registry_v2.AgentRegistry.register`.\n\nArgs:\n    agent_id: Fully qualified agent id (``namespace/name``) taken from the URL.\n    payload: The requested agent configuration.\n    registry: Agent registry dependency.\n\nReturns:\n    The persisted agent's catalog item plus its editable fields.",
+        "operationId": "upsert_agent_extension_v2_extensions_agents__agent_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "agent_id",
+            "required": true,
+            "schema": {
+              "title": "Agent Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentUpsertRequestV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentExtensionResponseV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Upsert Agent Extension",
+        "tags": [
+          "extensions"
+        ],
+        "x-autodev-required-scope": "plugin:admin"
+      }
+    },
+    "/v2/extensions/{kind}/{item_id}/disable": {
+      "post": {
+        "description": "Disable a catalog entry, delegating to its owning subsystem.",
+        "operationId": "disable_extension_v2_extensions__kind___item_id__disable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "agent",
+                "skill",
+                "plugin",
+                "mcp"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionActionResponseV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Disable Extension",
+        "tags": [
+          "extensions"
+        ],
+        "x-autodev-required-scope": "plugin:admin"
+      }
+    },
+    "/v2/extensions/{kind}/{item_id}/enable": {
+      "post": {
+        "description": "Enable a catalog entry, delegating to its owning subsystem.",
+        "operationId": "enable_extension_v2_extensions__kind___item_id__enable_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "agent",
+                "skill",
+                "plugin",
+                "mcp"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExtensionActionResponseV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Enable Extension",
+        "tags": [
+          "extensions"
+        ],
+        "x-autodev-required-scope": "plugin:admin"
       }
     },
     "/v2/flows": {
@@ -2665,10 +4761,22 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "List Flows",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:read"
       },
       "post": {
         "description": "Validate and register a flow definition.\n\nArgs:\n    manifest: Raw ``flow.yaml`` document as JSON.\n    engine: Flow engine dependency.\n\nReturns:\n    A registration document for the stored flow version.\n\nRaises:\n    HTTPException: 422 when the manifest is invalid.",
@@ -2709,10 +4817,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Register Flow",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:write"
       }
     },
     "/v2/flows/cron/tick": {
@@ -2761,10 +4881,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Cron Tick",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:execute"
       }
     },
     "/v2/flows/human/expire": {
@@ -2813,10 +4945,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Expire Human Waits",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:execute"
       }
     },
     "/v2/flows/runs/{run_id}": {
@@ -2858,10 +5002,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Get Run",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:read"
       }
     },
     "/v2/flows/runs/{run_id}/events": {
@@ -2903,15 +5059,27 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Get Run Events",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:read"
       }
     },
     "/v2/flows/runs/{run_id}/human-decision": {
       "post": {
-        "description": "Record a human decision and resume the paused run (E3-S4).\n\nArgs:\n    run_id: Id of the paused run.\n    body: ``{\"decision\": {...}, \"actor\": \"...\"}``; ``actor`` defaults to\n        ``\"anonymous\"`` and is recorded on the decision event.\n    engine: Flow engine dependency (used to render the run's steps).\n    service: Human-in-the-loop service dependency.\n\nReturns:\n    The resulting run document including its ordered steps.\n\nRaises:\n    HTTPException: 404 for unknown runs, 409 when the run is not waiting,\n        422 for invalid decisions or expired waits (the timeout route is\n        taken before the 422 is returned \u2014 fail closed on the SLA).",
+        "description": "Record a human decision and resume the paused run (E3-S4).\n\nArgs:\n    run_id: Id of the paused run.\n    body: ``{\"decision\": {...}}``. A legacy ``\"actor\"`` field remains\n        parseable but is ignored (ADR-018): the actor recorded on the\n        decision event is always the authenticated principal's subject.\n    engine: Flow engine dependency (used to render the run's steps).\n    service: Human-in-the-loop service dependency.\n    principal: The authenticated caller.\n\nReturns:\n    The resulting run document including its ordered steps.\n\nRaises:\n    HTTPException: 404 for unknown runs, 409 when the run is not waiting,\n        422 for invalid decisions or expired waits (the timeout route is\n        taken before the 422 is returned \u2014 fail closed on the SLA).",
         "operationId": "post_human_decision_v2_flows_runs__run_id__human_decision_post",
         "parameters": [
           {
@@ -2960,10 +5128,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Post Human Decision",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:execute"
       }
     },
     "/v2/flows/runs/{run_id}/pending-human": {
@@ -3005,10 +5185,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Get Pending Human",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:read"
       }
     },
     "/v2/flows/validate": {
@@ -3051,10 +5243,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Validate Flow",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:read"
       }
     },
     "/v2/flows/{namespace}/{name}": {
@@ -3105,10 +5309,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Get Flow Versions",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:read"
       }
     },
     "/v2/flows/{namespace}/{name}/runs": {
@@ -3177,10 +5393,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Start Run",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:execute"
       }
     },
     "/v2/flows/{namespace}/{name}/trigger": {
@@ -3249,10 +5477,597 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Trigger Run",
         "tags": [
           "flows"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:execute"
+      }
+    },
+    "/v2/mcp": {
+      "post": {
+        "description": "Dispatch a single JSON-RPC 2.0 MCP request over HTTP.\n\nArgs:\n    request: The raw HTTP request; its JSON body is parsed as a\n        JSON-RPC 2.0 request object.\n    server: MCP dispatcher dependency.\n\nReturns:\n    The JSON-RPC response, whether success or error. Transport-level\n    parse/validation failures (not valid JSON, or valid JSON that is not\n    a valid JSON-RPC 2.0 request) are also returned as a JSON-RPC error\n    response rather than raising an HTTP error status, matching\n    JSON-RPC-over-HTTP convention.",
+        "operationId": "call_mcp_v2_mcp_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Call Mcp V2 Mcp Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Call Mcp",
+        "tags": [
+          "mcp"
+        ],
+        "x-autodev-required-scope": "mcp:invoke"
+      }
+    },
+    "/v2/plans/{session_id}": {
+      "get": {
+        "description": "List a session's plan steps with each step's current approval state.\n\nArgs:\n    session_id: Identifier of the session.\n    store: Step-approval store dependency.\n\nReturns:\n    The plan, with a rolled-up plan-level status.\n\nRaises:\n    HTTPException: 404 if no plan document exists for the session.",
+        "operationId": "get_plan_v2_v2_plans__session_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get Plan V2",
+        "tags": [
+          "plan-approval"
+        ],
+        "x-autodev-required-scope": "plan:read"
+      }
+    },
+    "/v2/plans/{session_id}/execute-approved": {
+      "post": {
+        "description": "Execute only the plan's already-``approved`` steps.\n\nSteps in any other state (``draft``, ``under_review``, ``rejected``,\nalready ``executing``/``completed``) are never touched implicitly. When\n``body.step_indices`` is given, every listed index must already be\n``approved`` or the whole call is denied \u2014 this is the step-granular\nsuccessor to the legacy all-or-nothing execute, and the illegal-\ntransition guard called out in E16-S2-T2/T3.\n\nArgs:\n    session_id: Identifier of the session.\n    body: Optional explicit step selection (a legacy ``actor`` field\n        remains parseable but is ignored \u2014 see ``principal``).\n    store: Step-approval store dependency.\n    principal: The authenticated caller; recorded as each transition's\n        actor (ADR-018), superseding any body-supplied actor.\n\nReturns:\n    The plan after executing the targeted steps.\n\nRaises:\n    HTTPException: 404 if the plan or a named step does not exist; 400\n        if a named step is not ``approved``, or if no steps are\n        approved and none were named explicitly.",
+        "operationId": "execute_approved_steps_v2_v2_plans__session_id__execute_approved_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecuteApprovedRequestV2",
+                "default": {
+                  "actor": "anonymous"
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Execute Approved Steps V2",
+        "tags": [
+          "plan-approval"
+        ],
+        "x-autodev-required-scope": "flow:execute"
+      }
+    },
+    "/v2/plans/{session_id}/steps": {
+      "post": {
+        "description": "Append a new ``draft`` step to the end of a session's plan.\n\nArgs:\n    session_id: Identifier of the session.\n    body: The new step's content (a legacy ``actor`` field remains\n        parseable but is ignored \u2014 see ``principal``).\n    store: Step-approval store dependency.\n    principal: The authenticated caller; recorded as the mutation's\n        actor (ADR-018), superseding any body-supplied actor.\n\nReturns:\n    The plan after the step is appended.\n\nRaises:\n    HTTPException: 404 if no plan document exists for the session.",
+        "operationId": "add_plan_step_v2_v2_plans__session_id__steps_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StepCreateRequestV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Add Plan Step V2",
+        "tags": [
+          "plan-approval"
+        ],
+        "x-autodev-required-scope": "plan:write"
+      }
+    },
+    "/v2/plans/{session_id}/steps/{step_index}": {
+      "delete": {
+        "description": "Remove a step and reindex subsequent steps to stay contiguous.\n\nOnly steps in :data:`~backend.plans.step_state.REMOVABLE_STATES`\n(``draft``/``under_review``/``rejected``) can be removed \u2014 once a step\nis approved it is part of the execution record and can only be\nrejected, not deleted.\n\nArgs:\n    session_id: Identifier of the session.\n    step_index: Zero-based step position to remove.\n    store: Step-approval store dependency.\n    principal: The authenticated caller; recorded as the removal's\n        actor (ADR-018).\n\nReturns:\n    The plan after the step is removed and remaining steps reindexed.\n\nRaises:\n    HTTPException: 404 if the plan or the step does not exist; 400 if\n        the step is not in a removable state.",
+        "operationId": "remove_plan_step_v2_v2_plans__session_id__steps__step_index__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "step_index",
+            "required": true,
+            "schema": {
+              "title": "Step Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Remove Plan Step V2",
+        "tags": [
+          "plan-approval"
+        ],
+        "x-autodev-required-scope": "plan:write"
+      },
+      "get": {
+        "description": "Read a single plan step's content and current approval state.\n\nArgs:\n    session_id: Identifier of the session.\n    step_index: Zero-based step position.\n    store: Step-approval store dependency.\n\nReturns:\n    The requested step.\n\nRaises:\n    HTTPException: 404 if the plan or the step does not exist.",
+        "operationId": "get_plan_step_v2_v2_plans__session_id__steps__step_index__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "step_index",
+            "required": true,
+            "schema": {
+              "title": "Step Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanStepV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get Plan Step V2",
+        "tags": [
+          "plan-approval"
+        ],
+        "x-autodev-required-scope": "plan:read"
+      },
+      "put": {
+        "description": "Edit a step's content prior to its approval decision.\n\nArgs:\n    session_id: Identifier of the session.\n    step_index: Zero-based step position.\n    body: The new step content.\n    store: Step-approval store dependency.\n\nReturns:\n    The updated step.\n\nRaises:\n    HTTPException: 404 if the plan or the step does not exist; 400 if\n        the step is no longer editable (already approved/rejected/\n        executing/completed).",
+        "operationId": "update_plan_step_v2_v2_plans__session_id__steps__step_index__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "step_index",
+            "required": true,
+            "schema": {
+              "title": "Step Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StepContentUpdateRequestV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanStepV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Update Plan Step V2",
+        "tags": [
+          "plan-approval"
+        ],
+        "x-autodev-required-scope": "plan:write"
+      }
+    },
+    "/v2/plans/{session_id}/steps/{step_index}/approve": {
+      "post": {
+        "description": "Approve a single plan step.\n\nArgs:\n    session_id: Identifier of the session.\n    step_index: Zero-based step position.\n    body: The approval decision (a legacy ``actor``/note field remains\n        parseable but is ignored \u2014 see ``principal``).\n    store: Step-approval store dependency.\n    principal: The authenticated caller; recorded as the transition's\n        actor (ADR-018), superseding any body-supplied actor.\n\nReturns:\n    The approved step.\n\nRaises:\n    HTTPException: 404 if the plan or the step does not exist; 400 if\n        the step is not under review (e.g. already approved/rejected).",
+        "operationId": "approve_plan_step_v2_v2_plans__session_id__steps__step_index__approve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "step_index",
+            "required": true,
+            "schema": {
+              "title": "Step Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StepDecisionRequestV2",
+                "default": {
+                  "actor": "anonymous",
+                  "note": ""
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanStepV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Approve Plan Step V2",
+        "tags": [
+          "plan-approval"
+        ],
+        "x-autodev-required-scope": "plan:approve"
+      }
+    },
+    "/v2/plans/{session_id}/steps/{step_index}/reject": {
+      "post": {
+        "description": "Reject a single plan step.\n\nArgs:\n    session_id: Identifier of the session.\n    step_index: Zero-based step position.\n    body: The rejection decision (a legacy ``actor``/note field remains\n        parseable but is ignored \u2014 see ``principal``).\n    store: Step-approval store dependency.\n    principal: The authenticated caller; recorded as the transition's\n        actor (ADR-018), superseding any body-supplied actor.\n\nReturns:\n    The rejected step.\n\nRaises:\n    HTTPException: 404 if the plan or the step does not exist; 400 if\n        the step is not under review (e.g. already approved/rejected).",
+        "operationId": "reject_plan_step_v2_v2_plans__session_id__steps__step_index__reject_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "step_index",
+            "required": true,
+            "schema": {
+              "title": "Step Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StepDecisionRequestV2",
+                "default": {
+                  "actor": "anonymous",
+                  "note": ""
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanStepV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Reject Plan Step V2",
+        "tags": [
+          "plan-approval"
+        ],
+        "x-autodev-required-scope": "plan:approve"
       }
     },
     "/v2/plugins/active": {
@@ -3273,10 +6088,142 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "List Active Plugins",
         "tags": [
           "plugins"
-        ]
+        ],
+        "x-autodev-required-scope": "plugin:read"
+      }
+    },
+    "/v2/provider-config": {
+      "get": {
+        "description": "Return the current LLM provider configuration with the API key redacted.\n\nArgs:\n    config_service: Shared runtime config service.\n\nReturns:\n    The versioned provider configuration.",
+        "operationId": "get_provider_config_v2_v2_provider_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderConfigResponseV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get Provider Config V2",
+        "tags": [
+          "provider-config"
+        ],
+        "x-autodev-required-scope": "config:read_redacted"
+      },
+      "put": {
+        "description": "Persist new LLM provider settings and apply them to the process.\n\nThe request is scoped to ``llm`` only; the currently stored\n``repository`` settings are preserved unchanged. Echoing back the\nredaction placeholder for ``api_key`` preserves the previously stored\nsecret (:meth:`RuntimeConfigService.update`).\n\nArgs:\n    request: The new LLM provider settings to persist.\n    config_service: Shared runtime config service.\n\nReturns:\n    The versioned provider configuration after the update.",
+        "operationId": "update_provider_config_v2_v2_provider_config_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderConfigUpdateRequestV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderConfigResponseV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Update Provider Config V2",
+        "tags": [
+          "provider-config"
+        ],
+        "x-autodev-required-scope": "config:write_safe"
+      }
+    },
+    "/v2/provider-config/status": {
+      "get": {
+        "description": "Return a live provider status derived from the stored provider settings.\n\nArgs:\n    config_service: Shared runtime config service.\n\nReturns:\n    The provider's name, model, and a simple configured/healthy signal.",
+        "operationId": "get_provider_status_v2_v2_provider_config_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderStatusResponseV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get Provider Status V2",
+        "tags": [
+          "provider-config"
+        ],
+        "x-autodev-required-scope": "config:read_redacted"
       }
     },
     "/v2/route": {
@@ -3317,10 +6264,145 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Route Request",
         "tags": [
           "routing"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:read"
+      }
+    },
+    "/v2/runs/{run_id}/events/stream": {
+      "get": {
+        "description": "Stream a run's catalog events as Server-Sent Events.\n\nResumes past a ``Last-Event-ID`` header (preferred) or ``?cursor=``\nquery parameter, optionally filtered by ``?types=``, scoped to the\nrun's own tenant.\n\nArgs:\n    request: The incoming request (used for disconnect detection).\n    run_id: Run whose events are streamed.\n    cursor: Fallback resume cursor when no ``Last-Event-ID`` header is\n        sent.\n    types: Optional comma-separated event-type filter.\n    tenant_id: Optional explicit tenant check; must match the run's\n        owning tenant when supplied.\n    last_event_id: Standard SSE resume header; wins over ``?cursor=``.\n    engine: Flow engine dependency, used only for its run store.\n    bus: Event bus dependency to replay from and subscribe to.\n\nReturns:\n    A ``text/event-stream`` response.\n\nRaises:\n    HTTPException: 404 (via :func:`v2_error`) if ``run_id`` is unknown\n        or ``tenantId`` does not match the run's tenant; 400 if\n        ``types`` contains an uncataloged event type.",
+        "operationId": "stream_run_events_v2_runs__run_id__events_stream_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Resume cursor (exclusive-start).",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Resume cursor (exclusive-start).",
+              "title": "Cursor"
+            }
+          },
+          {
+            "description": "Comma-separated event type allow-list.",
+            "in": "query",
+            "name": "types",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated event type allow-list.",
+              "title": "Types"
+            }
+          },
+          {
+            "description": "Expected tenant; must match the run's own tenant.",
+            "in": "query",
+            "name": "tenantId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Expected tenant; must match the run's own tenant.",
+              "title": "Tenantid"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Last-Event-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last-Event-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Stream Run Events",
+        "tags": [
+          "runs"
+        ],
+        "x-autodev-required-scope": "run:read"
       }
     },
     "/v2/select": {
@@ -3361,10 +6443,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Select Request",
         "tags": [
           "routing"
-        ]
+        ],
+        "x-autodev-required-scope": "flow:execute"
       }
     },
     "/v2/sessions": {
@@ -3422,10 +6516,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "List Sessions V2",
         "tags": [
           "sessions"
-        ]
+        ],
+        "x-autodev-required-scope": "session:read"
       },
       "post": {
         "description": "Create a new session and generate its initial plan.\n\nArgs:\n    request: The session creation request (goal).\n    orchestrator: Orchestrator service dependency.\n\nReturns:\n    The newly created session.",
@@ -3462,10 +6568,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Create Session V2",
         "tags": [
           "sessions"
-        ]
+        ],
+        "x-autodev-required-scope": "session:write"
       }
     },
     "/v2/sessions/{session_id}": {
@@ -3505,10 +6623,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Get Session V2",
         "tags": [
           "sessions"
-        ]
+        ],
+        "x-autodev-required-scope": "session:read"
       }
     },
     "/v2/sessions/{session_id}/execution-plan": {
@@ -3548,10 +6678,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Get Execution Plan V2",
         "tags": [
           "planning"
-        ]
+        ],
+        "x-autodev-required-scope": "session:read"
       }
     },
     "/v2/sessions/{session_id}/execution-plan/execute": {
@@ -3591,10 +6733,445 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Execute Execution Plan V2",
         "tags": [
           "planning"
-        ]
+        ],
+        "x-autodev-required-scope": "run:write"
+      }
+    },
+    "/v2/sessions/{session_id}/patches": {
+      "get": {
+        "description": "List a session's changed files with +/- line stats.\n\nEmits ``patch.changedfiles.listed`` on the E9-S3 event bus.\n\nArgs:\n    session_id: Identifier of the session (or run) whose changed files\n        are being reviewed.\n    pagination: Shared limit/offset pagination window.\n\nReturns:\n    A paginated collection of changed-file summaries.",
+        "operationId": "list_changed_files_v2_v2_sessions__session_id__patches_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max items to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "Max items to return.",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of items to skip.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Number of items to skip.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChangedFileListV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List Changed Files V2",
+        "tags": [
+          "patches"
+        ],
+        "x-autodev-required-scope": "plan:read"
+      },
+      "post": {
+        "description": "Propose a candidate patch for review under a session.\n\nComputes the unified diff via the E0 patch engine's\n:func:`~backend.patches.engine.generate_patch` and stores it in the\nsession's review queue with status ``proposed``.\n\nArgs:\n    session_id: Identifier of the session the patch belongs to.\n    request: Path plus original/updated content to diff.\n    principal: Authenticated caller (recorded on the initial audit entry).\n\nReturns:\n    The newly proposed patch, including its computed diff.",
+        "operationId": "propose_patch_v2_v2_sessions__session_id__patches_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchProposeRequestV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatchDetailV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Propose Patch V2",
+        "tags": [
+          "patches"
+        ],
+        "x-autodev-required-scope": "patch:propose"
+      }
+    },
+    "/v2/sessions/{session_id}/patches/{patch_id}": {
+      "get": {
+        "description": "Retrieve a single changed file's unified diff and current status.\n\nArgs:\n    session_id: Identifier of the session the patch belongs to.\n    patch_id: Identifier of the patch to fetch.\n\nReturns:\n    The patch detail, including its unified diff and audit trail.\n\nRaises:\n    HTTPException: 404 if ``patch_id`` is unknown for ``session_id``.",
+        "operationId": "get_patch_diff_v2_v2_sessions__session_id__patches__patch_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "patch_id",
+            "required": true,
+            "schema": {
+              "title": "Patch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatchDetailV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get Patch Diff V2",
+        "tags": [
+          "patches"
+        ],
+        "x-autodev-required-scope": "plan:read"
+      }
+    },
+    "/v2/sessions/{session_id}/patches/{patch_id}/apply": {
+      "post": {
+        "description": "Apply (or dry-run) a proposed patch through the E0 patch engine.\n\nDry-run by default: pass ``{\"apply\": true}`` to perform a real,\nnon-dry-run write. A real apply is rejected \u2014 without writing \u2014 if the\npatch's path resolves outside ``workspace_root`` (the engine's\npath-traversal guard); every attempt, successful or not, is recorded on\nthe patch's audit trail. The whole check-then-act sequence, including\nthe engine call, runs under ``_STORE_LOCK`` so a patch can transition out\nof ``proposed`` at most once even under concurrent requests.\n\nArgs:\n    session_id: Identifier of the session the patch belongs to.\n    patch_id: Identifier of the patch to apply.\n    request: Apply flags; ``apply=False`` (default) performs a dry-run.\n    principal: Authenticated caller (recorded on the audit entry as the\n        actor responsible for this apply).\n    workspace_root: Guarded filesystem root a real apply must stay\n        inside.\n\nReturns:\n    The apply outcome, mirroring the engine's :class:`PatchResult`, plus\n    the audit entry recorded for this attempt.\n\nRaises:\n    HTTPException: 404 if unknown; 409 if the patch is no longer\n        ``proposed``; 400 if the patch's path escapes ``workspace_root``.",
+        "operationId": "apply_patch_v2_v2_sessions__session_id__patches__patch_id__apply_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "patch_id",
+            "required": true,
+            "schema": {
+              "title": "Patch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchApplyRequestV2",
+                "default": {
+                  "apply": false
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatchApplyResultV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Apply Patch V2",
+        "tags": [
+          "patches"
+        ],
+        "x-autodev-required-scope": "patch:apply"
+      }
+    },
+    "/v2/sessions/{session_id}/patches/{patch_id}/content": {
+      "put": {
+        "description": "Submit a reviewer-edited replacement for a proposed patch's content.\n\nRecomputes the unified diff against the patch's original content via the\nE0 patch engine. Only patches still in the ``proposed`` state may be\noverridden.\n\nArgs:\n    session_id: Identifier of the session the patch belongs to.\n    patch_id: Identifier of the patch to override.\n    request: The edited replacement content.\n    principal: Authenticated caller (recorded on the audit entry).\n\nReturns:\n    The patch detail after the override, with its recomputed diff.\n\nRaises:\n    HTTPException: 404 if unknown; 409 if the patch is no longer\n        ``proposed``.",
+        "operationId": "override_patch_content_v2_v2_sessions__session_id__patches__patch_id__content_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "patch_id",
+            "required": true,
+            "schema": {
+              "title": "Patch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchOverrideRequestV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatchDetailV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Override Patch Content V2",
+        "tags": [
+          "patches"
+        ],
+        "x-autodev-required-scope": "patch:review"
+      }
+    },
+    "/v2/sessions/{session_id}/patches/{patch_id}/discard": {
+      "post": {
+        "description": "Discard a proposed patch without applying it.\n\nEmits ``patch.discarded`` on the E9-S3 event bus.\n\nArgs:\n    session_id: Identifier of the session the patch belongs to.\n    patch_id: Identifier of the patch to discard.\n    principal: Authenticated caller (recorded on the audit entry).\n\nReturns:\n    The patch detail after being marked ``discarded``.\n\nRaises:\n    HTTPException: 404 if unknown; 409 if the patch is no longer\n        ``proposed``.",
+        "operationId": "discard_patch_v2_v2_sessions__session_id__patches__patch_id__discard_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "patch_id",
+            "required": true,
+            "schema": {
+              "title": "Patch Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PatchDetailV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Discard Patch V2",
+        "tags": [
+          "patches"
+        ],
+        "x-autodev-required-scope": "patch:review"
       }
     },
     "/v2/sessions/{session_id}/runs": {
@@ -3661,10 +7238,167 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "List Session Runs V2",
         "tags": [
           "runs"
-        ]
+        ],
+        "x-autodev-required-scope": "run:read"
+      }
+    },
+    "/v2/sessions/{session_id}/turns": {
+      "get": {
+        "description": "List all turns for a session.\n\nArgs:\n    session_id: Identifier of the session.\n    pagination: Shared limit/offset pagination window.\n    orchestrator: Orchestrator service dependency.\n\nReturns:\n    A paginated collection of turns.\n\nRaises:\n    HTTPException: 404 if ``session_id`` does not exist.",
+        "operationId": "list_session_turns_v2_v2_sessions__session_id__turns_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Max items to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "description": "Max items to return.",
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of items to skip.",
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Number of items to skip.",
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnListV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "List Session Turns V2",
+        "tags": [
+          "chat"
+        ],
+        "x-autodev-required-scope": "session:read"
+      },
+      "post": {
+        "description": "Create a turn: post a user message and drive the session's agent pipeline.\n\nReplaces the legacy ``POST /chat`` contract\n(``backend/api/main.py::ChatRequest``); calls the same\n:meth:`OrchestratorService.handle_message` the legacy handler calls.\n\nArgs:\n    session_id: Identifier of the session this turn belongs to.\n    request: The turn creation request (user message).\n    orchestrator: Orchestrator service dependency.\n\nReturns:\n    The newly created turn.\n\nRaises:\n    HTTPException: 404 if ``session_id`` does not exist.",
+        "operationId": "create_turn_v2_v2_sessions__session_id__turns_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TurnCreateRequestV2"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Create Turn V2",
+        "tags": [
+          "chat"
+        ],
+        "x-autodev-required-scope": "session:write"
       }
     },
     "/v2/skills": {
@@ -3685,10 +7419,22 @@
             "description": "Successful Response"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "List Skill Catalog",
         "tags": [
           "skills"
-        ]
+        ],
+        "x-autodev-required-scope": "skill:read"
       }
     },
     "/v2/skills/search": {
@@ -3730,10 +7476,22 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Search Skills",
         "tags": [
           "skills"
-        ]
+        ],
+        "x-autodev-required-scope": "skill:read"
       }
     },
     "/v2/skills/{skill_id}": {
@@ -3785,10 +7543,77 @@
             "description": "Validation Error"
           }
         },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
         "summary": "Get Skill",
         "tags": [
           "skills"
-        ]
+        ],
+        "x-autodev-required-scope": "skill:read"
+      }
+    },
+    "/v2/turns/{turn_id}": {
+      "get": {
+        "description": "Fetch a single turn by id.\n\nArgs:\n    turn_id: Identifier of the turn (its underlying ``run_id``).\n    orchestrator: Orchestrator service dependency.\n\nReturns:\n    The requested turn.\n\nRaises:\n    HTTPException: 404 if no turn with ``turn_id`` exists.",
+        "operationId": "get_turn_v2_v2_turns__turn_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "turn_id",
+            "required": true,
+            "schema": {
+              "title": "Turn Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TurnV2"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "oidcBearer": []
+          },
+          {
+            "serviceBearer": []
+          },
+          {
+            "sessionCookie": []
+          }
+        ],
+        "summary": "Get Turn V2",
+        "tags": [
+          "chat"
+        ],
+        "x-autodev-required-scope": "session:read"
       }
     }
   }

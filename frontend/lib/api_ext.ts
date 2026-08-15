@@ -40,7 +40,10 @@ export const buildUrl = (path: string): string => {
  * @throws Error when the response status is not ok.
  */
 export async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(buildUrl(path), init);
+  // credentials: "include" so the browser session cookie set by
+  // /v2/auth/oidc/callback (E11-S2) rides along on every request; a
+  // caller-supplied `init.credentials` still wins if ever needed.
+  const response = await fetch(buildUrl(path), { credentials: "include", ...init });
   if (!response.ok) {
     throw new Error(`Request failed for ${path} (${response.status})`);
   }

@@ -30,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from backend.api.authorization import enforce_control_plane_access, public_endpoint
+from backend.api.openapi_ext import install_custom_openapi
 from backend.api.security import require_api_token
 from backend.api.security_headers import SecurityHeadersMiddleware
 from backend.auth.readiness import validate_auth_readiness
@@ -295,6 +296,8 @@ try:
 except Exception:
     import logging as _logging
     _logging.getLogger(__name__).exception("Router auto-loader failed — continuing without plugin routers")
+
+install_custom_openapi(app)
 
 
 # CSP-clean pointer page for humans who browse the API origin directly: no

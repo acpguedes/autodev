@@ -19,7 +19,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.api.authorization import public_endpoint, require_v2_principal, requires_scope
-from backend.auth.contracts import AuthMethod, InvalidCredentialError, PrincipalV2
+from backend.auth.contracts import AuthMethod, InvalidCredentialError, PrincipalV2, Role
 from backend.auth.oidc import build_authorization_url, exchange_code_for_tokens, generate_pkce_challenge
 from backend.auth.roles import effective_scopes, normalize_role, normalize_scopes
 from backend.auth.service import SESSION_COOKIE_NAME, get_auth_service
@@ -65,7 +65,7 @@ class PrincipalResponseV2(BaseModel):
 
     subject: str
     tenant_id: str = Field(alias="tenantId")
-    roles: list[str]
+    roles: list[Role]
     scopes: list[str]
     auth_method: str = Field(alias="authMethod")
 
@@ -76,7 +76,7 @@ def _to_principal_response(principal: PrincipalV2) -> PrincipalResponseV2:
     return PrincipalResponseV2(
         subject=principal.subject,
         tenantId=principal.tenant_id,
-        roles=[role.value for role in principal.roles],
+        roles=list(principal.roles),
         scopes=scopes,
         authMethod=principal.auth_method.value,
     )
@@ -100,7 +100,7 @@ class ServiceCredentialResponseV2(BaseModel):
 
     key_id: str = Field(alias="keyId")
     subject: str
-    roles: list[str]
+    roles: list[Role]
     scopes: list[str]
     created_at: str = Field(alias="createdAt")
     expires_at: str = Field(alias="expiresAt")
@@ -115,7 +115,7 @@ def _to_credential_response(record: object, *, key: str | None = None) -> Servic
     return ServiceCredentialResponseV2(
         keyId=record.key_id,
         subject=record.subject,
-        roles=[role.value for role in record.roles],
+        roles=list(record.roles),
         scopes=sorted(record.scopes),
         createdAt=record.created_at.isoformat(),
         expiresAt=record.expires_at.isoformat(),
