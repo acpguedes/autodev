@@ -15,7 +15,7 @@ Three sources, in strict precedence order:
 | --- | --- | --- |
 | 1 (highest) | Execution override | `AgentRuntime.run(..., model_override=...)` |
 | 2 | Agent manifest | `model:` in `agent.yaml` (schema 2.1) |
-| 3 | Global default | `LLM_PROVIDER` + `LLM_MODEL` |
+| 3 | Global default | `PUT /v2/provider-config`, overridable by `LLM_MODEL` |
 
 If none of the three yields a model, the run fails with `provider_not_configured`.
 That is deliberate: the gateway never guesses a model.
@@ -26,16 +26,55 @@ recovery policy too.
 
 ## Global configuration
 
-```bash
-LLM_PROVIDER=stub      # stub | openai | ollama
-LLM_MODEL=             # global default model; empty means "no global default"
+The provider and the global default model are owned by the versioned Control Plane
+API and persisted in the runtime configuration:
+
+```http
+PUT /v2/provider-config
+{"llm": {"provider": "openai", "model": "gpt-4o-mini"}}
 ```
 
-`LLM_MODEL` empty is a valid, safe configuration: agents that declare their own model
-work, and agents that do not fail explicitly instead of silently picking one.
+`LLM_MODEL` remains available as an environment-only override of the model, for
+deployments that never write `autodev.config.json`:
 
-`LLM_PROVIDER=stub` is fully offline and needs no credentials or network. It is the
-default and remains first-class.
+```bash
+LLM_MODEL=gpt-4o    # overrides the persisted model when non-empty
+```
+
+The override is safe because `RuntimeConfigService.apply_to_environment` exports the
+configured model as `OPENAI_MODEL` and **never** as `LLM_MODEL` — an API update cannot
+clobber it. The provider is read only from the runtime configuration:
+`Settings.llm_provider` is cached on first read, before `apply_to_environment` mutates
+the environment, so it is a stale snapshot by construction.
+
+`provider: stub` is fully offline and needs no credentials or network. It is the
+default and remains first-class — see **Composition** for what that means in practice.
+
+## Composition
+
+`backend/llm/composition.py` is the composition root. It builds the process-wide
+registry and gateway and hands them to the agent runtime:
+
+| Function | Role |
+| --- | --- |
+| `get_model_gateway()` | The shared gateway, or `None` when running offline |
+| `get_global_model_config()` | The effective global default (precedence 3 above) |
+| `build_agent_runtime()` | An `AgentRuntime` carrying both |
+| `reset_model_composition_cache()` | Invalidation, called by every config-write surface |
+
+`AgentNodeHandler` uses `build_agent_runtime()` as its default, so agents executed by
+the flow engine reach the gateway without any caller doing wiring. An explicitly
+injected runtime always wins, which is how tests and embedded deployments override it.
+
+**`provider: stub` composes no gateway.** `StubModelProvider` is keyed by model name
+and raises for any model it was not scripted with, so it is a test double rather than a
+runtime provider. With no gateway, `call_llm` keeps its existing branch into
+`StubLLMProvider`, which answers any prompt deterministically and offline. An
+unrecognized provider id degrades the same way rather than breaking every run.
+
+The module is deliberately **not** re-exported from `backend/llm/__init__.py`:
+`backend.config.runtime` imports `backend.llm.factory` at module scope, so re-exporting
+would close an import cycle. Import it by full path.
 
 ## Agent manifest (schema 2.1)
 
@@ -126,10 +165,31 @@ These are real and tested, not aspirations:
 - **No pricing catalog.** Cost is whatever the provider or stub reports; AutoDev does
   not price tokens itself.
 - **Capabilities are declared, not discovered.** They are registered per adapter so
-  unsupported behavior fails closed; they are not probed from the provider.
+  unsupported behavior fails closed; they are not probed from the provider. They are
+  also declared **per adapter, not per model**: `LangChainModelProvider` declares the
+  same four capabilities for every model of a provider, so preflight passes for a model
+  that cannot actually do tool calling and the request fails later, inside the call.
+- **`timeoutSeconds` reports, it does not bound.** The check runs on the elapsed
+  duration *after* the provider call returns, so it converts a slow call into a typed
+  `timeout` error and charges the attempt — but it cannot interrupt a hung provider.
+  The real bound comes from the adapter: `LangChainModelProvider` forwards
+  `request_timeout` to the HTTP client. Providers without that forwarding — the legacy
+  adapter, the stub, any third-party `ModelProvider` — have no bound at all.
+- **`retries` only fires for codes also listed in `fallbackOn`.** Retry is evaluated as
+  "the error is in `fallbackOn` *and* attempts remain", so `retries: 2` with an empty
+  `fallbackOn` yields exactly one attempt. List the codes you want retried.
+  `ModelGatewayError.retryable` is informational only — no policy reads it.
 
 ## Rolling back
 
-Stop selecting schema 2.1 model configuration and route calls through the existing
-provider/LangChain factory path. The manifest field and the contracts are additive and
-no persisted data migrates, so 2.0 manifests keep working unchanged.
+Set the provider back to `stub`:
+
+```http
+PUT /v2/provider-config
+{"llm": {"provider": "stub", "model": "irrelevant"}}
+```
+
+No code change and no restart: the write invalidates the composition cache, the next
+agent run composes no gateway, and `call_llm` returns to the legacy `StubLLMProvider`
+path. The manifest field and the contracts are additive and no persisted data migrates,
+so 2.0 manifests keep working unchanged either way.

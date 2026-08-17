@@ -117,9 +117,46 @@ configuration and limitations are documented in
 external-harness evidence is in
 [`model_gateway_agent_comparison.md`](../model_gateway_agent_comparison.md).
 
-**Caveat carried into Done:** the story branch was not reviewed end to end. The review
-loop was stopped by explicit decision after five fix rounds rather than on a clean
-verdict. The handoff records exactly what that leaves unverified.
+**Composition (closing the T4 gap).** The gateway initially landed with no production
+caller: nothing outside `backend/tests/` built a `ModelGateway`, so
+`AgentRuntimeContext.call_llm` always took its legacy `StubLLMProvider` branch and the
+story's headline criterion — agents selecting provider-neutral model targets — was
+unreachable by any route. `backend/llm/composition.py` is the composition root that
+closes it, and `AgentNodeHandler` uses it as its default runtime. Evidence:
+
+- `backend/tests/integration/test_model_gateway_flow_composition.py::TestGatewayReachableFromAFlowRun::test_two_agents_use_distinct_models_in_one_flow_run`
+  — the completion criterion from the handoff, exercised through the flow engine.
+- `backend/tests/unit/llm/test_model_composition.py` — degradation policy, provider
+  registration, config precedence, cache invalidation.
+
+The same change unified the model-configuration source: the global default now reads
+`RuntimeConfig.llm`, which `PUT /v2/provider-config` owns, with `LLM_MODEL` as an
+environment-only override. Previously the API wrote one field and the gateway read
+another, so an operator who configured a model through the versioned surface still got
+`provider_not_configured`. All three surfaces that write the LLM block now invalidate
+the composed gateway.
+
+**Caveat carried into Done:** the story branch was not reviewed end to end during
+implementation. The review loop was stopped by explicit decision after five fix rounds
+rather than on a clean verdict. The handoff records exactly what that leaves unverified.
+
+A post-merge review has since run against `7708430..b69dbd9`. Its blocking finding (no
+production caller) is closed above, as is the config-source split. Documented but **not
+fixed**, and carried as follow-up:
+
+- `timeoutSeconds` reports after the fact rather than bounding the call; only the
+  LangChain adapter imposes a real HTTP bound.
+- `retries` fires only for codes also listed in `fallbackOn`;
+  `ModelGatewayError.retryable` is read by no policy.
+- Capabilities are declared per adapter, not per model, so preflight can pass for a
+  model that cannot serve the request.
+- Streaming, structured output and tool calls have contracts and tests but still no
+  product consumer — `_call_model_gateway` issues a single-user-message `complete()`.
+- Several public methods in the adapters and `gateway_state.py` lack the Args/Returns/
+  Raises sections the repository policy requires.
+
+All five are recorded in [`docs/agents/model_gateway.md`](../../agents/model_gateway.md)
+where they affect users.
 
 Explicit non-goals for E2-S6 are parallel scheduling, Agent-to-Agent (A2A)
 protocols, shared-context ACLs, external coding-agent harnesses, pricing catalogs, and

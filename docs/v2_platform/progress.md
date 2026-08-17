@@ -383,8 +383,16 @@ Add a dated entry every time a story/epic/wave status changes.
 - **2026-08-17** — **Gap-closure pass on `epic/gap-closure-alpha`** (no new
   epic opened, per the "feche os gaps" protocol in the root `CLAUDE.md`).
 
+  **Process note: this pass duplicated work that was already sitting in two open
+  pull requests.** PR #98 (`epic/e2-agent-framework`, opened 2026-08-10) already
+  corrected the E2 phase-doc status, and PR #99 (`epic/e7-context-rag`, same day)
+  already implemented the E7 indexing and context tracing. Open PRs were not
+  checked before starting, so both were re-done from scratch and had to be
+  reconciled on merge. Check `gh pr list` before opening a gap-closure pass.
+
   *Tracker corrections.* `phases/e2_agent_framework.md` still read "In Progress
-  · 5/6" after E2-S6 merged to `main` (88de5e7) — corrected to Done · 6/6.
+  · 5/6" after E2-S6 merged to `main` (88de5e7) — corrected to Done · 6/6 (also
+  fixed independently by PR #98).
   **E11 was tracked as `Not started · 0/4` while E11-S1, E11-S2 and E11-S4 were
   already merged** on `epic/e11-observability-security-multitenant`, with
   E11-S3 in progress on its story branch; the row is now `In progress · 3/4`
@@ -427,6 +435,39 @@ Add a dated entry every time a story/epic/wave status changes.
   finishes despite its per-provider timeout, contradicting its own docstring.
   Both touch a boundary (a security control, a concurrency contract) where the
   fix is a decision, not a patch.
+
+- **2026-08-10** — **E2-S6 composition — closed the gap between the tracker and
+  the code.** A post-merge review of `7708430..b69dbd9` found that the model
+  gateway had **no production caller**: nothing outside `backend/tests/` built a
+  `ModelGateway`, every `AgentRuntime` was constructed without one, and
+  `Settings.llm_model` was read by nothing in the repository. E2 was recorded here
+  as **Done 6/6** while `phases/e2_agent_framework.md` still said **In Progress
+  5/6** — and the story's headline criterion ("agents select provider-neutral
+  model targets") was unreachable by any route. Closed by:
+  (1) `backend/llm/composition.py`, a composition root building the registry and
+  gateway behind `@lru_cache` factories that routers may import (they may not
+  import `backend.api.main`); (2) `AgentNodeHandler` defaulting to
+  `build_agent_runtime()` — the single real `AgentRuntime` construction site in
+  the product; (3) unifying the model-config source on `RuntimeConfig.llm`, which
+  `PUT /v2/provider-config` owns, with `LLM_MODEL` as an env-only override —
+  previously the API wrote `OPENAI_MODEL` while the gateway helper expected
+  `LLM_MODEL`, so a model configured through the versioned surface still produced
+  `provider_not_configured` while `/status` reported it as configured;
+  (4) cache invalidation on all three surfaces that write the LLM block
+  (`/v2/provider-config`, `/v2/config`, legacy `PUT /config`) — the first two
+  previously invalidated nothing.
+  `provider: stub` deliberately composes **no** gateway, so the offline profile is
+  behaviorally unchanged. Proof: `test_two_agents_use_distinct_models_in_one_flow_run`
+  (the handoff's own completion criterion) plus 17 composition unit tests.
+  **Security fix in the same change:** `backend/tests/conftest.py` gained an autouse
+  fixture pinning `AUTODEV_CONFIG_PATH` to a per-test file and stripping credential
+  environment variables. `RuntimeConfigService` resolves its path from the working
+  directory, so once the gateway became the default the suite would have issued
+  live, credentialed calls against whatever provider the developer had configured
+  locally. Still open and documented rather than fixed: `timeoutSeconds` reports
+  instead of bounding; `retries` only fires for codes also in `fallbackOn`;
+  capabilities are per-adapter, not per-model; streaming/structured-output/tool
+  calls still have no product consumer.
 
 - **2026-08-10** — **E7 deferred-DoD closure (observability + fusion config).**
   Closed three of the five DoD items E7 carried into Done: indexing traces

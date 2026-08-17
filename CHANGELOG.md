@@ -27,11 +27,13 @@ epic summaries:
 
 ### E7 — Context & RAG (deferred-DoD closure, 2026-08-10)
 
-- Indexing is traced: `index()` and `reindex()` emit `autodev.repo.index` /
-  `autodev.repo.reindex` spans with tenant, file counts and chunks written.
+- Indexing is traced: `index()` and `reindex()` emit `autodev.repository.index` /
+  `autodev.repository.reindex` spans with tenant, file counts and chunks written.
 - Context composition is traced: `ContextComposer.compose` emits
-  `autodev.context.compose` with a per-provider event. Neither the query nor item
-  content is recorded, and a failing provider contributes its exception type only.
+  `autodev.context.compose` parenting one `autodev.context.provider` span per
+  provider, started on the provider's worker thread so the span measures its real
+  execution. Neither the query nor item content is recorded, and a failing provider
+  contributes its exception type only — never the message.
 - **Hybrid retrieval fusion is configurable.** `retrieve()` and
   `GET /v2/context/retrieve` accept `fusion_k`, `lexical_weight` and
   `vector_weight`, and the response echoes the effective configuration. Previously
@@ -92,6 +94,28 @@ epic summaries:
   an offline stub LLM provider, and per-run/tenant metering.
 - `autodev/agent-coder` packaged as an installable reference agent plugin with v1
   behavior-parity coverage.
+- **E2-S6 — provider-neutral model gateway** (2026-08-07, PR #97): AutoDev-owned
+  immutable contracts plus replaceable adapters, closed capability and error
+  vocabularies, opt-in governed fallback, and `agent.yaml` schema 2.1 `model:`
+  configuration (ADR-016, `docs/agents/model_gateway.md`).
+- **E2-S6 composition** (2026-08-10): the gateway gained a production caller.
+  `backend/llm/composition.py` builds the registry and gateway, and
+  `AgentNodeHandler` composes its runtime from it, so agents executed by the flow
+  engine can select provider-neutral model targets — previously nothing outside the
+  test suite constructed a gateway, which made the story's headline criterion
+  unreachable. The global default model now reads `RuntimeConfig.llm`, the source
+  `PUT /v2/provider-config` owns, with `LLM_MODEL` as an environment-only override;
+  all three surfaces that write the LLM block invalidate the composed gateway.
+  `provider: stub` composes no gateway, so the offline profile is unchanged.
+
+### Fixed
+
+- Test runs no longer read the developer's local `autodev.config.json`. The suite
+  resolves its runtime configuration from the working directory, so an autouse
+  fixture now pins `AUTODEV_CONFIG_PATH` to a per-test file and strips credential
+  environment variables. Without it, composing a gateway by default would have made
+  agent tests issue live, credentialed calls to whatever provider was configured
+  locally.
 
 ### Governance (2026-07-04)
 

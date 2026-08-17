@@ -16,6 +16,7 @@ from typing import Any, Callable, Protocol
 from backend.agents.registry_v2 import AgentRegistry
 from backend.agents.runtime import AgentRuntime
 from backend.flows.model import FlowManifest, FlowNode
+from backend.llm.composition import build_agent_runtime
 from backend.plugins.store import PluginStore
 
 
@@ -213,15 +214,21 @@ class AgentNodeHandler:
         Args:
             agent_registry: Registry used to resolve agent refs; defaults to a
                 registry on the process-wide store.
-            agent_runtime: Runtime used to execute agents; defaults to a stub
-                -provider runtime.
+            agent_runtime: Runtime used to execute agents. Defaults to the
+                composed runtime from
+                :func:`backend.llm.composition.build_agent_runtime`, which
+                carries the process-wide model gateway and global model
+                configuration. When no real provider is configured that
+                composition yields no gateway and the runtime keeps its offline
+                stub behavior, so the default is unchanged for offline profiles.
+                An explicitly injected runtime always wins.
             store: Durable store used to locate installed plugin directories.
             local_handlers: In-process agent handlers keyed by agent id,
                 taking precedence over plugin-directory loading (used by
                 tests and embedded deployments).
         """
         self._registry = agent_registry or AgentRegistry(store)
-        self._runtime = agent_runtime or AgentRuntime()
+        self._runtime = agent_runtime or build_agent_runtime()
         self._plugin_store = PluginStore(store) if store is not None else None
         self._local_handlers = dict(local_handlers or {})
 
