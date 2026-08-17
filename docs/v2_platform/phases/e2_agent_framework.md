@@ -1,7 +1,7 @@
 # E2 — Agent Framework
 
 **Wave:** Alpha
-**Status:** In Progress · **Stories:** 5/6 complete
+**Status:** Done · **Stories:** 6/6 complete
 **Depends on:** E0, E1; E2-S6 additionally depends on E2-S1 through E2-S4
 **Enables:** E4, E5, E9-S4
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.6 (E2), §18.8, §18.9

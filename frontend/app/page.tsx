@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import ExecutionConsolePanel from "../components/ExecutionConsolePanel";
 import MessageList, { type Message } from "../components/MessageList";
@@ -33,11 +34,22 @@ const textareaClass =
   "min-h-[110px] w-full resize-y rounded-ds-md border border-ds-line bg-ds-bg-2 px-3 py-2 text-sm text-ds-fg shadow-sm transition-colors placeholder:text-ds-fg-3 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ds-accent";
 
 export default function Page() {
-  return <ExecutionControlCenter />;
+  // `useSearchParams` opts the subtree into client-side rendering, so it must
+  // sit under a Suspense boundary or the App Router refuses to statically
+  // render this route (E17-S1<->S4 reopen-as-chat).
+  return (
+    <Suspense fallback={null}>
+      <ExecutionControlCenter />
+    </Suspense>
+  );
 }
 
 function ExecutionControlCenter() {
   const { t } = useTranslations();
+  const searchParams = useSearchParams();
+  // `/sessions` links back here as `/?sessionId=<id>` to reopen a session as
+  // chat (emitted by `components/sessions/SessionRow.tsx`).
+  const requestedSessionId = searchParams.get("sessionId");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [plan, setPlan] = useState<string[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -75,17 +87,27 @@ function ExecutionControlCenter() {
         const existingSessions = await listSessions();
         setSessions(existingSessions);
 
-        if (existingSessions.length > 0) {
-          const latestSession = existingSessions[0];
-          setSessionId(latestSession.session_id);
-          setPlan(latestSession.plan);
-          setMessages(mapHistoryToMessages(latestSession.history));
-          setRuns(await listRuns(latestSession.session_id));
-          setExecutionPlan(await getExecutionPlan(latestSession.session_id));
+        // Honor an explicit `?sessionId=` request when that session still
+        // exists; a stale link degrades to the most recent session plus a
+        // notice rather than an empty screen.
+        const requestedSession = requestedSessionId
+          ? existingSessions.find((entry) => entry.session_id === requestedSessionId)
+          : undefined;
+        if (requestedSessionId && !requestedSession) {
+          setError(t("chat.errors.sessionNotFound", { sessionId: requestedSessionId }));
+        }
+        const targetSession = requestedSession ?? existingSessions[0];
+
+        if (targetSession) {
+          setSessionId(targetSession.session_id);
+          setPlan(targetSession.plan);
+          setMessages(mapHistoryToMessages(targetSession.history));
+          setRuns(await listRuns(targetSession.session_id));
+          setExecutionPlan(await getExecutionPlan(targetSession.session_id));
           // Seed the execution timeline from the session's most recent turn,
           // if any. Missing turns are fine — the panel stays idle.
           try {
-            const turns = await listSessionTurnsV2(latestSession.session_id);
+            const turns = await listSessionTurnsV2(targetSession.session_id);
             setActiveTurn(turns.items.at(-1) ?? null);
           } catch {
             setActiveTurn(null);
@@ -109,11 +131,12 @@ function ExecutionControlCenter() {
     }
 
     void bootstrap();
-    // Only ever bootstrap once on mount; `t` is stable per locale and
-    // re-running this on locale change would re-fetch session state for no
-    // reason.
+    // Re-bootstrap only when the requested session changes (arriving from
+    // `/sessions` or switching links while already on this route). `t` is
+    // stable per locale and re-running this on locale change would re-fetch
+    // session state for no reason.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [requestedSessionId]);
 
   const currentWorkspaceLabel = config?.repository.repository_label;
   const currentProjectRoot = config?.repository.project_root;
