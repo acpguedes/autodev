@@ -35,6 +35,7 @@ DASHBOARD_PROVISIONING = (
     / "dashboards.yaml"
 )
 DASHBOARD = OBSERVABILITY / "grafana" / "dashboards" / "autodev-overview.json"
+QUOTA_DASHBOARD = OBSERVABILITY / "grafana" / "dashboards" / "quotas.json"
 COMPOSE = ROOT / "infrastructure" / "docker-compose.yml"
 VERIFIER = ROOT / "scripts" / "verify_observability_stack.py"
 
@@ -196,6 +197,22 @@ def test_dashboard_contains_required_operational_panels_and_normalized_queries()
     assert "gen_ai_token_type" in queries
     assert "autodev_agent_id" not in queries
     assert "autodev_tenant_id" not in queries
+
+
+def test_quota_dashboard_panels_query_the_registered_gauges() -> None:
+    """The E11-S3 quota dashboard queries exactly the gauges quota_metrics.py registers."""
+    dashboard = json.loads(QUOTA_DASHBOARD.read_text(encoding="utf-8"))
+    targets = [target for panel in dashboard["panels"] for target in panel.get("targets", [])]
+    queries = "\n".join(target["expr"] for target in targets)
+
+    for metric in (
+        "autodev_quota_concurrent_runs",
+        "autodev_quota_storage_bytes_used",
+        "autodev_quota_monthly_tokens_used",
+        "autodev_quota_monthly_cost_microusd_used",
+    ):
+        assert metric in queries
+    assert all("tenant_id" in target["legendFormat"] for target in targets)
 
 
 def test_compose_profile_uses_exact_pins_ports_security_and_persistence() -> None:

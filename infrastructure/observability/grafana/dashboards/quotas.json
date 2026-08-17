@@ -1,0 +1,57 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Concurrent Runs by Tenant",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "targets": [
+        {"expr": "autodev_quota_concurrent_runs", "legendFormat": "{{tenant_id}}", "refId": "A"}
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Storage Bytes Used by Tenant",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "targets": [
+        {"expr": "autodev_quota_storage_bytes_used", "legendFormat": "{{tenant_id}}", "refId": "A"}
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Monthly Tokens Used by Tenant",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "targets": [
+        {"expr": "autodev_quota_monthly_tokens_used", "legendFormat": "{{tenant_id}}", "refId": "A"}
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Monthly Spend by Tenant",
+      "type": "timeseries",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "currencyUSD"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "targets": [
+        {"expr": "autodev_quota_monthly_cost_microusd_used / 1000000", "legendFormat": "{{tenant_id}}", "refId": "A"}
+      ]
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 41,
+  "tags": ["autodev", "observability", "quotas"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "AutoDev Tenant Quotas",
+  "uid": "autodev-quotas",
+  "version": 1
+}
