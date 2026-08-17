@@ -239,7 +239,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E11 | Observability, Security & Multi-tenant | Beta | Done | 4/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
 | E12 | Quality & Evals | Alpha/Beta | Complete | 4/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
-| E14 | Real Task Execution & Governed Autonomy | Beta | In progress | 5/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
+| E14 | Real Task Execution & Governed Autonomy | Beta | In progress | 6/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 | E15 | Frontend Redesign: Design Language & App Shell | Beta | Done | 4/4 | E10 | [phases/e15_design_language_shell.md](phases/e15_design_language_shell.md) |
 | E16 | Frontend Redesign: Control-Plane API Enablement | Beta | Done | 4/4 | E9, E3, E8-S1 | [phases/e16_redesign_api_enablement.md](phases/e16_redesign_api_enablement.md) |
 | E17 | Frontend Redesign: Control Center Screens | Beta | Done | 6/6 | E15, E16 | [phases/e17_control_center_screens.md](phases/e17_control_center_screens.md) |
@@ -266,7 +266,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 
-Total: **80/178 stories complete** across 40 epics (E19 is a proposed
+Total: **81/178 stories complete** across 40 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -394,6 +394,28 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-17** — **E14-S6 — Governed Interactive Shell is complete, E14
+  now In progress · 6/7**. `autodev --shell` (`backend/cli_shell.py`) — a
+  REPL that talks only to `/v2` over HTTP, never
+  `backend.orchestrator`/`backend.execution`/`backend.persistence` or any
+  other backend module (a static-analysis AST-import contract test
+  enforces this). Flow: create session -> post a turn (drives the agent
+  pipeline the plan is derived from) -> execute under the active mode
+  (`--mode auto|approval|hybrid`) -> condensed per-task summary. A run
+  that pauses shows its pending decision inline (approve/approve-always/
+  deny, the same vocabulary as E14-S5's Web UX) and resumes automatically.
+  `--command "<goal>"` runs one goal non-interactively. `backend/cli.py`
+  gained a top-level `--shell`/`--mode`/`--command`/`--base-url` alongside
+  its existing required-subcommand parser (`required=False` now, with an
+  explicit `parser.error()` preserving the old "a command is required"
+  behavior when neither is given); existing subcommands are unchanged,
+  documented as out of this story's scope in `docs/execution/shell.md`.
+  Scope note: no live SSE streaming in the shell — the synchronous
+  execute/resume response already carries every result for a condensed
+  summary, avoiding an indefinitely-open stream with no clean end signal;
+  a follow-up could reuse E14-S5's already-proven SSE consumption pattern.
+  **Not merged to `main`** — E14 has 1 more story (S7 CLI packaging).
 
 - **2026-08-17** — **E14-S5 — Web UX for Governed Execution is complete,
   E14 now In progress · 5/7**. New `/execution` screen

@@ -6,7 +6,7 @@ budgets, and end-to-end traces"). S1-S4 (executor, policy engine, execution
 modes, sandbox runners) can start once E3's core and E9-S1 land, without
 waiting on all of E11; S5 (Web UX) additionally depends on E10; S6-S7
 (shell/CLI) can proceed in parallel once S3 lands.
-**Status:** In progress · **Stories:** 5/7 complete (E14-S1..S5 done, see below)
+**Status:** In progress · **Stories:** 6/7 complete (E14-S1..S6 done, see below)
 **Depends on:** E2, E3, E9-S1, E11-S4; environment layer provided by E32
 (Beta cut of the isolated execution environment)
 **Enables:** the Beta exit criterion's real execution flow; consumed by E10
@@ -143,12 +143,12 @@ Subtasks:
 | DoD (specific) | End-to-end approve/deny UI test; a11y audit; docs |
 | Dependencies | E14-S2, E14-S3, E9-S2, E10, E15, E16, E17 |
 
-### E14-S6 — Governed Interactive Shell (`autodev --shell`)
+### E14-S6 — Governed Interactive Shell (`autodev --shell`) — **Complete** (2026-08-17)
 
 Subtasks:
-- `E14-S6-T1`: REPL loop that consumes only the Control Plane API (`/v2`), never the State Store directly (API-first).
-- `E14-S6-T2`: inline confirmation of sensitive actions and terminal log streaming.
-- `E14-S6-T3`: support for all 3 modes (approval/auto/hybrid) and condensed diff/result summaries in the terminal.
+- `E14-S6-T1`: REPL loop that consumes only the Control Plane API (`/v2`), never the State Store directly (API-first). **Done** — `backend/cli_shell.py`; a static-analysis contract test parses its own AST and fails on any `backend.*` import. `backend/cli.py`'s pre-existing subcommands still call the orchestrator in-process — they predate this contract and were not rewritten (see `docs/execution/shell.md`).
+- `E14-S6-T2`: inline confirmation of sensitive actions and terminal log streaming. **Done, with a scope note** — inline confirmation via the same approve/approve-always/deny vocabulary as the Web UX (E14-S5); no *live SSE* streaming in the shell (the synchronous execute/resume response already carries every result, printed as a condensed summary — see `docs/execution/shell.md`).
+- `E14-S6-T3`: support for all 3 modes (approval/auto/hybrid) and condensed diff/result summaries in the terminal. **Done** — `--mode auto|approval|hybrid`.
 
 | Criterion | Detail |
 | --- | --- |
