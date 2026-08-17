@@ -7,6 +7,7 @@ real sandbox.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -20,7 +21,7 @@ from backend.orchestrator.service import ExecutionTask
 
 
 @pytest.fixture(autouse=True)
-def _reset_bus() -> None:
+def _reset_bus() -> Iterator[None]:
     reset_event_bus_for_tests()
     yield
     reset_event_bus_for_tests()

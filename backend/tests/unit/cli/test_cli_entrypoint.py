@@ -53,8 +53,8 @@ class _FakeHttpxClient:
     def __enter__(self) -> "_FakeHttpxClient":
         return self
 
-    def __exit__(self, *exc: object) -> bool:
-        return False
+    def __exit__(self, *exc: object) -> None:
+        return None
 
     def get(self, url: str, **kwargs: object) -> _FakeResponse:
         _FakeHttpxClient.calls.append(("GET", url))
@@ -133,8 +133,8 @@ class _HealthCheckClient:
     def __enter__(self) -> "_HealthCheckClient":
         return self
 
-    def __exit__(self, *exc: object) -> bool:
-        return False
+    def __exit__(self, *exc: object) -> None:
+        return None
 
     def get(self, url: str, **kwargs: object) -> _HealthyResponse:
         return _HealthyResponse()
@@ -150,7 +150,12 @@ def test_no_args_starts_the_server_and_opens_the_browser_at_the_root_url(
     monkeypatch.setattr(httpx, "Client", _HealthCheckClient)
 
     opened: list[str] = []
-    monkeypatch.setattr("webbrowser.open", lambda url: opened.append(url) or True)
+
+    def fake_open(url: str) -> bool:
+        opened.append(url)
+        return True
+
+    monkeypatch.setattr("webbrowser.open", fake_open)
     monkeypatch.setenv("AUTODEV_HOST", "127.0.0.1")
     monkeypatch.setenv("AUTODEV_PORT", "8123")
 
