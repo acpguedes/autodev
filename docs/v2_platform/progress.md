@@ -239,7 +239,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E11 | Observability, Security & Multi-tenant | Beta | Done | 4/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
 | E12 | Quality & Evals | Alpha/Beta | Complete | 4/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
-| E14 | Real Task Execution & Governed Autonomy | Beta | In progress | 4/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
+| E14 | Real Task Execution & Governed Autonomy | Beta | In progress | 5/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 | E15 | Frontend Redesign: Design Language & App Shell | Beta | Done | 4/4 | E10 | [phases/e15_design_language_shell.md](phases/e15_design_language_shell.md) |
 | E16 | Frontend Redesign: Control-Plane API Enablement | Beta | Done | 4/4 | E9, E3, E8-S1 | [phases/e16_redesign_api_enablement.md](phases/e16_redesign_api_enablement.md) |
 | E17 | Frontend Redesign: Control Center Screens | Beta | Done | 6/6 | E15, E16 | [phases/e17_control_center_screens.md](phases/e17_control_center_screens.md) |
@@ -266,7 +266,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 
-Total: **79/178 stories complete** across 40 epics (E19 is a proposed
+Total: **80/178 stories complete** across 40 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -394,6 +394,30 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-17** — **E14-S5 — Web UX for Governed Execution is complete,
+  E14 now In progress · 5/7**. New `/execution` screen
+  (`frontend/app/execution/page.tsx`, added to the primary nav rail):
+  pending-decision approve-once/approve-always/deny
+  (`ActionApprovalPanel`), dynamic-permission list/revoke
+  (`DynamicPermissionsList`), and a real-time `execution.action.*` log
+  (`ExecutionActionLog`) plus a resume control — wired exclusively to
+  `/v2/execution/*` (`frontend/lib/execution_v2.ts`) and the E9-S2 SSE
+  transport. The plan called for extending `lib/timeline.ts`'s
+  `applyTimelineEvent`; reading it showed its 4-stage
+  planning/analysis/patch/validation model doesn't fit
+  `execution.action.*` events (different payload shape, no stage), so a
+  small parallel module (`lib/execution_events.ts`) reuses the same SSE
+  transport primitives instead — the transport itself needed zero
+  server-side changes, confirming the S5/S6/S7 research. One Storybook
+  story file per new component (axe a11y caught and fixed a real
+  `text-ds-fg-3`-at-12px contrast failure before merge) and one Playwright
+  e2e spec (`e2e/execution-approval.spec.ts`), matching the existing
+  per-screen coverage bar. Scope reductions stated in
+  `docs/execution/web-ux.md`: no pre-approval diff preview (nothing to
+  preview before an action runs) and no cancel button (E14-S3 never shipped
+  a cancel endpoint). **Not merged to `main`** — E14 has 2 more stories (S6
+  governed shell, S7 CLI packaging).
 
 - **2026-08-17** — **E14-S4 — Sandbox-Backed Runners is complete, E14 now
   In progress · 4/7**. `InProcessActionRunner` split into three dedicated

@@ -106,6 +106,50 @@
       "executePlan": "Could not execute the approved steps."
     }
   },
+  "execution": {
+    "pageTitle": "Execution",
+    "pageSubtitle": "Pending action decisions, dynamic permissions, and a real-time execution log (approval/hybrid modes).",
+    "refresh": "Refresh",
+    "loading": "Loading...",
+    "decisionsHeading": "Pending decisions",
+    "permissionsHeading": "Dynamic permissions",
+    "logHeading": "Execution log",
+    "emptyDecisions": "No pending decisions for this tenant.",
+    "emptyPermissions": "No dynamic permissions granted yet.",
+    "runIdLabel": "Run",
+    "runIdPlaceholder": "Enter a run id to watch its execution log",
+    "watch": "Watch",
+    "resume": "Resume run",
+    "resuming": "Resuming...",
+    "decision": {
+      "approve": "Approve",
+      "approveAlways": "Approve always",
+      "deny": "Deny",
+      "task": "Task: {{taskId}}",
+      "expiresAt": "Expires at {{expiresAt}}"
+    },
+    "permission": {
+      "revoke": "Revoke"
+    },
+    "log": {
+      "noRun": "Enter a run id above to watch its execution log.",
+      "empty": "No execution events yet.",
+      "status": {
+        "idle": "Idle.",
+        "connecting": "Connecting...",
+        "open": "Live.",
+        "closed": "Stream closed.",
+        "error": "Stream error."
+      }
+    },
+    "errors": {
+      "loadDecisions": "Could not load pending decisions.",
+      "resolveDecision": "Could not resolve the decision.",
+      "loadPermissions": "Could not load dynamic permissions.",
+      "revokePermission": "Could not revoke the permission.",
+      "resume": "Could not resume the run."
+    }
+  },
   "shell": {
     "nav": {
       "groupWorkspace": "Workspace",
@@ -114,6 +158,7 @@
         "chat": "Chat",
         "plans": "Plans",
         "patches": "Patches",
+        "execution": "Execution",
         "flows": "Flows",
         "sessions": "Sessions",
         "config": "Config",
