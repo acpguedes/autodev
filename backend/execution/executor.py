@@ -79,6 +79,11 @@ class TaskExecutor:
     ) -> TaskExecutionOutcome:
         """Derive actions for *task*, run them, and report the aggregate outcome.
 
+        Convenience wrapper over :meth:`derive_actions` + :meth:`dispatch`
+        for callers that don't need to inspect actions before running them
+        (E14-S1's original entry point; E14-S3's execution-mode gating in
+        ``OrchestratorService`` calls the two steps separately).
+
         Args:
             task: The plan task to turn into real work.
             run_id: Orchestrator run this execution belongs to (event partition key).
@@ -89,11 +94,39 @@ class TaskExecutor:
         Returns:
             The aggregate outcome across every action derived from *task*.
         """
-        actions = self._derive_actions(task)
+        actions = self.derive_actions(task)
+        return self.dispatch(actions, run_id=run_id, tenant_id=tenant_id, actor=actor)
+
+    def dispatch(
+        self,
+        actions: list[ExecutionAction],
+        *,
+        run_id: str,
+        tenant_id: str,
+        actor: str = "system",
+        pre_approved_action_ids: frozenset[str] = frozenset(),
+    ) -> TaskExecutionOutcome:
+        """Run already-derived *actions* and report the aggregate outcome.
+
+        Args:
+            actions: Actions to run, in order.
+            run_id: Orchestrator run this execution belongs to (event partition key).
+            tenant_id: Tenant the run belongs to.
+            actor: Who/what is driving this execution (audited by policy
+                evaluations; defaults to ``"system"`` for automatic runs).
+            pre_approved_action_ids: Action ids that skip the policy gate
+                entirely (E14-S3: a human already explicitly approved this
+                specific action out of band — the human decision itself is
+                the authorization, independent of whether a static or
+                dynamic policy rule also covers it).
+
+        Returns:
+            The aggregate outcome across every action.
+        """
         results: list[ExecutionResult] = []
         failed = False
         for action in actions:
-            if self._policy is not None:
+            if self._policy is not None and action.action_id not in pre_approved_action_ids:
                 decision = self._policy.evaluate(
                     tenant_id=tenant_id, action=action, run_id=run_id, actor=actor
                 )
@@ -159,7 +192,47 @@ class TaskExecutor:
                 )
         return TaskExecutionOutcome(status="failed" if failed else "completed", results=results)
 
-    def _derive_actions(self, task: "ExecutionTask") -> list[ExecutionAction]:
+    def deny_all(
+        self, actions: list[ExecutionAction], *, run_id: str, tenant_id: str, reason: str
+    ) -> TaskExecutionOutcome:
+        """Fail every action without dispatching to policy or the runner.
+
+        Used by E14-S3 when a human decision denies a task, or a pending
+        decision times out (deny-and-stop fallback) — the decision itself
+        is the reason execution never reaches the runner.
+
+        Args:
+            actions: The actions the denied task derived.
+            run_id: Orchestrator run this belongs to (event partition key).
+            tenant_id: Tenant the run belongs to.
+            reason: Human-readable denial reason, recorded on every result.
+
+        Returns:
+            A ``"failed"`` outcome covering every action.
+        """
+        results: list[ExecutionResult] = []
+        for action in actions:
+            now = _timestamp()
+            result = ExecutionResult(
+                action_id=action.action_id,
+                task_id=action.task_id,
+                step_key=action.step_key,
+                status="failed",
+                started_at=now,
+                completed_at=now,
+                error=reason,
+            )
+            results.append(result)
+            emit_event(
+                "execution.action.failed",
+                tenant_id=tenant_id,
+                partition_key=run_id,
+                data={"actionId": action.action_id, "taskId": action.task_id, "error": reason},
+                subject={"runId": run_id, "taskId": action.task_id},
+            )
+        return TaskExecutionOutcome(status="failed", results=results)
+
+    def derive_actions(self, task: "ExecutionTask") -> list[ExecutionAction]:
         """Map *task* to zero or more actions (S1 category heuristic).
 
         ``"validation"`` tasks whose description names a known tool

@@ -27,6 +27,8 @@ from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
 from backend.api.v2_common import SCHEMA_VERSION_V2, PageMetaV2, PaginationParams, paginate, v2_error
 from backend.config.runtime import get_runtime_config_service
+from backend.execution.modes import ExecutionMode
+from backend.execution.policy import PolicyMissingError
 from backend.quotas.contracts import QuotaExceededError
 from backend.orchestrator.service import (
     ExecutionPlan,
@@ -398,6 +400,7 @@ def get_execution_plan_v2(
 @router.post("/{session_id}/execution-plan/execute", response_model=ExecutedRunV2, tags=["planning"])
 def execute_execution_plan_v2(
     session_id: str,
+    mode: ExecutionMode = ExecutionMode.AUTO,
     orchestrator: OrchestratorService = Depends(get_orchestrator_v2),
     principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> ExecutedRunV2:
@@ -405,25 +408,79 @@ def execute_execution_plan_v2(
 
     Args:
         session_id: Identifier of the session.
+        mode: Execution mode (E14-S3) — ``auto`` (default), ``approval``,
+            or ``hybrid``. A run may come back ``status: "awaiting_approval"``
+            rather than ``"completed"``; resume it via
+            ``POST .../execution-plan/resume`` once its pending decision
+            (``GET /v2/execution/decisions``) is resolved.
         orchestrator: Orchestrator service dependency.
         principal: Authenticated caller.
 
     Returns:
-        The completed run.
+        The run — completed, or paused awaiting a decision.
 
     Raises:
         HTTPException: 404 if ``session_id`` does not exist for the caller's
-            tenant; 400 if the session has no executable tasks; 429 if the
-            tenant is at its concurrent-run quota (ADR-019).
+            tenant; 400 if the session has no executable tasks; 403 if
+            ``hybrid``/``approval`` mode needs a policy decision and
+            production has no execution policy configured for this tenant
+            (ADR-022); 429 if the tenant is at its concurrent-run quota
+            (ADR-019).
     """
     try:
-        run = orchestrator.execute_plan(session_id, tenant_id=principal.tenant_id)
+        run = orchestrator.execute_plan(session_id, tenant_id=principal.tenant_id, mode=mode)
     except KeyError as exc:
         v2_error(404, str(exc))
     except ValueError as exc:
         v2_error(400, str(exc))
     except QuotaExceededError as exc:
         v2_error(429, str(exc))
+    except PolicyMissingError as exc:
+        v2_error(403, str(exc))
+    return _to_executed_run_v2(run)
+
+
+@requires_scope("run:write")
+@router.post("/{session_id}/execution-plan/resume", response_model=ExecutedRunV2, tags=["planning"])
+def resume_execution_plan_v2(
+    session_id: str,
+    run_id: str,
+    mode: ExecutionMode = ExecutionMode.AUTO,
+    orchestrator: OrchestratorService = Depends(get_orchestrator_v2),
+    principal: PrincipalV2 = Depends(require_v2_principal),
+) -> ExecutedRunV2:
+    """Resume a plan-execution run paused awaiting a human decision (E14-S3).
+
+    Args:
+        session_id: Identifier of the session the paused run belongs to.
+        run_id: The paused run to resume.
+        mode: Execution mode for the resumed portion — pass the same mode
+            the run started with; mode is a per-call parameter, not
+            persisted run state.
+        orchestrator: Orchestrator service dependency.
+        principal: Authenticated caller.
+
+    Returns:
+        The run — completed, or paused again at the next task needing a decision.
+
+    Raises:
+        HTTPException: 404 if ``session_id``/``run_id`` do not exist for
+            the caller's tenant; 400 if the run is not currently awaiting a
+            decision; 403 per :func:`execute_execution_plan_v2`; 429 if the
+            tenant is at its concurrent-run quota.
+    """
+    try:
+        run = orchestrator.resume_plan_execution(
+            session_id, run_id, tenant_id=principal.tenant_id, mode=mode
+        )
+    except KeyError as exc:
+        v2_error(404, str(exc))
+    except ValueError as exc:
+        v2_error(400, str(exc))
+    except QuotaExceededError as exc:
+        v2_error(429, str(exc))
+    except PolicyMissingError as exc:
+        v2_error(403, str(exc))
     return _to_executed_run_v2(run)
 
 
@@ -435,5 +492,6 @@ __all__ = [
     "get_session_v2",
     "list_session_runs_v2",
     "list_sessions_v2",
+    "resume_execution_plan_v2",
     "router",
 ]

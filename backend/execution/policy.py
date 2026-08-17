@@ -115,6 +115,55 @@ class PolicyDecision:
     reason: str
 
 
+class DecisionStatus(StrEnum):
+    """Lifecycle states of one pending human decision on a task (E14-S3)."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    DENIED = "denied"
+    TIMED_OUT = "timed_out"
+
+
+@dataclass(frozen=True, slots=True)
+class PendingDecision:
+    """One durable human-decision request, gating a task's execution.
+
+    Attributes:
+        decision_id: Unique identifier.
+        tenant_id: Tenant the run belongs to.
+        run_id: Orchestrator run this decision blocks.
+        task_id: The plan task awaiting a decision.
+        action_id: The (today, single) action derived from the task, kept
+            for audit symmetry with :class:`~backend.execution.contracts.ExecutionResult`.
+        category: The policy category of the blocked action.
+        prompt: Human-readable description shown to the approver.
+        status: Current lifecycle state.
+        created_at: When the decision was requested.
+        expires_at: When a still-pending decision times out.
+        decided_by: Who resolved it, once resolved.
+        decided_at: When it was resolved, once resolved.
+        pattern: The blocked action's match target (its first command
+            token or file path — see :func:`match_target`), captured at
+            request time so a hybrid-mode "always" resolution can persist
+            a meaningful dynamic-permission rule without re-deriving the
+            original action.
+    """
+
+    decision_id: str
+    tenant_id: str
+    run_id: str
+    task_id: str
+    action_id: str
+    category: PolicyCategory
+    prompt: str
+    status: DecisionStatus
+    created_at: str
+    expires_at: str
+    decided_by: Optional[str] = None
+    decided_at: Optional[str] = None
+    pattern: Optional[str] = None
+
+
 class PolicyEvaluator(Protocol):
     """Anything that can gate an :class:`ExecutionAction` before dispatch."""
 
@@ -220,6 +269,25 @@ class PolicyStore:
             );
             CREATE INDEX IF NOT EXISTS idx_execution_policy_decisions_run
                 ON execution_policy_decisions(run_id);
+            CREATE TABLE IF NOT EXISTS pending_action_decisions (
+                decision_id TEXT PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                task_id TEXT NOT NULL,
+                action_id TEXT NOT NULL,
+                category TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                decided_by TEXT,
+                decided_at TEXT,
+                pattern TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_pending_action_decisions_run
+                ON pending_action_decisions(run_id, task_id);
+            CREATE INDEX IF NOT EXISTS idx_pending_action_decisions_tenant
+                ON pending_action_decisions(tenant_id, status);
             """
         )
 
@@ -359,8 +427,125 @@ class PolicyStore:
             )
             conn.commit()
 
+    def create_pending_decision(
+        self,
+        *,
+        tenant_id: str,
+        run_id: str,
+        task_id: str,
+        action_id: str,
+        category: PolicyCategory,
+        prompt: str,
+        expires_at: str,
+        pattern: Optional[str] = None,
+    ) -> PendingDecision:
+        """Durably create a pending human-decision request."""
+        decision_id = str(uuid4())
+        created_at = _now()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO pending_action_decisions "
+                "(decision_id, tenant_id, run_id, task_id, action_id, category, prompt, status, "
+                "created_at, expires_at, decided_by, decided_at, pattern) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)",
+                (
+                    decision_id,
+                    tenant_id,
+                    run_id,
+                    task_id,
+                    action_id,
+                    category.value,
+                    prompt,
+                    DecisionStatus.PENDING.value,
+                    created_at,
+                    expires_at,
+                    pattern,
+                ),
+            )
+            conn.commit()
+        return PendingDecision(
+            decision_id=decision_id,
+            tenant_id=tenant_id,
+            run_id=run_id,
+            task_id=task_id,
+            action_id=action_id,
+            category=category,
+            prompt=prompt,
+            status=DecisionStatus.PENDING,
+            created_at=created_at,
+            expires_at=expires_at,
+            pattern=pattern,
+        )
 
-def _match_target(action: ExecutionAction) -> str:
+    def get_pending_decision(self, decision_id: str) -> Optional[PendingDecision]:
+        """Fetch one pending decision by id, regardless of its status."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM pending_action_decisions WHERE decision_id = ?", (decision_id,)
+            ).fetchone()
+        return self._row_to_decision(row) if row is not None else None
+
+    def get_decision_for_task(self, run_id: str, task_id: str) -> Optional[PendingDecision]:
+        """Fetch the most recent decision request for one run's task, if any."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM pending_action_decisions WHERE run_id = ? AND task_id = ? "
+                "ORDER BY created_at DESC LIMIT 1",
+                (run_id, task_id),
+            ).fetchone()
+        return self._row_to_decision(row) if row is not None else None
+
+    def list_pending_decisions(self, tenant_id: str) -> list[PendingDecision]:
+        """List every still-pending decision for a tenant."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM pending_action_decisions WHERE tenant_id = ? AND status = ?",
+                (tenant_id, DecisionStatus.PENDING.value),
+            ).fetchall()
+        return [self._row_to_decision(row) for row in rows]
+
+    def list_due_pending_decisions(self, *, before: str) -> list[PendingDecision]:
+        """List every pending decision whose ``expires_at`` is at or before *before*."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM pending_action_decisions WHERE status = ? AND expires_at <= ?",
+                (DecisionStatus.PENDING.value, before),
+            ).fetchall()
+        return [self._row_to_decision(row) for row in rows]
+
+    def resolve_pending_decision(
+        self, decision_id: str, *, status: DecisionStatus, decided_by: str
+    ) -> bool:
+        """Resolve a pending decision; a no-op (returns ``False``) if already resolved."""
+        with self._connect() as conn:
+            cursor = conn.execute(
+                "UPDATE pending_action_decisions SET status = ?, decided_by = ?, decided_at = ? "
+                "WHERE decision_id = ? AND status = ?",
+                (status.value, decided_by, _now(), decision_id, DecisionStatus.PENDING.value),
+            )
+            conn.commit()
+        return cursor.rowcount > 0
+
+    @staticmethod
+    def _row_to_decision(row: sqlite3.Row) -> PendingDecision:
+        return PendingDecision(
+            decision_id=row["decision_id"],
+            tenant_id=row["tenant_id"],
+            run_id=row["run_id"],
+            task_id=row["task_id"],
+            action_id=row["action_id"],
+            category=PolicyCategory(row["category"]),
+            prompt=row["prompt"],
+            status=DecisionStatus(row["status"]),
+            created_at=row["created_at"],
+            expires_at=row["expires_at"],
+            decided_by=row["decided_by"],
+            decided_at=row["decided_at"],
+            pattern=row["pattern"],
+        )
+
+
+def match_target(action: ExecutionAction) -> str:
     """Return the string a rule's ``pattern`` glob is matched against."""
     if action.command:
         return action.command[0]
@@ -429,6 +614,24 @@ class PolicyService:
         """Revoke a previously granted dynamic permission."""
         return self._store.remove_dynamic_permission(tenant_id, permission_id)
 
+    def preview(self, *, tenant_id: str, action: ExecutionAction) -> PolicyDecision:
+        """Evaluate *action* without recording an audit row or emitting an event.
+
+        Used by E14-S3's execution-mode gating to check whether an action
+        is covered by policy (``matched``) before deciding whether to pause
+        for a human decision — a pure, side-effect-free read.
+
+        Args:
+            tenant_id: Tenant the run belongs to.
+            action: The action to preview.
+
+        Returns:
+            The decision that :meth:`evaluate` would return for the same
+            inputs right now.
+        """
+        _category, decision = self._decide(tenant_id=tenant_id, action=action)
+        return decision
+
     def evaluate(
         self, *, tenant_id: str, action: ExecutionAction, run_id: str, actor: str = "system"
     ) -> PolicyDecision:
@@ -445,10 +648,33 @@ class PolicyService:
             The decision. Always durably recorded and always emits
             ``execution.policy.allowed``/``.denied`` before returning.
         """
+        category, decision = self._decide(tenant_id=tenant_id, action=action)
+        self._store.record_decision(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            action_id=action.action_id,
+            category=category,
+            allowed=decision.allowed,
+            reason=decision.reason,
+            actor=actor,
+        )
+        emit_event(
+            "execution.policy.allowed" if decision.allowed else "execution.policy.denied",
+            tenant_id=tenant_id,
+            partition_key=run_id,
+            data={"actionId": action.action_id, "category": category.value, "reason": decision.reason},
+            subject={"runId": run_id, "taskId": action.task_id},
+        )
+        return decision
+
+    def _decide(
+        self, *, tenant_id: str, action: ExecutionAction
+    ) -> tuple[PolicyCategory, PolicyDecision]:
+        """Pure decision logic shared by :meth:`evaluate` and :meth:`preview`."""
         category = ACTION_TYPE_TO_POLICY_CATEGORY[action.type]
         rules = self.resolve_rules(tenant_id)
         dynamic = [rule for _id, rule in self._store.list_dynamic_permissions(tenant_id)]
-        target = _match_target(action)
+        target = match_target(action)
 
         def _matches(rule: PolicyRule) -> bool:
             return rule.category is category and (
@@ -481,27 +707,13 @@ class PolicyService:
                 allowed=allowed, matched=True, reason=f"{matched_rule.effect.value} rule for {category.value}"
             )
 
-        self._store.record_decision(
-            tenant_id=tenant_id,
-            run_id=run_id,
-            action_id=action.action_id,
-            category=category,
-            allowed=decision.allowed,
-            reason=decision.reason,
-            actor=actor,
-        )
-        emit_event(
-            "execution.policy.allowed" if decision.allowed else "execution.policy.denied",
-            tenant_id=tenant_id,
-            partition_key=run_id,
-            data={"actionId": action.action_id, "category": category.value, "reason": decision.reason},
-            subject={"runId": run_id, "taskId": action.task_id},
-        )
-        return decision
+        return category, decision
 
 
 __all__ = [
     "ACTION_TYPE_TO_POLICY_CATEGORY",
+    "DecisionStatus",
+    "PendingDecision",
     "PolicyCategory",
     "PolicyDecision",
     "PolicyEffect",
@@ -511,4 +723,5 @@ __all__ = [
     "PolicyScopeKind",
     "PolicyService",
     "PolicyStore",
+    "match_target",
 ]
