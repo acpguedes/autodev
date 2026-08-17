@@ -238,6 +238,36 @@ class TestPlanApprovalIsolation:
         assert cross_add.status_code == 404
 
 
+class TestChatTurnIsolation:
+    """A session's chat turns (``/v2`` E16-S1) are invisible to another tenant."""
+
+    def test_tenant_b_cannot_post_or_read_tenant_a_turns(self, client: TestClient) -> None:
+        headers_a = _bearer("tenant-a", "user-a")
+        headers_b = _bearer("tenant-b", "user-b")
+
+        created = client.post("/v2/sessions", headers=headers_a, json={"goal": "ship it"})
+        assert created.status_code == 201
+        session_id = created.json()["session_id"]
+
+        # A caller cannot even create a turn against another tenant's session.
+        cross_create = client.post(
+            f"/v2/sessions/{session_id}/turns", headers=headers_b, json={"message": "hi"}
+        )
+        assert cross_create.status_code == 404
+
+        own_turn = client.post(
+            f"/v2/sessions/{session_id}/turns", headers=headers_a, json={"message": "hi"}
+        )
+        assert own_turn.status_code == 201
+        turn_id = own_turn.json()["turnId"]
+
+        cross_get = client.get(f"/v2/turns/{turn_id}", headers=headers_b)
+        assert cross_get.status_code == 404
+
+        cross_list = client.get(f"/v2/sessions/{session_id}/turns", headers=headers_b)
+        assert cross_list.status_code == 404
+
+
 class TestPatchReviewIsolation:
     """A session's proposed patches are invisible to another tenant."""
 
