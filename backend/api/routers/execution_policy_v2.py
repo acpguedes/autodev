@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
-from backend.api.v2_common import SCHEMA_VERSION_V2
+from backend.api.v2_common import SCHEMA_VERSION_V2, v2_error
 from backend.execution.policy import PolicyCategory, PolicyEffect, PolicyRule, PolicyScopeKind, PolicyService
 
 router = APIRouter(
@@ -110,11 +110,88 @@ def add_execution_policy_rule_v2(
     return request
 
 
+class DynamicPermissionV2(BaseModel):
+    """One hybrid-mode "always" grant (E14-S3), as exposed over the API."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    permission_id: str = Field(alias="permissionId")
+    category: PolicyCategory
+    scope_kind: PolicyScopeKind = Field(alias="scopeKind")
+    scope_id: str = Field(alias="scopeId")
+    pattern: str | None = None
+
+
+class DynamicPermissionListV2(BaseModel):
+    """A tenant's currently granted dynamic permissions."""
+
+    schemaVersion: str = SCHEMA_VERSION_V2
+    permissions: list[DynamicPermissionV2]
+
+
+@requires_scope("policy:read")
+@router.get("/dynamic", response_model=DynamicPermissionListV2)
+def list_dynamic_permissions_v2(
+    policy_service: PolicyService = Depends(get_policy_service),
+    principal: PrincipalV2 = Depends(require_v2_principal),
+) -> DynamicPermissionListV2:
+    """List the caller's own tenant's currently granted dynamic permissions.
+
+    Args:
+        policy_service: Policy service dependency.
+        principal: Authenticated caller; its tenant is the only tenant this
+            endpoint can ever query.
+
+    Returns:
+        Every dynamic permission granted via a hybrid-mode "always" resolution.
+    """
+    granted = policy_service.list_dynamic_permissions(principal.tenant_id)
+    return DynamicPermissionListV2(
+        permissions=[
+            DynamicPermissionV2(
+                permissionId=permission_id,
+                category=rule.category,
+                scopeKind=rule.scope_kind,
+                scopeId=rule.scope_id,
+                pattern=rule.pattern,
+            )
+            for permission_id, rule in granted
+        ]
+    )
+
+
+@requires_scope("policy:admin")
+@router.delete("/dynamic/{permission_id}", status_code=204)
+def revoke_dynamic_permission_v2(
+    permission_id: str,
+    policy_service: PolicyService = Depends(get_policy_service),
+    principal: PrincipalV2 = Depends(require_v2_principal),
+) -> None:
+    """Revoke a previously granted dynamic permission.
+
+    Args:
+        permission_id: The permission to revoke.
+        policy_service: Policy service dependency.
+        principal: Authenticated caller (must hold ``policy:admin``); its
+            tenant is the only tenant this endpoint can ever revoke from.
+
+    Raises:
+        HTTPException: 404 if no such permission exists for the caller's tenant.
+    """
+    removed = policy_service.revoke_dynamic_permission(principal.tenant_id, permission_id)
+    if not removed:
+        v2_error(404, f"No dynamic permission {permission_id!r} for this tenant")
+
+
 __all__ = [
+    "DynamicPermissionListV2",
+    "DynamicPermissionV2",
     "PolicyRuleListV2",
     "PolicyRuleV2",
     "add_execution_policy_rule_v2",
     "get_policy_service",
+    "list_dynamic_permissions_v2",
     "list_execution_policy_v2",
+    "revoke_dynamic_permission_v2",
     "router",
 ]

@@ -6,7 +6,7 @@ budgets, and end-to-end traces"). S1-S4 (executor, policy engine, execution
 modes, sandbox runners) can start once E3's core and E9-S1 land, without
 waiting on all of E11; S5 (Web UX) additionally depends on E10; S6-S7
 (shell/CLI) can proceed in parallel once S3 lands.
-**Status:** In progress · **Stories:** 2/7 complete (E14-S1, E14-S2 done, see below)
+**Status:** In progress · **Stories:** 3/7 complete (E14-S1, E14-S2, E14-S3 done, see below)
 **Depends on:** E2, E3, E9-S1, E11-S4; environment layer provided by E32
 (Beta cut of the isolated execution environment)
 **Enables:** the Beta exit criterion's real execution flow; consumed by E10
@@ -89,12 +89,12 @@ emits them yet.
 | DoD (specific) | Default-deny and scope tests; `docs/execution/permissions.md` |
 | Dependencies | E14-S1, E11-S2 |
 
-### E14-S3 — Execution Modes: Approval, Auto, Hybrid
+### E14-S3 — Execution Modes: Approval, Auto, Hybrid — **Complete** (2026-08-17)
 
 Subtasks:
-- `E14-S3-T1`: approval mode — every sensitive action pauses for a human decision (reuses the E3-S4 human-in-the-loop node).
-- `E14-S3-T2`: auto mode — automatically executes anything the E14-S2 policy already allows.
-- `E14-S3-T3`: hybrid mode — auto-executes what's allowed; for anything else, offers the 3-option decision (run once / run and persist a dynamic permission for similar actions / deny) and persists the grant when option 2 is chosen.
+- `E14-S3-T1`: approval mode — every sensitive action pauses for a human decision (reuses the E3-S4 human-in-the-loop node). **Done** — `backend/execution/decisions.py` (`DecisionService`) reuses E3-S4's pause/decide/expire *pattern* (E3-S4 itself is bound to the Flow Engine's run/node model, not `OrchestratorService`'s; see `docs/execution/modes.md`) and the existing `run.human.requested`/`.resolved` events.
+- `E14-S3-T2`: auto mode — automatically executes anything the E14-S2 policy already allows. **Done** — unchanged from S1/S2, now one of three explicit `ExecutionMode` values (`backend/execution/modes.py`), and the default so existing callers are unaffected.
+- `E14-S3-T3`: hybrid mode — auto-executes what's allowed; for anything else, offers the 3-option decision (run once / run and persist a dynamic permission for similar actions / deny) and persists the grant when option 2 is chosen. **Done** — `OrchestratorService.resolve_execution_decision(..., persist_as_rule=True)`.
 
 | Criterion | Detail |
 | --- | --- |

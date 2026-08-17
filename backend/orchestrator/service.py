@@ -16,7 +16,7 @@ except ImportError:  # pragma: no cover - Python < 3.11 compatibility
         pass
 
 
-from typing import Any, Dict, Iterable, List, Mapping, TypedDict
+from typing import Any, Dict, Iterable, List, Mapping, Optional, TypedDict
 from pathlib import Path
 from uuid import uuid4
 
@@ -37,8 +37,20 @@ from backend.agents import (
     ValidatorAgent,
 )
 from backend.events.runtime import emit_event
-from backend.execution.executor import TaskExecutor
-from backend.execution.policy import PolicyService
+from backend.execution.contracts import ExecutionAction
+from backend.execution.decisions import DecisionService
+from backend.execution.executor import TaskExecutionOutcome, TaskExecutor
+from backend.execution.modes import ExecutionMode
+from backend.execution.policy import (
+    ACTION_TYPE_TO_POLICY_CATEGORY,
+    DecisionStatus,
+    PendingDecision,
+    PolicyEffect,
+    PolicyRule,
+    PolicyScopeKind,
+    PolicyService,
+    match_target,
+)
 from backend.execution.runner import InProcessActionRunner
 from backend.persistence import DurableStore, get_store
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
@@ -85,6 +97,7 @@ class RunStatus(StrEnum):
     AWAITING_INPUT = "awaiting_input"
     RUNNING = "running"
     COMPLETED = "completed"
+    AWAITING_APPROVAL = "awaiting_approval"
 
 
 class StepStatus(StrEnum):
@@ -92,6 +105,7 @@ class StepStatus(StrEnum):
 
     COMPLETED = "completed"
     FAILED = "failed"
+    AWAITING_APPROVAL = "awaiting_approval"
 
 
 @dataclass(slots=True)
@@ -266,6 +280,7 @@ class OrchestratorService:
         project_root: Path | None = None,
         quota_service: QuotaService | None = None,
         policy_service: PolicyService | None = None,
+        decision_service: DecisionService | None = None,
     ) -> None:
         """Initialize the service, wiring default agents and the durable store.
 
@@ -281,6 +296,10 @@ class OrchestratorService:
             policy_service: Execution policy engine (E14-S2, ADR-022); defaults
                 to a fresh :class:`~backend.execution.policy.PolicyService`.
                 Gates every action :meth:`execute_plan` dispatches.
+            decision_service: Human-decision service (E14-S3); defaults to a
+                fresh :class:`~backend.execution.decisions.DecisionService`.
+                Backs approval/hybrid-mode pauses in :meth:`execute_plan`/
+                :meth:`resume_plan_execution`.
         """
         self._config = config or OrchestratorConfig()
         self._project_root = project_root
@@ -290,6 +309,7 @@ class OrchestratorService:
         self._store = store or get_store()
         self._quota_service = quota_service or QuotaService()
         self._policy_service = policy_service or PolicyService()
+        self._decision_service = decision_service or DecisionService()
         self._graph = self._compile_graph()
         self._task_executor = TaskExecutor(
             InProcessActionRunner(project_root=(self._project_root or Path(".")).resolve()),
@@ -610,9 +630,21 @@ class OrchestratorService:
         )
 
     def execute_plan(
-        self, session_id: str, *, tenant_id: str = DEFAULT_TENANT_ID
+        self,
+        session_id: str,
+        *,
+        tenant_id: str = DEFAULT_TENANT_ID,
+        mode: ExecutionMode = ExecutionMode.AUTO,
     ) -> OrchestratorRun:
         """Execute a session's derived execution plan and record the run.
+
+        Args:
+            session_id: Session to derive and execute the plan for.
+            tenant_id: Tenant the session must belong to.
+            mode: Execution mode (E14-S3) governing whether a task's
+                actions run automatically, always pause for a human
+                decision, or pause only when policy doesn't cover them.
+                Defaults to :attr:`~backend.execution.modes.ExecutionMode.AUTO`.
 
         Raises:
             KeyError: If ``session_id`` does not exist for ``tenant_id``.
@@ -632,9 +664,181 @@ class OrchestratorService:
                 session_id=session_id,
                 run_id=run_id,
                 tenant_id=tenant_id,
+                mode=mode,
             )
         finally:
             self._quota_service.release_run_lease(run_id)
+
+    def resume_plan_execution(
+        self,
+        session_id: str,
+        run_id: str,
+        *,
+        tenant_id: str = DEFAULT_TENANT_ID,
+        mode: ExecutionMode = ExecutionMode.AUTO,
+    ) -> OrchestratorRun:
+        """Resume a plan-execution run paused awaiting a human decision (E14-S3).
+
+        Re-derives the execution plan (deterministic given unchanged
+        session artifacts, the same call :meth:`execute_plan` already
+        makes) and continues past every task that already has a terminal
+        step, picking mode-aware processing back up from the first
+        non-terminal task. No task-list snapshot is persisted separately —
+        the stored run's own steps are the resume checkpoint.
+
+        Args:
+            session_id: Session the paused run belongs to.
+            run_id: The paused run to resume.
+            tenant_id: Tenant the session/run must belong to.
+            mode: Execution mode for the resumed portion of the run —
+                callers are expected to pass the same mode the run started
+                with; mode is a per-call parameter, not persisted run state.
+
+        Raises:
+            KeyError: If ``session_id``/``run_id`` do not exist for ``tenant_id``.
+            ValueError: If the run is not currently awaiting a decision.
+        """
+        session_record = self._store.get_session(session_id, tenant_id=tenant_id)
+        if session_record is None:
+            raise KeyError(f"Unknown session_id: {session_id}")
+        run_record = self._find_run_record(session_id, run_id, tenant_id=tenant_id)
+        if run_record is None:
+            raise KeyError(f"Unknown run_id: {run_id}")
+        if run_record["status"] != RunStatus.AWAITING_APPROVAL:
+            raise ValueError(
+                f"Run {run_id!r} is not awaiting a decision (status={run_record['status']!r})."
+            )
+
+        execution_plan = self.build_execution_plan(session_id, tenant_id=tenant_id)
+        existing_steps = [
+            RunStep(
+                step_key=item["step_key"],
+                agent=item["agent"],
+                status=item["status"],
+                started_at=item["started_at"],
+                completed_at=item["completed_at"],
+                attempt=item.get("attempt", 1),
+            )
+            for item in (run_record["steps"] or [])
+        ]
+        existing_results = [
+            AgentExecution(
+                agent=item.get("agent", "unknown"),
+                content=item.get("content", ""),
+                metadata=item.get("metadata", {}),
+            )
+            for item in (run_record["results"] or [])
+        ]
+        terminal_task_ids = {
+            step.step_key
+            for step in existing_steps
+            if step.status in (StepStatus.COMPLETED, StepStatus.FAILED)
+        }
+        remaining_tasks = [
+            task for task in execution_plan.tasks if task.task_id not in terminal_task_ids
+        ]
+        # Drop the AWAITING_APPROVAL placeholder for the task we're about to
+        # retry -- it is re-appended below with its real outcome.
+        steps = [step for step in existing_steps if step.status != StepStatus.AWAITING_APPROVAL]
+        results = [
+            result for result in existing_results if result.metadata.get("status") != "awaiting_approval"
+        ]
+        history = [
+            HistoryItem(role=record["role"], content=record["content"])
+            for record in self._store.list_messages(session_id, tenant_id=tenant_id)
+        ]
+
+        self._acquire_run_lease(tenant_id=tenant_id, run_id=run_id)
+        try:
+            current_state, paused = self._process_tasks(
+                tasks=remaining_tasks,
+                run_id=run_id,
+                tenant_id=tenant_id,
+                mode=mode,
+                results=results,
+                steps=steps,
+                history=history,
+                total_count=len(execution_plan.tasks),
+                start_index=len(execution_plan.tasks) - len(remaining_tasks) + 1,
+            )
+        finally:
+            self._quota_service.release_run_lease(run_id)
+
+        return self._finalize_plan_run(
+            session_id=session_id,
+            run_id=run_id,
+            tenant_id=tenant_id,
+            results=results,
+            steps=steps,
+            history=history,
+            current_state=current_state,
+            paused=paused,
+            total_tasks=len(execution_plan.tasks),
+        )
+
+    def resolve_execution_decision(
+        self,
+        decision_id: str,
+        *,
+        tenant_id: str,
+        decision: str,
+        actor: str,
+        persist_as_rule: bool = False,
+    ) -> PendingDecision:
+        """Approve or deny a pending execution-action decision (E14-S3).
+
+        Args:
+            decision_id: The decision to resolve.
+            tenant_id: Caller's tenant; must match the decision's tenant.
+            decision: ``"approve"`` or ``"deny"``.
+            actor: Who resolved it.
+            persist_as_rule: Hybrid mode's "always" option — additionally
+                grants a durable dynamic permission for the decision's
+                category/pattern so equivalent future actions auto-allow
+                without pausing again. Ignored when ``decision == "deny"``.
+
+        Returns:
+            The resolved decision.
+
+        Raises:
+            ValueError: If ``decision`` is neither ``"approve"`` nor ``"deny"``.
+            backend.execution.decisions.DecisionNotFoundError: If no such
+                decision exists for ``tenant_id``.
+            backend.execution.decisions.DecisionAlreadyResolvedError: If it
+                was already resolved (including a concurrent timeout).
+        """
+        if decision not in ("approve", "deny"):
+            raise ValueError(f"decision must be 'approve' or 'deny', got {decision!r}")
+        status = DecisionStatus.APPROVED if decision == "approve" else DecisionStatus.DENIED
+        resolved = self._decision_service.resolve(
+            decision_id, tenant_id=tenant_id, decision=status, actor=actor
+        )
+        if persist_as_rule and status is DecisionStatus.APPROVED:
+            self._policy_service.grant_dynamic_permission(
+                tenant_id,
+                PolicyRule(
+                    category=resolved.category,
+                    effect=PolicyEffect.ALLOW,
+                    scope_kind=PolicyScopeKind.PROJECT,
+                    scope_id="*",
+                    pattern=resolved.pattern,
+                ),
+                actor=actor,
+            )
+        return resolved
+
+    def list_pending_execution_decisions(self, *, tenant_id: str) -> List[PendingDecision]:
+        """List every still-pending execution-action decision for a tenant."""
+        return self._decision_service.list_pending(tenant_id)
+
+    def _find_run_record(
+        self, session_id: str, run_id: str, *, tenant_id: str
+    ) -> Optional[dict[str, Any]]:
+        """Find one run's raw stored record by id, or ``None`` if not found."""
+        for record in self._store.list_runs(session_id, tenant_id=tenant_id):
+            if record["id"] == run_id:
+                return record
+        return None
 
     def _execute_plan_run(
         self,
@@ -643,6 +847,7 @@ class OrchestratorService:
         session_id: str,
         run_id: str,
         tenant_id: str,
+        mode: ExecutionMode = ExecutionMode.AUTO,
     ) -> OrchestratorRun:
         """Execute one already-admitted derived plan and record the run.
 
@@ -651,9 +856,10 @@ class OrchestratorService:
             session_id: Session the plan belongs to.
             run_id: Already-leased run identifier.
             tenant_id: Tenant this run belongs to.
+            mode: Execution mode governing task-level pausing (E14-S3).
 
         Returns:
-            The completed orchestration run.
+            The run, completed or paused awaiting a decision.
         """
         self._store.create_run(
             run_id=run_id,
@@ -671,26 +877,110 @@ class OrchestratorService:
             HistoryItem(role=record["role"], content=record["content"])
             for record in self._store.list_messages(session_id, tenant_id=tenant_id)
         ]
-        execution_entry = HistoryItem(
-            role="executor",
-            content=f"Executing {len(execution_plan.tasks)} planned tasks derived from the latest analysis.",
-        )
         results: List[AgentExecution] = []
         steps: List[RunStep] = []
-        current_state = "starting"
 
-        for index, task in enumerate(execution_plan.tasks, start=1):
+        current_state, paused = self._process_tasks(
+            tasks=execution_plan.tasks,
+            run_id=run_id,
+            tenant_id=tenant_id,
+            mode=mode,
+            results=results,
+            steps=steps,
+            history=history,
+            total_count=len(execution_plan.tasks),
+            start_index=1,
+        )
+
+        return self._finalize_plan_run(
+            session_id=session_id,
+            run_id=run_id,
+            tenant_id=tenant_id,
+            results=results,
+            steps=steps,
+            history=history,
+            current_state=current_state,
+            paused=paused,
+            total_tasks=len(execution_plan.tasks),
+        )
+
+    def _process_tasks(
+        self,
+        *,
+        tasks: List["ExecutionTask"],
+        run_id: str,
+        tenant_id: str,
+        mode: ExecutionMode,
+        results: List[AgentExecution],
+        steps: List[RunStep],
+        history: List[HistoryItem],
+        total_count: int,
+        start_index: int,
+    ) -> tuple[str, bool]:
+        """Process *tasks* in order under *mode*, appending to the given lists in place.
+
+        Stops early (returning ``paused=True``) the moment a task requires
+        a still-pending human decision — preserving every already-recorded
+        step/result as partial state, strengthening E14-S1's "interrupted
+        execution preserves partial state" criterion rather than adding a
+        second mechanism for it.
+
+        Returns:
+            ``(current_state, paused)``.
+        """
+        current_state = steps[-1].step_key if steps else "starting"
+        for offset, task in enumerate(tasks):
+            index = start_index + offset
             started_at = self._timestamp()
-            outcome = self._task_executor.execute(task, run_id=run_id, tenant_id=tenant_id)
+            actions = self._task_executor.derive_actions(task)
+            outcome, pending = self._resolve_task_actions(
+                task=task, actions=actions, run_id=run_id, tenant_id=tenant_id, mode=mode
+            )
             completed_at = self._timestamp()
             current_state = task.task_id
+
+            if pending is not None:
+                results.append(
+                    AgentExecution(
+                        agent="executor",
+                        content=f"[{index}/{total_count}] {task.title} — awaiting a decision",
+                        metadata={
+                            "task_id": task.task_id,
+                            "title": task.title,
+                            "description": task.description,
+                            "source_agent": task.source_agent,
+                            "category": task.category,
+                            "status": "awaiting_approval",
+                            "decision_id": pending.decision_id,
+                            "actions": [],
+                        },
+                    )
+                )
+                steps.append(
+                    RunStep(
+                        step_key=task.task_id,
+                        agent=task.source_agent,
+                        status=StepStatus.AWAITING_APPROVAL,
+                        started_at=started_at,
+                        completed_at=completed_at,
+                    )
+                )
+                history.append(
+                    HistoryItem(
+                        role="executor",
+                        content=f"Paused task {index}: {task.title} awaiting a decision.",
+                    )
+                )
+                return current_state, True
+
+            assert outcome is not None
             step_status = (
                 StepStatus.COMPLETED if outcome.status == "completed" else StepStatus.FAILED
             )
             results.append(
                 AgentExecution(
                     agent="executor",
-                    content=f"[{index}/{len(execution_plan.tasks)}] {task.title}",
+                    content=f"[{index}/{total_count}] {task.title}",
                     metadata={
                         "task_id": task.task_id,
                         "title": task.title,
@@ -720,12 +1010,92 @@ class OrchestratorService:
                     ),
                 )
             )
+        return current_state, False
 
-        history.append(execution_entry)
+    def _resolve_task_actions(
+        self,
+        *,
+        task: "ExecutionTask",
+        actions: List[ExecutionAction],
+        run_id: str,
+        tenant_id: str,
+        mode: ExecutionMode,
+    ) -> tuple[Optional[TaskExecutionOutcome], Optional[PendingDecision]]:
+        """Dispatch *actions* or request a human decision, per *mode*.
+
+        Returns exactly one of ``(outcome, None)`` or ``(None, pending)`` —
+        the latter only when a decision is still :attr:`DecisionStatus.PENDING`
+        (i.e. genuinely blocking, not yet resolved or self-expired).
+        """
+        if not actions or mode is ExecutionMode.AUTO:
+            return self._task_executor.dispatch(actions, run_id=run_id, tenant_id=tenant_id), None
+
+        needs_decision = mode is ExecutionMode.APPROVAL or (
+            mode is ExecutionMode.HYBRID
+            and any(
+                not self._policy_service.preview(tenant_id=tenant_id, action=action).matched
+                for action in actions
+            )
+        )
+        if not needs_decision:
+            return self._task_executor.dispatch(actions, run_id=run_id, tenant_id=tenant_id), None
+
+        primary = actions[0]
+        category = ACTION_TYPE_TO_POLICY_CATEGORY[primary.type]
+        pending = self._decision_service.request(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            task_id=task.task_id,
+            action=primary,
+            category=category,
+            prompt=f"Approve {primary.type.value} for task {task.title!r}?",
+            pattern=match_target(primary),
+        )
+        if pending.status is DecisionStatus.PENDING:
+            return None, pending
+        if pending.status is DecisionStatus.APPROVED:
+            outcome = self._task_executor.dispatch(
+                actions,
+                run_id=run_id,
+                tenant_id=tenant_id,
+                pre_approved_action_ids=frozenset(action.action_id for action in actions),
+            )
+            return outcome, None
+        reason = (
+            "human denied this action"
+            if pending.status is DecisionStatus.DENIED
+            else "decision timed out (deny-and-stop fallback)"
+        )
+        outcome = self._task_executor.deny_all(
+            actions, run_id=run_id, tenant_id=tenant_id, reason=reason
+        )
+        return outcome, None
+
+    def _finalize_plan_run(
+        self,
+        *,
+        session_id: str,
+        run_id: str,
+        tenant_id: str,
+        results: List[AgentExecution],
+        steps: List[RunStep],
+        history: List[HistoryItem],
+        current_state: str,
+        paused: bool,
+        total_tasks: int,
+    ) -> OrchestratorRun:
+        """Persist and return the run, completed or paused awaiting a decision."""
+        status = RunStatus.AWAITING_APPROVAL if paused else RunStatus.COMPLETED
+        summary = (
+            f"Paused after {len(steps)}/{total_tasks} planned tasks, awaiting a decision."
+            if paused
+            else f"Executing {total_tasks} planned tasks derived from the latest analysis."
+        )
+        history.append(HistoryItem(role="executor", content=summary))
         ordered_history = self._normalize_execution_history(history)
         self._store.update_run(
             run_id=run_id,
-            status=RunStatus.COMPLETED,
+            status=status,
             current_state=current_state,
             results=[
                 {
@@ -748,7 +1118,7 @@ class OrchestratorService:
         return OrchestratorRun(
             run_id=run_id,
             session_id=session_id,
-            status=RunStatus.COMPLETED,
+            status=status,
             run_type=RunType.PLAN_EXECUTION,
             current_state=current_state,
             history=ordered_history,
