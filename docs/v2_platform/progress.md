@@ -169,25 +169,30 @@ door: root service descriptor, self-hosted `/docs` under the strict CSP, and
 single-command `make run`. A visual-parity audit of the screens against the prototype
 (fonts, tokens, spacing, per-screen interaction details, per-screen checklist derived
 from ADR-012 and the prototype `shots/`) remains deferred as a proposed **E19**.
-**E11-S1 (Observability), E11-S2 (RBAC and authentication), and E11-S4
-(Execution security and runbooks) are complete** (2026-08-15, E11 now 3/4):
-correlated OpenTelemetry traces/metrics/logs on a self-hosted
+**E11 is now complete (4/4)** (E11-S1/S2/S4 on 2026-08-15, E11-S3 on
+2026-08-17): correlated OpenTelemetry traces/metrics/logs on a self-hosted
 Collector/Prometheus/Tempo/Loki/Grafana stack (ADR-017); mandatory OIDC/
 service-key/session Control Plane RBAC enforced on every route with durable
 access/denial auditing (ADR-018); a trusted-only in-process plugin boundary
 and a hardened, read-only-root sandbox with a mandatory Docker
 network-denial CI gate (ADR-020); a widened HIGH/CRITICAL
 secret/vulnerability/license CI gate with an expiring-exception policy; full
-settings/backup credential redaction; and fail-closed, Alertmanager-alerted
-PostgreSQL backups with an executable incident-response runbook — see
+settings/backup credential redaction; fail-closed, Alertmanager-alerted
+PostgreSQL backups with an executable incident-response runbook; and
+**E11-S3 — multi-tenant isolation plus quotas/budgets** (ADR-019): the
+authenticated tenant is threaded through every Control Plane route
+(including a real cross-tenant leak found and closed in `chat_v2.py`'s
+turn endpoints, which had never resolved the principal), a durable
+per-tenant quota/budget store and service (`backend/quotas/`) backing
+`/v2/quotas` and `autodev quotas get|set`, fail-closed concurrent-run
+admission in the Agent Runtime, tenant-budget narrowing plus monthly usage
+accounting in the Reasoning Engine, and a Grafana quota dashboard — see
 `docs/ops/observability.md`, `docs/security.md`,
-`docs/v2_platform/runbooks/e11_incident_response.md`. E11-S4 was implemented
-in parallel with E11-S2 in a separate worktree since both depend only on
-E11-S1. E11-S2 flagged, for E11-S3 to close: `GET /v2/context/retrieve`
-accepts a caller-supplied `tenant_id` with no check against the
-authenticated principal. **Next action: E11-S3 (multi-tenant and
-quotas/budgets — deps E11-S2 Done); follow `agent_guide.md` §1-4 quality
-rules (mandatory from E3 onward).**
+`docs/v2_platform/runbooks/e11_incident_response.md`,
+`docs/v2_platform/phases/e11_observability_security_multitenant.md`. E11-S4
+was implemented in parallel with E11-S2 in a separate worktree since both
+depend only on E11-S1. **Next action: open the epic → `main` PR for
+`epic/e11-observability-security-multitenant` with the full suite green.**
 
 ## Epic status
 
@@ -204,7 +209,7 @@ rules (mandatory from E3 onward).**
 | E8 | Persistence & Data | Alpha/Beta | Done | 4/4 | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
 | E9 | APIs, Events & MCP | Alpha/Beta | Done | 4/4 | E8, E2, E6 | [phases/e9_apis_events_mcp.md](phases/e9_apis_events_mcp.md) |
 | E10 | UI/UX & Design System | Beta | Done | 4/4 | E3, E9, E1 | [phases/e10_ui_ux_design_system.md](phases/e10_ui_ux_design_system.md) |
-| E11 | Observability, Security & Multi-tenant | Beta | In progress | 3/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
+| E11 | Observability, Security & Multi-tenant | Beta | Done | 4/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
 | E12 | Quality & Evals | Alpha/Beta | Complete | 4/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
@@ -234,7 +239,7 @@ rules (mandatory from E3 onward).**
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 
-Total: **71/178 stories complete** across 40 epics (E19 is a proposed
+Total: **72/178 stories complete** across 40 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
 "51" predated E15–E18 completion and had drifted; +13 planned stories from
@@ -324,6 +329,39 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-17** — **E11-S3 — Multi-tenant and quotas/budgets is complete**
+  (dependencies E8, E4, E11-S2 Done; see ADR-019). **E11 is now 4/4 Done.**
+  T1 closed real cross-tenant leaks by threading the E11-S2 principal's
+  tenant through every Control Plane route that had been hardcoding
+  `DEFAULT_TENANT_ID` or trusting a client-supplied selector — including
+  `GET /v2/context/retrieve` (the gap S2 flagged) and, found during this
+  story's own review rather than left latent, `chat_v2.py`'s turn endpoints
+  (`POST`/`GET /v2/sessions/{id}/turns`, `GET /v2/turns/{id}`), which had
+  never resolved the authenticated principal at all — any caller could post
+  into or read another tenant's session turns. T2 landed a durable
+  per-tenant quota/budget layer (`backend/quotas/`: policy CAS, concurrency
+  leases, storage reservations, monthly usage windows, request-rate
+  buckets) wired into `GET/PUT /v2/quotas/usage|policy` (`quota:read`/
+  `quota:admin`), `autodev quotas get|set`, per-tenant storage reservation
+  on artifact writes, and per-credential request-rate admission in the one
+  app-level auth dependency every `/v2` route already runs through. T3
+  enforces budgets in both places the story's CF asks for: the Agent
+  Runtime gets fail-closed concurrent-run admission (a lease acquired
+  before a run record exists, released unconditionally on success or
+  failure); the Reasoning Engine narrows every run's token/cost/wall-clock/
+  step ceiling to the tenant's `default_run_budget` and records real
+  monthly usage after each run, without letting a post-hoc monthly-limit
+  denial corrupt an already-completed result. Four `autodev_quota_*`
+  OpenTelemetry gauges (mirroring E11-S1's backup-gauge pattern) back a new
+  Grafana dashboard (`infrastructure/observability/grafana/dashboards/quotas.json`).
+  Deliberately not built here, and said so in the phase doc rather than
+  silently left: real per-call LLM cost/token accounting in the older
+  LangGraph `OrchestratorService` agent pipeline (still hardcoded
+  `costUsd: 0.0`/`tokens: 0`, pre-existing, E14's job) and E5's cost-aware
+  model selection actually enforcing `respect_tenant_quota` (parsed only,
+  needs a larger selection-signature change). **Next action: open the
+  epic → `main` PR for `epic/e11-observability-security-multitenant`.**
 
 - **2026-08-15** — **E11-S2 — RBAC and authentication is complete**
   (dependency E9-S1 Done; see ADR-018). Real Control Plane authentication
