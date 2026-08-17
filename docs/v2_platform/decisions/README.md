@@ -66,6 +66,8 @@ neither.
 | ADR-020 | Trusted-Only In-Process Plugin Boundary | Accepted | E11-S4 | 2026-08-15 |
 | RFC-009 | Execution Action & Result Contract | Accepted | E14-S1 | 2026-08-17 |
 | ADR-021 | Real Task Executor Contracts and Runner Boundary | Accepted | E14 | 2026-08-17 |
+| RFC-010 | Execution Policy Contract | Accepted | E14-S2 | 2026-08-17 |
+| ADR-022 | Execution Policy Engine | Accepted | E14 | 2026-08-17 |
 
 > Update this table whenever an ADR or RFC is added or changes status. This index,
 > together with `docs/v2_platform/progress.md`, is the fastest way to see which

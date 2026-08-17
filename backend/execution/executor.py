@@ -14,14 +14,21 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Optional
 
 from backend.events.runtime import emit_event
 from backend.execution.contracts import ExecutionAction, ExecutionActionType, ExecutionResult
+from backend.execution.policy import PolicyEvaluator
 from backend.execution.runner import ActionRunner
 
 if TYPE_CHECKING:
     from backend.orchestrator.service import ExecutionTask
+
+
+def _timestamp() -> str:
+    """Return the current UTC time in ISO-8601 form."""
+    return datetime.now(timezone.utc).isoformat()
 
 _VALIDATION_COMMANDS = ("pytest", "ruff", "npm", "python3", "python")
 _TOKEN_RE = re.compile(r"[A-Za-z0-9_./-]+")
@@ -52,12 +59,23 @@ class TaskExecutionOutcome:
 class TaskExecutor:
     """Turns ``ExecutionTask``s into real work via an injected runner."""
 
-    def __init__(self, runner: ActionRunner) -> None:
-        """Initialize the executor with the runner actions are dispatched to."""
+    def __init__(self, runner: ActionRunner, policy: Optional[PolicyEvaluator] = None) -> None:
+        """Initialize the executor.
+
+        Args:
+            runner: Where derived actions are dispatched to run.
+            policy: Optional policy gate (E14-S2, RFC-010) consulted before
+                every dispatch; ``None`` preserves E14-S1's unguarded
+                behavior (used for direct/test construction —
+                :class:`~backend.orchestrator.service.OrchestratorService`
+                always wires a real
+                :class:`~backend.execution.policy.PolicyService`).
+        """
         self._runner = runner
+        self._policy = policy
 
     def execute(
-        self, task: "ExecutionTask", *, run_id: str, tenant_id: str
+        self, task: "ExecutionTask", *, run_id: str, tenant_id: str, actor: str = "system"
     ) -> TaskExecutionOutcome:
         """Derive actions for *task*, run them, and report the aggregate outcome.
 
@@ -65,6 +83,8 @@ class TaskExecutor:
             task: The plan task to turn into real work.
             run_id: Orchestrator run this execution belongs to (event partition key).
             tenant_id: Tenant the run belongs to.
+            actor: Who/what is driving this execution (audited by policy
+                evaluations; defaults to ``"system"`` for automatic runs).
 
         Returns:
             The aggregate outcome across every action derived from *task*.
@@ -73,6 +93,35 @@ class TaskExecutor:
         results: list[ExecutionResult] = []
         failed = False
         for action in actions:
+            if self._policy is not None:
+                decision = self._policy.evaluate(
+                    tenant_id=tenant_id, action=action, run_id=run_id, actor=actor
+                )
+                if not decision.allowed:
+                    failed = True
+                    now = _timestamp()
+                    result = ExecutionResult(
+                        action_id=action.action_id,
+                        task_id=action.task_id,
+                        step_key=action.step_key,
+                        status="failed",
+                        started_at=now,
+                        completed_at=now,
+                        error=f"policy denied: {decision.reason}",
+                    )
+                    results.append(result)
+                    emit_event(
+                        "execution.action.failed",
+                        tenant_id=tenant_id,
+                        partition_key=run_id,
+                        data={
+                            "actionId": action.action_id,
+                            "taskId": action.task_id,
+                            "error": result.error or "",
+                        },
+                        subject={"runId": run_id, "taskId": action.task_id},
+                    )
+                    continue
             emit_event(
                 "execution.action.started",
                 tenant_id=tenant_id,

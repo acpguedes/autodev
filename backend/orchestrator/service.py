@@ -38,6 +38,7 @@ from backend.agents import (
 )
 from backend.events.runtime import emit_event
 from backend.execution.executor import TaskExecutor
+from backend.execution.policy import PolicyService
 from backend.execution.runner import InProcessActionRunner
 from backend.persistence import DurableStore, get_store
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
@@ -264,6 +265,7 @@ class OrchestratorService:
         store: DurableStore | None = None,
         project_root: Path | None = None,
         quota_service: QuotaService | None = None,
+        policy_service: PolicyService | None = None,
     ) -> None:
         """Initialize the service, wiring default agents and the durable store.
 
@@ -276,6 +278,9 @@ class OrchestratorService:
                 to a fresh :class:`~backend.quotas.service.QuotaService`. Governs
                 the per-tenant concurrent-run admission control in
                 :meth:`handle_message`/:meth:`execute_plan`.
+            policy_service: Execution policy engine (E14-S2, ADR-022); defaults
+                to a fresh :class:`~backend.execution.policy.PolicyService`.
+                Gates every action :meth:`execute_plan` dispatches.
         """
         self._config = config or OrchestratorConfig()
         self._project_root = project_root
@@ -284,9 +289,11 @@ class OrchestratorService:
             self._agents.update(agents)
         self._store = store or get_store()
         self._quota_service = quota_service or QuotaService()
+        self._policy_service = policy_service or PolicyService()
         self._graph = self._compile_graph()
         self._task_executor = TaskExecutor(
-            InProcessActionRunner(project_root=(self._project_root or Path(".")).resolve())
+            InProcessActionRunner(project_root=(self._project_root or Path(".")).resolve()),
+            policy=self._policy_service,
         )
 
     def _acquire_run_lease(self, *, tenant_id: str, run_id: str) -> None:
