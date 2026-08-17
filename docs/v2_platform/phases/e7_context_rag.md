@@ -104,17 +104,53 @@ Subtasks:
 ## Epic exit checklist
 
 - [ ] All 4 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
-      story-specific DoD above. **Partially met** — implemented and tested, but
-      the following story-specific DoD items are explicitly deferred (not
-      done): E7-S1's "indexing traces emitted" (no OTel spans added to
-      `backend/repository/indexing.py` in this pass) and "language-support
-      docs published"; E7-S2's "Recall/latency benchmark attached" (ADR-011
-      reasons about the HNSW-vs-IVFFlat trade-off but does not measure it —
-      see the epic scope notes: formal CNF benchmark suites were explicitly
-      out of scope for this implementation); E7-S3's "Recall/latency metrics
-      in the Evaluation Service" and a dedicated fusion-configuration doc
-      page; E7-S4's "per-step context traces" (composer failures are logged,
-      not traced via OTel spans).
+      story-specific DoD above. **Partially met.** The 2026-08-17 gap-closure
+      pass (branch `epic/gap-closure-alpha`) closed four of the five deferred
+      items; one remains open, plus the wave-gate CNF below.
+
+  **Closed 2026-08-17:**
+  - E7-S1 "indexing traces emitted" — `autodev.repository.index` /
+    `.reindex` spans with file/chunk counts (`trace_indexing` in
+    `backend/observability/tracing.py`, wired in
+    `backend/repository/indexing.py`). Counts only; paths never reach a span.
+  - E7-S1 "language-support docs published" — `docs/context/retrieval.md`
+    § Language support, including the procedure for adding a grammar and the
+    `RetrievalFilters.language` no-op limit.
+  - E7-S3 fusion-configuration doc page — same file, § Retrieval modes and
+    fusion, documenting RRF `k`/`weights` **and** the limit that `retrieve()`
+    does not thread them through yet.
+  - E7-S4 "per-step context traces" — `autodev.context.compose` parenting one
+    `autodev.context.provider` span per provider, started on the worker thread
+    with the composition context attached so a slow provider stays
+    diagnosable. Failures carry the exception *type*, never its message
+    (provider errors routinely embed DSNs with credentials). Evidence:
+    `backend/tests/unit/observability/test_context_indexing_tracing.py`.
+  - E7-S2 "Recall/latency benchmark attached" — **harness only.**
+    `backend/repository/retrieval/benchmark.py` (recall@k, MRR, nearest-rank
+    p50/p95) plus the `scripts/benchmark_retrieval.py` CLI with
+    `--max-p95-ms` / `--min-recall` gating. The metric definitions are
+    unit-tested offline; **no numbers have been measured** — that needs a live
+    PostgreSQL + pgvector instance and a curated label set, neither of which
+    exists in this repository yet.
+
+  **Still open:**
+  - E7-S3 "Recall/latency metrics in the Evaluation Service" — the benchmark
+    is a standalone CLI. Wiring it in needs an `EvalSpec` plus a
+    retrieval-metrics evaluator kind so retrieval quality reaches
+    `ScoreSnapshot`s alongside agent evals. That is a story-sized slice, not a
+    gap-close, and was deliberately not improvised in the 2026-08-17 pass.
+
+  **Adjacent finding (not an E7 DoD item), 2026-08-17.** The tracing work
+  surfaced a real contract violation in `ContextComposer.compose`: its
+  docstring promises a timed-out provider "never blocks the other providers'
+  results", but the surrounding `with ThreadPoolExecutor(...)` calls
+  `shutdown(wait=True)` on exit, so `compose()` itself does not return until
+  every worker finishes — a provider hanging for 30 s stalls the caller for
+  30 s despite a 5 s timeout. Pinned (not fixed) by
+  `test_timed_out_provider_span_records_its_real_duration`. Fixing it means
+  managing the executor manually with `shutdown(wait=False,
+  cancel_futures=True)` and owning the thread-leak trade-off; it belongs in an
+  E7 follow-up or E26.
 - [x] Contract tests green for the Context Provider, Retriever, and EmbeddingProvider
       extension points (`test_context_providers.py`, `test_retrieval_retriever.py`,
       `test_context_api.py`, `test_embeddings_pgvector.py`).
