@@ -6,7 +6,7 @@ budgets, and end-to-end traces"). S1-S4 (executor, policy engine, execution
 modes, sandbox runners) can start once E3's core and E9-S1 land, without
 waiting on all of E11; S5 (Web UX) additionally depends on E10; S6-S7
 (shell/CLI) can proceed in parallel once S3 lands.
-**Status:** In progress · **Stories:** 4/7 complete (E14-S1..S4 done, see below)
+**Status:** In progress · **Stories:** 5/7 complete (E14-S1..S5 done, see below)
 **Depends on:** E2, E3, E9-S1, E11-S4; environment layer provided by E32
 (Beta cut of the isolated execution environment)
 **Enables:** the Beta exit criterion's real execution flow; consumed by E10
@@ -128,12 +128,12 @@ at the `ExecutionAction` layer. Docs: `docs/execution/engine.md`.
 | DoD (specific) | Reused sandbox-escape test; fail-closed-without-Docker test; docs |
 | Dependencies | E14-S1, E11-S4 |
 
-### E14-S5 — Web UX for Governed Execution
+### E14-S5 — Web UX for Governed Execution — **Complete** (2026-08-17)
 
 Subtasks:
-- `E14-S5-T1`: plan/action view, inline approve/deny, before/after diffs.
-- `E14-S5-T2`: real-time logs (stdout/stderr/exit code) via the E9-S2 streaming transport.
-- `E14-S5-T3`: dynamic permission management (list/revoke) and pause/cancel/resume of runs.
+- `E14-S5-T1`: plan/action view, inline approve/deny, before/after diffs. **Done, with a scope note** — `/execution` (`ActionApprovalPanel`) offers approve-once/approve-always/deny; no *pre-approval* diff preview (the backend has nothing to preview before an action runs — the diff/log appears in the execution log once it has). See `docs/execution/web-ux.md`.
+- `E14-S5-T2`: real-time logs (stdout/stderr/exit code) via the E9-S2 streaming transport. **Done** — `ExecutionActionLog`/`lib/execution_events.ts`, a new small module (not an extension of `lib/timeline.ts`, whose fixed 4-stage model doesn't fit `execution.action.*` payloads — documented in `docs/execution/web-ux.md`); the SSE transport itself needed no server changes.
+- `E14-S5-T3`: dynamic permission management (list/revoke) and pause/cancel/resume of runs. **Done for list/revoke and resume**; **cancel not built** — E14-S3 never shipped a cancel endpoint, so there is nothing for a cancel button to call.
 
 | Criterion | Detail |
 | --- | --- |

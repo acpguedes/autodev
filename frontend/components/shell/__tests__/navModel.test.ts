@@ -16,6 +16,7 @@ describe("nav model", () => {
       "chat",
       "plans",
       "patches",
+      "execution",
       "flows",
       "sessions",
       "config",
@@ -45,6 +46,7 @@ describe("resolveActiveNav", () => {
 
   it("matches exact and nested routes by the longest href prefix", () => {
     expect(resolveActiveNav("/plans")).toBe("plans");
+    expect(resolveActiveNav("/execution")).toBe("execution");
     expect(resolveActiveNav("/sessions")).toBe("sessions");
     expect(resolveActiveNav("/sessions/abc-123")).toBe("sessions");
     expect(resolveActiveNav("/extensions")).toBe("extensions");
