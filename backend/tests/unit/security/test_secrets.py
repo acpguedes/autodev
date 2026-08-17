@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from backend.security.secrets import (
+    ALLOWLIST_MARKER,
     PATTERNS,
     SecretFinding,
     _git_tracked_files,
@@ -36,6 +37,41 @@ _FAKE_AWS_KEY = "AKIA" + ("A" * 16)
 # Split so the repo's own raw-text secret scanner never sees the assembled
 # PEM marker in this source file.
 _FAKE_PRIVATE_KEY_HEADER = "-----BEGIN RSA PRIVATE" + " KEY-----"
+
+
+def test_allowlist_marker_suppresses_a_finding_on_that_line() -> None:
+    """A line carrying the marker is skipped, so intentional fixtures pass."""
+    text = f'API_KEY = "{_FAKE_OPENAI_KEY}"  # {ALLOWLIST_MARKER}\n'
+
+    assert _scan_text(Path("f.py"), text) == []
+
+
+def test_allowlist_marker_is_line_scoped_not_file_scoped() -> None:
+    """Marking one line must not silence the rest of the file."""
+    text = (
+        f'allowed = "{_FAKE_OPENAI_KEY}"  # {ALLOWLIST_MARKER}\n'
+        f'leaked = "{_FAKE_GITHUB_TOKEN}"\n'
+    )
+
+    findings = _scan_text(Path("f.py"), text)
+
+    assert [(finding.line, finding.kind) for finding in findings] == [
+        (2, "github_token")
+    ]
+
+
+def test_allowlist_marker_is_ignored_inside_the_scanner_and_its_tests() -> None:
+    """The scanner cannot use its own marker to hide findings in itself.
+
+    Otherwise this module or this test file could carry a real credential on a
+    marked line and the gate would stay green.
+    """
+    text = f'key = "{_FAKE_OPENAI_KEY}"  # {ALLOWLIST_MARKER}\n'
+
+    assert _scan_text(Path("secrets.py"), text) != []
+    assert _scan_text(Path("test_secrets.py"), text) != []
+    # ...but any other file honors it.
+    assert _scan_text(Path("some_other_test.py"), text) == []
 
 
 def test_scan_text_detects_openai_key() -> None:
