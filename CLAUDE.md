@@ -35,6 +35,7 @@ Prefer:
 Web UI, CLI, MCP, and other clients must use `/v2`. They must not access the State Store or internal services directly.
 
 Canonical architecture:
+
 `docs/architecture/v2_platform_reference.md`
 
 ---
@@ -53,19 +54,20 @@ Before editing:
 During execution:
 
 * Prefer targeted inspection over broad repository exploration.
-* Read only files needed for the current task.
-* Do not reread unchanged files unless previous context is insufficient.
+* Read only files required for the current task.
+* Do not reread unchanged files unless existing context is insufficient.
 * Reuse command, test, search, and tool output already obtained.
 * Do not repeat a command unless repository state changed or the previous result was inconclusive.
-* Do not run multiple tools that answer the same question without a specific reason.
+* Do not use multiple tools to answer the same question without a concrete reason.
 * Avoid speculative refactors, cleanup, or unrelated improvements.
-* Do not create abstractions unless the current change needs them.
+* Do not create abstractions unless the current change requires them.
 * Do not narrate routine actions or produce long intermediate summaries.
 * Do not ask the user for information that can be reliably obtained from the repository.
-* If a reasonable implementation choice can be made from existing architecture and conventions, make it and proceed.
-* Stop when the requested behavior is implemented and sufficiently verified.
+* If existing architecture and conventions provide a reasonable implementation choice, make it and proceed.
+* Prefer completing a coherent implementation slice before performing broader validation.
+* Stop as soon as the requested outcome is implemented and the minimum sufficient verification proves it works.
 
-Correctness takes precedence over speed, but additional work must have a concrete justification.
+Correctness takes precedence over speed, but every additional action must have a concrete justification.
 
 ---
 
@@ -76,8 +78,6 @@ This repository has a knowledge graph.
 ### Preferred order
 
 When code-review-graph MCP tools are available, use them before Grep/Glob/broad file reads.
-
-Use:
 
 | Need                          | Preferred tool                   |
 | ----------------------------- | -------------------------------- |
@@ -93,13 +93,13 @@ Use:
 Typical implementation flow:
 
 1. locate the affected code;
-2. inspect impact/dependencies;
+2. inspect relevant impact/dependencies;
 3. read only the necessary source;
 4. implement;
-5. inspect the resulting diff/affected flows;
+5. inspect the resulting diff or affected flows when useful;
 6. run focused verification.
 
-Fall back to Grep/Glob/Read when the graph does not contain enough information.
+Fall back to Grep/Glob/Read only when the graph does not provide enough context.
 
 ### Graphify CLI fallback
 
@@ -113,7 +113,7 @@ graphify explain "<concept>"
 
 Use `graphify-out/wiki/index.md` for broad navigation.
 
-Read `graphify-out/GRAPH_REPORT.md` only for broad architectural analysis or when focused graph queries are insufficient.
+Read `graphify-out/GRAPH_REPORT.md` only for broad architecture analysis or when focused graph queries are insufficient.
 
 After code changes, if graph auto-update hooks are not active:
 
@@ -121,7 +121,7 @@ After code changes, if graph auto-update hooks are not active:
 graphify update .
 ```
 
-Do not use both MCP graph exploration and equivalent Graphify CLI queries unless one fails to provide the required context.
+Do not run equivalent MCP graph and Graphify CLI queries unless the first method fails to provide required context.
 
 ---
 
@@ -150,9 +150,9 @@ python -m venv .venv
 source .venv/bin/activate
 ```
 
-Then install only the dependencies required by the project setup.
+Then install the dependencies required by the project setup.
 
-Do not recreate or reinstall the environment when an existing working environment is available.
+Do not recreate or reinstall a working environment.
 
 ---
 
@@ -179,46 +179,110 @@ Follow existing patterns before inventing new ones.
 
 ---
 
-## Testing and verification
+## Verification economy
 
-Use the **smallest verification that proves the current change works**.
+Verification is **incremental, minimal, and non-cumulative**.
 
-### Story work
+The purpose of testing during implementation is to prove the behavior just changed, not to repeatedly revalidate the repository.
 
-Run:
+### Default rule
 
-1. tests directly related to changed behavior;
-2. tests for affected shared contracts only when the change can impact them;
-3. targeted lint/type/static checks when relevant.
+After an implementation step, run the smallest test that directly exercises the changed behavior.
 
-Do **not** routinely run the entire repository test suite for a story.
+Prefer, in order:
 
-Do not rerun successful tests unless:
+1. one relevant test case;
+2. one focused test file;
+3. a narrowly related test group only when required by the change's actual blast radius.
+
+Do not automatically escalate from:
+
+* one test → full test file;
+* one test file → package suite;
+* package suite → related packages;
+* related packages → broad touched-surface suite;
+* touched-surface suite → full repository suite.
+
+A successful focused test is sufficient evidence for that implementation step unless a concrete unresolved risk remains.
+
+### When broader testing is justified
+
+Expand test scope only when at least one of these conditions is true:
+
+* the change modifies a shared contract used outside the directly tested component;
+* imports, dependency injection, configuration, serialization, persistence, or another integration boundary changed;
+* a targeted test exposes evidence of a wider failure;
+* impact analysis identifies concrete downstream consumers that require verification;
+* the task has reached an explicit integration, story, or epic gate that requires broader validation.
+
+The reason for expanding the test scope must come from the change itself, not from generic caution.
+
+### Forbidden verification patterns
+
+Do not run broader tests merely:
+
+* "to ensure nothing else broke";
+* "for confidence";
+* "as a sanity check";
+* "just in case";
+* "once more";
+* because a commit is about to be created;
+* because the previous focused tests passed;
+* because a broader suite exists.
+
+Commits are not verification boundaries.
+
+Do not run additional tests solely before or after a commit if the relevant code and environment have not changed.
+
+Do not rerun already-passing tests unless:
 
 * relevant code changed afterward;
-* configuration/environment changed;
-* the previous result was incomplete or ambiguous.
+* relevant configuration or dependencies changed;
+* the previous execution was incomplete or ambiguous;
+* a later failure provides evidence that the previously tested area may now be affected.
 
-When fixing a failing test:
+### Failure handling
 
-1. run the failing test or smallest relevant test group;
-2. implement the fix;
-3. rerun that same scope;
-4. expand verification only if the change has a wider demonstrated impact.
+When a test fails:
 
-Do not repeatedly run broader suites "for confidence" without evidence that they are needed.
+1. identify the smallest relevant cause;
+2. modify the required code;
+3. rerun the failing test or smallest failing scope;
+4. stop expanding once the failure is resolved.
 
-### Epic completion
+If a broader suite exposes a failure outside the original focused scope, fix that failure using its smallest targeted test before rerunning the broader suite.
 
-The full suite is required only for the epic → `main` PR:
+Do not repeatedly rerun the broader suite while debugging individual failures.
+
+### Story verification
+
+During a story, test each implementation slice only at the scope needed to prove that slice.
+
+At story completion:
+
+* do not rerun all previously passing tests by default;
+* do not create a broad "touched surface" suite merely to revalidate already-proven behavior;
+* run only unresolved integration-boundary tests that are necessary because multiple story changes interact.
+
+If all affected boundaries were already directly verified and no relevant code changed afterward, no additional story-wide test pass is required.
+
+### Epic verification
+
+The full repository suite is the final regression gate for epic → `main`:
 
 ```bash
 make check
 ```
 
-If `make check` succeeds and no code changes occur afterward, do not run it again.
+Run it once after the epic implementation and documentation are complete.
 
-If it fails, rerun only the failing checks while fixing them, then run `make check` once after the fixes are complete.
+If `make check` fails:
+
+1. run only the specific failing checks while fixing them;
+2. do not repeatedly rerun the complete suite during debugging;
+3. run `make check` once again after all identified failures are fixed.
+
+If `make check` succeeds and no relevant code changes afterward, do not run it again.
 
 ---
 
@@ -246,19 +310,21 @@ created from its epic branch.
 
 ### Story completion
 
-After a story is implemented and its focused verification passes:
+After a story is implemented and sufficiently verified:
 
 1. merge the story branch into the epic branch;
 2. push the epic branch;
 3. delete the merged story branch.
 
-Do not run epic-wide validation at every story boundary unless the story changes a shared contract with broad impact.
+Do not perform broader verification merely because a story is about to be committed or merged.
+
+Only run integration tests at the story boundary when the story introduces interactions that were not already verified by focused tests.
 
 ### Epic completion
 
 After all epic stories are complete:
 
-1. update the tracker/docs;
+1. update tracker/docs;
 2. run `make check`;
 3. push the epic branch;
 4. open the epic → `main` PR;
@@ -279,7 +345,9 @@ For non-trivial Claude Code tasks:
 
 Do not hand work to Codex unless the user explicitly requests Codex.
 
-Planning should be proportional to the task. Do not produce a large plan for a small or obvious change.
+Planning must be proportional to the task.
+
+Do not create large plans for small or obvious changes.
 
 A plan should identify only:
 
@@ -287,6 +355,10 @@ A plan should identify only:
 * affected components;
 * implementation sequence;
 * necessary verification.
+
+Do not prescribe a test run after every commit or implementation item.
+
+Instead, define the minimum verification required for each distinct behavior or integration boundary.
 
 Once sufficient context exists, execute rather than continuing to analyze.
 
@@ -304,7 +376,7 @@ The v2 platform is defined by:
 
 Before implementing an `E<n>-S<m>` story, read the relevant portion of `agent_guide.md` and the corresponding epic/story information.
 
-Do not reread the complete platform documentation if the relevant scope is already known.
+Do not reread complete platform documentation when the relevant scope is already known.
 
 For Alpha/Beta/GA wave exits, follow:
 
@@ -318,7 +390,7 @@ Resolve terse continuation requests against:
 
 `docs/v2_platform/progress.md`
 
-Treat the tracker as canonical, but verify suspicious or inconsistent status against the code before implementing anything.
+Treat the tracker as canonical, but verify suspicious or inconsistent status against code before implementing anything.
 
 ### "continue a implementação" / "next stage|phase|epic"
 
@@ -346,31 +418,40 @@ Instead:
 2. compare tracker status with implementation;
 3. implement genuinely missing work in dependency order.
 
-If code already implements a supposedly missing story, update the tracker rather than reimplementing it.
+If code already implements a supposedly missing story, update the tracker instead of reimplementing it.
 
 If the tracker says a story is complete but required behavior is demonstrably absent, treat it as a gap and report the inconsistency briefly.
 
 ---
 
-## Completion protocol
+## Completion criteria
 
 A task is complete when:
 
-* requested behavior exists;
+* the requested behavior exists;
 * relevant contracts remain valid;
-* the smallest sufficient verification passes;
-* required docs/tracker updates are made;
+* minimum sufficient verification passes;
+* required docs/tracker updates are complete;
 * required Git workflow steps for the requested scope are complete.
 
 Once these conditions are proven, stop.
 
-Do not perform additional repository scans, tests, reviews, refactors, or confirmation passes unless a concrete unresolved risk remains.
+Do not perform additional:
+
+* repository scans;
+* test suites;
+* verification passes;
+* reviews;
+* refactors;
+* cleanup;
+* documentation browsing;
+
+unless a concrete unresolved risk requires them.
 
 Final reports should be concise and contain only:
 
 * what changed;
 * verification performed;
-* any important unresolved issue.
+* important unresolved issues, if any.
 
 Do not repeat information already obvious from the diff or command output.
-
