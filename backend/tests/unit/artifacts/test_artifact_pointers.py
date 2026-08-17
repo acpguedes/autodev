@@ -23,6 +23,18 @@ from backend.artifacts.store import ArtifactKind, LocalArtifactStore
 from backend.persistence.sqlite_adapter import SQLiteStore
 
 
+@pytest.fixture(autouse=True)
+def _isolated_quota_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point ``persist_artifact``'s default ``QuotaService`` at a throwaway DB.
+
+    ``persist_artifact`` (E11-S3) reserves storage bytes via a QuotaService
+    constructed with no explicit store, which resolves ``DATABASE_URL`` from
+    the environment -- without this, every test here would silently write
+    storage reservations into the repo's shared dev ``autodev.db``.
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'quotas.db'}")
+
+
 @pytest.fixture()
 def pointers(tmp_path: Path) -> ArtifactPointerStore:
     """Build an :class:`ArtifactPointerStore` on a throwaway SQLite database.
@@ -226,3 +238,94 @@ def test_gc_negative_retention_disables_collection(
     assert result.removed == []
     assert result.scanned_count == 0
     assert ancient_path.exists()
+
+
+class TestPersistArtifactStorageQuota:
+    """``persist_artifact``'s storage-reservation wiring (E11-S3, ADR-019)."""
+
+    def test_write_over_the_storage_ceiling_is_denied_and_writes_nothing(
+        self, store: LocalArtifactStore, pointers: ArtifactPointerStore, tmp_path: Path
+    ) -> None:
+        from backend.quotas.contracts import (
+            QuotaExceededError,
+            RunBudgetLimits,
+            TenantQuotaPolicy,
+        )
+        from backend.quotas.service import QuotaService
+        from backend.quotas.store import QuotaStore
+
+        quota_service = QuotaService(store=QuotaStore(tmp_path / "quota-ceiling.db"))
+        quota_service.set_policy(
+            TenantQuotaPolicy(
+                tenant_id="tenant-a",
+                max_concurrent_runs=5,
+                max_storage_bytes=4,
+                monthly_token_limit=1_000_000,
+                monthly_cost_microusd=1_000_000,
+                requests_per_second=10,
+                default_run_budget=RunBudgetLimits(),
+            )
+        )
+
+        with pytest.raises(QuotaExceededError):
+            persist_artifact(
+                store,
+                pointers,
+                kind=ArtifactKind.LOG,
+                object_key="tenant-a/run-1/too-big.log",
+                payload=b"way too many bytes",
+                tenant_id="tenant-a",
+                quota_service=quota_service,
+            )
+
+        assert pointers.list(tenant_id="tenant-a") == []
+        assert not (tmp_path / "objects" / "logs" / "tenant-a" / "run-1" / "too-big.log").exists()
+
+    def test_write_failure_releases_the_reservation(
+        self, store: LocalArtifactStore, pointers: ArtifactPointerStore, tmp_path: Path
+    ) -> None:
+        from backend.quotas.contracts import RunBudgetLimits, TenantQuotaPolicy
+        from backend.quotas.service import QuotaService
+        from backend.quotas.store import QuotaStore
+
+        quota_db = tmp_path / "quota-release.db"
+        quota_service = QuotaService(store=QuotaStore(quota_db))
+        quota_service.set_policy(
+            TenantQuotaPolicy(
+                tenant_id="tenant-a",
+                max_concurrent_runs=5,
+                max_storage_bytes=100,
+                monthly_token_limit=1_000_000,
+                monthly_cost_microusd=1_000_000,
+                requests_per_second=10,
+                default_run_budget=RunBudgetLimits(),
+            )
+        )
+
+        class _FailingPointers:
+            def record(self, *args: object, **kwargs: object) -> None:
+                raise RuntimeError("simulated pointer-registry failure")
+
+        with pytest.raises(RuntimeError):
+            persist_artifact(
+                store,
+                _FailingPointers(),  # type: ignore[arg-type]
+                kind=ArtifactKind.LOG,
+                object_key="tenant-a/run-1/first.log",
+                payload=b"first\n",
+                tenant_id="tenant-a",
+                quota_service=quota_service,
+            )
+
+        # The failed write's bytes were released, so a second write that
+        # would only fit if the first reservation was freed still succeeds.
+        recorded = persist_artifact(
+            store,
+            pointers,
+            kind=ArtifactKind.LOG,
+            object_key="tenant-a/run-1/second.log",
+            payload=b"x" * 100,
+            tenant_id="tenant-a",
+            quota_service=quota_service,
+        )
+        assert store.get_artifact(recorded.bucket, recorded.object_key) == b"x" * 100

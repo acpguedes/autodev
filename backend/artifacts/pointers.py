@@ -29,6 +29,8 @@ from backend.artifacts.store import (
 from backend.events.records import utcnow_iso
 from backend.persistence.database import get_store
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
+from backend.quotas.contracts import QuotaDenialReason, QuotaExceededError, QuotaResource
+from backend.quotas.service import QuotaService
 
 
 def artifact_pointer_statements(is_postgres: bool) -> tuple[str, ...]:
@@ -416,12 +418,17 @@ def persist_artifact(
     content_type: str = "application/octet-stream",
     tenant_id: str = DEFAULT_TENANT_ID,
     context: dict[str, Any] | None = None,
+    quota_service: QuotaService | None = None,
 ) -> StoredArtifact:
     """Store payload bytes and durably record the resulting pointer.
 
     Convenience helper combining ``put_artifact`` with
     :meth:`ArtifactPointerStore.record`, so callers cannot forget to
-    register the reference.
+    register the reference. Reserves ``len(payload)`` storage bytes against
+    ``tenant_id``'s quota (E11-S3, ADR-019) before writing, settles the
+    reservation to the stored object's actual size on success, and releases
+    it if the write never completes -- a denied or failed write never holds
+    a permanent reservation.
 
     Args:
         store: Artifact object store to write the payload to.
@@ -429,16 +436,40 @@ def persist_artifact(
         kind: Category of artifact, determining its target bucket.
         object_key: Relative POSIX path identifying the object within the
             bucket; must be scoped to ``tenant_id`` per store conventions.
+            Doubles as the reservation's idempotency key.
         payload: Raw bytes to store.
         content_type: MIME type to record for the stored object.
         tenant_id: Tenant the artifact belongs to.
         context: Free-form JSON metadata linking the artifact to its producer.
+        quota_service: Tenant quota service; defaults to a fresh
+            :class:`~backend.quotas.service.QuotaService`.
 
     Returns:
         The recorded :class:`StoredArtifact`.
+
+    Raises:
+        QuotaExceededError: If the write would exceed ``tenant_id``'s
+            storage-byte ceiling. Nothing is written.
     """
-    pointer = store.put_artifact(kind, object_key, payload, content_type=content_type)
-    return pointers.record(pointer, kind=kind, tenant_id=tenant_id, context=context)
+    quota_service = quota_service or QuotaService()
+    reservation = quota_service.reserve_storage(
+        tenant_id=tenant_id, bytes_requested=len(payload), idempotency_key=object_key
+    )
+    if not reservation.granted:
+        raise QuotaExceededError(
+            resource=QuotaResource.STORAGE_BYTES,
+            reason=QuotaDenialReason.LIMIT_EXCEEDED,
+            used=len(payload),
+            limit=quota_service.resolve_policy(tenant_id).max_storage_bytes,
+        )
+    try:
+        pointer = store.put_artifact(kind, object_key, payload, content_type=content_type)
+        stored = pointers.record(pointer, kind=kind, tenant_id=tenant_id, context=context)
+    except Exception:
+        quota_service.release_storage_reservation(reservation.reservation_id)
+        raise
+    quota_service.commit_storage_reservation(reservation.reservation_id, actual_bytes=pointer.size_bytes)
+    return stored
 
 
 __all__ = [
