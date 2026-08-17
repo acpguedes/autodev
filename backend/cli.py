@@ -30,7 +30,33 @@ def build_parser() -> argparse.ArgumentParser:
         prog="autodev",
         description="CLI estruturada para configurar e operar o AutoDev Architect localmente.",
     )
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument(
+        "--shell",
+        action="store_true",
+        help="Start the governed interactive shell (E14-S6), talking only to the Control Plane API.",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=("auto", "approval", "hybrid"),
+        default="auto",
+        help="Execution mode for --shell (E14-S3): auto (default), approval, or hybrid.",
+    )
+    parser.add_argument(
+        "--command",
+        dest="shell_command",
+        default=None,
+        help="With --shell: run one goal non-interactively and exit.",
+    )
+    parser.add_argument(
+        "--base-url",
+        dest="shell_base_url",
+        default=None,
+        help="With --shell: Control Plane API base URL (default: http://127.0.0.1:8000, or AUTODEV_SHELL_BASE_URL).",
+    )
+    # required=False (not the historical default) so `autodev --shell` needs
+    # no subcommand; main() still enforces a command when --shell is absent,
+    # preserving the prior "a subcommand is required" behavior exactly.
+    subparsers = parser.add_subparsers(dest="command", required=False)
 
     config_parser = subparsers.add_parser("config", help="Exibir ou atualizar a configuração runtime")
     config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
@@ -196,9 +222,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     Returns:
         The process exit code returned by the dispatched handler.
     """
-    _configure_cli_observability()
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.shell:
+        from backend.cli_shell import main as shell_main
+
+        shell_argv: list[str] = ["--mode", args.mode]
+        if args.shell_command:
+            shell_argv += ["--command", args.shell_command]
+        if args.shell_base_url:
+            shell_argv += ["--base-url", args.shell_base_url]
+        return shell_main(shell_argv)
+
+    _configure_cli_observability()
+    if args.command is None:
+        parser.error("a command is required (or pass --shell)")
     return int(args.handler(args))
 
 
