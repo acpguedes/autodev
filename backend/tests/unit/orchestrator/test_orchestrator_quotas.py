@@ -93,12 +93,12 @@ def test_lease_is_released_after_a_failed_run(orchestrator_service: Orchestrator
     def _boom(**_kwargs: object) -> None:
         raise RuntimeError("simulated agent pipeline failure")
 
-    orchestrator_service._execute_message_run = _boom  # type: ignore[method-assign]
+    orchestrator_service._execute_message_run = _boom  # type: ignore[method-assign,assignment]
     try:
         with pytest.raises(RuntimeError):
             orchestrator_service.handle_message(session_id, "start", tenant_id=_TENANT_ID)
     finally:
-        orchestrator_service._execute_message_run = original  # type: ignore[method-assign]
+        orchestrator_service._execute_message_run = original  # type: ignore[method-assign,assignment]
 
     recovered = orchestrator_service.handle_message(session_id, "retry", tenant_id=_TENANT_ID)
     assert recovered.status == "completed"

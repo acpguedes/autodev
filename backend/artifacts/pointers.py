@@ -455,20 +455,21 @@ def persist_artifact(
     reservation = quota_service.reserve_storage(
         tenant_id=tenant_id, bytes_requested=len(payload), idempotency_key=object_key
     )
-    if not reservation.granted:
+    if not reservation.granted or reservation.reservation_id is None:
         raise QuotaExceededError(
             resource=QuotaResource.STORAGE_BYTES,
             reason=QuotaDenialReason.LIMIT_EXCEEDED,
             used=len(payload),
             limit=quota_service.resolve_policy(tenant_id).max_storage_bytes,
         )
+    reservation_id = reservation.reservation_id
     try:
         pointer = store.put_artifact(kind, object_key, payload, content_type=content_type)
         stored = pointers.record(pointer, kind=kind, tenant_id=tenant_id, context=context)
     except Exception:
-        quota_service.release_storage_reservation(reservation.reservation_id)
+        quota_service.release_storage_reservation(reservation_id)
         raise
-    quota_service.commit_storage_reservation(reservation.reservation_id, actual_bytes=pointer.size_bytes)
+    quota_service.commit_storage_reservation(reservation_id, actual_bytes=pointer.size_bytes)
     return stored
 
 

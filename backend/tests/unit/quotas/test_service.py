@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -19,7 +20,7 @@ from backend.quotas.store import QuotaStore
 
 
 @pytest.fixture(autouse=True)
-def _fresh_event_bus() -> None:
+def _fresh_event_bus() -> Iterator[None]:
     """Isolate the process-wide Event Bus singleton across tests in this module."""
     reset_event_bus_for_tests()
     yield

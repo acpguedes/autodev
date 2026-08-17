@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 import sys
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 
 from backend.config import RuntimeConfigService
 from backend.config.settings import get_settings, reset_settings_cache
@@ -15,6 +15,9 @@ from backend.llm.factory import get_chat_model
 from backend.orchestrator.service import OrchestratorService
 from backend.persistence.database import reset_store_cache
 from backend.repository import RepositoryIntelligenceService
+
+if TYPE_CHECKING:
+    from backend.quotas.contracts import TenantQuotaPolicy
 
 
 def build_parser() -> argparse.ArgumentParser:
