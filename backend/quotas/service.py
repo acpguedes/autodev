@@ -16,9 +16,11 @@ from typing import Optional
 from backend.config.settings import Settings, get_settings
 from backend.events.runtime import emit_event
 from backend.quotas.contracts import (
+    LeaseResult,
     QuotaDenialReason,
     QuotaExceededError,
     QuotaResource,
+    ReservationResult,
     RunBudgetLimits,
     TenantQuotaPolicy,
     utc_month_window,
@@ -248,6 +250,96 @@ class QuotaService:
                     "windowKey": window_key,
                 },
             )
+
+    def acquire_run_lease(self, *, tenant_id: str, run_id: str) -> LeaseResult:
+        """Admit a run against the tenant's concurrent-run ceiling, or deny it.
+
+        Raises ``quota.exceeded`` durably on denial, mirroring
+        :meth:`record_monthly_usage`.
+
+        Args:
+            tenant_id: Tenant the run belongs to.
+            run_id: Identifier of the run requesting admission.
+
+        Returns:
+            The acquisition outcome (``granted=False`` on denial).
+        """
+        policy = self.resolve_policy(tenant_id)
+        lease = self._store.acquire_run_lease(
+            tenant_id=tenant_id,
+            run_id=run_id,
+            max_concurrent_runs=policy.max_concurrent_runs,
+            lease_seconds=self._settings.autodev_quota_run_lease_seconds,
+        )
+        if not lease.granted:
+            emit_event(
+                "quota.exceeded",
+                tenant_id=tenant_id,
+                partition_key=tenant_id,
+                data={
+                    "resource": QuotaResource.CONCURRENT_RUNS.value,
+                    "used": policy.max_concurrent_runs,
+                    "limit": policy.max_concurrent_runs,
+                    "windowKey": "",
+                },
+            )
+        return lease
+
+    def release_run_lease(self, run_id: str) -> None:
+        """Release a run's concurrency lease, freeing its tenant's slot.
+
+        Safe to call even if no lease was ever granted for ``run_id``.
+
+        Args:
+            run_id: Identifier of the run to release.
+        """
+        self._store.release_run_lease(run_id)
+
+    def reserve_storage(
+        self, *, tenant_id: str, bytes_requested: int, idempotency_key: str
+    ) -> ReservationResult:
+        """Reserve storage bytes against the tenant's storage ceiling, or deny it.
+
+        Raises ``quota.exceeded`` durably on denial, mirroring
+        :meth:`record_monthly_usage`.
+
+        Args:
+            tenant_id: Tenant the reservation belongs to.
+            bytes_requested: Bytes to reserve.
+            idempotency_key: Caller-supplied key; a retry with the same key
+                returns the original outcome rather than double-reserving.
+
+        Returns:
+            The reservation outcome (``granted=False`` on denial).
+        """
+        policy = self.resolve_policy(tenant_id)
+        result = self._store.reserve_storage(
+            tenant_id=tenant_id,
+            bytes_requested=bytes_requested,
+            idempotency_key=idempotency_key,
+            max_storage_bytes=policy.max_storage_bytes,
+        )
+        if not result.granted:
+            emit_event(
+                "quota.exceeded",
+                tenant_id=tenant_id,
+                partition_key=tenant_id,
+                data={
+                    "resource": QuotaResource.STORAGE_BYTES.value,
+                    "used": policy.max_storage_bytes,
+                    "limit": policy.max_storage_bytes,
+                    "windowKey": "",
+                },
+            )
+        return result
+
+    def commit_storage_reservation(self, reservation_id: str, *, actual_bytes: int) -> None:
+        """Settle a reservation to its actual byte size on a successful write."""
+        self._store.commit_storage_reservation(reservation_id, actual_bytes=actual_bytes)
+
+    def release_storage_reservation(self, reservation_id: str) -> None:
+        """Release a reservation that will never be committed (failed write)."""
+        self._store.release_storage_reservation(reservation_id)
 
 
 __all__ = ["QuotaPolicyMissingError", "QuotaService", "TenantUsageSnapshot"]

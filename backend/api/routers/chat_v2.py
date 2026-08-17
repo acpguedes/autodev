@@ -34,6 +34,7 @@ from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
 from backend.api.routers.sessions_v2 import AgentExecutionV2, HistoryItemV2, RunStepV2, get_orchestrator_v2
 from backend.api.v2_common import SCHEMA_VERSION_V2, PageMetaV2, PaginationParams, paginate, v2_error
 from backend.orchestrator.service import OrchestratorRun, OrchestratorService, RunSummary
+from backend.quotas.contracts import QuotaExceededError
 
 router = APIRouter(prefix="/v2", dependencies=[Depends(require_v2_principal)])
 
@@ -198,12 +199,15 @@ def create_turn_v2(
 
     Raises:
         HTTPException: 404 if ``session_id`` does not exist for the
-            caller's tenant.
+            caller's tenant; 429 if the tenant is at its concurrent-run
+            quota (ADR-019).
     """
     try:
         run = orchestrator.handle_message(session_id, request.message, tenant_id=principal.tenant_id)
     except KeyError as exc:
         v2_error(404, str(exc))
+    except QuotaExceededError as exc:
+        v2_error(429, str(exc))
     return _to_turn_v2_from_run(run, request.message)
 
 

@@ -124,6 +124,33 @@ class TestCreateTurnV2:
         assert isinstance(detail, list)
         assert any(item.get("loc", [])[-1] == "message" for item in detail)
 
+    def test_create_turn_at_the_tenant_concurrency_ceiling_returns_429(self, client: TestClient) -> None:
+        """A tenant already at its concurrent-run quota gets 429, not a new run (ADR-019)."""
+        from backend.persistence.tenancy import DEFAULT_TENANT_ID
+        from backend.quotas.contracts import RunBudgetLimits, TenantQuotaPolicy
+        from backend.quotas.service import QuotaService
+
+        quota_service = QuotaService()
+        quota_service.set_policy(
+            TenantQuotaPolicy(
+                tenant_id=DEFAULT_TENANT_ID,
+                max_concurrent_runs=1,
+                max_storage_bytes=10_000_000,
+                monthly_token_limit=1_000_000,
+                monthly_cost_microusd=1_000_000,
+                requests_per_second=10,
+                default_run_budget=RunBudgetLimits(),
+            )
+        )
+        lease = quota_service.acquire_run_lease(tenant_id=DEFAULT_TENANT_ID, run_id="already-running")
+        assert lease.granted
+
+        session = _create_session(client)
+        response = client.post(f"/v2/sessions/{session['session_id']}/turns", json={"message": "hi"})
+        assert response.status_code == 429
+
+        quota_service.release_run_lease("already-running")
+
 
 class TestGetTurnV2:
     """``GET /v2/turns/{turnId}``."""

@@ -27,6 +27,7 @@ from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
 from backend.api.v2_common import SCHEMA_VERSION_V2, PageMetaV2, PaginationParams, paginate, v2_error
 from backend.config.runtime import get_runtime_config_service
+from backend.quotas.contracts import QuotaExceededError
 from backend.orchestrator.service import (
     ExecutionPlan,
     OrchestratorConfig,
@@ -412,7 +413,8 @@ def execute_execution_plan_v2(
 
     Raises:
         HTTPException: 404 if ``session_id`` does not exist for the caller's
-            tenant; 400 if the session has no executable tasks.
+            tenant; 400 if the session has no executable tasks; 429 if the
+            tenant is at its concurrent-run quota (ADR-019).
     """
     try:
         run = orchestrator.execute_plan(session_id, tenant_id=principal.tenant_id)
@@ -420,6 +422,8 @@ def execute_execution_plan_v2(
         v2_error(404, str(exc))
     except ValueError as exc:
         v2_error(400, str(exc))
+    except QuotaExceededError as exc:
+        v2_error(429, str(exc))
     return _to_executed_run_v2(run)
 
 

@@ -26,6 +26,7 @@ from pydantic import BaseModel
 
 from backend.api.authorization import require_v2_principal, requires_scope
 from backend.auth.contracts import PrincipalV2
+from backend.quotas.contracts import QuotaExceededError
 
 logger = logging.getLogger(__name__)
 
@@ -210,12 +211,15 @@ def _run_fallback(
 
     Raises:
         HTTPException: With status 404 if the session does not exist for
-            ``tenant_id``.
+            ``tenant_id``; 429 if the tenant is at its concurrent-run quota
+            (ADR-019).
     """
     try:
         run = orchestrator.handle_message(session_id, message, tenant_id=tenant_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except QuotaExceededError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     return DynamicChatResponse(
         run_id=run.run_id,
         session_id=run.session_id,

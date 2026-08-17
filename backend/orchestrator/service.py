@@ -40,6 +40,8 @@ from backend.events.runtime import emit_event
 from backend.persistence import DurableStore, get_store
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
 from backend.observability.tracing import trace_run, trace_run_step
+from backend.quotas.contracts import QuotaDenialReason, QuotaExceededError, QuotaResource
+from backend.quotas.service import QuotaService
 
 
 @dataclass(slots=True)
@@ -258,6 +260,7 @@ class OrchestratorService:
         agents: Mapping[str, Agent] | None = None,
         store: DurableStore | None = None,
         project_root: Path | None = None,
+        quota_service: QuotaService | None = None,
     ) -> None:
         """Initialize the service, wiring default agents and the durable store.
 
@@ -266,6 +269,10 @@ class OrchestratorService:
             agents: Additional or overriding agents, merged over the defaults.
             store: Durable store to use; defaults to :func:`backend.persistence.get_store`.
             project_root: Repository root passed to agents that need filesystem access.
+            quota_service: Tenant quota/budget service (E11-S3, ADR-019); defaults
+                to a fresh :class:`~backend.quotas.service.QuotaService`. Governs
+                the per-tenant concurrent-run admission control in
+                :meth:`handle_message`/:meth:`execute_plan`.
         """
         self._config = config or OrchestratorConfig()
         self._project_root = project_root
@@ -273,7 +280,29 @@ class OrchestratorService:
         if agents:
             self._agents.update(agents)
         self._store = store or get_store()
+        self._quota_service = quota_service or QuotaService()
         self._graph = self._compile_graph()
+
+    def _acquire_run_lease(self, *, tenant_id: str, run_id: str) -> None:
+        """Admit a new run against the tenant's concurrent-run ceiling, or fail closed.
+
+        Args:
+            tenant_id: Tenant the run belongs to.
+            run_id: Identifier already generated for the run about to start.
+
+        Raises:
+            QuotaExceededError: If the tenant is already at its concurrent-run
+                limit. No run record is created and no lease is held.
+        """
+        lease = self._quota_service.acquire_run_lease(tenant_id=tenant_id, run_id=run_id)
+        if not lease.granted:
+            policy = self._quota_service.resolve_policy(tenant_id)
+            raise QuotaExceededError(
+                resource=QuotaResource.CONCURRENT_RUNS,
+                reason=QuotaDenialReason.LEASE_UNAVAILABLE,
+                used=policy.max_concurrent_runs,
+                limit=policy.max_concurrent_runs,
+            )
 
     def describe_agent_contracts(self) -> Dict[str, Dict[str, Any]]:
         """Return JSON-schema contracts for machine-readable agent metadata."""
@@ -339,35 +368,38 @@ class OrchestratorService:
 
         run_type = self._infer_run_type(goal=session_record["goal"], message=message)
         run_id = str(uuid4())
-
-        self._store.create_run(
-            run_id=run_id,
-            session_id=session_id,
-            status=RunStatus.RUNNING,
-            run_type=run_type,
-            current_state="starting",
-            trigger_message=message,
-            results=[],
-            steps=[],
-            tenant_id=tenant_id,
-        )
-        flow_id = f"orchestrator.{run_type}"
-        with trace_run(
-            run_id=run_id,
-            tenant_id=tenant_id,
-            flow_id=flow_id,
-        ) as run_trace:
-            result = self._execute_message_run(
-                session_record=session_record,
-                session_id=session_id,
-                message=message,
+        self._acquire_run_lease(tenant_id=tenant_id, run_id=run_id)
+        try:
+            self._store.create_run(
                 run_id=run_id,
+                session_id=session_id,
+                status=RunStatus.RUNNING,
                 run_type=run_type,
-                flow_id=flow_id,
+                current_state="starting",
+                trigger_message=message,
+                results=[],
+                steps=[],
                 tenant_id=tenant_id,
             )
-            run_trace.finish(status="completed")
-            return result
+            flow_id = f"orchestrator.{run_type}"
+            with trace_run(
+                run_id=run_id,
+                tenant_id=tenant_id,
+                flow_id=flow_id,
+            ) as run_trace:
+                result = self._execute_message_run(
+                    session_record=session_record,
+                    session_id=session_id,
+                    message=message,
+                    run_id=run_id,
+                    run_type=run_type,
+                    flow_id=flow_id,
+                    tenant_id=tenant_id,
+                )
+                run_trace.finish(status="completed")
+                return result
+        finally:
+            self._quota_service.release_run_lease(run_id)
 
     def _execute_message_run(
         self,
@@ -580,6 +612,36 @@ class OrchestratorService:
             )
 
         run_id = str(uuid4())
+        self._acquire_run_lease(tenant_id=tenant_id, run_id=run_id)
+        try:
+            return self._execute_plan_run(
+                execution_plan=execution_plan,
+                session_id=session_id,
+                run_id=run_id,
+                tenant_id=tenant_id,
+            )
+        finally:
+            self._quota_service.release_run_lease(run_id)
+
+    def _execute_plan_run(
+        self,
+        *,
+        execution_plan: ExecutionPlan,
+        session_id: str,
+        run_id: str,
+        tenant_id: str,
+    ) -> OrchestratorRun:
+        """Execute one already-admitted derived plan and record the run.
+
+        Args:
+            execution_plan: The already-derived, non-empty execution plan.
+            session_id: Session the plan belongs to.
+            run_id: Already-leased run identifier.
+            tenant_id: Tenant this run belongs to.
+
+        Returns:
+            The completed orchestration run.
+        """
         self._store.create_run(
             run_id=run_id,
             session_id=session_id,
