@@ -6,7 +6,7 @@ budgets, and end-to-end traces"). S1-S4 (executor, policy engine, execution
 modes, sandbox runners) can start once E3's core and E9-S1 land, without
 waiting on all of E11; S5 (Web UX) additionally depends on E10; S6-S7
 (shell/CLI) can proceed in parallel once S3 lands.
-**Status:** Not started · **Stories:** 0/7 complete
+**Status:** In progress · **Stories:** 1/7 complete (E14-S1 done, see below)
 **Depends on:** E2, E3, E9-S1, E11-S4; environment layer provided by E32
 (Beta cut of the isolated execution environment)
 **Enables:** the Beta exit criterion's real execution flow; consumed by E10
@@ -42,12 +42,21 @@ and can grant persistent, revocable dynamic permissions.
 
 ## Stories
 
-### E14-S1 — Real Task Executor
+### E14-S1 — Real Task Executor — **Complete** (2026-08-17)
 
 Subtasks:
-- `E14-S1-T1`: `ExecutionAction` contract (create_file/edit_file/apply_patch/run_command/run_validation) and `ExecutionResult` contract (stdout/stderr/exit_code/diff/artifacts).
-- `E14-S1-T2`: executor that maps an `ExecutionTask`/Flow step to one or more `ExecutionAction`s and dispatches them to the appropriate runner, replacing `execute_plan`'s simulated loop.
-- `E14-S1-T3`: persistence of results linked to run_id/step_id/task_id and `execution.action.started`/`.completed`/`.failed` events.
+- `E14-S1-T1`: `ExecutionAction` contract (create_file/edit_file/apply_patch/run_command/run_validation) and `ExecutionResult` contract (stdout/stderr/exit_code/diff/artifacts). **Done** — `backend/execution/contracts.py`.
+- `E14-S1-T2`: executor that maps an `ExecutionTask`/Flow step to one or more `ExecutionAction`s and dispatches them to the appropriate runner, replacing `execute_plan`'s simulated loop. **Done** — `backend/execution/executor.py` (`TaskExecutor`), `backend/execution/runner.py` (`InProcessActionRunner`, reusing the E0 patch engine and the v1 `SandboxRunner` precursor per ADR-021); wired into `OrchestratorService._execute_plan_run`.
+- `E14-S1-T3`: persistence of results linked to run_id/step_id/task_id and `execution.action.started`/`.completed`/`.failed` events. **Done** — results ride in `AgentExecution.metadata["actions"]` (persisted via the existing `run.results` column); three additive events in `backend/events/catalog.py` (37 → 40 types).
+
+RFC-009 (`docs/v2_platform/decisions/RFC-009-execution-action-contract.md`) and
+ADR-021 (`docs/v2_platform/decisions/ADR-021-real-task-executor-contracts.md`)
+were filed before implementation, per the epic exit checklist. Full design
+notes: `docs/execution/engine.md`. Scope boundary: the task → action mapping
+is a deliberately simple category heuristic (current agents produce
+free-text descriptions, not structured file/command data); no
+permission/policy engine (E14-S2), no execution modes (E14-S3), and no
+hardened per-action-type sandboxing (E14-S4) yet.
 
 | Criterion | Detail |
 | --- | --- |

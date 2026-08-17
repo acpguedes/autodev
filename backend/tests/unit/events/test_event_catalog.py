@@ -31,9 +31,10 @@ def test_catalog_covers_all_reference_types_with_valid_names() -> None:
     5 E16-S2 ``plan.step.*`` + 2 E16-S3 ``patch.*`` +
     2 E17-S2 ``plan.step.added``/``plan.step.removed`` +
     2 E11-S2 ``access.request.allowed``/``access.request.denied`` +
-    2 E11-S3 ``quota.warning``/``quota.exceeded`` = 37 types.
+    2 E11-S3 ``quota.warning``/``quota.exceeded`` +
+    3 E14-S1 ``execution.action.started``/``.completed``/``.failed`` = 40 types.
     """
-    assert len(EVENT_CATALOG) == 37
+    assert len(EVENT_CATALOG) == 40
     for name, definition in EVENT_CATALOG.items():
         assert name == definition.name
         assert _NAME_RE.fullmatch(name)
