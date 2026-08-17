@@ -55,7 +55,7 @@ generation is in the **Agent Framework (v2)** section further down.
 | Typed metadata contracts | `default` | `backend/agents/contracts.py`; `GET /agents/contracts`; fallback keeps output machine-readable |
 | Specialized agents (security, refactor, docs) | `default` | `backend/agents/{security,refactor,docs}/`; discoverable but not in default `agent_order` |
 | Dynamic multi-agent orchestration | `optional` | `AUTODEV_DYNAMIC_ORCH=1`; `POST /chat/dynamic`; `backend/orchestrator/routing.py` + `graphs.py` |
-| Supervisor / feedback loop | `stub` | `SupervisorPolicy` in `backend/orchestrator/routing.py` is defined but not wired into the execution path |
+| Supervisor / feedback loop | `stub` | `SupervisorPolicy` (`backend/orchestrator/routing.py`) is **superseded** by E5's policy-driven Router/Selector (`backend/routing/`) and will not be wired — it is a sequential cursor that ignores run state, with no cost policy, capability matching, or evaluation feedback. The Router/Selector that replaces it is implemented but is itself not yet wired into `POST /chat/dynamic`, so the adaptive supervisor loop (validator-failure branch-back, bounded iteration) still does not exist in any path |
 | Agent tool-use loop (read/edit/run) | `planned` | Agents are pure prompt→text; no tool bindings; tracked as Unit 25 in `mvp_refactor_plan.md` |
 
 ---

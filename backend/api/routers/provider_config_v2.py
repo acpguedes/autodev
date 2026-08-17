@@ -14,10 +14,15 @@ story's explicit "do not over-engineer" guidance; a local provider (stub,
 ollama) is always considered configured, while a remote provider (e.g.
 openai) is considered configured once it has an API key or base URL.
 
-Known limitation: like ``/v2/config``, this endpoint's ``PUT`` handler does
-not clear ``backend.api.main``'s process-wide caches, because routers must
-not import from ``main`` (see ``backend/api/routers/__init__.py``'s
+The ``PUT`` handler invalidates the caches that snapshot provider settings:
+the memoized LangChain chat model and the composed model gateway. Both live
+outside ``backend.api.main``, so clearing them respects the rule that routers
+must not import from ``main`` (see ``backend/api/routers/__init__.py``'s
 auto-discovery convention).
+
+Known limitation: ``get_orchestrator`` and ``get_repository_intelligence`` do
+live in ``main`` and are therefore still not cleared here — only the legacy
+root-relative ``PUT /config`` clears those.
 """
 
 from __future__ import annotations
@@ -29,6 +34,8 @@ from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import require_v2_principal
 from backend.api.v2_common import SCHEMA_VERSION_V2
 from backend.config.runtime import LLMSettings, RuntimeConfigService, get_runtime_config_service
+from backend.llm.composition import reset_model_composition_cache
+from backend.llm.factory import get_chat_model
 
 router = APIRouter(prefix="/v2/provider-config", tags=["provider-config"], dependencies=[Depends(require_v2_principal)])
 
@@ -94,6 +101,11 @@ def update_provider_config_v2(
     redaction placeholder for ``api_key`` preserves the previously stored
     secret (:meth:`RuntimeConfigService.update`).
 
+    Applying the settings is not enough on its own: both the LangChain chat
+    model and the composed model gateway are memoized against the previous
+    provider, so they are invalidated here. Without that, an agent run started
+    after this call would still use the old provider and model.
+
     Args:
         request: The new LLM provider settings to persist.
         config_service: Shared runtime config service.
@@ -105,6 +117,8 @@ def update_provider_config_v2(
     merged = current.model_copy(update={"llm": request.llm})
     saved_config = config_service.update(merged)
     config_service.apply_to_environment(saved_config)
+    get_chat_model.cache_clear()
+    reset_model_composition_cache()
     return ProviderConfigResponseV2(llm=_redacted_llm(config_service))
 
 

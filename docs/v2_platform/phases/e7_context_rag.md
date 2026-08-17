@@ -104,17 +104,71 @@ Subtasks:
 ## Epic exit checklist
 
 - [ ] All 4 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
-      story-specific DoD above. **Partially met** — implemented and tested, but
-      the following story-specific DoD items are explicitly deferred (not
-      done): E7-S1's "indexing traces emitted" (no OTel spans added to
-      `backend/repository/indexing.py` in this pass) and "language-support
-      docs published"; E7-S2's "Recall/latency benchmark attached" (ADR-011
-      reasons about the HNSW-vs-IVFFlat trade-off but does not measure it —
-      see the epic scope notes: formal CNF benchmark suites were explicitly
-      out of scope for this implementation); E7-S3's "Recall/latency metrics
-      in the Evaluation Service" and a dedicated fusion-configuration doc
-      page; E7-S4's "per-step context traces" (composer failures are logged,
-      not traced via OTel spans).
+      story-specific DoD above. **Partially met.** Two passes closed the
+      deferred items: **2026-08-10** on this branch (PR #99) and **2026-08-17**
+      on `epic/gap-closure-alpha` (PR #100), which duplicated part of the same
+      work before this branch merged. Where the two overlapped -- indexing and
+      context tracing -- the version already merged to `main` was kept; where
+      they were complementary, both landed. The reconciliation is recorded in
+      the merge commit on this branch.
+
+  **Closed:**
+  - E7-S1 "indexing traces emitted" — `autodev.repository.index` / `.reindex`
+    spans with file/chunk counts (`trace_indexing` in
+    `backend/observability/tracing.py`). Counts only; repository and file paths
+    never reach a span.
+  - E7-S4 "per-step context traces" — `autodev.context.compose` parenting one
+    `autodev.context.provider` span per provider. PR #99 argued child spans
+    could not be emitted honestly, because a span opened around
+    `future.result()` times this thread's wait rather than the provider, and a
+    timed-out provider could never be closed. That objection is correct for
+    that design and is answered by a different one: the span is started **on
+    the worker thread** with the composition's OpenTelemetry context attached,
+    so it measures the provider's real execution and closes honestly even after
+    the composer has stopped waiting. Failures carry the exception *type*, never
+    its message (provider errors routinely embed DSNs with credentials).
+    Evidence: `backend/tests/unit/observability/test_context_indexing_tracing.py`.
+  - E7-S3 "fusion configuration" — `retrieve()` and `GET /v2/context/retrieve`
+    now accept `fusion_k` / `lexical_weight` / `vector_weight` and echo the
+    effective configuration (PR #99). Before this, `reciprocal_rank_fusion`
+    accepted `k`/`weights` but no caller forwarded them, so there was no
+    configuration surface to document at all. Documented in
+    [`docs/context/retrieval.md`](../../context/retrieval.md), with
+    `test_retrieval_fusion_config.py` covering it.
+  - E7-S1 "language-support docs published" — `docs/context/retrieval.md`
+    § Language support, including the procedure for registering a grammar and
+    the `RetrievalFilters.language` no-op limit. **Scope note:** this closes the
+    *documentation* item only. The story's CF ("Indexes >= 10 languages") is
+    unmet **in code** — `_LANGUAGE_REGISTRY` and `_INDEXED_EXTENSIONS` cover
+    Python alone — so the checklist box above stays unticked. Adding languages
+    is its own story, not a documentation gap.
+  - E7-S2 "Recall/latency benchmark attached" — **harness only.**
+    `backend/repository/retrieval/benchmark.py` (recall@k, MRR, nearest-rank
+    p50/p95) plus the `scripts/benchmark_retrieval.py` CLI with
+    `--max-p95-ms` / `--min-recall` gating. The metric definitions are
+    unit-tested offline; **no numbers have been measured** — that needs a live
+    PostgreSQL + pgvector instance and a curated label set, and every E7 test
+    monkeypatches the database, so no honest measurement exists yet.
+
+  **Still open:**
+  - E7-S1 CF "Indexes >= 10 languages" — a code gap, see the scope note above.
+  - E7-S3 "Recall/latency metrics in the Evaluation Service" — the benchmark is
+    a standalone CLI and `backend/evals/` carries nothing retrieval-shaped.
+    Closing it needs an `EvalSpec` plus a retrieval-metrics evaluator kind so
+    retrieval quality reaches `ScoreSnapshot`s alongside agent evals. That is a
+    new surface, not wiring.
+
+  **Adjacent finding (not an E7 DoD item), 2026-08-17.** The tracing work
+  surfaced a real contract violation in `ContextComposer.compose`: its
+  docstring promises a timed-out provider "never blocks the other providers'
+  results", but the surrounding `with ThreadPoolExecutor(...)` calls
+  `shutdown(wait=True)` on exit, so `compose()` itself does not return until
+  every worker finishes — a provider hanging for 30 s stalls the caller for
+  30 s despite a 5 s timeout. Pinned (not fixed) by
+  `test_timed_out_provider_span_records_its_real_duration`. Fixing it means
+  managing the executor manually with `shutdown(wait=False,
+  cancel_futures=True)` and owning the thread-leak trade-off; it belongs in an
+  E7 follow-up or E26.
 - [x] Contract tests green for the Context Provider, Retriever, and EmbeddingProvider
       extension points (`test_context_providers.py`, `test_retrieval_retriever.py`,
       `test_context_api.py`, `test_embeddings_pgvector.py`).

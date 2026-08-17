@@ -50,6 +50,29 @@ PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ),
 )
 
+#: Inline marker that suppresses findings on the line carrying it.
+#:
+#: Security tests need credential-shaped fixtures: a test proving that a
+#: provider's ``401 ... api_key=sk-... rejected`` message never reaches a span
+#: is only meaningful if the fixture actually looks like a key. Without a
+#: suppression mechanism those tests turn the gate permanently red, and a gate
+#: that always fails stops being a signal — which is exactly what happened
+#: between 2026-08-07 and 2026-08-17.
+#:
+#: The marker is deliberately line-scoped rather than file- or directory-scoped:
+#: excluding ``backend/tests/`` wholesale would also hide a real credential
+#: committed in a fixture. Every suppression stays visible in the diff that
+#: introduces it and greppable afterwards
+#: (``grep -rn "pragma: allowlist secret"``). The convention matches
+#: ``detect-secrets`` so the annotations survive a future migration to it.
+ALLOWLIST_MARKER = "pragma: allowlist secret"
+
+#: Files where :data:`ALLOWLIST_MARKER` is treated as ordinary text rather than
+#: as a suppression. These are the scanner and its own tests, which must write
+#: the marker literally; honoring it there would let this module silence
+#: findings in itself.
+_MARKER_EXEMPT_FILES = frozenset({"secrets.py", "test_secrets.py"})
+
 EXCLUDED_DIRS = {
     ".git",
     ".mypy_cache",
@@ -176,15 +199,23 @@ def _read_text(path: Path) -> str | None:
 def _scan_text(path: Path, text: str) -> list[SecretFinding]:
     """Scan a file's text content, line by line, against all secret patterns.
 
+    A line containing :data:`ALLOWLIST_MARKER` is skipped entirely. The scanner
+    itself is exempt from that rule, so the marker's own definition and the
+    tests asserting how it behaves cannot silently suppress a real finding in
+    those files.
+
     Args:
         path: Path the text was read from, recorded on findings.
         text: File content to scan.
 
     Returns:
-        All findings in the file.
+        All findings in the file, excluding allowlisted lines.
     """
     findings: list[SecretFinding] = []
+    honor_marker = path.name not in _MARKER_EXEMPT_FILES
     for line_no, line in enumerate(text.splitlines(), start=1):
+        if honor_marker and ALLOWLIST_MARKER in line:
+            continue
         for kind, pattern in PATTERNS:
             for match in pattern.finditer(line):
                 findings.append(
@@ -237,4 +268,4 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 1
 
 
-__all__ = ["SecretFinding", "main", "scan_path"]
+__all__ = ["ALLOWLIST_MARKER", "SecretFinding", "main", "scan_path"]

@@ -463,6 +463,160 @@ def record_decision(
             )
 
 
+@dataclass
+class IndexingTrace:
+    """Mutable indexing measurements finalized when the span closes.
+
+    Attributes:
+        file_count: Number of files the operation walked.
+        chunks_written: Number of chunk rows inserted or updated.
+        chunks_deleted: Number of chunk rows removed for vanished files.
+    """
+
+    file_count: int = 0
+    chunks_written: int = 0
+    chunks_deleted: int = 0
+
+
+@contextmanager
+def trace_indexing(operation: str, *, tenant_id: str) -> Iterator[IndexingTrace]:
+    """Trace a repository indexing operation (E7-S1 DoD).
+
+    Records counts only. File paths and source content never reach the span:
+    a repository path can itself be sensitive, and chunk content certainly is.
+
+    Args:
+        operation: Short operation name, e.g. ``"index"`` or ``"reindex"``.
+        tenant_id: Tenant the chunks are scoped to.
+
+    Yields:
+        Mutable counters finalized as span attributes when the block exits.
+    """
+    measurements = IndexingTrace()
+    with get_tracer().start_as_current_span(f"autodev.repository.{operation}") as span:
+        try:
+            yield measurements
+        finally:
+            span.set_attributes(
+                {
+                    "autodev.tenant_id": tenant_id,
+                    "autodev.index.operation": operation,
+                    "autodev.index.file_count": measurements.file_count,
+                    "autodev.index.chunks_written": measurements.chunks_written,
+                    "autodev.index.chunks_deleted": measurements.chunks_deleted,
+                }
+            )
+
+
+@dataclass
+class ContextProviderTrace:
+    """Mutable context-provider measurements finalized when the span closes.
+
+    Attributes:
+        item_count: Number of context items the provider returned.
+        status: ``"ok"`` or ``"error"``.
+        error_type: Exception class name when ``status`` is ``"error"``.
+    """
+
+    item_count: int = 0
+    status: str = "ok"
+    error_type: str = ""
+
+
+@contextmanager
+def trace_context_provider(
+    *,
+    provider_id: str,
+    weight: float,
+) -> Iterator[ContextProviderTrace]:
+    """Trace one context provider's execution (E7-S4 DoD).
+
+    The span covers the provider's real execution, so its duration is usable
+    for diagnosing a slow provider even when the composer stopped waiting for
+    it. Only the provider id, its configured weight, and result counts are
+    recorded -- never retrieved content.
+
+    Args:
+        provider_id: Identifier of the provider being run.
+        weight: Composition weight configured for this provider.
+
+    Yields:
+        Mutable measurements finalized as span attributes.
+    """
+    measurements = ContextProviderTrace()
+    with get_tracer().start_as_current_span(
+        "autodev.context.provider",
+        # Provider exceptions may embed backend URLs or credentials; the span
+        # carries the exception type, never its message.
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
+        try:
+            yield measurements
+        except BaseException as exc:
+            measurements.status = "error"
+            measurements.error_type = type(exc).__name__
+            raise
+        finally:
+            span.set_attributes(
+                {
+                    "autodev.context.provider_id": provider_id,
+                    "autodev.context.weight": weight,
+                    "autodev.context.item_count": measurements.item_count,
+                    "autodev.context.status": measurements.status,
+                    "autodev.context.error_type": measurements.error_type,
+                }
+            )
+            if measurements.status == "error":
+                span.set_status(Status(StatusCode.ERROR, measurements.error_type))
+
+
+@dataclass
+class ContextCompositionTrace:
+    """Mutable composition measurements finalized when the span closes.
+
+    Attributes:
+        item_count: Number of items returned after dedup, ordering, and limit.
+        failed_provider_count: Providers that raised or timed out and were
+            dropped from the composed context.
+    """
+
+    item_count: int = 0
+    failed_provider_count: int = 0
+
+
+@contextmanager
+def trace_context_composition(
+    *,
+    provider_count: int,
+) -> Iterator[ContextCompositionTrace]:
+    """Trace a full context composition pass (E7-S4 DoD).
+
+    Parents the per-provider spans emitted by :func:`trace_context_provider`,
+    so a step's context assembly reads as one subtree.
+
+    Args:
+        provider_count: Number of providers configured for this composition.
+
+    Yields:
+        Mutable measurements finalized as span attributes.
+    """
+    measurements = ContextCompositionTrace()
+    with get_tracer().start_as_current_span("autodev.context.compose") as span:
+        try:
+            yield measurements
+        finally:
+            span.set_attributes(
+                {
+                    "autodev.context.provider_count": provider_count,
+                    "autodev.context.item_count": measurements.item_count,
+                    "autodev.context.failed_provider_count": (
+                        measurements.failed_provider_count
+                    ),
+                }
+            )
+
+
 def model_call_span_attributes(
     *,
     agent_id: str,
@@ -689,6 +843,9 @@ def trace_model_call(
 
 __all__ = [
     "MODEL_ERROR_CODES",
+    "ContextCompositionTrace",
+    "ContextProviderTrace",
+    "IndexingTrace",
     "InMemorySpanExporter",
     "RunTrace",
     "StepTrace",
@@ -697,6 +854,9 @@ __all__ = [
     "model_call_span_attributes",
     "record_decision",
     "step_span_attributes",
+    "trace_context_composition",
+    "trace_context_provider",
+    "trace_indexing",
     "trace_model_call",
     "trace_dependency",
     "trace_run",

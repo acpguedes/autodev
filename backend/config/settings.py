@@ -84,9 +84,14 @@ class Settings(BaseSettings):
 
     # --- LLM ---
     llm_provider: str = "stub"
-    # Global default model for the provider-neutral gateway (E2-S6). Empty means
-    # no global default: agents must then select a model, or the run fails
-    # explicitly rather than silently picking one.
+    # Environment-only override of the global default model for the
+    # provider-neutral gateway (E2-S6), read by
+    # ``backend.llm.composition.get_global_model_config``. The primary source is
+    # ``RuntimeConfig.llm.model``, which ``PUT /v2/provider-config`` owns; this
+    # variable wins when set. The override is safe because
+    # ``RuntimeConfigService.apply_to_environment`` exports the configured model
+    # as ``OPENAI_MODEL`` and never as ``LLM_MODEL``, so an API update cannot
+    # clobber it. Empty (the default) means "defer to the runtime config".
     llm_model: str = ""
     openai_api_key: str = ""
     openai_model: str = "gpt-4o-mini"

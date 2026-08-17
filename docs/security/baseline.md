@@ -32,6 +32,35 @@ test caches.
 
 The backend CI workflow runs the same scanner on every push and pull request.
 
+### Allowlisting an intentional fixture
+
+Some tests need credential-shaped values on purpose — proving that a provider's
+`401 ... api_key=sk-... rejected` message never reaches a span is only
+meaningful if the fixture actually looks like a key. Suppress those with an
+inline marker on the same line:
+
+```python
+raise VendorError("401 Unauthorized: api_key=sk-example... rejected")  # pragma: allowlist secret
+```
+
+Rules and rationale:
+
+- **The marker is line-scoped**, never file- or directory-scoped. Excluding
+  `backend/tests/` wholesale would also hide a real credential committed in a
+  fixture, which is the failure mode the gate exists to prevent.
+- **Every suppression is visible and auditable.** It appears in the diff that
+  introduces it and stays greppable:
+  `grep -rn "pragma: allowlist secret"`. Treat a new one in review as a claim
+  that needs justifying, not as boilerplate.
+- **The scanner cannot allowlist itself.** `backend/security/secrets.py` and
+  its test module treat the marker as ordinary text, so neither can use it to
+  hide a finding in itself.
+- The convention matches [`detect-secrets`](https://github.com/Yelp/detect-secrets),
+  so the annotations survive a future migration to it.
+
+Use it only for values that are provably not real credentials. A value that
+*might* be live belongs in an environment variable, never in the repository.
+
 ## SCA / CVE and License Policy (tightened E11-S4)
 
 CI uses Trivy filesystem scanning as the software composition analysis gate.

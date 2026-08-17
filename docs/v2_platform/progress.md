@@ -7,7 +7,19 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-05 (**E2 complete 6/6** — E2-S6 delivers the provider-neutral model gateway: agents select models via additive schema 2.1, precedence is execution override → agent manifest → global `LLM_MODEL`, and capability checks, governed fallback, call/token/cost ceilings, and telemetry are enforced by AutoDev-owned contracts (ADR-016). Public configuration and tested limitations: `docs/agents/model_gateway.md`. **Caveat:** the story branch was not reviewed end to end; the review loop was stopped by explicit decision after five fix rounds — see `handoffs/e2_s6_model_gateway.md`.) Previous entry: 2026-08-05 (**E2-S6 corrective story in progress — E2 temporarily 5/6**: ADR-016 selects an AutoDev-owned provider-neutral model gateway boundary; immutable contracts and additive validated 2.1 agent model configuration are landing without changing 2.0 manifests. Previous entry: **Planning-only: added the v2.3 Platform Excellence wave — epics E36-E40** for document authority + SDD operating model, context-independent harness/looping excellence, SOTA evidence + capability benchmark, product modes + agentic security + minimum FinOps, and architecture fitness + local-first degradation. Previous entry: **Beta hardening wave planned — epics E32–E35
+**Last updated:** 2026-08-17 (**Gap-closure pass, no new epic** — branch
+`epic/gap-closure-alpha`. Closed the E17 S1↔S4 reopen-as-chat fast-follow, four
+of E7's five deferred story-DoD items (indexing + context spans, language and
+fusion docs, a retrieval recall/latency benchmark harness), and walked the
+**v2.0-alpha wave gate**, which now has named evidence on all five criteria and
+**is met**. Reconciled two tracker lies: the E2 phase doc still read "In
+Progress 5/6" after E2-S6 merged, and **E11 was tracked as `Not started 0/4`
+while S1/S2/S4 were already merged on its epic branch** (3/4, not on `main`).
+Three open defects recorded in the doc-drift ledger, all needing a decision
+rather than a quiet fix: the plugin import sandbox denying transitive host
+imports (D2), `ContextComposer.compose` blocking past its own timeout (D3), and
+the E11 branch state (D1). Previous entry: 2026-08-05 (**E2 complete 6/6** —
+E2-S6 delivers the provider-neutral model gateway: agents select models via additive schema 2.1, precedence is execution override → agent manifest → global `LLM_MODEL`, and capability checks, governed fallback, call/token/cost ceilings, and telemetry are enforced by AutoDev-owned contracts (ADR-016). Public configuration and tested limitations: `docs/agents/model_gateway.md`. **Caveat:** the story branch was not reviewed end to end; the review loop was stopped by explicit decision after five fix rounds — see `handoffs/e2_s6_model_gateway.md`.) Previous entry: 2026-08-05 (**E2-S6 corrective story in progress — E2 temporarily 5/6**: ADR-016 selects an AutoDev-owned provider-neutral model gateway boundary; immutable contracts and additive validated 2.1 agent model configuration are landing without changing 2.0 manifests. Previous entry: **Planning-only: added the v2.3 Platform Excellence wave — epics E36-E40** for document authority + SDD operating model, context-independent harness/looping excellence, SOTA evidence + capability benchmark, product modes + agentic security + minimum FinOps, and architecture fitness + local-first degradation. Previous entry: **Beta hardening wave planned — epics E32–E35
 added**: isolated-execution Beta slice, secrets & credential governance,
 packaging/global install, and Beta readiness gates — 13 new stories; see
 `phases/e32_isolated_execution_beta.md` … `phases/e35_beta_readiness_gates.md`,
@@ -98,9 +110,17 @@ test files (89/89 tests), 12/12 e2e tests. E10 — UI/UX & Design System epic (4
 
 ### Doc drift ledger
 
-No open doc-drift entries as of 2026-07-22. When a contributor finds a conflict
-between the reference, tracker, phase docs, AGENTS.md or implementation evidence,
-record it here before changing execution order.
+When a contributor finds a conflict between the reference, tracker, phase docs,
+AGENTS.md or implementation evidence, record it here before changing execution
+order.
+
+**Open entries (2026-08-17 gap-closure pass, branch `epic/gap-closure-alpha`):**
+
+| # | Entry | Evidence | Status |
+| --- | --- | --- | --- |
+| D1 | **E11 was tracked as `Not started 0/4` while three of its stories were already merged on its epic branch.** `epic/e11-observability-security-multitenant` carries E11-S1 (observability stack), E11-S2 (RBAC + authentication) and E11-S4 (execution security + runbooks), and `story/e11-s3-multitenant-quotas-budgets` has three commits on top. None of it is on `main`. The tracker's "Next action: E11-S1" was therefore pointing at finished work. | `git log main..origin/epic/e11-observability-security-multitenant` | **Resolved (2026-08-17).** E11-S3 finished (ADR-019) and the epic → `main` PR merged; E11 is Done 4/4 on `main`. |
+| D2 | **The in-process plugin import sandbox denies transitive *host* imports.** `PluginPermissions.import_sandbox` (`backend/plugins/permissions.py`) guards `builtins.__import__` against `NETWORK_MODULES` without distinguishing a plugin's own network use from an import of `backend.*` that transitively reaches `urllib`. From a cold process the reference plugin `autodev/agent-coder` is quarantined with "network imports require permissions.network.egress"; a running server is unaffected because the host modules are already in `sys.modules`. This also makes `test_flows_api.py::TestAgentFlowEndToEnd` order-dependent — it fails when run alone. | `backend/tests/integration/test_alpha_gate_flow_replay.py` (module docstring reproduces it); `pytest "backend/tests/unit/flows/test_flows_api.py::TestAgentFlowEndToEnd"` in isolation | **Open — needs a decision.** Narrowing the guard changes a security boundary, so it is not being changed unilaterally: it wants an ADR on what the in-process import sandbox is meant to protect against, given that the `in-process` loader exists precisely to let plugins import the host. |
+| D3 | **`ContextComposer.compose` blocks past its own per-provider timeout.** Its docstring promises a slow provider "never ... blocks the other providers' results", but the surrounding `with ThreadPoolExecutor(...)` runs `shutdown(wait=True)` on exit, so the call does not return until every worker finishes. | `backend/tests/unit/observability/test_context_indexing_tracing.py::test_timed_out_provider_span_records_its_real_duration` (pins the behavior, does not fix it) | Open — recorded in `phases/e7_context_rag.md`; fix belongs to an E7 follow-up or E26. |
 
 ## How to update this file
 
@@ -169,13 +189,13 @@ door: root service descriptor, self-hosted `/docs` under the strict CSP, and
 single-command `make run`. A visual-parity audit of the screens against the prototype
 (fonts, tokens, spacing, per-screen interaction details, per-screen checklist derived
 from ADR-012 and the prototype `shots/`) remains deferred as a proposed **E19**.
-**E11 is now complete (4/4)** (E11-S1/S2/S4 on 2026-08-15, E11-S3 on
-2026-08-17): correlated OpenTelemetry traces/metrics/logs on a self-hosted
-Collector/Prometheus/Tempo/Loki/Grafana stack (ADR-017); mandatory OIDC/
-service-key/session Control Plane RBAC enforced on every route with durable
-access/denial auditing (ADR-018); a trusted-only in-process plugin boundary
-and a hardened, read-only-root sandbox with a mandatory Docker
-network-denial CI gate (ADR-020); a widened HIGH/CRITICAL
+**E11 is now complete (4/4) and merged to `main`** (E11-S1/S2/S4 on
+2026-08-15, E11-S3 on 2026-08-17): correlated OpenTelemetry traces/metrics/logs
+on a self-hosted Collector/Prometheus/Tempo/Loki/Grafana stack (ADR-017);
+mandatory OIDC/service-key/session Control Plane RBAC enforced on every route
+with durable access/denial auditing (ADR-018); a trusted-only in-process
+plugin boundary and a hardened, read-only-root sandbox with a mandatory
+Docker network-denial CI gate (ADR-020); a widened HIGH/CRITICAL
 secret/vulnerability/license CI gate with an expiring-exception policy; full
 settings/backup credential redaction; fail-closed, Alertmanager-alerted
 PostgreSQL backups with an executable incident-response runbook; and
@@ -191,8 +211,8 @@ accounting in the Reasoning Engine, and a Grafana quota dashboard — see
 `docs/v2_platform/runbooks/e11_incident_response.md`,
 `docs/v2_platform/phases/e11_observability_security_multitenant.md`. E11-S4
 was implemented in parallel with E11-S2 in a separate worktree since both
-depend only on E11-S1. **Next action: open the epic → `main` PR for
-`epic/e11-observability-security-multitenant` with the full suite green.**
+depend only on E11-S1. Doc-drift D1 (E11 undercounted while merged work sat
+off `main`) is resolved now that the epic → `main` PR has landed.
 
 ## Epic status
 
@@ -239,8 +259,9 @@ depend only on E11-S1. **Next action: open the epic → `main` PR for
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 
-Total: **72/178 stories complete** across 40 epics (E19 is a proposed
+Total: **75/178 stories complete** across 40 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
+
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
 "51" predated E15–E18 completion and had drifted; +13 planned stories from
 the new E32–E35 Beta-hardening epics; +22 planned stories from the E36–E40
@@ -284,16 +305,53 @@ Anchor epics: **E0** (complete), **E1**, **E2**, **E3** (graph/checkpointing/
 human-in-the-loop stories; visual editor can stay minimal), **E8-S1/E8-S2**,
 **E9-S1** (minimal API), **E12-S1** and the start of **E12-S2**.
 
-- [ ] A declarative flow executes an agent-plugin end to end with durable state and
-      event-store replay.
-- [ ] Contract tests green for the E1/E2/E3 extension points.
-- [ ] Local-first mode (SQLite + stub provider) runs with no external dependencies.
+Evidence was attached to every criterion on **2026-08-17** (branch
+`epic/gap-closure-alpha`). Before that pass only the coverage box was ticked,
+even though all Alpha anchor epics had been Done for weeks — the gate had
+simply never been walked. Each box below now names the test that proves it.
+
+- [x] A declarative flow executes an agent-plugin end to end with durable state and
+      event-store replay. Evidence:
+      `backend/tests/integration/test_alpha_gate_flow_replay.py` — the real
+      `autodev/agent-coder` plugin resolved through the E2 Agent Registry, run by
+      the E3 Flow Engine on durable SQLite with the Event Store on, then
+      `reconstruct_run()` + `replay_run()` asserted deterministic. Previously the
+      two halves lived in different tests over different flows, and the
+      agent-plugin half (`test_flows_api.py::TestAgentFlowEndToEnd`) passes only
+      when earlier tests in its file run first — see the plugin-sandbox defect in
+      the ledger below.
+- [x] Contract tests green for the E1/E2/E3 extension points. Evidence:
+      `backend/tests/contract/` (40 passing) — `test_host_api_compatibility.py`
+      and `test_provider_contract.py` (E1), `test_agent_contract.py` (E2),
+      `test_flow_contract.py` (E3), with `test_extension_point_coverage.py`
+      failing the build if any `ExtensionPointKind` lacks a registration.
+      The `PENDING` kinds (TOOL, RETRIEVER, VALIDATION_GATE, UI_PANEL,
+      EVENT_HANDLER) are extension points that do not exist yet, none of them
+      E1/E2/E3, each with a reviewed rationale in `_harness.py`.
+- [x] Local-first mode (SQLite + stub provider) runs with no external dependencies.
+      Evidence: `backend/tests/integration/test_local_first_mode.py` — clears every
+      external-service env var, blocks all non-loopback sockets, then asserts the
+      defaults resolve to SQLite + stub provider + in-memory bus and that a
+      declarative flow completes. A third test proves the egress guard itself
+      fires, so a passing run cannot be vacuous. This replaces the previous
+      indirect argument that "the suite happens to pass offline".
 - [x] Core coverage >= 85%. ("Core" = `backend/` excluding `backend/tests/*`;
       enforced via `make test-backend` / `ci-backend.yml`
       (`--cov=backend --cov-fail-under=85`, `backend/tests/*` omitted via the
       root `.coveragerc`), product
       coverage measured at 88.29% — E12-S1-T2.)
-- [ ] Basic per-step traces emitted.
+- [x] Basic per-step traces emitted. Evidence:
+      `backend/tests/unit/observability/test_observability.py::test_orchestrator_agent_step_emits_correlated_span`
+      — an orchestrator run emits `autodev.run.step.*` spans correlated by
+      `autodev.run_id`. `trace_run_step` is wired at all three step boundaries:
+      `backend/flows/activation.py`, `backend/agents/runtime.py`,
+      `backend/orchestrator/service.py`.
+
+**Wave status.** All five criteria now hold, so **v2.0-alpha is met**. Two
+qualifications a reader should carry forward: the plugin-sandbox defect below
+means the agent-plugin path is proven under a running server's conditions, not
+from a cold process; and E12-S2's extension-point coverage is complete only for
+the extension points that exist today.
 
 ### v2.0-beta — "full platform in controlled production"
 
@@ -360,8 +418,7 @@ Add a dated entry every time a story/epic/wave status changes.
   LangGraph `OrchestratorService` agent pipeline (still hardcoded
   `costUsd: 0.0`/`tokens: 0`, pre-existing, E14's job) and E5's cost-aware
   model selection actually enforcing `respect_tenant_quota` (parsed only,
-  needs a larger selection-signature change). **Next action: open the
-  epic → `main` PR for `epic/e11-observability-security-multitenant`.**
+  needs a larger selection-signature change). **Merged to `main`.**
 
 - **2026-08-15** — **E11-S2 — RBAC and authentication is complete**
   (dependency E9-S1 Done; see ADR-018). Real Control Plane authentication
@@ -451,6 +508,128 @@ Add a dated entry every time a story/epic/wave status changes.
   Grafana/Prometheus/Tempo/Loki all healthy, including a fix for Prometheus's
   default scrape relabeling silently overwriting the exporter's own `job`
   label (`honor_labels: true`). Next: E11-S2 (RBAC and authentication).
+- **2026-08-17** — **Gap-closure pass on `epic/gap-closure-alpha`** (no new
+  epic opened, per the "feche os gaps" protocol in the root `CLAUDE.md`).
+
+  **Process note: this pass duplicated work that was already sitting in two open
+  pull requests.** PR #98 (`epic/e2-agent-framework`, opened 2026-08-10) already
+  corrected the E2 phase-doc status, and PR #99 (`epic/e7-context-rag`, same day)
+  already implemented the E7 indexing and context tracing. Open PRs were not
+  checked before starting, so both were re-done from scratch and had to be
+  reconciled on merge. Check `gh pr list` before opening a gap-closure pass.
+
+  *Tracker corrections.* `phases/e2_agent_framework.md` still read "In Progress
+  · 5/6" after E2-S6 merged to `main` (88de5e7) — corrected to Done · 6/6 (also
+  fixed independently by PR #98).
+  **E11 was tracked as `Not started · 0/4` while E11-S1, E11-S2 and E11-S4 were
+  already merged** on `epic/e11-observability-security-multitenant`, with
+  E11-S3 in progress on its story branch; the row is now `In progress · 3/4`
+  with an explicit note that none of it is on `main`, and the "Next action"
+  pointer — which was aiming at the already-finished E11-S1 — now points at
+  finishing E11-S3 and opening the epic → `main` PR. Story total 71 → 74.
+
+  *E17 fast-follow closed.* `frontend/app/page.tsx` now consumes the
+  `?sessionId=` deep link `SessionRow` has been emitting since E17-S4, behind
+  the Suspense boundary `useSearchParams` requires; a stale id degrades to the
+  most recent session plus a localized notice. Covered by
+  `frontend/e2e/chat-resume-session.spec.ts` (3 cases).
+
+  *E7 deferred DoD items.* Four of five closed: `autodev.repository.index` /
+  `.reindex` spans (E7-S1), `autodev.context.compose` + per-provider spans with
+  worker-thread context propagation (E7-S4), `docs/context/retrieval.md`
+  covering language support and RRF configuration (E7-S1/E7-S3), and a
+  retrieval recall/latency benchmark — `backend/repository/retrieval/benchmark.py`
+  plus the `scripts/benchmark_retrieval.py` CLI with `--max-p95-ms` /
+  `--min-recall` gating (E7-S2). All span attributes are counts and ids only:
+  no paths, no chunk content, no provider exception messages. **No retrieval
+  numbers are claimed** — producing them needs a live PostgreSQL + pgvector and
+  a curated label set, so the v2.0-beta hybrid-retrieval CNF stays unverified.
+  Still open: feeding retrieval metrics into the Evaluation Service (E7-S3).
+
+  *v2.0-alpha wave gate walked and met.* Four of five criteria had never been
+  ticked despite every Alpha anchor epic being Done. Each now names its
+  evidence; two new tests were written to supply it —
+  `backend/tests/integration/test_alpha_gate_flow_replay.py` (agent-plugin flow
+  + durable state + event-store reconstruction + deterministic replay, as one
+  path) and `backend/tests/integration/test_local_first_mode.py` (defaults
+  resolve to SQLite + stub provider with every non-loopback socket blocked, and
+  a third test proving the guard itself fires).
+
+  *Defects found, recorded, deliberately not fixed* (doc-drift D2/D3): the
+  in-process plugin import sandbox denies transitive **host** imports, so a
+  cold process quarantines `autodev/agent-coder` and
+  `test_flows_api.py::TestAgentFlowEndToEnd` only passes when its file's earlier
+  tests run first; and `ContextComposer.compose` blocks until every worker
+  finishes despite its per-provider timeout, contradicting its own docstring.
+  Both touch a boundary (a security control, a concurrency contract) where the
+  fix is a decision, not a patch.
+
+- **2026-08-10** — **E2-S6 composition — closed the gap between the tracker and
+  the code.** A post-merge review of `7708430..b69dbd9` found that the model
+  gateway had **no production caller**: nothing outside `backend/tests/` built a
+  `ModelGateway`, every `AgentRuntime` was constructed without one, and
+  `Settings.llm_model` was read by nothing in the repository. E2 was recorded here
+  as **Done 6/6** while `phases/e2_agent_framework.md` still said **In Progress
+  5/6** — and the story's headline criterion ("agents select provider-neutral
+  model targets") was unreachable by any route. Closed by:
+  (1) `backend/llm/composition.py`, a composition root building the registry and
+  gateway behind `@lru_cache` factories that routers may import (they may not
+  import `backend.api.main`); (2) `AgentNodeHandler` defaulting to
+  `build_agent_runtime()` — the single real `AgentRuntime` construction site in
+  the product; (3) unifying the model-config source on `RuntimeConfig.llm`, which
+  `PUT /v2/provider-config` owns, with `LLM_MODEL` as an env-only override —
+  previously the API wrote `OPENAI_MODEL` while the gateway helper expected
+  `LLM_MODEL`, so a model configured through the versioned surface still produced
+  `provider_not_configured` while `/status` reported it as configured;
+  (4) cache invalidation on all three surfaces that write the LLM block
+  (`/v2/provider-config`, `/v2/config`, legacy `PUT /config`) — the first two
+  previously invalidated nothing.
+  `provider: stub` deliberately composes **no** gateway, so the offline profile is
+  behaviorally unchanged. Proof: `test_two_agents_use_distinct_models_in_one_flow_run`
+  (the handoff's own completion criterion) plus 17 composition unit tests.
+  **Security fix in the same change:** `backend/tests/conftest.py` gained an autouse
+  fixture pinning `AUTODEV_CONFIG_PATH` to a per-test file and stripping credential
+  environment variables. `RuntimeConfigService` resolves its path from the working
+  directory, so once the gateway became the default the suite would have issued
+  live, credentialed calls against whatever provider the developer had configured
+  locally. Still open and documented rather than fixed: `timeoutSeconds` reports
+  instead of bounding; `retries` only fires for codes also in `fallbackOn`;
+  capabilities are per-adapter, not per-model; streaming/structured-output/tool
+  calls still have no product consumer.
+
+- **2026-08-10** — **E7 deferred-DoD closure (observability + fusion config).**
+  Closed three of the five DoD items E7 carried into Done: indexing traces
+  (`autodev.repo.index` / `autodev.repo.reindex` spans), per-step context traces
+  (`autodev.context.compose` with a per-provider event), and fusion
+  configuration. The last was not merely undocumented — `reciprocal_rank_fusion`
+  accepted `k`/`weights` but `retrieve()` neither accepted nor forwarded them, so
+  fusion was unconfigurable from every caller including HTTP; `fusion_k`,
+  `lexical_weight` and `vector_weight` are now first-class on
+  `GET /v2/context/retrieve`, echoed back in a `fusion` block, and documented in
+  `docs/api/context_retrieval.md`. Remaining deferrals and why they stay deferred
+  are recorded in the epic checklist: language support is unmet in code (Python
+  only), the recall/latency benchmark needs a live pgvector instance, and
+  retrieval metrics in the Evaluation Service are a new surface rather than
+  wiring.
+  **Also corrected stale documentation across four files**: `SupervisorPolicy`
+  was described as pending "not wired" debt in `feature_matrix.md`,
+  `dynamic_orchestration.md`, and the E3/E5 phase docs. It is **superseded**, not
+  pending — a 22-line sequential cursor that ignores run state, replaced by E5's
+  policy-driven `backend/routing/` Router/Selector, imported by nothing but its
+  own unit test. The genuinely open item, now stated where the stale claims were,
+  is that the Router/Selector is itself not wired into `POST /chat/dynamic`, whose
+  graph compiles to a fixed linear chain with no conditional edges.
+  (`v2_platform_reference.md`'s mention is in the "v1" column of a v1→v2
+  comparison table and is correct as historical framing; left unchanged.)
+
+  **Superseded in part by the 2026-08-17 entry above.** That pass duplicated the
+  observability half of this work before this branch merged. On reconciliation
+  the spans already on `main` were kept, so the span names this entry describes
+  (`autodev.repo.*`, and a per-provider *event* on the compose span) are not what
+  shipped — see the merged E7 phase-doc checklist. The fusion-configuration work
+  below is unaffected and is what makes this branch worth landing; its
+  documentation moved from `docs/api/context_retrieval.md` into the consolidated
+  `docs/context/retrieval.md`.
 
 - **2026-08-05** — Opened corrective story **E2-S6 — Provider-neutral model
   gateway and governed fallback** (E2 temporarily **5/6 In Progress**; dependencies
