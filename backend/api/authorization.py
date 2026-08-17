@@ -33,6 +33,8 @@ from backend.auth.roles import effective_scopes
 from backend.auth.service import get_auth_service
 from backend.auth.store import utcnow
 from backend.config.settings import Settings
+from backend.quotas.contracts import QuotaExceededError
+from backend.quotas.service import QuotaService
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -265,24 +267,31 @@ async def enforce_control_plane_access(request: Request) -> None:
     Installed once, on the FastAPI application itself, so it runs before
     every route — including ones contributed by auto-discovered plugin
     routers that never import this module. Order: public marker (skip
-    entirely), authenticate (401 on failure), authorize against the
+    entirely), authenticate (401 on failure), per-credential request-rate
+    admission (429 on failure, ADR-019, E11-S3), authorize against the
     route's declared scope (403 on missing policy in production, 403 on
-    missing scope). Every decision made against a resolved principal —
+    missing scope). Every scope decision made against a resolved principal —
     allowed or denied — is durably audited before the caller sees the
     result; a required-audit failure for an about-to-be-allowed request
     denies it (``503``) rather than letting an unauditable allow through
     (ADR-018). A failed *authentication* attempt (no principal resolved)
     is not durably audited — there is no tenant/subject to scope a durable
-    row to — but still publishes a best-effort denial event.
+    row to — but still publishes a best-effort denial event. A rate-limit
+    denial (:meth:`~backend.quotas.service.QuotaService.check_rate_limit`)
+    is neither durably audited nor event-published — it is not a scope
+    decision, and a durable write per rejected request would itself amplify
+    load during the exact overload condition rate limiting exists to guard
+    against.
 
     Args:
         request: The incoming request.
 
     Raises:
         HTTPException: 401 if no configured method authenticates the
-            request; 403 if production finds no declared policy, or the
-            principal lacks the required scope; 503 if a required audit
-            write fails for an about-to-be-allowed request.
+            request; 429 if the principal's credential is over its tenant's
+            request-rate quota; 403 if production finds no declared policy,
+            or the principal lacks the required scope; 503 if a required
+            audit write fails for an about-to-be-allowed request.
     """
     route = request.scope.get("route")
     endpoint = getattr(route, "endpoint", None)
@@ -313,6 +322,16 @@ async def enforce_control_plane_access(request: Request) -> None:
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
     request.state.principal = principal
+    try:
+        QuotaService().check_rate_limit(
+            tenant_id=principal.tenant_id,
+            credential_id=principal.credential_id or principal.subject,
+        )
+    except QuotaExceededError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail={"code": "authorization.rate_limited", "message": str(exc)},
+        ) from exc
     resource_id = (
         request.path_params.get(requirement.resource_parameter)
         if requirement is not None and requirement.resource_parameter

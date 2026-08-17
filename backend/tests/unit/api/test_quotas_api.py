@@ -132,6 +132,37 @@ class TestSetPolicy:
         assert conflicting.status_code == 409
 
 
+class TestRequestRateAdmission:
+    """The app-level request-rate gate (``enforce_control_plane_access``)."""
+
+    def test_credential_over_its_tenant_rate_limit_gets_429(self, client: TestClient) -> None:
+        admin_headers = _bearer("tenant-a", "admin-a", roles=(Role.ADMIN,))
+        set_response = client.put(
+            "/v2/quotas/policy", headers=admin_headers, json=_policy_body(requestsPerSecond=1)
+        )
+        assert set_response.status_code == 200
+
+        caller_headers = _bearer("tenant-a", "caller-a", roles=(Role.VIEWER,))
+        first = client.get("/v2/quotas/usage", headers=caller_headers)
+        assert first.status_code == 200
+
+        second = client.get("/v2/quotas/usage", headers=caller_headers)
+        assert second.status_code == 429
+
+    def test_a_different_credential_is_not_affected_by_another_credentials_rate_limit(
+        self, client: TestClient
+    ) -> None:
+        admin_headers = _bearer("tenant-a", "admin-a", roles=(Role.ADMIN,))
+        client.put("/v2/quotas/policy", headers=admin_headers, json=_policy_body(requestsPerSecond=1))
+
+        caller_one = _bearer("tenant-a", "caller-one", roles=(Role.VIEWER,))
+        caller_two = _bearer("tenant-a", "caller-two", roles=(Role.VIEWER,))
+        assert client.get("/v2/quotas/usage", headers=caller_one).status_code == 200
+        assert client.get("/v2/quotas/usage", headers=caller_one).status_code == 429
+        # A distinct credential (even same tenant) has its own rate bucket.
+        assert client.get("/v2/quotas/usage", headers=caller_two).status_code == 200
+
+
 class TestQuotaTenantIsolation:
     def test_tenant_b_cannot_read_tenant_a_usage_or_policy(self, client: TestClient) -> None:
         headers_a = _bearer("tenant-a", "admin-a", roles=(Role.ADMIN,))
