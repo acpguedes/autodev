@@ -179,6 +179,22 @@ def build_parser() -> argparse.ArgumentParser:
     sdk_plugin_parser.add_argument("--output", required=True)
     sdk_plugin_parser.set_defaults(handler=_handle_sdk_new_plugin)
 
+    permissions_parser = subparsers.add_parser(
+        "permissions", help="Manage execution dynamic permissions (E14-S3/S7)"
+    )
+    permissions_subparsers = permissions_parser.add_subparsers(dest="permissions_command", required=True)
+    permissions_list_parser = permissions_subparsers.add_parser(
+        "list", help="List granted dynamic permissions"
+    )
+    permissions_list_parser.add_argument("--base-url", default=None)
+    permissions_list_parser.set_defaults(handler=_handle_permissions_list)
+    permissions_revoke_parser = permissions_subparsers.add_parser(
+        "revoke", help="Revoke a dynamic permission"
+    )
+    permissions_revoke_parser.add_argument("permission_id")
+    permissions_revoke_parser.add_argument("--base-url", default=None)
+    permissions_revoke_parser.set_defaults(handler=_handle_permissions_revoke)
+
     try:
         from backend.cli_plugins import register_subcommands
         register_subcommands(subparsers)
@@ -225,7 +241,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    if args.shell:
+    # --command works standalone too (E14-S7): "autodev --command '<goal>'"
+    # is the shell's one-shot round trip without entering the REPL, exactly
+    # as "autodev --shell --command '<goal>'" already did.
+    if args.shell or args.shell_command:
         from backend.cli_shell import main as shell_main
 
         shell_argv: list[str] = ["--mode", args.mode]
@@ -237,7 +256,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     _configure_cli_observability()
     if args.command is None:
-        parser.error("a command is required (or pass --shell)")
+        # No subcommand and no --shell/--command: the default experience
+        # (E14-S7) is to start the web/local server and open the browser,
+        # reusing E18's existing front door (GET / -> AUTODEV_UI_URL) rather
+        # than building new bundling.
+        return _handle_start_web(args)
     return int(args.handler(args))
 
 
@@ -591,6 +614,119 @@ def _handle_repository_context(args: argparse.Namespace) -> int:
         limit=max(1, min(args.limit, 25)),
     )
     print(json.dumps(context.to_dict(), indent=2, ensure_ascii=False))
+    return 0
+
+
+def _shell_base_url(args: argparse.Namespace) -> str:
+    """Resolve the Control Plane API base URL for HTTP-only CLI commands (E14-S7).
+
+    Mirrors ``backend.cli_shell``'s own resolution: an explicit ``--base-url``
+    wins, then ``AUTODEV_SHELL_BASE_URL``, then the local default.
+    """
+    return args.base_url or os.environ.get("AUTODEV_SHELL_BASE_URL", "http://127.0.0.1:8000")
+
+
+def _handle_permissions_list(args: argparse.Namespace) -> int:
+    """Handle ``autodev permissions list`` (E14-S7): list dynamic permission grants.
+
+    Calls ``GET /v2/execution/policy/dynamic`` over HTTP — the same
+    HTTP-only pattern ``backend.cli_shell`` uses, not a direct
+    ``PolicyService`` call, since this command is a CLI mirror of E14-S5's
+    Web UX panel.
+
+    Returns:
+        Process exit code, always ``0``.
+    """
+    import httpx
+
+    with httpx.Client(base_url=_shell_base_url(args), timeout=30.0) as client:
+        response = client.get("/v2/execution/policy/dynamic")
+        response.raise_for_status()
+        permissions = response.json()["permissions"]
+
+    if not permissions:
+        print("No dynamic permissions granted.")
+        return 0
+    for permission in permissions:
+        pattern = permission.get("pattern") or "*"
+        print(f"{permission['permissionId']}  {permission['category']}  {pattern}")
+    return 0
+
+
+def _handle_permissions_revoke(args: argparse.Namespace) -> int:
+    """Handle ``autodev permissions revoke <id>`` (E14-S7): revoke a dynamic permission.
+
+    Calls ``DELETE /v2/execution/policy/dynamic/{id}`` over HTTP.
+
+    Returns:
+        Process exit code, always ``0``.
+    """
+    import httpx
+
+    with httpx.Client(base_url=_shell_base_url(args), timeout=30.0) as client:
+        response = client.delete(f"/v2/execution/policy/dynamic/{args.permission_id}")
+        response.raise_for_status()
+    print(f"Revoked {args.permission_id}")
+    return 0
+
+
+def _handle_start_web(args: argparse.Namespace) -> int:
+    """Handle ``autodev`` with no subcommand (E14-S7): start the server and open the browser.
+
+    Starts ``backend.api.main:app`` under uvicorn on a background thread,
+    waits for ``/health``, then opens the platform's existing E18 front
+    door (``GET /``, which itself points at ``AUTODEV_UI_URL``) in the
+    default browser. Runs until interrupted (``Ctrl+C``).
+
+    Args:
+        args: Parsed top-level CLI arguments (only ``AUTODEV_HOST``/
+            ``AUTODEV_PORT`` env vars are consulted; no dedicated flags —
+            keeps this story's surface to what its DoD asks for).
+
+    Returns:
+        Process exit code, always ``0``.
+    """
+    import threading
+    import time
+    import webbrowser
+
+    import httpx
+    import uvicorn
+
+    from backend.api.main import app
+
+    host = os.environ.get("AUTODEV_HOST", "127.0.0.1")
+    port = int(os.environ.get("AUTODEV_PORT", "8000"))
+    root_url = f"http://{host}:{port}/"
+
+    config = uvicorn.Config(app, host=host, port=port, log_level="warning")
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+
+    deadline = time.monotonic() + 15.0
+    with httpx.Client() as client:
+        while time.monotonic() < deadline and thread.is_alive():
+            try:
+                if client.get(f"http://{host}:{port}/health", timeout=1.0).status_code == 200:
+                    break
+            except httpx.HTTPError:
+                pass
+            time.sleep(0.2)
+
+    if thread.is_alive():
+        try:
+            webbrowser.open(root_url)
+        except Exception:  # noqa: BLE001 - a missing/headless browser must not crash the server
+            pass
+        print(f"AutoDev is running at {root_url} (Ctrl+C to stop)")
+
+    try:
+        while thread.is_alive():
+            thread.join(timeout=1.0)
+    except KeyboardInterrupt:
+        server.should_exit = True
+        thread.join(timeout=5.0)
     return 0
 
 
