@@ -42,7 +42,8 @@
       "loadWorkspace": "Não foi possível carregar o workspace de chat.",
       "sendMessage": "Não foi possível enviar a mensagem para o orquestrador.",
       "createSession": "Não foi possível criar uma nova sessão.",
-      "executePlan": "Não foi possível executar o plano gerado."
+      "executePlan": "Não foi possível executar o plano gerado.",
+      "sessionNotFound": "A sessão {{sessionId}} não está mais disponível; exibindo a sessão mais recente."
     }
   },
   "executionConsole": {

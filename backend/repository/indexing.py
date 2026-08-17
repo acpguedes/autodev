@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from backend.jobs.queue import get_queue, register_handler
-from backend.observability.tracing import get_tracer
+from backend.observability.tracing import trace_indexing
 from backend.persistence.database import get_store
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
 from backend.repository.chunking import Chunk, chunk_source
@@ -50,15 +50,12 @@ def index(repo_path: str | Path, *, tenant_id: str = DEFAULT_TENANT_ID, store: A
         file — unchanged chunks (same file/symbol/span with an identical
         content hash) are not counted.
     """
-    root = Path(repo_path).resolve()
-    with get_tracer().start_as_current_span(
-        "autodev.repo.index",
-        attributes={"repo.tenant_id": tenant_id},
-    ) as span:
+    with trace_indexing("index", tenant_id=tenant_id) as measurements:
+        root = Path(repo_path).resolve()
         files = [str(path) for path in _iter_source_files(root)]
-        span.set_attribute("repo.files_discovered", len(files))
+        measurements.file_count = len(files)
         written = reindex(files, repo_root=root, tenant_id=tenant_id, store=store)
-        span.set_attribute("repo.chunks_written", written)
+        measurements.chunks_written = written
         return written
 
 
@@ -90,29 +87,22 @@ def reindex(
     active_store = store if store is not None else get_store()
     root = (repo_root or Path.cwd()).resolve()
     written = 0
-    deleted = 0
-    requested = list(paths)
-    with get_tracer().start_as_current_span(
-        "autodev.repo.reindex",
-        attributes={
-            "repo.tenant_id": tenant_id,
-            "repo.files_requested": len(requested),
-        },
-    ) as span:
-        for raw_path in requested:
+    with trace_indexing("reindex", tenant_id=tenant_id) as measurements:
+        for raw_path in paths:
+            measurements.file_count += 1
             candidate = Path(raw_path)
             absolute = candidate if candidate.is_absolute() else (root / candidate)
             relative = _relative_path(absolute, root)
             if not absolute.is_file():
-                _delete_chunks_for_file(active_store, relative, tenant_id)
-                deleted += 1
+                measurements.chunks_deleted += _delete_chunks_for_file(
+                    active_store, relative, tenant_id
+                )
                 continue
             code = absolute.read_text(encoding="utf-8", errors="replace")
             chunks = chunk_source(relative, code, "python")
             written += _persist_chunks(active_store, relative, chunks, tenant_id)
-        span.set_attribute("repo.chunks_written", written)
-        span.set_attribute("repo.files_deleted", deleted)
-        return written
+        measurements.chunks_written = written
+    return written
 
 
 @register_handler("repo.index.reindex_file")
@@ -246,15 +236,27 @@ def _upsert_chunk(conn: Any, param: str, tenant_id: str, file_path: str, chunk: 
     )
 
 
-def _delete_chunks_for_file(store: Any, file_path: str, tenant_id: str) -> None:
-    """Remove all persisted chunks for a file that no longer exists on disk."""
+def _delete_chunks_for_file(store: Any, file_path: str, tenant_id: str) -> int:
+    """Remove all persisted chunks for a file that no longer exists on disk.
+
+    Args:
+        store: Durable store holding the ``code_chunks`` table.
+        file_path: Repository-relative path whose chunks are removed.
+        tenant_id: Tenant the chunks are scoped to.
+
+    Returns:
+        Number of chunk rows deleted, or ``0`` when the driver does not report
+        a row count.
+    """
     param = _param_style(store)
     with store.connect() as conn:
-        conn.execute(
+        cursor = conn.execute(
             f"DELETE FROM code_chunks WHERE tenant_id = {param} AND file_path = {param}",
             (tenant_id, file_path),
         )
         conn.commit()
+    rowcount = getattr(cursor, "rowcount", 0)
+    return rowcount if isinstance(rowcount, int) and rowcount > 0 else 0
 
 
 def _iter_source_files(root: Path) -> Iterable[Path]:

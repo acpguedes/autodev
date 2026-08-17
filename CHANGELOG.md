@@ -37,7 +37,7 @@ epic summaries:
   `vector_weight`, and the response echoes the effective configuration. Previously
   `reciprocal_rank_fusion` accepted `k`/`weights` but no caller forwarded them, so
   fusion was unreachable from every caller including HTTP
-  (`docs/api/context_retrieval.md`).
+  (`docs/context/retrieval.md`).
 - Documentation corrected: `SupervisorPolicy` was described as pending "not wired"
   work in four documents. It is superseded by E5's Router/Selector, not pending.
 

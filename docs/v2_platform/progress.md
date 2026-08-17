@@ -7,7 +7,19 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-05 (**E2 complete 6/6** — E2-S6 delivers the provider-neutral model gateway: agents select models via additive schema 2.1, precedence is execution override → agent manifest → global `LLM_MODEL`, and capability checks, governed fallback, call/token/cost ceilings, and telemetry are enforced by AutoDev-owned contracts (ADR-016). Public configuration and tested limitations: `docs/agents/model_gateway.md`. **Caveat:** the story branch was not reviewed end to end; the review loop was stopped by explicit decision after five fix rounds — see `handoffs/e2_s6_model_gateway.md`.) Previous entry: 2026-08-05 (**E2-S6 corrective story in progress — E2 temporarily 5/6**: ADR-016 selects an AutoDev-owned provider-neutral model gateway boundary; immutable contracts and additive validated 2.1 agent model configuration are landing without changing 2.0 manifests. Previous entry: **Planning-only: added the v2.3 Platform Excellence wave — epics E36-E40** for document authority + SDD operating model, context-independent harness/looping excellence, SOTA evidence + capability benchmark, product modes + agentic security + minimum FinOps, and architecture fitness + local-first degradation. Previous entry: **Beta hardening wave planned — epics E32–E35
+**Last updated:** 2026-08-17 (**Gap-closure pass, no new epic** — branch
+`epic/gap-closure-alpha`. Closed the E17 S1↔S4 reopen-as-chat fast-follow, four
+of E7's five deferred story-DoD items (indexing + context spans, language and
+fusion docs, a retrieval recall/latency benchmark harness), and walked the
+**v2.0-alpha wave gate**, which now has named evidence on all five criteria and
+**is met**. Reconciled two tracker lies: the E2 phase doc still read "In
+Progress 5/6" after E2-S6 merged, and **E11 was tracked as `Not started 0/4`
+while S1/S2/S4 were already merged on its epic branch** (3/4, not on `main`).
+Three open defects recorded in the doc-drift ledger, all needing a decision
+rather than a quiet fix: the plugin import sandbox denying transitive host
+imports (D2), `ContextComposer.compose` blocking past its own timeout (D3), and
+the E11 branch state (D1). Previous entry: 2026-08-05 (**E2 complete 6/6** —
+E2-S6 delivers the provider-neutral model gateway: agents select models via additive schema 2.1, precedence is execution override → agent manifest → global `LLM_MODEL`, and capability checks, governed fallback, call/token/cost ceilings, and telemetry are enforced by AutoDev-owned contracts (ADR-016). Public configuration and tested limitations: `docs/agents/model_gateway.md`. **Caveat:** the story branch was not reviewed end to end; the review loop was stopped by explicit decision after five fix rounds — see `handoffs/e2_s6_model_gateway.md`.) Previous entry: 2026-08-05 (**E2-S6 corrective story in progress — E2 temporarily 5/6**: ADR-016 selects an AutoDev-owned provider-neutral model gateway boundary; immutable contracts and additive validated 2.1 agent model configuration are landing without changing 2.0 manifests. Previous entry: **Planning-only: added the v2.3 Platform Excellence wave — epics E36-E40** for document authority + SDD operating model, context-independent harness/looping excellence, SOTA evidence + capability benchmark, product modes + agentic security + minimum FinOps, and architecture fitness + local-first degradation. Previous entry: **Beta hardening wave planned — epics E32–E35
 added**: isolated-execution Beta slice, secrets & credential governance,
 packaging/global install, and Beta readiness gates — 13 new stories; see
 `phases/e32_isolated_execution_beta.md` … `phases/e35_beta_readiness_gates.md`,
@@ -98,9 +110,17 @@ test files (89/89 tests), 12/12 e2e tests. E10 — UI/UX & Design System epic (4
 
 ### Doc drift ledger
 
-No open doc-drift entries as of 2026-07-22. When a contributor finds a conflict
-between the reference, tracker, phase docs, AGENTS.md or implementation evidence,
-record it here before changing execution order.
+When a contributor finds a conflict between the reference, tracker, phase docs,
+AGENTS.md or implementation evidence, record it here before changing execution
+order.
+
+**Open entries (2026-08-17 gap-closure pass, branch `epic/gap-closure-alpha`):**
+
+| # | Entry | Evidence | Status |
+| --- | --- | --- | --- |
+| D1 | **E11 was tracked as `Not started 0/4` while three of its stories were already merged on its epic branch.** `epic/e11-observability-security-multitenant` carries E11-S1 (observability stack), E11-S2 (RBAC + authentication) and E11-S4 (execution security + runbooks), and `story/e11-s3-multitenant-quotas-budgets` has three commits on top. None of it is on `main`. The tracker's "Next action: E11-S1" was therefore pointing at finished work. | `git log main..origin/epic/e11-observability-security-multitenant` | Tracker corrected below; the branch still needs E11-S3 finished and an epic → `main` PR. |
+| D2 | **The in-process plugin import sandbox denies transitive *host* imports.** `PluginPermissions.import_sandbox` (`backend/plugins/permissions.py`) guards `builtins.__import__` against `NETWORK_MODULES` without distinguishing a plugin's own network use from an import of `backend.*` that transitively reaches `urllib`. From a cold process the reference plugin `autodev/agent-coder` is quarantined with "network imports require permissions.network.egress"; a running server is unaffected because the host modules are already in `sys.modules`. This also makes `test_flows_api.py::TestAgentFlowEndToEnd` order-dependent — it fails when run alone. | `backend/tests/integration/test_alpha_gate_flow_replay.py` (module docstring reproduces it); `pytest "backend/tests/unit/flows/test_flows_api.py::TestAgentFlowEndToEnd"` in isolation | **Open — needs a decision.** Narrowing the guard changes a security boundary, so it is not being changed unilaterally: it wants an ADR on what the in-process import sandbox is meant to protect against, given that the `in-process` loader exists precisely to let plugins import the host. |
+| D3 | **`ContextComposer.compose` blocks past its own per-provider timeout.** Its docstring promises a slow provider "never ... blocks the other providers' results", but the surrounding `with ThreadPoolExecutor(...)` runs `shutdown(wait=True)` on exit, so the call does not return until every worker finishes. | `backend/tests/unit/observability/test_context_indexing_tracing.py::test_timed_out_provider_span_records_its_real_duration` (pins the behavior, does not fix it) | Open — recorded in `phases/e7_context_rag.md`; fix belongs to an E7 follow-up or E26. |
 
 ## How to update this file
 
@@ -169,9 +189,13 @@ door: root service descriptor, self-hosted `/docs` under the strict CSP, and
 single-command `make run`. A visual-parity audit of the screens against the prototype
 (fonts, tokens, spacing, per-screen interaction details, per-screen checklist derived
 from ADR-012 and the prototype `shots/`) remains deferred as a proposed **E19**.
-**Next action: E11-S1 (Observability, Security & Multi-tenant — the next
-unblocked Beta epic; deps E0/E8/E9-S1/E4 all Done); follow `agent_guide.md`
-§1-4 quality rules (mandatory from E3 onward).**
+**Next action: finish E11-S3 (multi-tenant + quotas/budgets) on
+`story/e11-s3-multitenant-quotas-budgets`, merge it into
+`epic/e11-observability-security-multitenant`, then open the epic → `main` PR
+with the full suite green — that PR also carries the corrected E11 phase doc.**
+E11-S1, E11-S2 and E11-S4 are already merged on the epic branch; the previous
+"Next action: E11-S1" in this tracker was pointing at finished work (doc-drift
+D1). Follow `agent_guide.md` §1-4 quality rules (mandatory from E3 onward).
 
 ## Epic status
 
@@ -188,7 +212,7 @@ unblocked Beta epic; deps E0/E8/E9-S1/E4 all Done); follow `agent_guide.md`
 | E8 | Persistence & Data | Alpha/Beta | Done | 4/4 | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
 | E9 | APIs, Events & MCP | Alpha/Beta | Done | 4/4 | E8, E2, E6 | [phases/e9_apis_events_mcp.md](phases/e9_apis_events_mcp.md) |
 | E10 | UI/UX & Design System | Beta | Done | 4/4 | E3, E9, E1 | [phases/e10_ui_ux_design_system.md](phases/e10_ui_ux_design_system.md) |
-| E11 | Observability, Security & Multi-tenant | Beta | Not started | 0/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
+| E11 | Observability, Security & Multi-tenant | Beta | In progress \*\* | 3/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
 | E12 | Quality & Evals | Alpha/Beta | Complete | 4/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
@@ -218,8 +242,18 @@ unblocked Beta epic; deps E0/E8/E9-S1/E4 all Done); follow `agent_guide.md`
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 
-Total: **71/178 stories complete** across 40 epics (E19 is a proposed
+Total: **74/178 stories complete** across 40 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
+
+\*\* **E11 is not on `main`.** E11-S1, E11-S2 and E11-S4 are merged into
+`epic/e11-observability-security-multitenant` (pushed to origin) and E11-S3 is
+in progress on `story/e11-s3-multitenant-quotas-budgets`; none of it has reached
+`main` yet. The three completed stories are counted above because they are done
+work, but a reader looking only at `main` will not find them. The E11 phase doc
+**on `main` is stale** (still "Not started · 0/4"); the accurate one lives on the
+epic branch and arrives with the epic → `main` PR — it is deliberately not
+patched here to avoid a pointless merge conflict with that PR. See doc-drift
+entry D1.
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
 "51" predated E15–E18 completion and had drifted; +13 planned stories from
 the new E32–E35 Beta-hardening epics; +22 planned stories from the E36–E40
@@ -263,16 +297,53 @@ Anchor epics: **E0** (complete), **E1**, **E2**, **E3** (graph/checkpointing/
 human-in-the-loop stories; visual editor can stay minimal), **E8-S1/E8-S2**,
 **E9-S1** (minimal API), **E12-S1** and the start of **E12-S2**.
 
-- [ ] A declarative flow executes an agent-plugin end to end with durable state and
-      event-store replay.
-- [ ] Contract tests green for the E1/E2/E3 extension points.
-- [ ] Local-first mode (SQLite + stub provider) runs with no external dependencies.
+Evidence was attached to every criterion on **2026-08-17** (branch
+`epic/gap-closure-alpha`). Before that pass only the coverage box was ticked,
+even though all Alpha anchor epics had been Done for weeks — the gate had
+simply never been walked. Each box below now names the test that proves it.
+
+- [x] A declarative flow executes an agent-plugin end to end with durable state and
+      event-store replay. Evidence:
+      `backend/tests/integration/test_alpha_gate_flow_replay.py` — the real
+      `autodev/agent-coder` plugin resolved through the E2 Agent Registry, run by
+      the E3 Flow Engine on durable SQLite with the Event Store on, then
+      `reconstruct_run()` + `replay_run()` asserted deterministic. Previously the
+      two halves lived in different tests over different flows, and the
+      agent-plugin half (`test_flows_api.py::TestAgentFlowEndToEnd`) passes only
+      when earlier tests in its file run first — see the plugin-sandbox defect in
+      the ledger below.
+- [x] Contract tests green for the E1/E2/E3 extension points. Evidence:
+      `backend/tests/contract/` (40 passing) — `test_host_api_compatibility.py`
+      and `test_provider_contract.py` (E1), `test_agent_contract.py` (E2),
+      `test_flow_contract.py` (E3), with `test_extension_point_coverage.py`
+      failing the build if any `ExtensionPointKind` lacks a registration.
+      The `PENDING` kinds (TOOL, RETRIEVER, VALIDATION_GATE, UI_PANEL,
+      EVENT_HANDLER) are extension points that do not exist yet, none of them
+      E1/E2/E3, each with a reviewed rationale in `_harness.py`.
+- [x] Local-first mode (SQLite + stub provider) runs with no external dependencies.
+      Evidence: `backend/tests/integration/test_local_first_mode.py` — clears every
+      external-service env var, blocks all non-loopback sockets, then asserts the
+      defaults resolve to SQLite + stub provider + in-memory bus and that a
+      declarative flow completes. A third test proves the egress guard itself
+      fires, so a passing run cannot be vacuous. This replaces the previous
+      indirect argument that "the suite happens to pass offline".
 - [x] Core coverage >= 85%. ("Core" = `backend/` excluding `backend/tests/*`;
       enforced via `make test-backend` / `ci-backend.yml`
       (`--cov=backend --cov-fail-under=85`, `backend/tests/*` omitted via the
       root `.coveragerc`), product
       coverage measured at 88.29% — E12-S1-T2.)
-- [ ] Basic per-step traces emitted.
+- [x] Basic per-step traces emitted. Evidence:
+      `backend/tests/unit/observability/test_observability.py::test_orchestrator_agent_step_emits_correlated_span`
+      — an orchestrator run emits `autodev.run.step.*` spans correlated by
+      `autodev.run_id`. `trace_run_step` is wired at all three step boundaries:
+      `backend/flows/activation.py`, `backend/agents/runtime.py`,
+      `backend/orchestrator/service.py`.
+
+**Wave status.** All five criteria now hold, so **v2.0-alpha is met**. Two
+qualifications a reader should carry forward: the plugin-sandbox defect below
+means the agent-plugin path is proven under a running server's conditions, not
+from a cold process; and E12-S2's extension-point coverage is complete only for
+the extension points that exist today.
 
 ### v2.0-beta — "full platform in controlled production"
 
@@ -309,6 +380,54 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-08-17** — **Gap-closure pass on `epic/gap-closure-alpha`** (no new
+  epic opened, per the "feche os gaps" protocol in the root `CLAUDE.md`).
+
+  *Tracker corrections.* `phases/e2_agent_framework.md` still read "In Progress
+  · 5/6" after E2-S6 merged to `main` (88de5e7) — corrected to Done · 6/6.
+  **E11 was tracked as `Not started · 0/4` while E11-S1, E11-S2 and E11-S4 were
+  already merged** on `epic/e11-observability-security-multitenant`, with
+  E11-S3 in progress on its story branch; the row is now `In progress · 3/4`
+  with an explicit note that none of it is on `main`, and the "Next action"
+  pointer — which was aiming at the already-finished E11-S1 — now points at
+  finishing E11-S3 and opening the epic → `main` PR. Story total 71 → 74.
+
+  *E17 fast-follow closed.* `frontend/app/page.tsx` now consumes the
+  `?sessionId=` deep link `SessionRow` has been emitting since E17-S4, behind
+  the Suspense boundary `useSearchParams` requires; a stale id degrades to the
+  most recent session plus a localized notice. Covered by
+  `frontend/e2e/chat-resume-session.spec.ts` (3 cases).
+
+  *E7 deferred DoD items.* Four of five closed: `autodev.repository.index` /
+  `.reindex` spans (E7-S1), `autodev.context.compose` + per-provider spans with
+  worker-thread context propagation (E7-S4), `docs/context/retrieval.md`
+  covering language support and RRF configuration (E7-S1/E7-S3), and a
+  retrieval recall/latency benchmark — `backend/repository/retrieval/benchmark.py`
+  plus the `scripts/benchmark_retrieval.py` CLI with `--max-p95-ms` /
+  `--min-recall` gating (E7-S2). All span attributes are counts and ids only:
+  no paths, no chunk content, no provider exception messages. **No retrieval
+  numbers are claimed** — producing them needs a live PostgreSQL + pgvector and
+  a curated label set, so the v2.0-beta hybrid-retrieval CNF stays unverified.
+  Still open: feeding retrieval metrics into the Evaluation Service (E7-S3).
+
+  *v2.0-alpha wave gate walked and met.* Four of five criteria had never been
+  ticked despite every Alpha anchor epic being Done. Each now names its
+  evidence; two new tests were written to supply it —
+  `backend/tests/integration/test_alpha_gate_flow_replay.py` (agent-plugin flow
+  + durable state + event-store reconstruction + deterministic replay, as one
+  path) and `backend/tests/integration/test_local_first_mode.py` (defaults
+  resolve to SQLite + stub provider with every non-loopback socket blocked, and
+  a third test proving the guard itself fires).
+
+  *Defects found, recorded, deliberately not fixed* (doc-drift D2/D3): the
+  in-process plugin import sandbox denies transitive **host** imports, so a
+  cold process quarantines `autodev/agent-coder` and
+  `test_flows_api.py::TestAgentFlowEndToEnd` only passes when its file's earlier
+  tests run first; and `ContextComposer.compose` blocks until every worker
+  finishes despite its per-provider timeout, contradicting its own docstring.
+  Both touch a boundary (a security control, a concurrency contract) where the
+  fix is a decision, not a patch.
+
 - **2026-08-10** — **E7 deferred-DoD closure (observability + fusion config).**
   Closed three of the five DoD items E7 carried into Done: indexing traces
   (`autodev.repo.index` / `autodev.repo.reindex` spans), per-step context traces
@@ -333,6 +452,15 @@ Add a dated entry every time a story/epic/wave status changes.
   graph compiles to a fixed linear chain with no conditional edges.
   (`v2_platform_reference.md`'s mention is in the "v1" column of a v1→v2
   comparison table and is correct as historical framing; left unchanged.)
+
+  **Superseded in part by the 2026-08-17 entry above.** That pass duplicated the
+  observability half of this work before this branch merged. On reconciliation
+  the spans already on `main` were kept, so the span names this entry describes
+  (`autodev.repo.*`, and a per-provider *event* on the compose span) are not what
+  shipped — see the merged E7 phase-doc checklist. The fusion-configuration work
+  below is unaffected and is what makes this branch worth landing; its
+  documentation moved from `docs/api/context_retrieval.md` into the consolidated
+  `docs/context/retrieval.md`.
 
 - **2026-08-05** — Opened corrective story **E2-S6 — Provider-neutral model
   gateway and governed fallback** (E2 temporarily **5/6 In Progress**; dependencies

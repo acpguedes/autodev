@@ -13,8 +13,13 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
+from opentelemetry import context as otel_context
+
 from backend.context.provider import ContextItem, ContextProvider
-from backend.observability.tracing import get_tracer
+from backend.observability.tracing import (
+    trace_context_composition,
+    trace_context_provider,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +60,18 @@ class ComposedContext:
     failed_providers: dict[str, str] = field(default_factory=dict)
 
 
+def _provider_id(provider: ContextProvider) -> str:
+    """Return a provider's reporting id, falling back to its class name.
+
+    Args:
+        provider: Provider whose identifier is needed.
+
+    Returns:
+        The provider's ``provider_id`` attribute when present, else its class name.
+    """
+    return getattr(provider, "provider_id", type(provider).__name__)
+
+
 class ContextComposer:
     """Runs and composes multiple context providers under isolation."""
 
@@ -76,18 +93,6 @@ class ContextComposer:
         ``failed_providers`` and contributes no items — it never raises out
         of this method or blocks the other providers' results.
 
-        Composition is traced as one ``autodev.context.compose`` span carrying a
-        per-provider event, which is what "per-step context traces" means here.
-        Per-provider *child spans* are deliberately not emitted: the providers
-        run concurrently and are collected in submission order, so a span opened
-        around ``future.result()`` would measure this thread's wait rather than
-        the provider's own latency, and a provider that times out keeps running
-        in its worker with no way to close a span honestly.
-
-        Neither the query nor any item content is recorded on the span, and a
-        failing provider contributes its exception type only — never the message,
-        which may carry retrieved data.
-
         Args:
             query: Forwarded to every provider's ``get_context``.
             limit: Optional cap on the number of items returned, applied
@@ -103,38 +108,30 @@ class ContextComposer:
         items: list[ContextItem] = []
         failed: dict[str, str] = {}
 
-        with get_tracer().start_as_current_span(
-            "autodev.context.compose",
-            attributes={"context.providers": len(self._configs)},
-        ) as span:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=len(self._configs)) as executor:
+        with trace_context_composition(provider_count=len(self._configs)) as composition:
+            # Captured before submitting so each worker's provider span parents
+            # onto the composition span instead of starting a detached trace.
+            parent_context = otel_context.get_current()
+
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=len(self._configs)
+            ) as executor:
                 future_to_config = {
-                    executor.submit(config.provider.get_context, query, **kwargs): config
+                    executor.submit(
+                        self._run_provider, config, parent_context, query, kwargs
+                    ): config
                     for config in self._configs
                 }
                 for future, config in future_to_config.items():
-                    provider_id = getattr(config.provider, "provider_id", type(config.provider).__name__)
+                    provider_id = _provider_id(config.provider)
                     try:
                         provider_items = future.result(timeout=config.timeout_seconds)
                     except Exception as exc:  # noqa: BLE001 - isolate any provider failure/timeout
                         failed[provider_id] = str(exc)
-                        logger.warning("Context provider %r failed or timed out: %s", provider_id, exc)
-                        span.add_event(
-                            "context.provider.failed",
-                            {
-                                "context.provider_id": provider_id,
-                                "context.error_type": type(exc).__name__,
-                            },
+                        logger.warning(
+                            "Context provider %r failed or timed out: %s", provider_id, exc
                         )
                         continue
-                    collected = list(provider_items)
-                    span.add_event(
-                        "context.provider.completed",
-                        {
-                            "context.provider_id": provider_id,
-                            "context.items": len(collected),
-                        },
-                    )
                     items.extend(
                         ContextItem(
                             content=item.content,
@@ -142,16 +139,53 @@ class ContextComposer:
                             score=item.score * config.weight,
                             metadata=item.metadata,
                         )
-                        for item in collected
+                        for item in provider_items
                     )
 
             deduped = self._dedup(items)
             deduped.sort(key=lambda item: -item.score)
             if limit is not None:
                 deduped = deduped[:limit]
-            span.set_attribute("context.items_returned", len(deduped))
-            span.set_attribute("context.providers_failed", len(failed))
-            return ComposedContext(items=deduped, failed_providers=failed)
+
+            composition.item_count = len(deduped)
+            composition.failed_provider_count = len(failed)
+
+        return ComposedContext(items=deduped, failed_providers=failed)
+
+    @staticmethod
+    def _run_provider(
+        config: ProviderConfig,
+        parent_context: Any,
+        query: str,
+        kwargs: dict[str, Any],
+    ) -> list[ContextItem]:
+        """Run one provider inside its own span, parented onto the composition.
+
+        Runs on a worker thread, where the ambient OpenTelemetry context is
+        empty, so *parent_context* is attached for the duration of the call.
+        The span therefore measures the provider's real execution time and
+        stays accurate even when the composer stops waiting for it on timeout.
+
+        Args:
+            config: Provider configuration to execute.
+            parent_context: OpenTelemetry context captured on the calling thread.
+            query: Forwarded to the provider's ``get_context``.
+            kwargs: Forwarded to the provider's ``get_context``.
+
+        Returns:
+            The provider's context items.
+        """
+        token = otel_context.attach(parent_context)
+        try:
+            with trace_context_provider(
+                provider_id=_provider_id(config.provider),
+                weight=config.weight,
+            ) as measurements:
+                provider_items = list(config.provider.get_context(query, **kwargs))
+                measurements.item_count = len(provider_items)
+                return provider_items
+        finally:
+            otel_context.detach(token)
 
     def _dedup(self, items: list[ContextItem]) -> list[ContextItem]:
         """Remove items with identical content, keeping the highest-scoring instance."""

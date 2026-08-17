@@ -42,7 +42,8 @@
       "loadWorkspace": "Could not load the chat workspace.",
       "sendMessage": "Could not send the message to the orchestrator.",
       "createSession": "Could not create a new session.",
-      "executePlan": "Could not run the generated plan."
+      "executePlan": "Could not run the generated plan.",
+      "sessionNotFound": "Session {{sessionId}} is no longer available; showing the most recent session instead."
     }
   },
   "executionConsole": {
