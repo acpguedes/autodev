@@ -24,7 +24,14 @@ from backend.execution.policy import (
     PolicyService,
     PolicyStore,
 )
-from backend.execution.runner import ActionRunner, InProcessActionRunner
+from backend.execution.runner import (
+    ActionRunner,
+    CommandRunner,
+    CompositeActionRunner,
+    InProcessActionRunner,
+    PatchRunner,
+    ValidationRunner,
+)
 
 __all__ = [
     "ExecutionAction",
@@ -33,7 +40,11 @@ __all__ = [
     "TaskExecutionOutcome",
     "TaskExecutor",
     "ActionRunner",
+    "CommandRunner",
+    "CompositeActionRunner",
     "InProcessActionRunner",
+    "PatchRunner",
+    "ValidationRunner",
     "ACTION_TYPE_TO_POLICY_CATEGORY",
     "PolicyCategory",
     "PolicyDecision",
