@@ -1,7 +1,7 @@
 # E11 — Observability, Security & Multi-tenant
 
 **Wave:** Beta
-**Status:** In progress · **Stories:** 3/4 complete
+**Status:** Complete · **Stories:** 4/4 complete
 **Depends on:** E0, E8, E9-S1, E4
 **Enables:** governs access, tenants, and quotas/budgets platform-wide; integrates backups (E8-S4); audit sink (additive) for E32 isolation records (environment profile, policy denials) and E33 secret audit events (create/rotate/revoke/resolve — references only, never values)
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.7.5 (E11), §18.8, §18.9
@@ -50,14 +50,14 @@ Subtasks:
 | Dependencies | E9-S1 |
 | Evidence | ADR-018 (`docs/v2_platform/decisions/ADR-018-control-plane-authentication-rbac-audit.md`); `docs/security.md`; `backend/tests/contract/test_control_plane_authorization.py` (every non-public Control Plane route declares a scope); `backend/tests/unit/auth/`, `backend/tests/integration/test_auth_api.py`, `backend/tests/integration/test_v2_api_contract.py` (OpenAPI auth metadata) |
 
-Note: per-resource cross-tenant concealment (`AuthorizationRequirement.resource_parameter`/`conceal_cross_tenant`) is implemented as a mechanism but not yet enforced against real data — no domain object carries a `tenant_id` to compare against before E11-S3 lands. `backend/api/routers/context.py`'s `GET /v2/context/retrieve` still accepts a caller-supplied `tenant_id` query parameter with no check against the authenticated principal; closing that is E11-S3's job, not re-flagged here as an S2 gap.
+Note: per-resource cross-tenant concealment (`AuthorizationRequirement.resource_parameter`/`conceal_cross_tenant`) was implemented as a mechanism in S2 and is now enforced against real data by E11-S3's tenant-persistence-boundaries work below.
 
-### E11-S3 — Multi-tenant and quotas/budgets
+### E11-S3 — Multi-tenant and quotas/budgets — complete (2026-08-17)
 
 Subtasks:
-- `E11-S3-T1`: per-tenant data isolation (integrates E8's RLS) and tenant context in the API.
-- `E11-S3-T2`: per-tenant quotas (concurrent runs, storage) and per-run budgets (tokens/cost/time/steps).
-- `E11-S3-T3`: budget enforcement in the Agent Runtime and Reasoning Engine.
+- `E11-S3-T1`: per-tenant data isolation (integrates E8's RLS) and tenant context in the API. **Done.**
+- `E11-S3-T2`: per-tenant quotas (concurrent runs, storage) and per-run budgets (tokens/cost/time/steps). **Done.**
+- `E11-S3-T3`: budget enforcement in the Agent Runtime and Reasoning Engine. **Done.**
 
 | Item | Content |
 | --- | --- |
@@ -66,6 +66,9 @@ Subtasks:
 | DoR | E8 (tenancy) and E4 (reasoning budgets) ready |
 | DoD | Isolation and budget-overrun tests; quota dashboard; docs |
 | Dependencies | E8, E4, E11-S2 |
+| Evidence | ADR-019 (`docs/v2_platform/decisions/ADR-019-multitenant-quotas-and-run-budgets.md`); `backend/quotas/` (durable policy/lease/reservation/usage store + service, ADR-019); `backend/tests/integration/tenancy/test_cross_tenant_isolation.py` (includes the chat-turns leak this story found and closed — `chat_v2.py` never resolved the authenticated tenant); `backend/tests/unit/orchestrator/test_orchestrator_quotas.py` (concurrent-run admission fails closed, lease always released); `backend/tests/unit/artifacts/test_artifact_pointers.py::TestPersistArtifactStorageQuota` (storage-byte denial and release); `backend/tests/unit/quotas/test_reasoning_budget.py` and `test_reasoning_selection.py::TestTenantBudgetEnforcement` (tenant budget narrows the Reasoning Engine's ceiling; monthly usage recorded without corrupting a completed run); `backend/tests/unit/api/test_quotas_api.py` (`/v2/quotas/usage`\|`policy`, tenant isolation, rate-limit 429); `autodev quotas get\|set` CLI; `backend/observability/quota_metrics.py` + `infrastructure/observability/grafana/dashboards/quotas.json` (quota dashboard) |
+
+Scope note: full per-token LLM cost/usage accounting is enforced end to end wherever a run goes through the Reasoning Engine (E4) — the mediator narrows the tenant's budget and records real monthly usage after every run. The older LangGraph-based `OrchestratorService` agent pipeline (`handle_message`/`execute_plan`) does not yet instrument real per-call token/cost accounting (`flow.run.completed`'s `costUsd`/`tokens` fields are still hardcoded placeholders, pre-existing and unrelated to this story) — recording fabricated zero-usage against a tenant's monthly ceiling there would be dishonest telemetry, so it is deliberately not done. That runtime does get real, tested concurrent-run admission control (the same fail-closed lease mechanism), which is this story's Agent Runtime enforcement. Wiring real LLM cost accounting into that runtime is E14's job. Similarly, `respect_tenant_quota` on E5's cost-aware model selection (`backend/routing/{selector,contract,policy}.py`) remains parsed-but-unenforced — threading a tenant/remaining-budget argument through that whole selection call chain is a separate, larger change outside this story's boundary.
 
 ### E11-S4 — Execution security and runbooks — complete (2026-08-15)
 
@@ -98,9 +101,9 @@ Subtasks:
 
 ## Epic exit checklist
 
-- [ ] All 4 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
+- [x] All 4 stories meet the global DoD (`../templates/dod_checklist.md`) plus their
       story-specific DoD above.
-- [ ] Contract tests green for RBAC enforcement and tenant-scoped data access.
-- [ ] `docs/v2_platform/progress.md` updated.
-- [ ] Beta wave entry item "OpenTelemetry, RBAC, multi-tenant, quotas/budgets,
+- [x] Contract tests green for RBAC enforcement and tenant-scoped data access.
+- [x] `docs/v2_platform/progress.md` updated.
+- [x] Beta wave entry item "OpenTelemetry, RBAC, multi-tenant, quotas/budgets,
       runbooks" satisfied (§18.9).

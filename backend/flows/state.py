@@ -194,18 +194,33 @@ class FlowRunStore:
             conn.execute(sql, tuple(params))
             conn.commit()
 
-    def get_run(self, run_id: str) -> FlowRunRecord | None:
-        """Fetch a run by id.
+    def get_run(
+        self, run_id: str, *, tenant_id: str | None = None
+    ) -> FlowRunRecord | None:
+        """Fetch a run by id, optionally scoped to a tenant.
 
         Args:
             run_id: Id of the run.
+            tenant_id: When given, only a run belonging to this tenant is
+                returned; a run belonging to another tenant is treated
+                exactly like an unknown run id. Callers behind
+                authentication must always pass the resolved principal's
+                tenant here.
 
         Returns:
-            The run record, or ``None`` when unknown.
+            The run record, or ``None`` when unknown (or not owned by
+            ``tenant_id``).
         """
-        sql = self._sql("SELECT * FROM flow_runs WHERE run_id = {p}")
+        if tenant_id is None:
+            sql = self._sql("SELECT * FROM flow_runs WHERE run_id = {p}")
+            params: tuple[str, ...] = (run_id,)
+        else:
+            sql = self._sql(
+                "SELECT * FROM flow_runs WHERE run_id = {p} AND tenant_id = {p}"
+            )
+            params = (run_id, tenant_id)
         with closing(self._connect()) as conn:
-            row = conn.execute(sql, (run_id,)).fetchone()
+            row = conn.execute(sql, params).fetchone()
         return decode_run(row) if row is not None else None
 
     def list_runs(

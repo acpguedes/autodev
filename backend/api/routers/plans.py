@@ -59,9 +59,16 @@ def _make_store() -> Any:
     return PlanStore(db_path=db_path)
 
 
-def _require_plan(store: Any, session_id: str) -> Any:
-    """Return the plan or raise 404."""
-    plan = store.get_plan(session_id)
+def _require_plan(store: Any, session_id: str, *, tenant_id: str) -> Any:
+    """Return the plan scoped to *tenant_id*, or raise 404.
+
+    Args:
+        store: The legacy plan store.
+        session_id: Identifier of the plan document.
+        tenant_id: Tenant the plan must belong to (the authenticated
+            principal's tenant — never a client-supplied value).
+    """
+    plan = store.get_plan(session_id, tenant_id=tenant_id)
     if plan is None:
         raise HTTPException(
             status_code=404, detail=f"Plan for session {session_id!r} not found."
@@ -101,23 +108,29 @@ class ApprovalRequest(BaseModel):
 
 @requires_scope("plan:read")
 @router.get("/plans/{session_id}")
-def get_plan(session_id: str) -> dict:
-    """Return the plan document for *session_id*; 404 if not found."""
+def get_plan(
+    session_id: str, principal: PrincipalV2 = Depends(require_v2_principal)
+) -> dict:
+    """Return the plan document for *session_id*; 404 if not found for the caller's tenant."""
     store = _make_store()
-    plan = _require_plan(store, session_id)
+    plan = _require_plan(store, session_id, tenant_id=principal.tenant_id)
     return _plan_to_dict(plan)
 
 
 @requires_scope("plan:write")
 @router.put("/plans/{session_id}")
-def upsert_plan(session_id: str, body: PlanUpsertRequest) -> dict:
-    """Insert or replace the steps for *session_id*.
+def upsert_plan(
+    session_id: str,
+    body: PlanUpsertRequest,
+    principal: PrincipalV2 = Depends(require_v2_principal),
+) -> dict:
+    """Insert or replace the steps for *session_id*, scoped to the caller's tenant.
 
     Resets plan status to ``draft`` on every upsert.
     """
     store = _make_store()
-    store.upsert_plan(session_id, body.steps)
-    plan = store.get_plan(session_id)
+    store.upsert_plan(session_id, body.steps, tenant_id=principal.tenant_id)
+    plan = store.get_plan(session_id, tenant_id=principal.tenant_id)
     return _plan_to_dict(plan)
 
 
@@ -130,12 +143,12 @@ def approve_plan(
 ) -> dict:
     """Approve the plan for *session_id*.
 
-    404 if the plan does not exist yet.
+    404 if the plan does not exist yet for the caller's tenant.
     """
     store = _make_store()
-    _require_plan(store, session_id)  # assert existence
-    store.approve(session_id, actor=principal.subject, note=body.note)
-    plan = store.get_plan(session_id)
+    _require_plan(store, session_id, tenant_id=principal.tenant_id)  # assert existence
+    store.approve(session_id, actor=principal.subject, note=body.note, tenant_id=principal.tenant_id)
+    plan = store.get_plan(session_id, tenant_id=principal.tenant_id)
     return _plan_to_dict(plan)
 
 
@@ -148,10 +161,10 @@ def reject_plan(
 ) -> dict:
     """Reject the plan for *session_id*.
 
-    404 if the plan does not exist yet.
+    404 if the plan does not exist yet for the caller's tenant.
     """
     store = _make_store()
-    _require_plan(store, session_id)  # assert existence
-    store.reject(session_id, actor=principal.subject, note=body.note)
-    plan = store.get_plan(session_id)
+    _require_plan(store, session_id, tenant_id=principal.tenant_id)  # assert existence
+    store.reject(session_id, actor=principal.subject, note=body.note, tenant_id=principal.tenant_id)
+    plan = store.get_plan(session_id, tenant_id=principal.tenant_id)
     return _plan_to_dict(plan)

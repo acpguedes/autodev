@@ -60,6 +60,36 @@ def build_parser() -> argparse.ArgumentParser:
     config_validate_parser.add_argument("--settings-file")
     config_validate_parser.set_defaults(handler=_handle_config_validate)
 
+    quotas_parser = subparsers.add_parser("quotas", help="Gerencia políticas de quota por tenant (E11-S3)")
+    quotas_subparsers = quotas_parser.add_subparsers(dest="quotas_command", required=True)
+
+    quotas_get_parser = quotas_subparsers.add_parser(
+        "get", help="Exibe a política efetiva e o uso corrente de um tenant"
+    )
+    quotas_get_parser.add_argument("tenant_id")
+    quotas_get_parser.set_defaults(handler=_handle_quotas_get)
+
+    quotas_set_parser = quotas_subparsers.add_parser(
+        "set", help="Define (ou substitui) a política de quota durável de um tenant"
+    )
+    quotas_set_parser.add_argument("tenant_id")
+    quotas_set_parser.add_argument("--max-concurrent-runs", type=int, required=True)
+    quotas_set_parser.add_argument("--max-storage-bytes", type=int, required=True)
+    quotas_set_parser.add_argument("--monthly-token-limit", type=int, required=True)
+    quotas_set_parser.add_argument("--monthly-cost-microusd", type=int, required=True)
+    quotas_set_parser.add_argument("--requests-per-second", type=int, required=True)
+    quotas_set_parser.add_argument("--max-run-tokens", type=int, default=None)
+    quotas_set_parser.add_argument("--max-run-cost-microusd", type=int, default=None)
+    quotas_set_parser.add_argument("--max-run-wall-clock-ms", type=int, default=None)
+    quotas_set_parser.add_argument("--max-run-steps", type=int, default=None)
+    quotas_set_parser.add_argument(
+        "--expected-version",
+        type=int,
+        default=None,
+        help="Versão esperada para escrita otimista; omitido substitui incondicionalmente.",
+    )
+    quotas_set_parser.set_defaults(handler=_handle_quotas_set)
+
     sessions_parser = subparsers.add_parser("sessions", help="Operações de sessão")
     sessions_subparsers = sessions_parser.add_subparsers(dest="sessions_command", required=True)
     sessions_list_parser = sessions_subparsers.add_parser("list", help="Lista sessões persistidas")
@@ -210,6 +240,84 @@ def _handle_config_show(args: argparse.Namespace) -> int:
             ensure_ascii=False,
         )
     )
+    return 0
+
+
+def _policy_to_dict(policy: "TenantQuotaPolicy") -> dict:
+    """Render a tenant quota policy as a plain, JSON-serializable dict."""
+    from backend.quotas.contracts import policy_to_json
+
+    payload = json.loads(policy_to_json(policy))
+    payload["tenant_id"] = policy.tenant_id
+    payload["version"] = policy.version
+    return payload
+
+
+def _handle_quotas_get(args: argparse.Namespace) -> int:
+    """Handle ``autodev quotas get``: print a tenant's effective policy and usage.
+
+    Args:
+        args: Parsed CLI arguments, including ``tenant_id``.
+
+    Returns:
+        Process exit code, always ``0``.
+    """
+    from backend.quotas.service import QuotaService
+
+    snapshot = QuotaService().get_usage(args.tenant_id)
+    print(
+        json.dumps(
+            {
+                "policy": _policy_to_dict(snapshot.policy),
+                "usage": {
+                    "concurrent_runs": snapshot.concurrent_runs,
+                    "storage_bytes_used": snapshot.storage_bytes_used,
+                    "monthly_tokens_used": snapshot.monthly_tokens_used,
+                    "monthly_cost_microusd_used": snapshot.monthly_cost_microusd_used,
+                    "month_window_key": snapshot.month_window_key,
+                },
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
+def _handle_quotas_set(args: argparse.Namespace) -> int:
+    """Handle ``autodev quotas set``: durably store a tenant's quota policy.
+
+    Args:
+        args: Parsed CLI arguments with the policy fields and an optional
+            ``expected_version`` for optimistic-concurrency control.
+
+    Returns:
+        Process exit code: ``0`` on success, ``1`` on a version conflict or
+        an invalid (non-positive) limit.
+    """
+    from backend.quotas.contracts import RunBudgetLimits, TenantQuotaPolicy
+    from backend.quotas.service import QuotaService
+
+    try:
+        policy = TenantQuotaPolicy(
+            tenant_id=args.tenant_id,
+            max_concurrent_runs=args.max_concurrent_runs,
+            max_storage_bytes=args.max_storage_bytes,
+            monthly_token_limit=args.monthly_token_limit,
+            monthly_cost_microusd=args.monthly_cost_microusd,
+            requests_per_second=args.requests_per_second,
+            default_run_budget=RunBudgetLimits(
+                max_tokens=args.max_run_tokens,
+                max_cost_microusd=args.max_run_cost_microusd,
+                max_wall_clock_ms=args.max_run_wall_clock_ms,
+                max_steps=args.max_run_steps,
+            ),
+        )
+        stored = QuotaService().set_policy(policy, expected_version=args.expected_version)
+    except ValueError as exc:
+        print(json.dumps({"status": "error", "error": str(exc)}, ensure_ascii=False), file=sys.stderr)
+        return 1
+    print(json.dumps({"status": "ok", "policy": _policy_to_dict(stored)}, indent=2, ensure_ascii=False))
     return 0
 
 

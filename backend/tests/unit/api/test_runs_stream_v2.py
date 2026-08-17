@@ -31,6 +31,7 @@ from backend.api.routers.runs_stream_v2 import (
     stream_run_events,
 )
 from backend.api.v2_common import SCHEMA_VERSION_V2
+from backend.auth.contracts import AuthMethod, PrincipalV2, Role
 from backend.events.bus import EventBus, InMemoryEventBus
 from backend.events.catalog import make_envelope
 from backend.events.runtime import get_event_bus, reset_event_bus_for_tests
@@ -116,9 +117,25 @@ class _FakeRunStore:
         """Store the fixed run-id to run mapping."""
         self._runs = runs
 
-    def get_run(self, run_id: str) -> _FakeRun | None:
-        """Look up a run by id, or ``None`` if unknown."""
-        return self._runs.get(run_id)
+    def get_run(self, run_id: str, *, tenant_id: str | None = None) -> _FakeRun | None:
+        """Look up a run by id, or ``None`` if unknown or owned by another tenant."""
+        run = self._runs.get(run_id)
+        if run is None:
+            return None
+        if tenant_id is not None and run.tenant_id != tenant_id:
+            return None
+        return run
+
+
+def _principal(tenant_id: str) -> PrincipalV2:
+    """Build a minimal authenticated principal scoped to *tenant_id*."""
+    return PrincipalV2(
+        subject="user-1",
+        tenant_id=tenant_id,
+        roles=(Role.VIEWER,),
+        scopes=frozenset(),
+        auth_method=AuthMethod.OIDC,
+    )
 
 
 class _FakeEngine:
@@ -330,14 +347,46 @@ class TestStreamRunEventsHandler:
                     last_event_id=None,
                     engine=engine,  # type: ignore[arg-type]
                     bus=bus,
+                    principal=_principal("default"),
                 )
             return excinfo.value
 
         error = asyncio.run(run())
         assert error.status_code == 404
 
-    def test_tenant_mismatch_raises_404_not_403(self) -> None:
-        """A ``?tenantId=`` mismatch reports 404, not 403 (no existence leak)."""
+    def test_run_owned_by_another_tenant_raises_404_not_403(self) -> None:
+        """A run owned by another tenant is a 404, not a 403 (no existence leak).
+
+        Enforced purely from ``principal.tenant_id`` (ADR-019/E11-S3) — the
+        caller never supplies which tenant to scope to.
+        """
+
+        async def run() -> HTTPException:
+            engine = _FakeEngine({"run-1": _FakeRun(tenant_id="tenant-a")})
+            bus = InMemoryEventBus()
+            with pytest.raises(HTTPException) as excinfo:
+                await stream_run_events(
+                    request=_FakeRequest(),  # type: ignore[arg-type]
+                    run_id="run-1",
+                    cursor=None,
+                    types=None,
+                    tenant_id=None,
+                    last_event_id=None,
+                    engine=engine,  # type: ignore[arg-type]
+                    bus=bus,
+                    principal=_principal("tenant-b"),
+                )
+            return excinfo.value
+
+        error = asyncio.run(run())
+        assert error.status_code == 404
+
+    def test_tenant_id_query_param_disagreeing_with_principal_raises_404(self) -> None:
+        """A ``?tenantId=`` that disagrees with the caller's own tenant is a 404.
+
+        The query parameter is only a redundant consistency check against
+        ``principal.tenant_id`` — it can never select or widen scope.
+        """
 
         async def run() -> HTTPException:
             engine = _FakeEngine({"run-1": _FakeRun(tenant_id="tenant-a")})
@@ -352,6 +401,7 @@ class TestStreamRunEventsHandler:
                     last_event_id=None,
                     engine=engine,  # type: ignore[arg-type]
                     bus=bus,
+                    principal=_principal("tenant-a"),
                 )
             return excinfo.value
 
@@ -374,6 +424,7 @@ class TestStreamRunEventsHandler:
                     last_event_id=None,
                     engine=engine,  # type: ignore[arg-type]
                     bus=bus,
+                    principal=_principal("default"),
                 )
             return excinfo.value
 
@@ -397,6 +448,7 @@ class TestStreamRunEventsHandler:
                 last_event_id=None,
                 engine=engine,  # type: ignore[arg-type]
                 bus=bus,
+                principal=_principal("default"),
             )
             assert response.media_type == "text/event-stream"
             assert response.headers["cache-control"] == "no-cache"
@@ -424,6 +476,7 @@ class TestStreamRunEventsHandler:
                 last_event_id="1",
                 engine=engine,  # type: ignore[arg-type]
                 bus=bus,
+                principal=_principal("default"),
             )
             return await _collect(response.body_iterator, 1)  # type: ignore[arg-type]
 

@@ -30,10 +30,11 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from backend.api.authorization import requires_scope
-from backend.api.rbac_v2 import require_v2_principal
+from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
 from backend.api.routers.sessions_v2 import AgentExecutionV2, HistoryItemV2, RunStepV2, get_orchestrator_v2
 from backend.api.v2_common import SCHEMA_VERSION_V2, PageMetaV2, PaginationParams, paginate, v2_error
 from backend.orchestrator.service import OrchestratorRun, OrchestratorService, RunSummary
+from backend.quotas.contracts import QuotaExceededError
 
 router = APIRouter(prefix="/v2", dependencies=[Depends(require_v2_principal)])
 
@@ -146,7 +147,7 @@ def _to_turn_v2_from_run_summary(summary: RunSummary) -> TurnV2:
     )
 
 
-def _find_turn_by_id(orchestrator: OrchestratorService, turn_id: str) -> RunSummary | None:
+def _find_turn_by_id(orchestrator: OrchestratorService, turn_id: str, *, tenant_id: str) -> RunSummary | None:
     """Search every known session's runs for one matching *turn_id*.
 
     A turn is identified 1:1 by its underlying ``run_id``. There is no
@@ -157,13 +158,15 @@ def _find_turn_by_id(orchestrator: OrchestratorService, turn_id: str) -> RunSumm
     Args:
         orchestrator: Orchestrator service dependency.
         turn_id: The turn (run) identifier to search for.
+        tenant_id: Tenant to scope the search to — the authenticated
+            principal's tenant, never a client-supplied value.
 
     Returns:
         The matching :class:`RunSummary`, or ``None`` if no session has a
         run with that id.
     """
-    for session in orchestrator.list_sessions():
-        for run in orchestrator.list_runs(session.session_id):
+    for session in orchestrator.list_sessions(tenant_id=tenant_id):
+        for run in orchestrator.list_runs(session.session_id, tenant_id=tenant_id):
             if run.run_id == turn_id:
                 return run
     return None
@@ -175,6 +178,7 @@ def create_turn_v2(
     session_id: str,
     request: TurnCreateRequestV2,
     orchestrator: OrchestratorService = Depends(get_orchestrator_v2),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> TurnV2:
     """Create a turn: post a user message and drive the session's agent pipeline.
 
@@ -186,17 +190,24 @@ def create_turn_v2(
         session_id: Identifier of the session this turn belongs to.
         request: The turn creation request (user message).
         orchestrator: Orchestrator service dependency.
+        principal: Authenticated caller; its tenant is the only tenant this
+            turn can ever be created against — a session owned by another
+            tenant is treated exactly like an unknown one.
 
     Returns:
         The newly created turn.
 
     Raises:
-        HTTPException: 404 if ``session_id`` does not exist.
+        HTTPException: 404 if ``session_id`` does not exist for the
+            caller's tenant; 429 if the tenant is at its concurrent-run
+            quota (ADR-019).
     """
     try:
-        run = orchestrator.handle_message(session_id, request.message)
+        run = orchestrator.handle_message(session_id, request.message, tenant_id=principal.tenant_id)
     except KeyError as exc:
         v2_error(404, str(exc))
+    except QuotaExceededError as exc:
+        v2_error(429, str(exc))
     return _to_turn_v2_from_run(run, request.message)
 
 
@@ -205,20 +216,25 @@ def create_turn_v2(
 def get_turn_v2(
     turn_id: str,
     orchestrator: OrchestratorService = Depends(get_orchestrator_v2),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> TurnV2:
     """Fetch a single turn by id.
 
     Args:
         turn_id: Identifier of the turn (its underlying ``run_id``).
         orchestrator: Orchestrator service dependency.
+        principal: Authenticated caller; the search is scoped to its
+            tenant, so a turn belonging to another tenant is concealed as
+            unknown.
 
     Returns:
         The requested turn.
 
     Raises:
-        HTTPException: 404 if no turn with ``turn_id`` exists.
+        HTTPException: 404 if no turn with ``turn_id`` exists for the
+            caller's tenant.
     """
-    summary = _find_turn_by_id(orchestrator, turn_id)
+    summary = _find_turn_by_id(orchestrator, turn_id, tenant_id=principal.tenant_id)
     if summary is None:
         v2_error(404, f"Unknown turn_id: {turn_id}")
     return _to_turn_v2_from_run_summary(summary)
@@ -230,6 +246,7 @@ def list_session_turns_v2(
     session_id: str,
     pagination: PaginationParams = Depends(),
     orchestrator: OrchestratorService = Depends(get_orchestrator_v2),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> TurnListV2:
     """List all turns for a session.
 
@@ -237,15 +254,18 @@ def list_session_turns_v2(
         session_id: Identifier of the session.
         pagination: Shared limit/offset pagination window.
         orchestrator: Orchestrator service dependency.
+        principal: Authenticated caller; its tenant is the only tenant this
+            listing can ever query.
 
     Returns:
         A paginated collection of turns.
 
     Raises:
-        HTTPException: 404 if ``session_id`` does not exist.
+        HTTPException: 404 if ``session_id`` does not exist for the
+            caller's tenant.
     """
     try:
-        all_runs = orchestrator.list_runs(session_id)
+        all_runs = orchestrator.list_runs(session_id, tenant_id=principal.tenant_id)
     except KeyError as exc:
         v2_error(404, str(exc))
     page, page_meta = paginate(all_runs, pagination)

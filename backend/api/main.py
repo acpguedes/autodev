@@ -48,6 +48,8 @@ from backend.coordination import get_cache, get_lock_manager
 from backend.jobs.queue import get_queue
 from backend.llm.factory import get_chat_model
 from backend.observability.backup_metrics import register_backup_observables
+from backend.observability.quota_metrics import register_quota_observables
+from backend.quotas.service import QuotaService
 from backend.observability.runtime import (
     configure_observability,
     get_meter,
@@ -228,6 +230,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         meter=get_meter("backend.persistence.backup"),
         status_store=BackupStatusStore(Path(settings.autodev_backup_status_path)),
     )
+    register_quota_observables(meter=get_meter("backend.quotas"), quota_service=QuotaService())
     try:
         if settings.autodev_profile == "prod":
             get_cache(settings)

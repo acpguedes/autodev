@@ -37,6 +37,18 @@ from backend.validation.models import ValidationJob
 from backend.validation.sandbox import SandboxRunner
 
 
+@pytest.fixture(autouse=True)
+def _isolated_quota_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point every default ``QuotaService``'s store at a throwaway DB.
+
+    ``OrchestratorService``/``ReasoningService`` both default to a
+    ``QuotaService()`` that resolves ``DATABASE_URL`` from the environment;
+    without this, every instance built here would silently read/write the
+    repo's shared dev ``autodev.db`` (E11-S3).
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'quotas.db'}")
+
+
 def test_trace_run_interface_is_available() -> None:
     """The frozen execution tracing interfaces are exported for callers."""
     assert callable(getattr(tracing, "trace_run", None))

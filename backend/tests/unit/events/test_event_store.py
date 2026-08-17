@@ -141,6 +141,39 @@ class TestAppendOrdering:
         decoded = store.list_events("run-a")[0].envelope
         assert decoded == published
 
+    def test_list_events_scopes_to_tenant_id_when_given(self, store: EventStore) -> None:
+        """A tenant_id filter excludes another tenant's events on the same partition.
+
+        E11-S3/ADR-019: passing the caller's own tenant must never surface
+        another tenant's events, even under a colliding partition key.
+        """
+        store.append(
+            _envelope(
+                "run-a",
+                "flow.run.started",
+                {"flowId": "f", "flowVersion": "1.0.0"},
+                tenant_id="tenant-a",
+            )
+        )
+        store.append(
+            _envelope(
+                "run-a",
+                "flow.run.started",
+                {"flowId": "f", "flowVersion": "1.0.0"},
+                tenant_id="tenant-b",
+            )
+        )
+
+        tenant_a_events = store.list_events("run-a", tenant_id="tenant-a")
+        tenant_b_events = store.list_events("run-a", tenant_id="tenant-b")
+        unscoped_events = store.list_events("run-a")
+
+        assert len(tenant_a_events) == 1
+        assert tenant_a_events[0].envelope.tenantId == "tenant-a"
+        assert len(tenant_b_events) == 1
+        assert tenant_b_events[0].envelope.tenantId == "tenant-b"
+        assert len(unscoped_events) == 2
+
 
 class TestProjections:
     """E8-S2-T3 — materialized per-partition status summaries."""
