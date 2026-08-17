@@ -6,7 +6,7 @@ budgets, and end-to-end traces"). S1-S4 (executor, policy engine, execution
 modes, sandbox runners) can start once E3's core and E9-S1 land, without
 waiting on all of E11; S5 (Web UX) additionally depends on E10; S6-S7
 (shell/CLI) can proceed in parallel once S3 lands.
-**Status:** In progress · **Stories:** 6/7 complete (E14-S1..S6 done, see below)
+**Status:** Done · **Stories:** 7/7 complete (E14-S1..S7 done, see below)
 **Depends on:** E2, E3, E9-S1, E11-S4; environment layer provided by E32
 (Beta cut of the isolated execution environment)
 **Enables:** the Beta exit criterion's real execution flow; consumed by E10
@@ -158,12 +158,12 @@ Subtasks:
 | DoD (specific) | Contract test "shell only calls `/v2`"; `docs/execution/shell.md` |
 | Dependencies | E14-S3, E9-S1 |
 
-### E14-S7 — `autodev` CLI Packaging & Install
+### E14-S7 — `autodev` CLI Packaging & Install — **Complete** (2026-08-17)
 
 Subtasks:
-- `E14-S7-T1`: packaged entry point (`autodev` on PATH/bin) via Python packaging (console script) or an equivalent OSS installer.
-- `E14-S7-T2`: default behavior (`autodev`) starts the web/local experience and opens the browser when possible; flags `--shell`, `--command "<text>"`, `--mode approval|auto|hybrid`, and a permission config/persistence subcommand.
-- `E14-S7-T3`: self-hosted installation guide (no mandatory paid-service dependency).
+- `E14-S7-T1`: packaged entry point (`autodev` on PATH/bin) via Python packaging (console script) or an equivalent OSS installer. **Done — already existed**: `backend/pyproject.toml`'s `[project.scripts] autodev = "backend.cli:main"` predates this story; no new packaging mechanism was needed.
+- `E14-S7-T2`: default behavior (`autodev`) starts the web/local experience and opens the browser when possible; flags `--shell`, `--command "<text>"`, `--mode approval|auto|hybrid`, and a permission config/persistence subcommand. **Done** — no-args starts uvicorn + opens the browser at E18's existing root descriptor; `--command` now works standalone (not only with `--shell`); `autodev permissions list|revoke` mirrors E14-S5's dynamic-permissions panel over HTTP.
+- `E14-S7-T3`: self-hosted installation guide (no mandatory paid-service dependency). **Done** — `docs/execution/cli-install.md`.
 
 | Criterion | Detail |
 | --- | --- |
@@ -193,14 +193,22 @@ Subtasks:
 
 ## Epic exit checklist
 
-- [ ] All 7 stories meet the global DoD (`../templates/dod_checklist.md`) plus
+- [x] All 7 stories meet the global DoD (`../templates/dod_checklist.md`) plus
       their story-specific DoD above.
-- [ ] Contract tests green for the `ExecutionAction`/`ExecutionResult`
+- [x] Contract tests green for the `ExecutionAction`/`ExecutionResult`
       contracts, the policy evaluator, and the sandbox-backed runners.
-- [ ] An RFC + ADR are filed before E14-S1 implementation starts, per
+- [x] An RFC + ADR are filed before E14-S1 implementation starts, per
       `agent_guide.md` §5 (new public contracts: execution actions/results,
-      permission policy schema).
-- [ ] `docs/v2_platform/progress.md` updated.
+      permission policy schema). RFC-009/ADR-021 (S1), RFC-010/ADR-022 (S2).
+- [x] `docs/v2_platform/progress.md` updated.
 - [ ] Beta exit criterion "real plan -> code -> apply patch -> validate in
       sandbox -> evaluate flow runs with RBAC, fail-closed budgets, and
-      end-to-end traces" satisfied (§18.9).
+      end-to-end traces" satisfied (§18.9). E14 delivers the real
+      plan->code->apply-patch->validate-in-sandbox path with fail-closed
+      budgets (E14-S2 policy) and RBAC (E11-S2, already enforced on every
+      `/v2` route); "evaluate" is E5's concern, not E14's. Walking this
+      wave-exit gate needs a dedicated evidence pass across every Beta
+      anchor epic (E4, E5, E6, E7, E8-S3/S4, E9-S2/S3/S4, E10, E11, E14),
+      mirroring how the Alpha gate was walked only once every Alpha anchor
+      epic was Done — left open here rather than claimed without that
+      evidence.

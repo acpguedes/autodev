@@ -239,7 +239,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E11 | Observability, Security & Multi-tenant | Beta | Done | 4/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
 | E12 | Quality & Evals | Alpha/Beta | Complete | 4/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
-| E14 | Real Task Execution & Governed Autonomy | Beta | In progress | 6/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
+| E14 | Real Task Execution & Governed Autonomy | Beta | Done | 7/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 | E15 | Frontend Redesign: Design Language & App Shell | Beta | Done | 4/4 | E10 | [phases/e15_design_language_shell.md](phases/e15_design_language_shell.md) |
 | E16 | Frontend Redesign: Control-Plane API Enablement | Beta | Done | 4/4 | E9, E3, E8-S1 | [phases/e16_redesign_api_enablement.md](phases/e16_redesign_api_enablement.md) |
 | E17 | Frontend Redesign: Control Center Screens | Beta | Done | 6/6 | E15, E16 | [phases/e17_control_center_screens.md](phases/e17_control_center_screens.md) |
@@ -266,7 +266,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 
-Total: **81/178 stories complete** across 40 epics (E19 is a proposed
+Total: **82/178 stories complete** across 40 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -394,6 +394,37 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-17** — **E14 — Real Task Execution & Governed Autonomy is
+  complete (7/7)**, on `epic/e14-real-execution-governance`
+  (not yet merged to `main` — pending the epic -> `main` PR).
+  **E14-S7 — `autodev` CLI Packaging & Install** closed the epic: no new
+  packaging mechanism was needed (`backend/pyproject.toml`'s
+  `[project.scripts] autodev = "backend.cli:main"` predates this story);
+  `autodev` with no args now starts uvicorn + opens the browser at E18's
+  existing root descriptor (`AUTODEV_HOST`/`AUTODEV_PORT` overrides,
+  `Ctrl+C` to stop); `--command "<goal>"` now works standalone (previously
+  only meaningful with `--shell`); `autodev permissions list|revoke`
+  mirrors E14-S5's dynamic-permissions panel over HTTP. Docs:
+  `docs/execution/cli-install.md`. No standalone binary/native installer
+  was built — `pip install -e backend/` is the documented, tested path;
+  a native installer would be its own ADR-worthy packaging decision the
+  story's DoR didn't require.
+
+  Epic summary across all 7 stories: `OrchestratorService.execute_plan`
+  went from a pure simulation (S1's own "v1 precursor" framing) to a real,
+  policy-gated (S2), mode-aware (S3, approval/auto/hybrid with durable
+  pause/resume), hardened (S4, three dedicated sandbox-backed runners),
+  and fully operable (S5 Web UX, S6 governed shell, S7 packaging) executor.
+  Two RFC/ADR pairs (RFC-009/ADR-021 for the action/result contract,
+  RFC-010/ADR-022 for the policy engine) were filed before their
+  respective implementations, per the epic's own gate. Every story stated
+  its scope reductions explicitly rather than silently narrowing DoD (no
+  pre-approval diff preview, no cancel endpoint, no live shell SSE
+  streaming, no native installer) — see each story's `docs/execution/*.md`.
+  The Beta exit criterion this epic anchors remains open pending a
+  dedicated wave-gate evidence pass across every Beta anchor epic (see
+  the epic exit checklist in the phase doc) — not a gap in E14 itself.
 
 - **2026-08-17** — **E14-S6 — Governed Interactive Shell is complete, E14
   now In progress · 6/7**. `autodev --shell` (`backend/cli_shell.py`) — a
