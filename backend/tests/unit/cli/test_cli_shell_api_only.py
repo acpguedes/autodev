@@ -73,13 +73,16 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Generator[TestCli
 def test_shell_session_drives_one_goal_to_completion_against_the_real_app(client: TestClient) -> None:
     """Happy path: create a session, execute in auto mode, print a summary.
 
-    `starlette.testclient.TestClient` is itself an `httpx.Client` subclass
+    `starlette.testclient.TestClient` is a runtime `httpx.Client` subclass
     (over a sync-compatible ASGI transport), so it satisfies `ShellSession`'s
-    structural `.get`/`.post` requirement directly — no separate raw
+    `.get`/`.post` usage directly at runtime — no separate raw
     `httpx.Client`/`ASGITransport` needed (this httpx version's
-    `ASGITransport` is async-only).
+    `ASGITransport` is async-only). mypy doesn't always resolve that
+    subclass relationship through the installed stubs, hence the ignore
+    below; a real `httpx.Client` (as `main()` constructs) needs no such
+    workaround.
     """
-    session = ShellSession(client, "auto")
+    session = ShellSession(client, "auto")  # type: ignore[arg-type]
     out = io.StringIO()
     run = run_goal(session, "Criar plano executável por tarefas", out=out, prompt_fn=lambda _prompt: "deny")
 
