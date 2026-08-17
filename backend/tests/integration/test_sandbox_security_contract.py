@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from backend.execution.contracts import ExecutionAction, ExecutionActionType
+from backend.execution.runner import CommandRunner
 from backend.validation import SandboxRunner, ValidationJob, sandbox_policy_from_settings
 from backend.validation.sandbox import SandboxPolicy
 
@@ -87,6 +89,32 @@ def test_docker_sandbox_exposes_workspace_but_not_host_sibling(
     )
 
     assert result.returncode == 0
+
+
+@pytest.mark.skipif(
+    shutil.which("docker") is None,
+    reason="Docker is required for the sandbox security contract",
+)
+def test_command_runner_routes_through_the_same_hardened_sandbox_policy(tmp_path: Path) -> None:
+    """E14-S4: CommandRunner is not a second, unhardened path to exec."""
+    runner = CommandRunner(sandbox_runner=_docker_runner(tmp_path))
+    action = ExecutionAction(
+        action_id="a1",
+        type=ExecutionActionType.RUN_COMMAND,
+        task_id="task-1",
+        step_key="task-1",
+        command=[
+            "python",
+            "-c",
+            "import socket; socket.create_connection(('1.1.1.1', 53), timeout=1)",
+        ],
+        cwd=".",
+    )
+
+    result = runner.run(action)
+
+    assert result.status == "failed"
+    assert result.exit_code != 0
 
 
 @pytest.mark.skipif(

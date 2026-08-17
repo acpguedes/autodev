@@ -239,7 +239,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E11 | Observability, Security & Multi-tenant | Beta | Done | 4/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
 | E12 | Quality & Evals | Alpha/Beta | Complete | 4/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
-| E14 | Real Task Execution & Governed Autonomy | Beta | In progress | 3/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
+| E14 | Real Task Execution & Governed Autonomy | Beta | In progress | 4/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 | E15 | Frontend Redesign: Design Language & App Shell | Beta | Done | 4/4 | E10 | [phases/e15_design_language_shell.md](phases/e15_design_language_shell.md) |
 | E16 | Frontend Redesign: Control-Plane API Enablement | Beta | Done | 4/4 | E9, E3, E8-S1 | [phases/e16_redesign_api_enablement.md](phases/e16_redesign_api_enablement.md) |
 | E17 | Frontend Redesign: Control Center Screens | Beta | Done | 6/6 | E15, E16 | [phases/e17_control_center_screens.md](phases/e17_control_center_screens.md) |
@@ -266,7 +266,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 
-Total: **78/178 stories complete** across 40 epics (E19 is a proposed
+Total: **79/178 stories complete** across 40 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -394,6 +394,23 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-17** — **E14-S4 — Sandbox-Backed Runners is complete, E14 now
+  In progress · 4/7**. `InProcessActionRunner` split into three dedicated
+  runners behind the unchanged `ActionRunner` protocol: `CommandRunner`
+  (`run_command`, hardened Docker sandbox, no network by default),
+  `PatchRunner` (`create_file`/`edit_file`/`apply_patch`, E0 patch engine,
+  structurally incapable of reaching `subprocess`), `ValidationRunner`
+  (`run_validation`, shares the sandbox with `CommandRunner` but stays a
+  separate class for independent future hardening).
+  `CompositeActionRunner` dispatches by action type; `InProcessActionRunner`
+  is now a backward-compatible alias for it — same constructor signature,
+  same contract, zero caller changes. Reused the existing E11-S4
+  real-Docker sandbox contract test (one new assertion that `CommandRunner`
+  routes through the identical `SandboxPolicy`) rather than duplicating it;
+  added a fail-closed-without-Docker unit test at the `ExecutionAction`
+  layer. Docs: `docs/execution/engine.md`. **Not merged to `main`** — E14
+  has 3 more stories (S5 Web UX, S6 governed shell, S7 CLI packaging).
 
 - **2026-08-17** — **E14-S3 — Execution Modes (Approval, Auto, Hybrid) is
   complete, E14 now In progress · 3/7**. `OrchestratorService.execute_plan`

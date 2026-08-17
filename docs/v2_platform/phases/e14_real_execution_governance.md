@@ -6,7 +6,7 @@ budgets, and end-to-end traces"). S1-S4 (executor, policy engine, execution
 modes, sandbox runners) can start once E3's core and E9-S1 land, without
 waiting on all of E11; S5 (Web UX) additionally depends on E10; S6-S7
 (shell/CLI) can proceed in parallel once S3 lands.
-**Status:** In progress · **Stories:** 3/7 complete (E14-S1, E14-S2, E14-S3 done, see below)
+**Status:** In progress · **Stories:** 4/7 complete (E14-S1..S4 done, see below)
 **Depends on:** E2, E3, E9-S1, E11-S4; environment layer provided by E32
 (Beta cut of the isolated execution environment)
 **Enables:** the Beta exit criterion's real execution flow; consumed by E10
@@ -104,12 +104,21 @@ Subtasks:
 | DoD (specific) | Test of all 3 modes and all 3 response options; dynamic permissions reviewable/revocable via API; `docs/execution/modes.md` |
 | Dependencies | E14-S1, E14-S2, E3-S4 |
 
-### E14-S4 — Sandbox-Backed Runners
+### E14-S4 — Sandbox-Backed Runners — **Complete** (2026-08-17)
 
 Subtasks:
-- `E14-S4-T1`: command (shell) runner via `SandboxRunner` (hardened Docker, no network by default, allowlist).
-- `E14-S4-T2`: patch runner (apply with path guard and dry-run) — hardened, kept separate from the arbitrary-command runner.
-- `E14-S4-T3`: validation runner — reuses the existing Validation Gates; local fallback only behind explicit `AUTODEV_SANDBOX_ALLOW_LOCAL=1`.
+- `E14-S4-T1`: command (shell) runner via `SandboxRunner` (hardened Docker, no network by default, allowlist). **Done** — `CommandRunner` (`backend/execution/runner.py`).
+- `E14-S4-T2`: patch runner (apply with path guard and dry-run) — hardened, kept separate from the arbitrary-command runner. **Done** — `PatchRunner`; no code path from it into `subprocess`.
+- `E14-S4-T3`: validation runner — reuses the existing Validation Gates; local fallback only behind explicit `AUTODEV_SANDBOX_ALLOW_LOCAL=1`. **Done** — `ValidationRunner`.
+
+`CompositeActionRunner` dispatches by action type to the three; `InProcessActionRunner`
+(E14-S1's original name) is now a backward-compatible alias for it — same
+constructor signature, same contract, no caller changes needed. Reused the
+existing E11-S4 real-Docker contract test
+(`backend/tests/integration/test_sandbox_security_contract.py`, one new
+assertion that `CommandRunner` routes through the identical `SandboxPolicy`)
+rather than duplicating it; added a new fail-closed-without-Docker unit test
+at the `ExecutionAction` layer. Docs: `docs/execution/engine.md`.
 
 | Criterion | Detail |
 | --- | --- |

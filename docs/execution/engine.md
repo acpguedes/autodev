@@ -55,38 +55,41 @@ attempted; failure is visible at the step/action level
 
 ## Runner (`backend/execution/runner.py`)
 
-`InProcessActionRunner` is the S1 runner. It does not introduce new
-sandboxing — it reuses:
+Three dedicated runners (E14-S4), each behind the same `ActionRunner`
+protocol, dispatched to by `CompositeActionRunner`:
 
-- `backend.patches.engine` (`generate_patch`/`apply_patch`) for
-  `create_file`/`edit_file`/`apply_patch`, with its existing
-  path-traversal guard (independently re-checked before the file is even
-  read, so a traversal attempt cannot leak host file content into a diff)
-  and its existing `AUTODEV_ENABLE_PATCH_APPLY` fail-closed gate (dry-run by
-  default; `InProcessActionRunner(enable_writes=True)` overrides this
-  explicitly, e.g. for tests).
-- `backend.validation.sandbox.SandboxRunner` for `run_command`/
-  `run_validation`, wrapped in a `ValidationJob`. This stays disabled by
-  default (`AUTODEV_ENABLE_SANDBOX=0`) and fails closed without Docker,
-  exactly as it already did for validation jobs.
+- **`PatchRunner`** — `create_file`/`edit_file`/`apply_patch` via
+  `backend.patches.engine` (`generate_patch`/`apply_patch`), with its
+  existing path-traversal guard (independently re-checked before the file
+  is even read, so a traversal attempt cannot leak host file content into
+  a diff) and its existing `AUTODEV_ENABLE_PATCH_APPLY` fail-closed gate
+  (dry-run by default; `enable_writes=True` overrides this explicitly,
+  e.g. for tests). Structurally separate from the command runner — there
+  is no code path from this class into `subprocess`.
+- **`CommandRunner`** — `run_command` via `backend.validation.sandbox.SandboxRunner`,
+  wrapped in a `ValidationJob`. Disabled by default (`AUTODEV_ENABLE_SANDBOX=0`)
+  and fails closed without Docker, exactly as it already did for
+  validation jobs before E14.
+- **`ValidationRunner`** — `run_validation`, sharing the same hardened
+  sandbox as `CommandRunner` (kept a separate class so validation and
+  arbitrary shell commands can be hardened independently later without
+  touching each other).
 
-E14-S4 replaces this with three dedicated, hardened runners
-(command/patch/validation) behind the same `ActionRunner` protocol — the
-`ExecutionAction`/`ExecutionResult` contract does not change when that
-happens.
+`InProcessActionRunner` (E14-S1's original name) is now a backward-compatible
+alias for `CompositeActionRunner` — same constructor signature, same
+`ExecutionAction`/`ExecutionResult` contract; `OrchestratorService` and
+every existing caller needed no changes.
 
 ## Scope boundary
 
-Out of scope for E14-S1, by design:
+Out of scope for E14-S1, by design (S2-S4 since closed the first three):
 
-- **Permission/policy engine** (E14-S2): every action that is successfully
-  *derived* executes unconditionally today; there is no allow/deny policy
-  yet.
-- **Execution modes** (E14-S3): there is no approval/auto/hybrid selection;
-  `execute_plan` runs every derived action synchronously.
-- **Hardened, per-action-type sandboxing** (E14-S4): `InProcessActionRunner`
-  inherits the v1 sandbox's limitations (one Docker image, no per-action
-  timeout tuning).
+- **Permission/policy engine** — closed by E14-S2
+  (`docs/execution/permissions.md`).
+- **Execution modes** — closed by E14-S3 (`docs/execution/modes.md`).
+- **Per-action-type runner split** — closed by E14-S4 (runner section
+  above); the split runners still share one Docker image and have no
+  per-action timeout tuning, which remains open.
 - **Real code generation**: the `implementation` category writes an
   execution-note file, not source code, until the coder agent produces
-  actual diffs.
+  actual diffs — still open, tracked against the coder agent, not E14.
