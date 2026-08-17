@@ -12,6 +12,7 @@ from __future__ import annotations
 import time
 import uuid
 from dataclasses import dataclass, replace
+from decimal import Decimal
 from typing import Any, Callable, Mapping
 
 from backend.reasoning.contract import ReasoningInput, ReasoningOutput, TraceEvent
@@ -20,6 +21,9 @@ from backend.reasoning.registry import ReasoningStrategyRegistry
 from backend.reasoning.selection import SelectionDecision, resolve_strategy
 from backend.agents.provider import LLMProvider
 from backend.observability.tracing import record_decision
+from backend.quotas.contracts import QuotaExceededError, QuotaResource, usd_to_micros
+from backend.quotas.reasoning_budget import narrow_reasoning_budget
+from backend.quotas.service import QuotaService
 
 _DEGRADE_PREFIX = "degrade_to:"
 
@@ -51,6 +55,7 @@ class ReasoningService:
         tool_impls: Mapping[str, ToolImplementation] | None = None,
         tenant_id: str = "local",
         on_event: Callable[[TraceEvent], None] | None = None,
+        quota_service: QuotaService | None = None,
     ) -> None:
         """Initialize the service with a registry and Engine configuration.
 
@@ -62,10 +67,15 @@ class ReasoningService:
             tenant_id: Tenant runs are scoped to.
             on_event: Trace sink; receives selection/degrade decisions and every
                 Engine trace event.
+            quota_service: Tenant quota/budget service (E11-S3, ADR-019);
+                defaults to a fresh :class:`~backend.quotas.service.QuotaService`.
+                Narrows every run's budget to the tenant's ceiling and records
+                monthly token/cost usage after each run.
         """
         self._registry = registry
         self._on_event = on_event
         self._tenant_id = tenant_id
+        self._quota_service = quota_service or QuotaService()
         self._engine = ReasoningEngine(
             provider=provider,
             guardrail_checks=guardrail_checks,
@@ -106,6 +116,10 @@ class ReasoningService:
             "reasoning.selection.decided",
             {"strategy": decision.strategy_id, "source": decision.source},
         )
+        tenant_policy = self._quota_service.resolve_policy(self._tenant_id)
+        run_input = replace(
+            run_input, budget=narrow_reasoning_budget(tenant_policy.default_run_budget, run_input.budget)
+        )
         output = _with_canonical_trace_id(
             await self._engine.run(
                 self._registry.resolve(decision.strategy_id), run_input
@@ -130,9 +144,38 @@ class ReasoningService:
                     )
                 )
                 degraded_to = fallback_id
+        self._record_usage(output)
         return ReasoningRunResult(
             output=output, decision=decision, degraded_to=degraded_to
         )
+
+    def _record_usage(self, output: ReasoningOutput) -> None:
+        """Record a completed run's token/cost usage against the tenant's monthly budget.
+
+        A denial here (the tenant is already over its monthly ceiling) is
+        durably reported by :class:`~backend.quotas.service.QuotaService`
+        itself and swallowed here: the run already happened and returned a
+        result, so a post-hoc bookkeeping denial must never corrupt it.
+
+        Args:
+            output: The run's final output, carrying authoritative usage.
+        """
+        usage = output.usage
+        try:
+            if usage.tokens:
+                self._quota_service.record_monthly_usage(
+                    tenant_id=self._tenant_id,
+                    resource=QuotaResource.MONTHLY_TOKENS,
+                    delta=usage.tokens,
+                )
+            if usage.cost_usd:
+                self._quota_service.record_monthly_usage(
+                    tenant_id=self._tenant_id,
+                    resource=QuotaResource.MONTHLY_COST,
+                    delta=usd_to_micros(Decimal(str(usage.cost_usd))),
+                )
+        except QuotaExceededError:
+            pass
 
     def _emit(self, name: str, payload: dict[str, Any]) -> None:
         """Emit a service-level decision event to the trace sink, if configured.
