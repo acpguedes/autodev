@@ -150,7 +150,7 @@ def test_span_error_code_never_escapes_the_gateway_taxonomy() -> None:
             metadata: ExecutionMetadata,
         ) -> ModelResponse:
             raise VendorError(
-                "401 Unauthorized: api_key=sk-livesecret1234567890 rejected"
+                "401 Unauthorized: api_key=sk-livesecret1234567890 rejected"  # pragma: allowlist secret
             )
 
     exporter = InMemorySpanExporter()
@@ -191,7 +191,7 @@ def test_span_never_records_a_raw_provider_exception_message() -> None:
             target: ModelTarget,
             metadata: ExecutionMetadata,
         ) -> ModelResponse:
-            raise LeakyError("api_key=sk-livesecret1234567890 rejected")
+            raise LeakyError("api_key=sk-livesecret1234567890 rejected")  # pragma: allowlist secret
 
     exporter = InMemorySpanExporter()
     configure_tracing(span_exporter=exporter)
@@ -256,7 +256,7 @@ def test_no_span_or_log_carries_a_credential_through_the_exception_chain(
     (run steps, request middleware) still records exceptions by default. The same
     chain reaches ``logging`` whenever a handler logs with ``exc_info``.
     """
-    secret = "sk-livesecret1234567890"
+    secret = "sk-livesecret1234567890"  # pragma: allowlist secret
 
     class LeakyError(Exception):
         code = "authentication"

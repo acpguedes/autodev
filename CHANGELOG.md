@@ -43,6 +43,19 @@ epic summaries:
 - Documentation corrected: `SupervisorPolicy` was described as pending "not wired"
   work in four documents. It is superseded by E5's Router/Selector, not pending.
 
+### Fixed — secret-scanning gate (2026-08-17)
+
+- The `security-baseline` CI gate had been failing on `main` since 2026-08-07,
+  when E2-S6 added tests that assert credential-shaped provider errors never
+  reach a span. The scanner had no suppression mechanism, so those deliberate
+  fixtures failed it on every branch — a gate that always fails is not a gate.
+- `backend/security/secrets.py` now honors an inline `# pragma: allowlist secret`
+  marker (the `detect-secrets` convention). It is line-scoped, not file- or
+  directory-scoped, so it cannot hide a real credential elsewhere in the same
+  file; every suppression stays greppable; and the scanner and its own tests
+  treat the marker as ordinary text so they cannot allowlist themselves.
+  Documented in `docs/security/baseline.md`.
+
 ### E0 — Foundations & Hardening (complete, 2026-07-04, PRs #51–#52)
 
 - Containerized backend dev/test runtime with Makefile `container-*` targets.
