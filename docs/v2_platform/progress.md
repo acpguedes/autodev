@@ -7,7 +7,14 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-17 (**Gap-closure pass, no new epic** — branch
+**Last updated:** 2026-08-17 (**E14 kicked off — E14-S1 (Real Task Executor)
+complete, E14 now In progress · 1/7** — branch
+`epic/e14-real-execution-governance`. `execute_plan` performs real work for
+the first time: `TaskExecutor`/`InProcessActionRunner`
+(`backend/execution/`) reuse the existing patch engine and v1 sandbox
+runner; RFC-009 + ADR-021 accepted. See the Changelog entry below and
+`docs/execution/engine.md`. Not merged to `main`.) Previous entry: 2026-08-17
+(**Gap-closure pass, no new epic** — branch
 `epic/gap-closure-alpha`. Closed the E17 S1↔S4 reopen-as-chat fast-follow, four
 of E7's five deferred story-DoD items (indexing + context spans, language and
 fusion docs, a retrieval recall/latency benchmark harness), and walked the
@@ -232,7 +239,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E11 | Observability, Security & Multi-tenant | Beta | Done | 4/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
 | E12 | Quality & Evals | Alpha/Beta | Complete | 4/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
-| E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
+| E14 | Real Task Execution & Governed Autonomy | Beta | In progress | 1/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 | E15 | Frontend Redesign: Design Language & App Shell | Beta | Done | 4/4 | E10 | [phases/e15_design_language_shell.md](phases/e15_design_language_shell.md) |
 | E16 | Frontend Redesign: Control-Plane API Enablement | Beta | Done | 4/4 | E9, E3, E8-S1 | [phases/e16_redesign_api_enablement.md](phases/e16_redesign_api_enablement.md) |
 | E17 | Frontend Redesign: Control Center Screens | Beta | Done | 6/6 | E15, E16 | [phases/e17_control_center_screens.md](phases/e17_control_center_screens.md) |
@@ -259,7 +266,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 
-Total: **75/178 stories complete** across 40 epics (E19 is a proposed
+Total: **76/178 stories complete** across 40 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -387,6 +394,33 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-17** — **E14 kicked off — E14-S1 (Real Task Executor) complete,
+  E14 now In progress · 1/7** (branch `epic/e14-real-execution-governance`,
+  story `story/e14-s1-real-task-executor`; RFC-009 + ADR-021 accepted per the
+  epic's exit checklist). `OrchestratorService.execute_plan` no longer
+  simulates: `TaskExecutor` (`backend/execution/executor.py`) maps each
+  derived `ExecutionTask` to zero or more `ExecutionAction`s and dispatches
+  them to `InProcessActionRunner` (`backend/execution/runner.py`), which
+  reuses the existing E0 patch engine (`backend/patches/engine.py`) for
+  file/patch actions and the v1 `SandboxRunner` precursor
+  (`backend/validation/sandbox.py`) for command/validation actions — no new
+  sandboxing was built in this story (that is E14-S4). `validation`-category
+  tasks naming a known tool (pytest/ruff/npm/python) now run through the
+  sandbox; `implementation`-category tasks now write a real, observable
+  execution-note file under `.autodev/execution-notes/`; other categories
+  still derive no action. `StepStatus` gained `FAILED` so a task with a
+  failed action is reported as such; `OrchestratorRun`/`RunStep`/
+  `AgentExecution` external shapes are unchanged, so the three existing
+  callers (`sessions_v2.py`, `api/main.py`, `cli.py`) needed no changes.
+  Both the patch-write path and the sandbox stay fail-closed by default
+  (`AUTODEV_ENABLE_PATCH_APPLY`/`AUTODEV_ENABLE_SANDBOX`, both off), so
+  default behavior for existing callers is unchanged until an operator opts
+  in. Three additive events (`execution.action.started`/`.completed`/
+  `.failed`) join `EVENT_CATALOG` (37 → 40 types). No policy/permission
+  engine yet (E14-S2), no execution modes (E14-S3) — see
+  `docs/execution/engine.md` for the full scope boundary. **Not merged to
+  `main`** — E14 has 6 more stories before the epic → `main` PR.
 
 - **2026-08-17** — **E11-S3 — Multi-tenant and quotas/budgets is complete**
   (dependencies E8, E4, E11-S2 Done; see ADR-019). **E11 is now 4/4 Done.**

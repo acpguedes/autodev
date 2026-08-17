@@ -37,6 +37,8 @@ from backend.agents import (
     ValidatorAgent,
 )
 from backend.events.runtime import emit_event
+from backend.execution.executor import TaskExecutor
+from backend.execution.runner import InProcessActionRunner
 from backend.persistence import DurableStore, get_store
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
 from backend.observability.tracing import trace_run, trace_run_step
@@ -88,6 +90,7 @@ class StepStatus(StrEnum):
     """Execution status for an individual workflow step."""
 
     COMPLETED = "completed"
+    FAILED = "failed"
 
 
 @dataclass(slots=True)
@@ -282,6 +285,9 @@ class OrchestratorService:
         self._store = store or get_store()
         self._quota_service = quota_service or QuotaService()
         self._graph = self._compile_graph()
+        self._task_executor = TaskExecutor(
+            InProcessActionRunner(project_root=(self._project_root or Path(".")).resolve())
+        )
 
     def _acquire_run_lease(self, *, tenant_id: str, run_id: str) -> None:
         """Admit a new run against the tenant's concurrent-run ceiling, or fail closed.
@@ -668,8 +674,12 @@ class OrchestratorService:
 
         for index, task in enumerate(execution_plan.tasks, start=1):
             started_at = self._timestamp()
+            outcome = self._task_executor.execute(task, run_id=run_id, tenant_id=tenant_id)
             completed_at = self._timestamp()
             current_state = task.task_id
+            step_status = (
+                StepStatus.COMPLETED if outcome.status == "completed" else StepStatus.FAILED
+            )
             results.append(
                 AgentExecution(
                     agent="executor",
@@ -680,7 +690,8 @@ class OrchestratorService:
                         "description": task.description,
                         "source_agent": task.source_agent,
                         "category": task.category,
-                        "status": "completed",
+                        "status": outcome.status,
+                        "actions": [result.to_dict() for result in outcome.results],
                     },
                 )
             )
@@ -688,7 +699,7 @@ class OrchestratorService:
                 RunStep(
                     step_key=task.task_id,
                     agent=task.source_agent,
-                    status=StepStatus.COMPLETED,
+                    status=step_status,
                     started_at=started_at,
                     completed_at=completed_at,
                 )
@@ -696,7 +707,10 @@ class OrchestratorService:
             history.append(
                 HistoryItem(
                     role="executor",
-                    content=f"Completed task {index}: {task.title} ({task.category}).",
+                    content=(
+                        f"{'Completed' if step_status == StepStatus.COMPLETED else 'Failed'} "
+                        f"task {index}: {task.title} ({task.category})."
+                    ),
                 )
             )
 
