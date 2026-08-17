@@ -236,6 +236,32 @@ class AccessRequestData(BaseModel):
     requestId: str
 
 
+class QuotaWarningData(BaseModel):
+    """Payload of ``quota.warning`` (E11-S3, ADR-019).
+
+    Emitted once per tenant/resource/window the first time recorded usage
+    crosses the configured warning ratio.
+    """
+
+    resource: str
+    used: int
+    limit: int
+    windowKey: str
+
+
+class QuotaExceededData(BaseModel):
+    """Payload of ``quota.exceeded`` (E11-S3, ADR-019).
+
+    Emitted the first time a usage-recording or admission call is denied
+    for a tenant/resource/window.
+    """
+
+    resource: str
+    used: int
+    limit: int
+    windowKey: str
+
+
 @dataclass(frozen=True)
 class EventDefinition:
     """Catalog entry describing one event type (§14.5 table).
@@ -292,6 +318,8 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition("patch.discarded", "Control Plane API", "runId", PatchDiscardedData),
     EventDefinition("access.request.allowed", "Control Plane API", "tenantId", AccessRequestData),
     EventDefinition("access.request.denied", "Control Plane API", "tenantId", AccessRequestData),
+    EventDefinition("quota.warning", "Control Plane API", "tenantId", QuotaWarningData),
+    EventDefinition("quota.exceeded", "Control Plane API", "tenantId", QuotaExceededData),
 )
 
 

@@ -6,10 +6,12 @@ Money is always stored and compared as integer micro-USD (1 USD =
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import ROUND_HALF_UP, Decimal
 from enum import StrEnum
+from typing import Any, Optional
 
 #: Default warning threshold: 8,000 basis points = 80%.
 DEFAULT_WARNING_RATIO_BASIS_POINTS = 8_000
@@ -304,17 +306,124 @@ class QuotaExceededError(Exception):
         self.limit = limit
 
 
+@dataclass(frozen=True, slots=True)
+class LeaseResult:
+    """Outcome of a run-lease acquisition attempt (store.QuotaStore).
+
+    Attributes:
+        granted: Whether the run now holds an active concurrency lease.
+        resumed: Whether an existing lease for this exact run was reused
+            (idempotent resume) rather than a fresh slot being consumed.
+        expires_at: The lease's current expiry, when granted.
+    """
+
+    granted: bool
+    resumed: bool
+    expires_at: Optional[str]
+
+
+@dataclass(frozen=True, slots=True)
+class ReservationResult:
+    """Outcome of a storage-byte reservation attempt (store.QuotaStore).
+
+    Attributes:
+        granted: Whether the bytes are now held as a reservation.
+        reservation_id: The reservation's id (the caller's idempotency key)
+            when granted.
+    """
+
+    granted: bool
+    reservation_id: Optional[str]
+
+
+@dataclass(frozen=True, slots=True)
+class UsageResult:
+    """Outcome of recording an incremental monthly usage delta (store.QuotaStore).
+
+    Attributes:
+        granted: Whether the delta was recorded (``False`` means the tenant
+            was already at or over its limit and nothing was recorded).
+        used: Total used after this call (or before, when denied).
+        limit: The configured limit this call was checked against.
+        crossed_warning: Whether this call is the first to cross the
+            configured warning ratio for this tenant/resource/window.
+    """
+
+    granted: bool
+    used: int
+    limit: int
+    crossed_warning: bool
+
+
+def policy_to_json(policy: TenantQuotaPolicy) -> str:
+    """Serialize a policy's non-key fields to JSON for durable storage."""
+    budget = policy.default_run_budget
+    return json.dumps(
+        {
+            "max_concurrent_runs": policy.max_concurrent_runs,
+            "max_storage_bytes": policy.max_storage_bytes,
+            "monthly_token_limit": policy.monthly_token_limit,
+            "monthly_cost_microusd": policy.monthly_cost_microusd,
+            "requests_per_second": policy.requests_per_second,
+            "warning_ratio_basis_points": policy.warning_ratio_basis_points,
+            "default_run_budget": {
+                "max_tokens": budget.max_tokens,
+                "max_cost_microusd": budget.max_cost_microusd,
+                "max_wall_clock_ms": budget.max_wall_clock_ms,
+                "max_steps": budget.max_steps,
+            },
+        }
+    )
+
+
+def policy_from_json(tenant_id: str, payload: str, version: int) -> TenantQuotaPolicy:
+    """Deserialize a stored policy JSON payload back into a typed policy.
+
+    Args:
+        tenant_id: Tenant the policy belongs to (stored separately as the
+            table's primary key, not duplicated inside the JSON payload).
+        payload: The JSON payload written by :func:`policy_to_json`.
+        version: The row's current optimistic-concurrency version.
+
+    Returns:
+        The deserialized policy.
+    """
+    data: dict[str, Any] = json.loads(payload)
+    budget_data = data["default_run_budget"]
+    return TenantQuotaPolicy(
+        tenant_id=tenant_id,
+        max_concurrent_runs=data["max_concurrent_runs"],
+        max_storage_bytes=data["max_storage_bytes"],
+        monthly_token_limit=data["monthly_token_limit"],
+        monthly_cost_microusd=data["monthly_cost_microusd"],
+        requests_per_second=data["requests_per_second"],
+        default_run_budget=RunBudgetLimits(
+            max_tokens=budget_data.get("max_tokens"),
+            max_cost_microusd=budget_data.get("max_cost_microusd"),
+            max_wall_clock_ms=budget_data.get("max_wall_clock_ms"),
+            max_steps=budget_data.get("max_steps"),
+        ),
+        warning_ratio_basis_points=data["warning_ratio_basis_points"],
+        version=version,
+    )
+
+
 __all__ = [
     "DEFAULT_WARNING_RATIO_BASIS_POINTS",
     "MICROS_PER_USD",
     "BudgetSnapshot",
+    "LeaseResult",
     "QuotaDenialReason",
     "QuotaExceededError",
     "QuotaResource",
+    "ReservationResult",
     "RunBudgetLimits",
     "TenantQuotaPolicy",
     "UsageDelta",
+    "UsageResult",
     "narrow_budget",
+    "policy_from_json",
+    "policy_to_json",
     "usd_to_micros",
     "utc_month_window",
 ]
