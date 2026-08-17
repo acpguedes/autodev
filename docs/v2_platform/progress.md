@@ -428,6 +428,40 @@ Add a dated entry every time a story/epic/wave status changes.
   Both touch a boundary (a security control, a concurrency contract) where the
   fix is a decision, not a patch.
 
+- **2026-08-10** — **E7 deferred-DoD closure (observability + fusion config).**
+  Closed three of the five DoD items E7 carried into Done: indexing traces
+  (`autodev.repo.index` / `autodev.repo.reindex` spans), per-step context traces
+  (`autodev.context.compose` with a per-provider event), and fusion
+  configuration. The last was not merely undocumented — `reciprocal_rank_fusion`
+  accepted `k`/`weights` but `retrieve()` neither accepted nor forwarded them, so
+  fusion was unconfigurable from every caller including HTTP; `fusion_k`,
+  `lexical_weight` and `vector_weight` are now first-class on
+  `GET /v2/context/retrieve`, echoed back in a `fusion` block, and documented in
+  `docs/api/context_retrieval.md`. Remaining deferrals and why they stay deferred
+  are recorded in the epic checklist: language support is unmet in code (Python
+  only), the recall/latency benchmark needs a live pgvector instance, and
+  retrieval metrics in the Evaluation Service are a new surface rather than
+  wiring.
+  **Also corrected stale documentation across four files**: `SupervisorPolicy`
+  was described as pending "not wired" debt in `feature_matrix.md`,
+  `dynamic_orchestration.md`, and the E3/E5 phase docs. It is **superseded**, not
+  pending — a 22-line sequential cursor that ignores run state, replaced by E5's
+  policy-driven `backend/routing/` Router/Selector, imported by nothing but its
+  own unit test. The genuinely open item, now stated where the stale claims were,
+  is that the Router/Selector is itself not wired into `POST /chat/dynamic`, whose
+  graph compiles to a fixed linear chain with no conditional edges.
+  (`v2_platform_reference.md`'s mention is in the "v1" column of a v1→v2
+  comparison table and is correct as historical framing; left unchanged.)
+
+  **Superseded in part by the 2026-08-17 entry above.** That pass duplicated the
+  observability half of this work before this branch merged. On reconciliation
+  the spans already on `main` were kept, so the span names this entry describes
+  (`autodev.repo.*`, and a per-provider *event* on the compose span) are not what
+  shipped — see the merged E7 phase-doc checklist. The fusion-configuration work
+  below is unaffected and is what makes this branch worth landing; its
+  documentation moved from `docs/api/context_retrieval.md` into the consolidated
+  `docs/context/retrieval.md`.
+
 - **2026-08-05** — Opened corrective story **E2-S6 — Provider-neutral model
   gateway and governed fallback** (E2 temporarily **5/6 In Progress**; dependencies
   E0, E1, E2-S1–S4). ADR-016 accepts AutoDev-owned immutable contracts plus

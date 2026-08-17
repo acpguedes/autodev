@@ -33,6 +33,13 @@ typed metadata schemas of the core agents).
 
 This module is standalone and is **not** wired into the default run path.
 
+> **Superseded.** This document describes v1 precedent. Durable execution moved to
+> E3's flow engine and policy-driven selection moved to E5's Router/Selector
+> (`backend/routing/`). In particular `SupervisorPolicy` below is **not** pending
+> work: it is a sequential cursor that ignores run state, and E5 chose to replace
+> rather than extend it. Read this page as historical context for why those
+> subsystems exist, not as a description of the current execution path.
+
 ## Opt-in endpoint (`backend/api/routers/orchestration.py`)
 
 - `POST /chat/dynamic` — when `AUTODEV_DYNAMIC_ORCH=1`, runs the run-type-routed graph;

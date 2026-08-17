@@ -66,18 +66,57 @@ Hybrid mode fuses the two ranked id lists with RRF
 1-based. RRF operates on ranks, not raw scores, which is what lets it combine
 `ts_rank` and cosine distance without a normalization step.
 
-| Parameter | Default | Effect |
-| --- | --- | --- |
-| `k` | `60` (`DEFAULT_RRF_K`, Cormack et al. 2009) | Higher `k` flattens the influence of exact rank position |
-| `weights` | equal (`1.0` per ranking) | Per-ranking multiplier, e.g. to favor lexical over vector |
-
 Ties are broken by first-seen order across the input rankings, so fusion is
 deterministic for a fixed input.
 
-**Known limit.** `retrieve()` calls `reciprocal_rank_fusion` with the
-defaults; `k` and `weights` are tunable in the fusion function but are not yet
-threaded through the retriever or the API. Changing them today means calling
-`reciprocal_rank_fusion` directly.
+Fusion is configurable end to end — `retrieve()` and
+`GET /v2/context/retrieve` both accept these:
+
+| Query parameter | Default | Effect |
+| --- | --- | --- |
+| `fusion_k` | `60` (Cormack, Clarke & Buettcher 2009) | Smoothing constant. Higher values flatten the influence of exact rank position, so the two rankers agree more and top-1 dominance weakens. Must be positive. |
+| `lexical_weight` | `1.0` | Weight of the lexical ranking. |
+| `vector_weight` | `1.0` | Weight of the vector ranking. |
+
+`60` is a reasonable default; it is exposed because the right value depends on
+how well your embeddings match your corpus.
+
+All three apply to `hybrid` mode only. In `lexical` and `vector` mode nothing is
+fused, so they are accepted and ignored — including values that would be
+rejected during fusion.
+
+**Weighting.** Weights are relative, not normalized: `(10, 1)` and `(1, 0.1)`
+produce the same ordering. Setting a weight to `0` is meaningful and is **not**
+the same as switching mode — the zero-weighted ranker still contributes its
+candidates to the result set but contributes nothing to their score. Use this to
+widen recall through one ranker while ranking purely by the other.
+
+### Response shape
+
+```json
+{
+  "query": "parse the manifest",
+  "mode": "hybrid",
+  "fusion": {"k": 60, "lexicalWeight": 1.0, "vectorWeight": 1.0},
+  "results": [
+    {
+      "chunkId": 41, "filePath": "backend/agents/manifest.py",
+      "symbol": "validate_agent_manifest", "startLine": 120, "endLine": 168,
+      "content": "...", "score": 0.0325, "source": "hybrid"
+    }
+  ]
+}
+```
+
+`fusion` echoes the effective configuration so a caller can tell which knobs
+produced a ranking; it is `null` outside hybrid mode. `source` reports which
+ranker(s) surfaced each result. Scores are RRF scores, not similarities — they
+are comparable **within** one response and meaningless across responses or
+against a threshold.
+
+Retrieval requires PostgreSQL: lexical search uses `ts_rank` and vector search
+uses pgvector, both Postgres-only. Against any other store the endpoint answers
+`501` (see [ADR-011](../v2_platform/decisions/ADR-011-pgvector-hnsw-index.md)).
 
 ### Request parameters
 
@@ -90,6 +129,7 @@ threaded through the retriever or the API. Changing them today means calling
 | `symbol` | — | Exact symbol name match |
 | `limit` | `20` (max `100`) | Chunk ids considered **per mode**, before fusion |
 | `budget` | — | Max total estimated tokens across results |
+| `fusion_k`, `lexical_weight`, `vector_weight` | see above | Hybrid-mode fusion tuning |
 
 `budget` truncates in relevance order — the least relevant snippets are
 dropped first, and the single best result is always kept even if it alone
