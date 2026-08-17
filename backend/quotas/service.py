@@ -144,6 +144,10 @@ class QuotaService:
         """
         return self._store.upsert_policy(policy, expected_version=expected_version)
 
+    def list_tenant_ids(self) -> list[str]:
+        """Return every tenant with a durably stored quota policy."""
+        return self._store.list_tenant_ids()
+
     def get_usage(self, tenant_id: str) -> TenantUsageSnapshot:
         """Return a tenant's current usage against its effective policy.
 

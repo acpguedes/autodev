@@ -11,8 +11,12 @@ a parent, never widen it" rule across the two types.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from backend.quotas.contracts import MICROS_PER_USD, RunBudgetLimits
-from backend.reasoning.contract import Budget
+
+if TYPE_CHECKING:
+    from backend.reasoning.contract import Budget
 
 
 def narrow_reasoning_budget(default_run_budget: RunBudgetLimits, requested: Budget) -> Budget:
@@ -29,6 +33,12 @@ def narrow_reasoning_budget(default_run_budget: RunBudgetLimits, requested: Budg
     Returns:
         A new :class:`Budget`, no looser than either input on any dimension.
     """
+    # Local import: backend.reasoning's package __init__ eagerly imports
+    # ReasoningService, which imports this module -- importing Budget at
+    # module level here would circle straight back into that partially
+    # initialized package.
+    from backend.reasoning.contract import Budget
+
     tokens = requested.tokens
     if default_run_budget.max_tokens is not None:
         tokens = min(tokens, default_run_budget.max_tokens)

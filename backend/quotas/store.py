@@ -118,6 +118,20 @@ class QuotaStore:
 
     # ------------------------------------------------------------ policy
 
+    def list_tenant_ids(self) -> list[str]:
+        """Return every tenant with a durably stored quota policy.
+
+        Local-mode tenants relying on finite defaults (never explicitly
+        configured) are not included -- there is nothing durable to list
+        for them.
+
+        Returns:
+            Tenant ids, in no particular order.
+        """
+        with self._connect() as conn:
+            rows = conn.execute("SELECT tenant_id FROM tenant_quota_policies").fetchall()
+        return [row["tenant_id"] for row in rows]
+
     def get_policy(self, tenant_id: str) -> Optional[TenantQuotaPolicy]:
         """Fetch a tenant's durable quota policy, or ``None`` if unconfigured."""
         with self._connect() as conn:
