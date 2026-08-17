@@ -12,6 +12,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from backend.api.authorization import requires_scope
+from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
 from backend.flows.engine import FlowEngine, FlowRunError
 from backend.flows.human import (
     FlowHumanDecisionError,
@@ -48,6 +50,7 @@ def get_human_service(
     return FlowHumanService(engine=engine)
 
 
+@requires_scope("flow:write")
 @router.post("", status_code=201)
 def register_flow(
     manifest: dict[str, Any],
@@ -75,6 +78,7 @@ def register_flow(
     }
 
 
+@requires_scope("flow:read")
 @router.post("/validate")
 def validate_flow(manifest: dict[str, Any]) -> dict[str, Any]:
     """Validate a flow definition without registering it.
@@ -89,6 +93,7 @@ def validate_flow(manifest: dict[str, Any]) -> dict[str, Any]:
     return {"schemaVersion": "1", "valid": result.valid, "errors": result.errors}
 
 
+@requires_scope("flow:read")
 @router.get("")
 def list_flows(engine: FlowEngine = Depends(get_flow_engine)) -> dict[str, Any]:
     """List the registered flow catalog.
@@ -102,6 +107,7 @@ def list_flows(engine: FlowEngine = Depends(get_flow_engine)) -> dict[str, Any]:
     return engine.registry.catalog()
 
 
+@requires_scope("flow:execute")
 @router.post("/cron/tick")
 def cron_tick(
     body: dict[str, Any] | None = None,
@@ -141,23 +147,28 @@ def cron_tick(
     return {"schemaVersion": "1", "started": started}
 
 
+@requires_scope("flow:read")
 @router.get("/runs/{run_id}")
 def get_run(
-    run_id: str, engine: FlowEngine = Depends(get_flow_engine)
+    run_id: str,
+    engine: FlowEngine = Depends(get_flow_engine),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> dict[str, Any]:
     """Fetch a run with its steps.
 
     Args:
         run_id: Id of the run.
         engine: Flow engine dependency.
+        principal: Authenticated caller; its tenant is the only source of
+            scope for the referenced run.
 
     Returns:
         The run document including its ordered steps.
 
     Raises:
-        HTTPException: 404 when the run is unknown.
+        HTTPException: 404 when the run is unknown for the caller's tenant.
     """
-    run = engine.runs.get_run(run_id)
+    run = engine.runs.get_run(run_id, tenant_id=principal.tenant_id)
     if run is None:
         raise HTTPException(status_code=404, detail=f"unknown run {run_id!r}")
     document = run.to_document()
@@ -165,23 +176,28 @@ def get_run(
     return document
 
 
+@requires_scope("flow:read")
 @router.get("/runs/{run_id}/events")
 def get_run_events(
-    run_id: str, engine: FlowEngine = Depends(get_flow_engine)
+    run_id: str,
+    engine: FlowEngine = Depends(get_flow_engine),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> dict[str, Any]:
     """Fetch a run's ordered event store.
 
     Args:
         run_id: Id of the run.
         engine: Flow engine dependency.
+        principal: Authenticated caller; its tenant is the only source of
+            scope for the referenced run.
 
     Returns:
         The run's events in emission order.
 
     Raises:
-        HTTPException: 404 when the run is unknown.
+        HTTPException: 404 when the run is unknown for the caller's tenant.
     """
-    if engine.runs.get_run(run_id) is None:
+    if engine.runs.get_run(run_id, tenant_id=principal.tenant_id) is None:
         raise HTTPException(status_code=404, detail=f"unknown run {run_id!r}")
     return {
         "schemaVersion": "1",
@@ -189,23 +205,32 @@ def get_run_events(
     }
 
 
+@requires_scope("flow:read")
 @router.get("/runs/{run_id}/pending-human")
 def get_pending_human(
-    run_id: str, service: FlowHumanService = Depends(get_human_service)
+    run_id: str,
+    engine: FlowEngine = Depends(get_flow_engine),
+    service: FlowHumanService = Depends(get_human_service),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> dict[str, Any]:
     """Fetch the pending human request of a paused run (E3-S4).
 
     Args:
         run_id: Id of the run.
+        engine: Flow engine dependency, used only to verify tenant ownership.
         service: Human-in-the-loop service dependency.
+        principal: Authenticated caller; its tenant is the only source of
+            scope for the referenced run.
 
     Returns:
         The pending request document (node id, prompt, form, expiry).
 
     Raises:
-        HTTPException: 404 when the run is unknown; 409 when the run is not
-            waiting for a human decision.
+        HTTPException: 404 when the run is unknown for the caller's tenant;
+            409 when the run is not waiting for a human decision.
     """
+    if engine.runs.get_run(run_id, tenant_id=principal.tenant_id) is None:
+        raise HTTPException(status_code=404, detail=f"unknown run {run_id!r}")
     try:
         pending = service.pending(run_id)
     except FlowHumanError as exc:
@@ -218,36 +243,43 @@ def get_pending_human(
     return pending.to_document()
 
 
+@requires_scope("flow:execute")
 @router.post("/runs/{run_id}/human-decision")
 def post_human_decision(
     run_id: str,
     body: dict[str, Any],
     engine: FlowEngine = Depends(get_flow_engine),
     service: FlowHumanService = Depends(get_human_service),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> dict[str, Any]:
     """Record a human decision and resume the paused run (E3-S4).
 
     Args:
         run_id: Id of the paused run.
-        body: ``{"decision": {...}, "actor": "..."}``; ``actor`` defaults to
-            ``"anonymous"`` and is recorded on the decision event.
+        body: ``{"decision": {...}}``. A legacy ``"actor"`` field remains
+            parseable but is ignored (ADR-018): the actor recorded on the
+            decision event is always the authenticated principal's subject.
         engine: Flow engine dependency (used to render the run's steps).
         service: Human-in-the-loop service dependency.
+        principal: The authenticated caller.
 
     Returns:
         The resulting run document including its ordered steps.
 
     Raises:
-        HTTPException: 404 for unknown runs, 409 when the run is not waiting,
-            422 for invalid decisions or expired waits (the timeout route is
-            taken before the 422 is returned — fail closed on the SLA).
+        HTTPException: 404 for a run unknown to the caller's tenant, 409
+            when the run is not waiting, 422 for invalid decisions or
+            expired waits (the timeout route is taken before the 422 is
+            returned — fail closed on the SLA).
     """
+    if engine.runs.get_run(run_id, tenant_id=principal.tenant_id) is None:
+        raise HTTPException(status_code=404, detail=f"unknown run {run_id!r}")
     decision = body.get("decision")
     if not isinstance(decision, dict):
         raise HTTPException(
             status_code=422, detail="body must carry a 'decision' object"
         )
-    actor = str(body.get("actor") or "anonymous")
+    actor = principal.subject
     try:
         run = service.decide(run_id, decision, actor=actor)
     except FlowHumanStateError as exc:
@@ -263,6 +295,7 @@ def post_human_decision(
     return document
 
 
+@requires_scope("flow:execute")
 @router.post("/human/expire")
 def expire_human_waits(
     body: dict[str, Any] | None = None,
@@ -291,6 +324,7 @@ def expire_human_waits(
     return {"schemaVersion": "1", "expired": service.expire_due(at)}
 
 
+@requires_scope("flow:read")
 @router.get("/{namespace}/{name}")
 def get_flow_versions(
     namespace: str,
@@ -324,20 +358,25 @@ def get_flow_versions(
     }
 
 
+@requires_scope("flow:execute")
 @router.post("/{namespace}/{name}/runs", status_code=201)
 def start_run(
     namespace: str,
     name: str,
     body: dict[str, Any] | None = None,
     engine: FlowEngine = Depends(get_flow_engine),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> dict[str, Any]:
     """Start (and synchronously execute) a run of a registered flow.
 
     Args:
         namespace: Flow id namespace segment.
         name: Flow id name segment.
-        body: ``{"input": {...}, "versionRange": "...", "tenantId": "..."}``.
+        body: ``{"input": {...}, "versionRange": "..."}``. A legacy
+            ``"tenantId"`` field remains parseable but is ignored (ADR-019):
+            the run's tenant is always the authenticated principal's tenant.
         engine: Flow engine dependency.
+        principal: Authenticated caller; its tenant owns the new run.
 
     Returns:
         The terminal run document including steps.
@@ -353,7 +392,7 @@ def start_run(
             version_range=str(payload.get("versionRange", "*")),
             input=payload.get("input") or {},
             trigger={"type": "api"},
-            tenant_id=str(payload.get("tenantId", "default")),
+            tenant_id=principal.tenant_id,
         )
     except FlowRunError as exc:
         status = 404 if "No flow" in str(exc) else 422
@@ -365,12 +404,14 @@ def start_run(
     return document
 
 
+@requires_scope("flow:execute")
 @router.post("/{namespace}/{name}/trigger", status_code=201)
 def trigger_run(
     namespace: str,
     name: str,
     body: dict[str, Any] | None = None,
     engine: FlowEngine = Depends(get_flow_engine),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> dict[str, Any]:
     """Start a run through a declared trigger (message/webhook/event).
 
@@ -383,6 +424,7 @@ def trigger_run(
         body: ``{"type": "message|webhook|event", "event": "...",
             "input": {...}, "payload": {...}}``.
         engine: Flow engine dependency.
+        principal: Authenticated caller; its tenant owns the new run.
 
     Returns:
         The terminal run document.
@@ -410,6 +452,7 @@ def trigger_run(
             version_range=manifest.version,
             input=payload.get("input") or {},
             trigger=trigger.to_document(),
+            tenant_id=principal.tenant_id,
         )
     except (TriggerError, FlowRunError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

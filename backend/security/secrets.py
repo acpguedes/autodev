@@ -117,9 +117,9 @@ def _iter_files(root: Path) -> Iterable[Path]:
     if root.is_file():
         yield root
         return
-    tracked = _git_tracked_files(root)
-    if tracked is not None:
-        yield from tracked
+    scannable = _git_scannable_files(root)
+    if scannable is not None:
+        yield from scannable
         return
     for path in root.rglob("*"):
         if path.is_dir():
@@ -129,21 +129,34 @@ def _iter_files(root: Path) -> Iterable[Path]:
         yield path
 
 
-def _git_tracked_files(root: Path) -> list[Path] | None:
-    """List git-tracked files under a repository root, excluding noisy directories.
+def _git_scannable_files(root: Path) -> list[Path] | None:
+    """List tracked and untracked, non-ignored files under a repository root.
+
+    Includes both committed files and new files not yet staged/committed, so
+    a secret introduced in a not-yet-tracked file is still caught. Excludes
+    git-ignored files (e.g. `.env`, build output) and noisy directories.
 
     Args:
         root: Candidate repository root.
 
     Returns:
-        Tracked file paths, or ``None`` if ``root`` is not a git repository or
-        ``git`` is unavailable.
+        Scannable file paths, or ``None`` if ``root`` is not a git repository
+        or ``git`` is unavailable.
     """
     if not (root / ".git").exists():
         return None
     try:
         result = subprocess.run(
-            ["git", "-C", str(root), "ls-files", "-z"],
+            [
+                "git",
+                "-C",
+                str(root),
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
+            ],
             check=True,
             capture_output=True,
         )
@@ -159,7 +172,7 @@ def _git_tracked_files(root: Path) -> list[Path] | None:
         path = root / rel
         if path.is_file():
             files.append(path)
-    return files
+    return sorted(files)
 
 
 def _read_text(path: Path) -> str | None:

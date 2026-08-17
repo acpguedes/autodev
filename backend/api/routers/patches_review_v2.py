@@ -58,6 +58,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends
 
+from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
 from backend.api.routers.patches_review_v2_models import (
     ChangedFileListV2,
@@ -77,8 +78,6 @@ from backend.patches.engine import apply_patch, generate_patch
 from backend.patches.models import Patch
 
 router = APIRouter(prefix="/v2/sessions/{session_id}/patches", tags=["patches"], dependencies=[Depends(require_v2_principal)])
-
-_DEFAULT_TENANT_ID = "default"
 
 PatchStatus = Literal["proposed", "applied", "discarded"]
 
@@ -121,7 +120,11 @@ class _PatchRecord:
 
 
 _STORE_LOCK = threading.Lock()
-_PATCH_STORE: dict[str, dict[str, _PatchRecord]] = {}
+#: Keyed by ``(tenant_id, session_id)`` — never by ``session_id`` alone
+#: (ADR-019): this in-process store has no database backing a tenant
+#: column, so the tenant is folded directly into the key to keep one
+#: tenant's patches unreachable from another's request.
+_PATCH_STORE: dict[tuple[str, str], dict[str, _PatchRecord]] = {}
 
 
 def reset_patch_review_store_for_tests() -> None:
@@ -155,12 +158,20 @@ def _diff_stats(diff: str) -> tuple[int, int]:
     return added, removed
 
 
-def _get_patch_or_404_locked(session_id: str, patch_id: str) -> _PatchRecord:
+def _get_patch_or_404_locked(
+    tenant_id: str, session_id: str, patch_id: str
+) -> _PatchRecord:
     """Fetch a patch record while holding ``_STORE_LOCK``, raising a v2 404 when missing.
 
     Callers must invoke this only from within a ``with _STORE_LOCK:`` block.
+
+    Args:
+        tenant_id: Tenant the patch must belong to (the authenticated
+            principal's tenant — never a client-supplied value).
+        session_id: Identifier of the session the patch belongs to.
+        patch_id: Identifier of the patch to fetch.
     """
-    session_patches = _PATCH_STORE.get(session_id, {})
+    session_patches = _PATCH_STORE.get((tenant_id, session_id), {})
     record = session_patches.get(patch_id)
     if record is None:
         v2_error(404, f"Unknown patch_id {patch_id!r} for session {session_id!r}.")
@@ -223,6 +234,7 @@ def _now() -> str:
 # ---------------------------------------------------------------------------
 
 
+@requires_scope("patch:propose")
 @router.post("", response_model=PatchDetailV2, status_code=201)
 def propose_patch_v2(
     session_id: str,
@@ -258,14 +270,16 @@ def propose_patch_v2(
         audit_log=[_AuditEntry(actor=principal.subject, timestamp=_now(), action="propose", result="proposed")],
     )
     with _STORE_LOCK:
-        _PATCH_STORE.setdefault(session_id, {})[patch_id] = record
+        _PATCH_STORE.setdefault((principal.tenant_id, session_id), {})[patch_id] = record
         return _to_patch_detail_v2(record)
 
 
+@requires_scope("plan:read")
 @router.get("", response_model=ChangedFileListV2)
 def list_changed_files_v2(
     session_id: str,
     pagination: PaginationParams = Depends(),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> ChangedFileListV2:
     """List a session's changed files with +/- line stats.
 
@@ -275,17 +289,19 @@ def list_changed_files_v2(
         session_id: Identifier of the session (or run) whose changed files
             are being reviewed.
         pagination: Shared limit/offset pagination window.
+        principal: Authenticated caller; its tenant is the only source of
+            scope for the referenced session's patches.
 
     Returns:
         A paginated collection of changed-file summaries.
     """
     with _STORE_LOCK:
-        records = list(_PATCH_STORE.get(session_id, {}).values())
+        records = list(_PATCH_STORE.get((principal.tenant_id, session_id), {}).values())
         items = [_to_changed_file_v2(record) for record in records]
     page, page_meta = paginate(items, pagination)
     emit_event(
         "patch.changedfiles.listed",
-        tenant_id=_DEFAULT_TENANT_ID,
+        tenant_id=principal.tenant_id,
         partition_key=session_id,
         data={"sessionId": session_id, "fileCount": len(items)},
         subject={"sessionId": session_id},
@@ -293,25 +309,34 @@ def list_changed_files_v2(
     return ChangedFileListV2(session_id=session_id, items=page, page=page_meta)
 
 
+@requires_scope("plan:read")
 @router.get("/{patch_id}", response_model=PatchDetailV2)
-def get_patch_diff_v2(session_id: str, patch_id: str) -> PatchDetailV2:
+def get_patch_diff_v2(
+    session_id: str,
+    patch_id: str,
+    principal: PrincipalV2 = Depends(require_v2_principal),
+) -> PatchDetailV2:
     """Retrieve a single changed file's unified diff and current status.
 
     Args:
         session_id: Identifier of the session the patch belongs to.
         patch_id: Identifier of the patch to fetch.
+        principal: Authenticated caller; its tenant is the only source of
+            scope for the referenced patch.
 
     Returns:
         The patch detail, including its unified diff and audit trail.
 
     Raises:
-        HTTPException: 404 if ``patch_id`` is unknown for ``session_id``.
+        HTTPException: 404 if ``patch_id`` is unknown for ``session_id``
+            under the caller's tenant.
     """
     with _STORE_LOCK:
-        record = _get_patch_or_404_locked(session_id, patch_id)
+        record = _get_patch_or_404_locked(principal.tenant_id, session_id, patch_id)
         return _to_patch_detail_v2(record)
 
 
+@requires_scope("patch:review")
 @router.put("/{patch_id}/content", response_model=PatchDetailV2)
 def override_patch_content_v2(
     session_id: str,
@@ -339,7 +364,7 @@ def override_patch_content_v2(
             ``proposed``.
     """
     with _STORE_LOCK:
-        record = _get_patch_or_404_locked(session_id, patch_id)
+        record = _get_patch_or_404_locked(principal.tenant_id, session_id, patch_id)
         if record.status != "proposed":
             v2_error(409, f"Patch {patch_id!r} is {record.status!r}; only 'proposed' patches accept an override.")
         patch = generate_patch(record.path, record.original, request.updated)
@@ -350,6 +375,7 @@ def override_patch_content_v2(
         return _to_patch_detail_v2(record)
 
 
+@requires_scope("patch:apply")
 @router.post("/{patch_id}/apply", response_model=PatchApplyResultV2)
 def apply_patch_v2(
     session_id: str,
@@ -386,7 +412,7 @@ def apply_patch_v2(
             ``proposed``; 400 if the patch's path escapes ``workspace_root``.
     """
     with _STORE_LOCK:
-        record = _get_patch_or_404_locked(session_id, patch_id)
+        record = _get_patch_or_404_locked(principal.tenant_id, session_id, patch_id)
         if record.status != "proposed":
             v2_error(409, f"Patch {patch_id!r} is {record.status!r}; only 'proposed' patches can be applied.")
 
@@ -419,7 +445,7 @@ def apply_patch_v2(
     if result.applied:
         emit_event(
             "patch.applied",
-            tenant_id=_DEFAULT_TENANT_ID,
+            tenant_id=principal.tenant_id,
             partition_key=session_id,
             data=PatchAppliedData(files=[record.path], additions=added, deletions=removed).model_dump(),
             subject={"sessionId": session_id, "patchId": patch_id},
@@ -428,6 +454,7 @@ def apply_patch_v2(
     return response
 
 
+@requires_scope("patch:review")
 @router.post("/{patch_id}/discard", response_model=PatchDetailV2)
 def discard_patch_v2(
     session_id: str,
@@ -451,7 +478,7 @@ def discard_patch_v2(
             ``proposed``.
     """
     with _STORE_LOCK:
-        record = _get_patch_or_404_locked(session_id, patch_id)
+        record = _get_patch_or_404_locked(principal.tenant_id, session_id, patch_id)
         if record.status != "proposed":
             v2_error(409, f"Patch {patch_id!r} is {record.status!r}; only 'proposed' patches can be discarded.")
         record.status = "discarded"
@@ -460,7 +487,7 @@ def discard_patch_v2(
 
     emit_event(
         "patch.discarded",
-        tenant_id=_DEFAULT_TENANT_ID,
+        tenant_id=principal.tenant_id,
         partition_key=session_id,
         data={"sessionId": session_id, "patchId": patch_id, "path": record.path},
         subject={"sessionId": session_id, "patchId": patch_id},

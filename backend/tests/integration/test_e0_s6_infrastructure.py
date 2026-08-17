@@ -19,3 +19,17 @@ def test_prod_like_compose_profile_includes_redis_minio_and_backend_wiring() -> 
     assert "AUTODEV_REDIS_URL: redis://redis:6379/0" in compose
     assert "STORAGE_BACKEND: s3" in compose
     assert "AUTODEV_MINIO_ENDPOINT: minio:9000" in compose
+
+
+def test_compose_carries_no_production_default_credentials() -> None:
+    """Compose never bakes in a fallback PostgreSQL or MinIO credential (E11-S4)."""
+    compose = Path("infrastructure/docker-compose.yml").read_text()
+
+    assert "postgresql://autodev:autodev@" not in compose
+    assert "POSTGRES_PASSWORD: autodev" not in compose
+    assert "minioadmin" not in compose
+    assert "${AUTODEV_POSTGRES_PASSWORD:-}" in compose
+    assert 'AUTODEV_MINIO_ACCESS_KEY: "${AUTODEV_MINIO_ACCESS_KEY:-}"' in compose
+    assert 'AUTODEV_MINIO_SECRET_KEY: "${AUTODEV_MINIO_SECRET_KEY:-}"' in compose
+    assert 'MINIO_ROOT_USER: "${AUTODEV_MINIO_ACCESS_KEY:-}"' in compose
+    assert 'MINIO_ROOT_PASSWORD: "${AUTODEV_MINIO_SECRET_KEY:-}"' in compose

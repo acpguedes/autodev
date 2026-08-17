@@ -35,7 +35,23 @@ python -m backend.persistence.backup backup --out /backups/autodev/$(date +%Y%m%
 - Schedule: every 5 minutes (cron/systemd timer/CI schedule) to satisfy
   RPO <= 5 min. Components that do not apply to the deployment (e.g.
   PostgreSQL on a local-first SQLite install) are reported as `skipped`,
-  which is not a failure.
+  which is not a failure. **A component that *is* configured for the
+  deployment (a `postgresql://`/`postgres://` `DATABASE_URL`) but whose CLI
+  tool is missing on `PATH` now fails the backup closed (E11-S4)** — it is
+  never silently skipped, because a "successful" backup run that quietly
+  dropped the database component would be worse than a loud failure. See §6
+  for how that failure surfaces.
+- The database password never appears in `backup`/`restore` argv or error
+  text; it is passed to `pg_dump`/`pg_restore` only through the `PGPASSWORD`
+  environment variable (E11-S4).
+- Every backup attempt (success or failure) is durably recorded at
+  `AUTODEV_BACKUP_STATUS_PATH` (default `.autodev/backup-status.json`, mode
+  `0600`, sanitized — timestamps and a result label only, never exception
+  text) and exposed as Prometheus gauges through the E11-S1 meter:
+  `autodev_backup_last_attempt_timestamp_seconds`,
+  `autodev_backup_last_success_timestamp_seconds`,
+  `autodev_backup_consecutive_failures`, `autodev_backup_last_result`. See
+  `docs/ops/observability.md` and the alert rules in §6.
 
 ## 3. Pre-restore integrity checklist
 
@@ -72,9 +88,14 @@ The command verifies the manifest first and exits `!= 0` on any failure.
 ### 4.2 PostgreSQL State Store
 
 - Restored via `pg_restore --clean --if-exists --no-owner
-  --dbname=$DATABASE_URL state_store.pgdump`.
-- Requires `pg_restore` on `PATH` and a reachable database; the CLI skips
-  the component when the dump is absent, and fails when `pg_restore` fails.
+  --dbname=<password-free URL> state_store.pgdump`, with the password passed
+  separately through `PGPASSWORD`.
+- The component is skipped only when the manifest has no PostgreSQL dump to
+  begin with. If the manifest *does* contain a completed PostgreSQL dump,
+  `pg_restore` must be on `PATH` and the database reachable — a missing
+  `pg_restore` tool or an unreachable/non-PostgreSQL `DATABASE_URL` fails the
+  restore closed (E11-S4) instead of silently skipping a component the
+  backup actually captured.
 
 ### 4.3 Artifact Store
 
@@ -90,7 +111,7 @@ The command verifies the manifest first and exits `!= 0` on any failure.
    - sessions/runs/messages visible for a known tenant;
    - a known artifact downloads and its SHA-256 matches the manifest entry.
 2. Run the automated round-trip test against the restored environment:
-   `pytest backend/tests/test_backup_restore.py -q`.
+   `pytest backend/tests/unit/persistence/test_backup_restore.py -q`.
 3. **RTO verification:** record wall-clock time from "incident declared" to
    "post-restore checks green". The drill MUST complete in <= 30 min.
    Record the measured time in the incident/drill log. If the drill exceeds
@@ -102,14 +123,24 @@ The command verifies the manifest first and exits `!= 0` on any failure.
   non-zero exit (e.g. cron wrapper piping to the alerting channel, or the CI
   schedule marking the run red and notifying the on-call channel).
 - Treat a missed schedule tick the same as a failure (RPO breach risk).
+- As of E11-S4, the same signal is also durable and Prometheus-alertable
+  without depending on the scheduler's own exit-code plumbing:
+  `AutoDevBackupNeverSucceeded`, `AutoDevBackupStale` (no success in the last
+  5-minute RPO window), and `AutoDevBackupFailing` (a consecutive failure)
+  fire from `infrastructure/observability/prometheus-rules.yml` through
+  Alertmanager. See `docs/v2_platform/runbooks/e11_incident_response.md` for
+  the response procedure linked from each alert's `runbook_url`.
 
 ## 7. Periodic restore drill (E8-S4-T3)
 
-`backend/tests/test_backup_restore.py` implements seed → backup → wipe →
-restore → integrity asserts, with PostgreSQL and MinIO variants that skip
-automatically when those services are unavailable. Run it on every CI run
-and, additionally, as a scheduled (at least weekly) job against
-staging-equivalent PostgreSQL + MinIO to keep the restore path proven.
+`backend/tests/unit/persistence/test_backup_restore.py` implements seed →
+backup → wipe → restore → integrity asserts, with PostgreSQL and MinIO
+variants that skip automatically when those services are unavailable. Run it
+on every CI run and, additionally, as a scheduled (at least weekly) job
+against staging-equivalent PostgreSQL + MinIO to keep the restore path
+proven. The quarterly incident-response drill in
+`docs/v2_platform/runbooks/e11_incident_response.md` exercises this runbook
+end to end, including the RTO measurement in §5.
 
 ## Known deviations (DoR)
 

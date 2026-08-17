@@ -21,3 +21,4 @@ minio>=7.2
 packaging>=24.0
 PyYAML>=6.0
 types-PyYAML>=6.0
+PyJWT[crypto]>=2.13.0,<3

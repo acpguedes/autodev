@@ -1,14 +1,15 @@
 """In-process request metrics registry and Starlette/FastAPI middleware.
 
-Tracks request counts and cumulative latency sums keyed by ``(method, path)``.
+Tracks request counts and cumulative latency sums keyed by route template.
 Assigns and propagates an ``X-Request-ID`` response header.
 Logs one structured line per request via the stdlib ``logging`` module.
 
-OpenTelemetry spans are emitted through ``backend.observability.tracing``.
+OpenTelemetry spans and RED metrics use the runtime-owned three-signal APIs.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import uuid
@@ -16,7 +17,15 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
 
-from backend.observability.tracing import get_tracer
+from opentelemetry import propagate
+from opentelemetry.trace import SpanKind, Status, StatusCode
+
+from backend.observability.context import (
+    bind_correlation_context,
+    sanitize_identifier,
+)
+from backend.observability.metrics import get_metric_sink
+from backend.observability.runtime import get_tracer
 
 if TYPE_CHECKING:
     from fastapi import FastAPI
@@ -135,48 +144,123 @@ class RequestTracingMiddleware:
             await self._app(scope, receive, send)
             return
 
-        request_id = str(uuid.uuid4())
-        method = scope.get("method", "GET")
-        path = scope.get("path", "/")
-
-        start = time.perf_counter()
-
-        status_code: list[int] = [0]
+        carrier = {
+            name.decode("latin-1").lower(): value.decode("latin-1")
+            for name, value in scope.get("headers", [])
+        }
+        incoming_request_id = carrier.get("x-request-id", "").strip()
+        request_id = (
+            incoming_request_id
+            if incoming_request_id
+            and sanitize_identifier(incoming_request_id) == incoming_request_id
+            else str(uuid.uuid4())
+        )
+        parent_context = propagate.extract(carrier)
+        method = str(scope.get("method", "GET")).upper()
+        started = time.perf_counter()
+        response_status = 0
 
         async def send_with_header(message: dict) -> None:
-            """Inject the ``X-Request-ID`` header into the response-start ASGI message."""
+            """Replace the response ``X-Request-ID`` with the correlated value."""
+            nonlocal response_status
             if message["type"] == "http.response.start":
-                headers = list(message.get("headers", []))
+                headers = [
+                    (name, value)
+                    for name, value in message.get("headers", [])
+                    if name.lower() != b"x-request-id"
+                ]
                 headers.append((b"x-request-id", request_id.encode()))
                 message = {**message, "headers": headers}
-                status_code.append(message.get("status", 0))
+                response_status = int(message.get("status", 0))
             await send(message)
 
-        tracer = get_tracer()
-        with tracer.start_as_current_span(
-            f"http.server {method} {path}",
-            attributes={
-                "http.request.method": method,
-                "url.path": path,
-                "autodev.request_id": request_id,
-            },
-        ) as span:
-            await self._app(scope, receive, send_with_header)
-            span.set_attribute("http.response.status_code", status_code[-1] if status_code else 0)
+        with bind_correlation_context(request_id=request_id):
+            with get_tracer().start_as_current_span(
+                f"{method} pending-route",
+                context=parent_context,
+                kind=SpanKind.SERVER,
+                record_exception=False,
+                set_status_on_exception=False,
+            ) as span:
+                try:
+                    await self._app(scope, receive, send_with_header)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    response_status = 500
+                    span.set_status(Status(StatusCode.ERROR, "internal_error"))
+                    raise
+                finally:
+                    route = _route_template(scope)
+                    elapsed = time.perf_counter() - started
+                    span.update_name(f"{method} {route}")
+                    span.set_attributes(
+                        _safe_http_attributes(
+                            method=method,
+                            route=route,
+                            status_code=response_status,
+                            request_id=request_id,
+                        )
+                    )
+                    get_metric_sink().record_http_request(
+                        method=method,
+                        route=route,
+                        status_code=response_status,
+                        duration_seconds=elapsed,
+                    )
+                    _registry.record(
+                        method,
+                        route,
+                        elapsed,
+                        status_code=response_status,
+                    )
+                    logger.info(
+                        "request completed",
+                        extra={
+                            "event": "http.request.completed",
+                            "request_id": request_id,
+                            "method": method,
+                            "route": route,
+                            "status": response_status,
+                            "duration_s": round(elapsed, 6),
+                        },
+                    )
 
-        elapsed = time.perf_counter() - start
-        _registry.record(method, path, elapsed, status_code=status_code[-1] if status_code else 0)
 
-        logger.info(
-            "request completed",
-            extra={
-                "request_id": request_id,
-                "method": method,
-                "path": path,
-                "status": status_code[-1] if status_code else 0,
-                "duration_s": round(elapsed, 6),
-            },
-        )
+def _route_template(scope: dict) -> str:
+    """Return the matched route template or a bounded fallback.
+
+    Args:
+        scope: ASGI HTTP scope populated by the application router.
+
+    Returns:
+        The matched route template, or ``"_unmatched"``.
+    """
+    route = scope.get("route")
+    path = getattr(route, "path", None)
+    return path if isinstance(path, str) and path else "_unmatched"
+
+
+def _safe_http_attributes(
+    *, method: str, route: str, status_code: int, request_id: str
+) -> dict[str, str | int]:
+    """Build the exact content-free HTTP server span attributes.
+
+    Args:
+        method: Normalized HTTP method.
+        route: Matched route template or bounded fallback.
+        status_code: HTTP response status code.
+        request_id: Bounded request correlation identifier.
+
+    Returns:
+        Safe HTTP semantic and AutoDev correlation attributes.
+    """
+    return {
+        "http.request.method": method,
+        "http.route": route,
+        "http.response.status_code": status_code,
+        "autodev.request_id": request_id,
+    }
 
 
 def attach(app: "FastAPI") -> None:

@@ -22,6 +22,8 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from backend.api.authorization import requires_scope
+
 router = APIRouter(tags=["skills"])
 
 # ---------------------------------------------------------------------------
@@ -68,6 +70,7 @@ def _import_skills():  # type: ignore[return]
 # ---------------------------------------------------------------------------
 
 
+@requires_scope("skill:read")
 @router.get("/skills", response_model=List[SkillSummary])
 def list_skills() -> List[SkillSummary]:
     """Return all registered skills with their names and descriptions."""
@@ -82,6 +85,7 @@ def list_skills() -> List[SkillSummary]:
     ]
 
 
+@requires_scope("skill:read")
 @router.get("/skills/{name}", response_model=SkillDetail)
 def describe_skill(name: str) -> SkillDetail:
     """Return details for a single skill; 404 if the name is unknown."""
@@ -96,6 +100,7 @@ def describe_skill(name: str) -> SkillDetail:
     )
 
 
+@requires_scope("skill:invoke")
 @router.post("/skills/{name}/invoke", response_model=InvokeResponse)
 def invoke_skill(name: str, body: InvokeRequest) -> InvokeResponse:
     """Invoke a skill by name with the supplied inputs; 404 if unknown."""

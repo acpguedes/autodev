@@ -10,7 +10,9 @@ strategy. The default (``fail_closed``) simply returns the exhausted result.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, replace
+from decimal import Decimal
 from typing import Any, Callable, Mapping
 
 from backend.reasoning.contract import ReasoningInput, ReasoningOutput, TraceEvent
@@ -18,6 +20,10 @@ from backend.reasoning.engine import GuardrailCheck, ReasoningEngine, ToolImplem
 from backend.reasoning.registry import ReasoningStrategyRegistry
 from backend.reasoning.selection import SelectionDecision, resolve_strategy
 from backend.agents.provider import LLMProvider
+from backend.observability.tracing import record_decision
+from backend.quotas.contracts import QuotaExceededError, QuotaResource, usd_to_micros
+from backend.quotas.reasoning_budget import narrow_reasoning_budget
+from backend.quotas.service import QuotaService
 
 _DEGRADE_PREFIX = "degrade_to:"
 
@@ -49,6 +55,7 @@ class ReasoningService:
         tool_impls: Mapping[str, ToolImplementation] | None = None,
         tenant_id: str = "local",
         on_event: Callable[[TraceEvent], None] | None = None,
+        quota_service: QuotaService | None = None,
     ) -> None:
         """Initialize the service with a registry and Engine configuration.
 
@@ -60,15 +67,21 @@ class ReasoningService:
             tenant_id: Tenant runs are scoped to.
             on_event: Trace sink; receives selection/degrade decisions and every
                 Engine trace event.
+            quota_service: Tenant quota/budget service (E11-S3, ADR-019);
+                defaults to a fresh :class:`~backend.quotas.service.QuotaService`.
+                Narrows every run's budget to the tenant's ceiling and records
+                monthly token/cost usage after each run.
         """
         self._registry = registry
         self._on_event = on_event
+        self._tenant_id = tenant_id
+        self._quota_service = quota_service or QuotaService()
         self._engine = ReasoningEngine(
             provider=provider,
             guardrail_checks=guardrail_checks,
             tool_impls=tool_impls,
             tenant_id=tenant_id,
-            on_event=on_event,
+            on_event=self._trace_event,
         )
 
     async def run(
@@ -99,8 +112,19 @@ class ReasoningService:
             node_override=node_override,
             selector_choice=selector_choice,
         )
-        self._emit("reasoning.selection.decided", {"strategy": decision.strategy_id, "source": decision.source})
-        output = await self._engine.run(self._registry.resolve(decision.strategy_id), run_input)
+        self._emit(
+            "reasoning.selection.decided",
+            {"strategy": decision.strategy_id, "source": decision.source},
+        )
+        tenant_policy = self._quota_service.resolve_policy(self._tenant_id)
+        run_input = replace(
+            run_input, budget=narrow_reasoning_budget(tenant_policy.default_run_budget, run_input.budget)
+        )
+        output = _with_canonical_trace_id(
+            await self._engine.run(
+                self._registry.resolve(decision.strategy_id), run_input
+            )
+        )
 
         degraded_to: str | None = None
         if output.stop_reason == "budget_exhausted":
@@ -114,9 +138,44 @@ class ReasoningService:
                     "reasoning.selection.degraded",
                     {"from": decision.strategy_id, "to": fallback_id},
                 )
-                output = await self._engine.run(self._registry.resolve(fallback_id), run_input)
+                output = _with_canonical_trace_id(
+                    await self._engine.run(
+                        self._registry.resolve(fallback_id), run_input
+                    )
+                )
                 degraded_to = fallback_id
-        return ReasoningRunResult(output=output, decision=decision, degraded_to=degraded_to)
+        self._record_usage(output)
+        return ReasoningRunResult(
+            output=output, decision=decision, degraded_to=degraded_to
+        )
+
+    def _record_usage(self, output: ReasoningOutput) -> None:
+        """Record a completed run's token/cost usage against the tenant's monthly budget.
+
+        A denial here (the tenant is already over its monthly ceiling) is
+        durably reported by :class:`~backend.quotas.service.QuotaService`
+        itself and swallowed here: the run already happened and returned a
+        result, so a post-hoc bookkeeping denial must never corrupt it.
+
+        Args:
+            output: The run's final output, carrying authoritative usage.
+        """
+        usage = output.usage
+        try:
+            if usage.tokens:
+                self._quota_service.record_monthly_usage(
+                    tenant_id=self._tenant_id,
+                    resource=QuotaResource.MONTHLY_TOKENS,
+                    delta=usage.tokens,
+                )
+            if usage.cost_usd:
+                self._quota_service.record_monthly_usage(
+                    tenant_id=self._tenant_id,
+                    resource=QuotaResource.MONTHLY_COST,
+                    delta=usd_to_micros(Decimal(str(usage.cost_usd))),
+                )
+        except QuotaExceededError:
+            pass
 
     def _emit(self, name: str, payload: dict[str, Any]) -> None:
         """Emit a service-level decision event to the trace sink, if configured.
@@ -125,8 +184,37 @@ class ReasoningService:
             name: Dotted event name.
             payload: Structured payload for the event.
         """
+        self._trace_event(
+            TraceEvent(sequence=-1, name=name, payload=payload, timestamp=time.time())
+        )
+
+    def _trace_event(self, event: TraceEvent) -> None:
+        """Record safe decision telemetry, then preserve the replay callback.
+
+        Args:
+            event: Original domain trace event, forwarded without mutation.
+        """
+        payload = event.payload
+        outcome_value = payload.get("stop_reason", payload.get("source", "recorded"))
+        outcome = outcome_value if isinstance(outcome_value, str) else "recorded"
+        attributes: dict[str, str | bool] = {}
+        strategy = payload.get("strategy")
+        if isinstance(strategy, str):
+            attributes["strategy_id"] = strategy
+        source = payload.get("source")
+        if isinstance(source, str):
+            attributes["selection_source"] = source
+        passed = payload.get("passed")
+        if isinstance(passed, bool):
+            attributes["gate_result"] = "passed" if passed else "failed"
+        record_decision(
+            name=event.name,
+            outcome=outcome,
+            tenant_id=self._tenant_id,
+            attributes=attributes,
+        )
         if self._on_event is not None:
-            self._on_event(TraceEvent(sequence=-1, name=name, payload=payload, timestamp=time.time()))
+            self._on_event(event)
 
 
 def _degrade_target(on_exceed: str) -> str | None:
@@ -139,8 +227,24 @@ def _degrade_target(on_exceed: str) -> str | None:
         The fallback strategy id for ``"degrade_to:<id>"``, else ``None``.
     """
     if isinstance(on_exceed, str) and on_exceed.startswith(_DEGRADE_PREFIX):
-        return on_exceed[len(_DEGRADE_PREFIX):].strip() or None
+        return on_exceed[len(_DEGRADE_PREFIX) :].strip() or None
     return None
+
+
+def _with_canonical_trace_id(output: ReasoningOutput) -> ReasoningOutput:
+    """Render the domain replay UUID canonically without using the W3C id.
+
+    Args:
+        output: Engine output carrying its domain trace anchor.
+
+    Returns:
+        Output with the same UUID rendered in standard 36-character form.
+    """
+    try:
+        trace_id = str(uuid.UUID(output.trace_id))
+    except (ValueError, AttributeError):
+        return output
+    return replace(output, trace_id=trace_id)
 
 
 __all__ = ["ReasoningRunResult", "ReasoningService"]

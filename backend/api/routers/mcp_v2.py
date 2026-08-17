@@ -19,6 +19,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 
+from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import require_v2_principal
 from backend.config.runtime import get_runtime_config_service
 from backend.mcp.jsonrpc import (
@@ -59,6 +60,7 @@ def get_mcp_server() -> McpServer:
     return McpServer(registry, broker)
 
 
+@requires_scope("mcp:invoke")
 @router.post("")
 async def call_mcp(request: Request, server: McpServer = Depends(get_mcp_server)) -> dict[str, Any]:
     """Dispatch a single JSON-RPC 2.0 MCP request over HTTP.

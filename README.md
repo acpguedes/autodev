@@ -196,6 +196,16 @@ AutoDev Architect is intended to be fully operable with open source infrastructu
 - **Metrics**: Prometheus
 - **Dashboards**: Grafana
 - **Logs**: Loki
+- **Available now** (E11-S1): self-hosted three-signal stack and dashboard
+  via `make observability-up|verify|down` — see
+  [`docs/ops/observability.md`](docs/ops/observability.md).
+
+### Authentication & RBAC
+- **Identity**: delegated to an external OIDC provider (authorization-code + PKCE)
+- **Machine credentials**: governed, hash-only service keys
+- **Authorization**: canonical five-role RBAC (`viewer`…`owner`) enforced on every `/v2` route
+- **Available now** (E11-S2): local zero-config access is unchanged; production requires
+  OIDC or a service credential — see [`docs/security.md`](docs/security.md).
 
 ### Optional local model path
 - **Inference gateway**: vLLM or Ollama
@@ -233,6 +243,7 @@ For rationale, read [`docs/architecture/stack_decisions.md`](docs/architecture/s
 - [`Makefile`](Makefile): install, test, lint, build, run, and clean targets.
 - [`docs/testing.md`](docs/testing.md): how to install, test, cover, lint, and reproduce CI locally.
 - [`docs/security.md`](docs/security.md): threat model, hardening applied, and the environment flags that gate authentication, execution, and network exposure.
+- [`docs/ops/observability.md`](docs/ops/observability.md): self-hosted OpenTelemetry + Prometheus + Tempo + Loki + Grafana stack — `make observability-up|verify|down`, span/metric naming, log schema, retention, and rollback.
 
 ### Governance and contribution
 - [`AGENTS.md`](AGENTS.md): repository-wide instructions for autonomous coding agents.

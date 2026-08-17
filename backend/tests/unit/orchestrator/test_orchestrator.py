@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterator, cast
+from typing import Any, Iterator, cast
 
 import pytest
 
@@ -51,6 +51,42 @@ def test_handle_message_returns_agent_responses(orchestrator_service: Orchestrat
     assert result.history[0].role == "user"
     assert result.history[0].content == "Start execution"
     assert all(entry.content for entry in result.history)
+
+
+@pytest.mark.parametrize(
+    ("failing_method", "failure_message"),
+    [
+        ("append_messages", "message persistence unavailable"),
+        ("update_session_artifacts", "artifact persistence unavailable"),
+    ],
+)
+def test_handle_message_completes_only_after_session_persistence(
+    orchestrator_service: OrchestratorService,
+    monkeypatch: pytest.MonkeyPatch,
+    failing_method: str,
+    failure_message: str,
+) -> None:
+    """A session-write failure leaves the run active and suppresses completion."""
+    session = orchestrator_service.create_plan("Persist before completion")
+    emitted_events: list[str] = []
+
+    def capture_event(event_type: str, **_: Any) -> None:
+        """Capture emitted event names without changing orchestration behavior."""
+        emitted_events.append(event_type)
+
+    def fail_persistence(*_: Any, **__: Any) -> None:
+        """Inject one deterministic durable session-write failure."""
+        raise RuntimeError(failure_message)
+
+    monkeypatch.setattr("backend.orchestrator.service.emit_event", capture_event)
+    monkeypatch.setattr(orchestrator_service._store, failing_method, fail_persistence)
+
+    with pytest.raises(RuntimeError, match=failure_message):
+        orchestrator_service.handle_message(session.session_id, "Start execution")
+
+    persisted_run = orchestrator_service.list_runs(session.session_id)[0]
+    assert persisted_run.status == "running"
+    assert emitted_events == ["flow.run.started"]
 
 
 def test_history_persists_across_service_instances(

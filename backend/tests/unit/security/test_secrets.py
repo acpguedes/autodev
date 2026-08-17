@@ -20,7 +20,7 @@ from backend.security.secrets import (
     ALLOWLIST_MARKER,
     PATTERNS,
     SecretFinding,
-    _git_tracked_files,
+    _git_scannable_files,
     _iter_files,
     _mask,
     _read_text,
@@ -217,12 +217,12 @@ def test_scan_path_skips_excluded_dirs_without_git(tmp_path: Path) -> None:
     assert [f.path for f in findings] == [included.resolve()]
 
 
-def test_git_tracked_files_returns_none_when_not_a_repo(tmp_path: Path) -> None:
+def test_git_scannable_files_returns_none_when_not_a_repo(tmp_path: Path) -> None:
     """A directory without a .git subdirectory is not treated as a git repo."""
-    assert _git_tracked_files(tmp_path) is None
+    assert _git_scannable_files(tmp_path) is None
 
 
-def test_git_tracked_files_returns_none_when_git_unavailable(
+def test_git_scannable_files_returns_none_when_git_unavailable(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """If invoking git fails (e.g. binary missing), fall back to None."""
@@ -232,10 +232,10 @@ def test_git_tracked_files_returns_none_when_git_unavailable(
         raise OSError("git executable not found")
 
     monkeypatch.setattr(subprocess, "run", _raise)
-    assert _git_tracked_files(tmp_path) is None
+    assert _git_scannable_files(tmp_path) is None
 
 
-def test_git_tracked_files_returns_none_on_called_process_error(
+def test_git_scannable_files_returns_none_on_called_process_error(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """If git exits non-zero, the CalledProcessError is swallowed to None."""
@@ -245,10 +245,10 @@ def test_git_tracked_files_returns_none_on_called_process_error(
         raise subprocess.CalledProcessError(returncode=128, cmd=["git"])
 
     monkeypatch.setattr(subprocess, "run", _raise)
-    assert _git_tracked_files(tmp_path) is None
+    assert _git_scannable_files(tmp_path) is None
 
 
-def test_git_tracked_files_lists_tracked_files_and_filters_excluded(
+def test_git_scannable_files_lists_tracked_files_and_filters_excluded(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Tracked files are listed, excluded-dir entries and non-files are filtered out."""
@@ -268,7 +268,7 @@ def test_git_tracked_files_lists_tracked_files_and_filters_excluded(
         return subprocess.CompletedProcess(args=["git"], returncode=0, stdout=fake_stdout)
 
     monkeypatch.setattr(subprocess, "run", _fake_run)
-    tracked = _git_tracked_files(tmp_path)
+    tracked = _git_scannable_files(tmp_path)
     assert tracked is not None
     assert tracked == [tmp_path / "src.py"]
 
@@ -279,7 +279,7 @@ def test_iter_files_single_file_short_circuits() -> None:
     assert list(_iter_files(target)) == [target]
 
 
-def test_iter_files_uses_git_tracked_files_when_available(
+def test_iter_files_uses_git_scannable_files_when_available(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """_iter_files() prefers the git-tracked-file list when the root is a git repo."""
@@ -289,7 +289,7 @@ def test_iter_files_uses_git_tracked_files_when_available(
     (tmp_path / "untracked.py").write_text("w = 4\n", encoding="utf-8")
 
     monkeypatch.setattr(
-        "backend.security.secrets._git_tracked_files", lambda _root: [tracked_file]
+        "backend.security.secrets._git_scannable_files", lambda _root: [tracked_file]
     )
     assert list(_iter_files(tmp_path)) == [tracked_file]
 
@@ -324,3 +324,23 @@ def test_main_defaults_to_current_directory(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.chdir(tmp_path)
     (tmp_path / "ok.py").write_text("a = 1\n", encoding="utf-8")
     assert main([]) == 0
+
+
+def test_scan_path_includes_untracked_nonignored_files(tmp_path: Path) -> None:
+    """A file that is staged/committed nowhere yet is still scanned; ignored files are not."""
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    (tmp_path / ".gitignore").write_text("ignored.txt\n", encoding="utf-8")
+    (tmp_path / "tracked.txt").write_text("safe\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", ".gitignore", "tracked.txt"],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+    )
+    token = "sk-" + ("A" * 24)
+    (tmp_path / "pending.txt").write_text(token, encoding="utf-8")
+    (tmp_path / "ignored.txt").write_text(token, encoding="utf-8")
+
+    findings = scan_path(tmp_path)
+
+    assert [finding.path.name for finding in findings] == ["pending.txt"]

@@ -246,16 +246,15 @@ def test_postgres_backup_restore_round_trip(tmp_path: Path) -> None:
     assert restore_statuses["postgres"] == "completed"
 
 
-def test_postgres_skipped_without_tooling(tmp_path: Path) -> None:
-    """PostgreSQL component is skipped (not failed) when pg_dump is absent."""
+def test_postgres_backup_fails_closed_without_tooling(tmp_path: Path) -> None:
+    """A configured PostgreSQL backup fails closed (E11-S4) when pg_dump is absent."""
     manager = BackupManager(
-        database_url="postgresql://autodev:autodev@localhost/autodev"
+        database_url="postgresql://svc:db-secret@localhost/autodev"
     )
     if shutil.which("pg_dump") is not None:
-        pytest.skip("pg_dump is available; skip-path not exercisable")
-    report = manager.backup(tmp_path / "backup")
-    statuses = {c.name: c.status for c in report.components}
-    assert statuses["postgres"] == "skipped"
+        pytest.skip("pg_dump is available; fail-closed path not exercisable")
+    with pytest.raises(BackupError, match="pg_dump is not available"):
+        manager.backup(tmp_path / "backup")
 
 
 @pytest.mark.skipif(

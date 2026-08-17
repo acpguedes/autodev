@@ -17,6 +17,7 @@ from typing import List
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from backend.api.authorization import requires_scope
 from backend.config import get_runtime_config_service
 from backend.repository.providers import get_provider
 
@@ -48,6 +49,7 @@ class SymbolsResponse(BaseModel):
     provider: str
 
 
+@requires_scope("flow:read")
 @router.get("/repository/symbols", response_model=SymbolsResponse)
 def extract_symbols(
     path: str | None = Query(default=None, description="Path to a source file"),

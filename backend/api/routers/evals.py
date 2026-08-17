@@ -14,6 +14,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from backend.api.authorization import requires_scope
 from backend.evals.contract import ABTestSpec, EvalCase, EvalError, EvalResultConflictError
 from backend.evals.service import EvaluationService
 from backend.evals.spec import validate_eval_spec
@@ -46,6 +47,7 @@ def get_routing_feedback_service() -> RoutingFeedbackService:
     return RoutingFeedbackService(get_store())
 
 
+@requires_scope("flow:execute")
 @router.post("/run", status_code=201)
 def run_eval(
     body: dict[str, Any],
@@ -112,6 +114,7 @@ def run_eval(
     return result.to_document()
 
 
+@requires_scope("flow:read")
 @router.get("/results/{namespace}/{name}")
 def list_eval_results(
     namespace: str,
@@ -139,6 +142,7 @@ def list_eval_results(
     }
 
 
+@requires_scope("flow:read")
 @router.get("/results/{namespace}/{name}/{version}/{run_id}")
 def get_eval_result(
     namespace: str,
@@ -171,6 +175,7 @@ def get_eval_result(
     return result.to_document()
 
 
+@requires_scope("flow:write")
 @router.post("/{namespace}/{name}/publish", status_code=201)
 def publish_snapshot(
     namespace: str,
@@ -232,6 +237,7 @@ def publish_snapshot(
     }
 
 
+@requires_scope("flow:read")
 @router.get("/{namespace}/{name}/snapshots")
 def list_snapshots(
     namespace: str,

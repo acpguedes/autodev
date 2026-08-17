@@ -25,6 +25,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import require_v2_principal
 from backend.api.v2_common import SCHEMA_VERSION_V2
 from backend.config.runtime import RuntimeConfig, RuntimeConfigService, RuntimeInstructions, get_runtime_config_service
@@ -48,6 +49,7 @@ class RuntimeConfigUpdateRequestV2(BaseModel):
     config: RuntimeConfig
 
 
+@requires_scope("config:read_redacted")
 @router.get("", response_model=RuntimeConfigResponseV2)
 def get_runtime_config_v2(
     config_service: RuntimeConfigService = Depends(get_runtime_config_service),
@@ -65,6 +67,7 @@ def get_runtime_config_v2(
     return RuntimeConfigResponseV2(config=document.config, instructions=document.instructions)
 
 
+@requires_scope("config:write_safe")
 @router.put("", response_model=RuntimeConfigResponseV2)
 def update_runtime_config_v2(
     request: RuntimeConfigUpdateRequestV2,

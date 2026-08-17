@@ -21,6 +21,8 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from backend.api.authorization import requires_scope
+
 router = APIRouter(tags=["validation"])
 
 # Small in-process store so results are retrievable by job_id.
@@ -50,6 +52,7 @@ class ValidationResultResponse(BaseModel):
     skipped: bool
 
 
+@requires_scope("run:write")
 @router.post("/validation/run", response_model=ValidationResultResponse)
 def run_validation(body: RunRequest) -> ValidationResultResponse:
     """Run a validation command (no-op/skipped unless the sandbox is enabled)."""
@@ -72,6 +75,7 @@ def run_validation(body: RunRequest) -> ValidationResultResponse:
     return ValidationResultResponse(**payload)
 
 
+@requires_scope("run:read")
 @router.get("/validation/{job_id}", response_model=ValidationResultResponse)
 def get_validation(job_id: str) -> ValidationResultResponse:
     """Return the stored result of a prior validation run; 404 if unknown."""

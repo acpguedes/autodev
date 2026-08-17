@@ -18,7 +18,12 @@ services:
       PYTEST_ADDOPTS: -p no:cacheprovider
       UVICORN_RELOAD: "false"
       AUTODEV_CONFIG_PATH: /data/autodev.config.json
+      AUTODEV_BACKUP_STATUS_PATH: /data/backup-status.json
       AUTODEV_PROJECT_ROOT: /workspace
+      OTEL_ENABLED: "${OTEL_ENABLED:-true}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
+      OTEL_TRACES_SAMPLER: "${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}"
+      OTEL_TRACES_SAMPLER_ARG: "${OTEL_TRACES_SAMPLER_ARG:-1.0}"
       # Set a token to require Authorization: Bearer <token> on the API.
       AUTODEV_API_TOKEN: "${AUTODEV_API_TOKEN:-}"
     ports:
@@ -49,16 +54,21 @@ services:
     working_dir: /workspace
     environment:
       AUTODEV_PROFILE: prod
-      DATABASE_URL: postgresql://autodev:autodev@postgres:5432/autodev
+      DATABASE_URL: "postgresql://autodev:${AUTODEV_POSTGRES_PASSWORD:-}@postgres:5432/autodev"
       LLM_PROVIDER: stub
       AUTODEV_JOB_BACKEND: redis
       AUTODEV_REDIS_URL: redis://redis:6379/0
       STORAGE_BACKEND: s3
       AUTODEV_MINIO_ENDPOINT: minio:9000
-      AUTODEV_MINIO_ACCESS_KEY: "${AUTODEV_MINIO_ACCESS_KEY:-minioadmin}"
-      AUTODEV_MINIO_SECRET_KEY: "${AUTODEV_MINIO_SECRET_KEY:-minioadmin}"
+      AUTODEV_MINIO_ACCESS_KEY: "${AUTODEV_MINIO_ACCESS_KEY:-}"
+      AUTODEV_MINIO_SECRET_KEY: "${AUTODEV_MINIO_SECRET_KEY:-}"
       AUTODEV_CONFIG_PATH: /data/autodev.config.json
+      AUTODEV_BACKUP_STATUS_PATH: /data/backup-status.json
       AUTODEV_PROJECT_ROOT: /workspace
+      OTEL_ENABLED: "${OTEL_ENABLED:-true}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "${OTEL_EXPORTER_OTLP_ENDPOINT:-}"
+      OTEL_TRACES_SAMPLER: "${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}"
+      OTEL_TRACES_SAMPLER_ARG: "${OTEL_TRACES_SAMPLER_ARG:-1.0}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,7 +118,7 @@ services:
     environment:
       POSTGRES_DB: autodev
       POSTGRES_USER: autodev
-      POSTGRES_PASSWORD: autodev
+      POSTGRES_PASSWORD: "${AUTODEV_POSTGRES_PASSWORD:-}"
     ports:
       - "5432:5432"
     volumes:
@@ -138,8 +148,8 @@ services:
     profiles: ["prod", "minio"]
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
-      MINIO_ROOT_USER: "${AUTODEV_MINIO_ACCESS_KEY:-minioadmin}"
-      MINIO_ROOT_PASSWORD: "${AUTODEV_MINIO_SECRET_KEY:-minioadmin}"
+      MINIO_ROOT_USER: "${AUTODEV_MINIO_ACCESS_KEY:-}"
+      MINIO_ROOT_PASSWORD: "${AUTODEV_MINIO_SECRET_KEY:-}"
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -151,8 +161,126 @@ services:
       timeout: 5s
       retries: 10
 
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.158.0
+    profiles: ["observability"]
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "4318:4318"
+    depends_on:
+      - tempo
+      - loki
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    pids_limit: 256
+
+  prometheus:
+    image: prom/prometheus:v3.13.1
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${AUTODEV_OBSERVABILITY_METRIC_RETENTION:-15d}
+      - --enable-feature=exemplar-storage
+      - --web.enable-lifecycle
+    volumes:
+      - ./observability/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - ./observability/prometheus-rules.yml:/etc/prometheus/prometheus-rules.yml:ro
+      - autodev_prometheus:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - otel-collector
+      - alertmanager
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    pids_limit: 256
+
+  alertmanager:
+    image: prom/alertmanager:v0.33.1
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - ./observability/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - autodev_alertmanager:/alertmanager
+    ports:
+      - "9093:9093"
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 128
+
+  tempo:
+    image: grafana/tempo:2.10.8
+    profiles: ["observability"]
+    command:
+      - -config.file=/etc/tempo.yaml
+      - -config.expand-env=true
+    environment:
+      AUTODEV_OBSERVABILITY_TRACE_RETENTION: "${AUTODEV_OBSERVABILITY_TRACE_RETENTION:-168h}"
+    volumes:
+      - ./observability/tempo.yaml:/etc/tempo.yaml:ro
+      - autodev_tempo:/var/tempo
+    ports:
+      - "3200:3200"
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    pids_limit: 256
+
+  loki:
+    image: grafana/loki:3.7.6
+    profiles: ["observability"]
+    command:
+      - -config.file=/etc/loki/local-config.yaml
+      - -config.expand-env=true
+    environment:
+      AUTODEV_OBSERVABILITY_LOG_RETENTION: "${AUTODEV_OBSERVABILITY_LOG_RETENTION:-168h}"
+    volumes:
+      - ./observability/loki.yaml:/etc/loki/local-config.yaml:ro
+      - autodev_loki:/loki
+    ports:
+      - "3100:3100"
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    pids_limit: 256
+
+  grafana:
+    image: grafana/grafana:13.1.3
+    profiles: ["observability"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_USERS_DEFAULT_THEME: light
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - autodev_grafana:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    pids_limit: 256
+
 volumes:
   autodev_data:
   autodev_postgres:
   autodev_redis:
   autodev_minio:
+  autodev_prometheus:
+  autodev_alertmanager:
+  autodev_tempo:
+  autodev_loki:
+  autodev_grafana:

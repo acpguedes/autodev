@@ -9,6 +9,9 @@ traced. Also checks the Agent Runtime binding adapter.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
+
+import pytest
 
 from backend.agents.manifest import AgentBudgets
 from backend.agents.provider import ScriptedLLMProvider, StubLLMProvider
@@ -31,6 +34,16 @@ from backend.reasoning.policy import (
     TracingSpec,
 )
 from backend.reasoning.strategies import register_builtin_strategies
+
+
+@pytest.fixture(autouse=True)
+def _isolated_quota_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point ``ReasoningService``'s default ``QuotaService`` at a throwaway DB.
+
+    Without this, every ``ReasoningService()`` built here would silently
+    read/write the repo's shared dev ``autodev.db`` (E11-S3).
+    """
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'quotas.db'}")
 
 
 def _policy_with_rules(*, on_exceed: str = "fail_closed") -> ReasoningPolicy:
@@ -156,3 +169,109 @@ def test_agent_budget_adapter() -> None:
     assert run_input.task == "do it"
     assert run_input.budget.tokens == 1200
     assert len(run_input.tools) == 1
+
+
+class TestTenantBudgetEnforcement:
+    """E11-S3/ADR-019: the tenant's default run budget narrows every run."""
+
+    def test_a_tighter_tenant_budget_exhausts_before_the_policys_own_ceiling(self) -> None:
+        from backend.quotas.contracts import RunBudgetLimits, TenantQuotaPolicy
+        from backend.quotas.service import QuotaService
+
+        # ReAct never emits FINAL here, so the run only stops on a budget.
+        provider = ScriptedLLMProvider(["ACTION search x", "ACTION search x", "ACTION search x"])
+        quota_service = QuotaService()
+        quota_service.set_policy(
+            TenantQuotaPolicy(
+                tenant_id="local",
+                max_concurrent_runs=5,
+                max_storage_bytes=1_000_000,
+                monthly_token_limit=1_000_000,
+                monthly_cost_microusd=1_000_000,
+                requests_per_second=10,
+                default_run_budget=RunBudgetLimits(max_steps=1),
+            )
+        )
+        service = ReasoningService(
+            _registry(),
+            provider=provider,
+            tool_impls={"search": lambda args: "y"},
+            quota_service=quota_service,
+        )
+        # The policy's own ceiling would allow 10 steps -- only the tenant's
+        # narrower max_steps=1 should be what actually stops this run.
+        policy = default_reasoning_policy(default_strategy="autodev/reasoning-react", max_steps=10)
+        run_input = ReasoningInput(
+            task="t", messages=(), tools=(ToolSpec("search"),), policy=policy, budget=budget_from_policy(policy)
+        )
+        result = asyncio.run(service.run(run_input))
+        assert result.output.stop_reason == "budget_exhausted"
+        assert result.output.usage.steps == 1
+
+    def test_a_completed_run_records_monthly_token_and_cost_usage(self) -> None:
+        from backend.quotas.contracts import RunBudgetLimits, TenantQuotaPolicy
+        from backend.quotas.service import QuotaService
+
+        quota_service = QuotaService()
+        quota_service.set_policy(
+            TenantQuotaPolicy(
+                tenant_id="local",
+                max_concurrent_runs=5,
+                max_storage_bytes=1_000_000,
+                monthly_token_limit=1_000_000,
+                monthly_cost_microusd=1_000_000,
+                requests_per_second=10,
+                default_run_budget=RunBudgetLimits(),
+            )
+        )
+        service = ReasoningService(
+            _registry(),
+            provider=StubLLMProvider(text="FINAL: ok", tokens_input=50, tokens_output=10, cost_usd=0.01),
+            quota_service=quota_service,
+        )
+        policy = default_reasoning_policy(default_strategy="autodev/reasoning-native-tools")
+        run_input = ReasoningInput(
+            task="t", messages=(), tools=(), policy=policy, budget=budget_from_policy(policy)
+        )
+        result = asyncio.run(service.run(run_input))
+        assert result.output.stop_reason == "completed"
+        assert result.output.usage.tokens == 60
+
+        usage = quota_service.get_usage("local")
+        assert usage.monthly_tokens_used == 60
+        assert usage.monthly_cost_microusd_used == 10_000
+
+    def test_monthly_overrun_does_not_corrupt_an_already_completed_run(self) -> None:
+        """A post-hoc bookkeeping denial must never turn a real result into a failure."""
+        from backend.quotas.contracts import RunBudgetLimits, TenantQuotaPolicy
+        from backend.quotas.service import QuotaService
+
+        quota_service = QuotaService()
+        quota_service.set_policy(
+            TenantQuotaPolicy(
+                tenant_id="local",
+                max_concurrent_runs=5,
+                max_storage_bytes=1_000_000,
+                # Below whatever tiny token usage a single stub completion
+                # produces, so record_monthly_usage is guaranteed to deny.
+                monthly_token_limit=1,
+                monthly_cost_microusd=1_000_000,
+                requests_per_second=10,
+                default_run_budget=RunBudgetLimits(),
+            )
+        )
+        service = ReasoningService(
+            _registry(),
+            provider=StubLLMProvider(text="FINAL: ok", tokens_input=50, tokens_output=10),
+            quota_service=quota_service,
+        )
+        policy = default_reasoning_policy(default_strategy="autodev/reasoning-native-tools")
+        run_input = ReasoningInput(
+            task="t", messages=(), tools=(), policy=policy, budget=budget_from_policy(policy)
+        )
+        result = asyncio.run(service.run(run_input))
+        # The engine already completed the run and returned real usage; the
+        # subsequent monthly-limit denial (60 tokens > limit of 1) must not
+        # retroactively turn this into a failure.
+        assert result.output.stop_reason == "completed"
+        assert result.output.usage.tokens == 60

@@ -23,9 +23,11 @@ from typing import Any
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from backend.api.rbac_v2 import require_v2_principal
+from backend.api.authorization import requires_scope
+from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
 from backend.api.v2_common import SCHEMA_VERSION_V2, PageMetaV2, PaginationParams, paginate, v2_error
 from backend.config.runtime import get_runtime_config_service
+from backend.quotas.contracts import QuotaExceededError
 from backend.orchestrator.service import (
     ExecutionPlan,
     OrchestratorConfig,
@@ -255,21 +257,24 @@ def _to_executed_run_v2(run: OrchestratorRun) -> ExecutedRunV2:
     )
 
 
+@requires_scope("session:write")
 @router.post("", response_model=SessionV2, status_code=201, tags=["sessions"])
 def create_session_v2(
     request: SessionCreateRequestV2,
     orchestrator: OrchestratorService = Depends(get_orchestrator_v2),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> SessionV2:
     """Create a new session and generate its initial plan.
 
     Args:
         request: The session creation request (goal).
         orchestrator: Orchestrator service dependency.
+        principal: Authenticated caller; its tenant owns the new session.
 
     Returns:
         The newly created session.
     """
-    plan_session = orchestrator.create_plan(request.goal)
+    plan_session = orchestrator.create_plan(request.goal, tenant_id=principal.tenant_id)
     return SessionV2(
         session_id=plan_session.session_id,
         goal=plan_session.goal,
@@ -279,124 +284,146 @@ def create_session_v2(
     )
 
 
+@requires_scope("session:read")
 @router.get("", response_model=SessionListV2, tags=["sessions"])
 def list_sessions_v2(
     pagination: PaginationParams = Depends(),
     orchestrator: OrchestratorService = Depends(get_orchestrator_v2),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> SessionListV2:
-    """List all known sessions.
+    """List all known sessions belonging to the caller's tenant.
 
     Args:
         pagination: Shared limit/offset pagination window.
         orchestrator: Orchestrator service dependency.
+        principal: Authenticated caller; scopes the listing to its tenant.
 
     Returns:
         A paginated collection of sessions.
     """
-    all_sessions = orchestrator.list_sessions()
+    all_sessions = orchestrator.list_sessions(tenant_id=principal.tenant_id)
     page, page_meta = paginate(all_sessions, pagination)
     return SessionListV2(items=[_to_session_v2(summary) for summary in page], page=page_meta)
 
 
+@requires_scope("session:read")
 @router.get("/{session_id}", response_model=SessionV2, tags=["sessions"])
 def get_session_v2(
     session_id: str,
     orchestrator: OrchestratorService = Depends(get_orchestrator_v2),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> SessionV2:
-    """Fetch a single session by id.
+    """Fetch a single session by id, scoped to the caller's tenant.
 
     Args:
         session_id: Identifier of the session.
         orchestrator: Orchestrator service dependency.
+        principal: Authenticated caller; a session owned by another tenant
+            is treated exactly like a nonexistent one.
 
     Returns:
         The requested session.
 
     Raises:
-        HTTPException: 404 if ``session_id`` does not exist.
+        HTTPException: 404 if ``session_id`` does not exist for the caller's
+            tenant.
     """
     try:
-        summary = orchestrator.get_session(session_id)
+        summary = orchestrator.get_session(session_id, tenant_id=principal.tenant_id)
     except KeyError as exc:
         v2_error(404, str(exc))
     return _to_session_v2(summary)
 
 
+@requires_scope("run:read")
 @router.get("/{session_id}/runs", response_model=RunListV2, tags=["runs"])
 def list_session_runs_v2(
     session_id: str,
     pagination: PaginationParams = Depends(),
     orchestrator: OrchestratorService = Depends(get_orchestrator_v2),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> RunListV2:
-    """List all historical runs for a session.
+    """List all historical runs for a session owned by the caller's tenant.
 
     Args:
         session_id: Identifier of the session.
         pagination: Shared limit/offset pagination window.
         orchestrator: Orchestrator service dependency.
+        principal: Authenticated caller.
 
     Returns:
         A paginated collection of runs.
 
     Raises:
-        HTTPException: 404 if ``session_id`` does not exist.
+        HTTPException: 404 if ``session_id`` does not exist for the caller's
+            tenant.
     """
     try:
-        all_runs = orchestrator.list_runs(session_id)
+        all_runs = orchestrator.list_runs(session_id, tenant_id=principal.tenant_id)
     except KeyError as exc:
         v2_error(404, str(exc))
     page, page_meta = paginate(all_runs, pagination)
     return RunListV2(items=[_to_run_v2(summary) for summary in page], page=page_meta)
 
 
+@requires_scope("session:read")
 @router.get("/{session_id}/execution-plan", response_model=ExecutionPlanV2, tags=["planning"])
 def get_execution_plan_v2(
     session_id: str,
     orchestrator: OrchestratorService = Depends(get_orchestrator_v2),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> ExecutionPlanV2:
     """Derive an execution plan from a session's accumulated agent artifacts.
 
     Args:
         session_id: Identifier of the session.
         orchestrator: Orchestrator service dependency.
+        principal: Authenticated caller.
 
     Returns:
         The derived execution plan.
 
     Raises:
-        HTTPException: 404 if ``session_id`` does not exist.
+        HTTPException: 404 if ``session_id`` does not exist for the caller's
+            tenant.
     """
     try:
-        plan = orchestrator.build_execution_plan(session_id)
+        plan = orchestrator.build_execution_plan(session_id, tenant_id=principal.tenant_id)
     except KeyError as exc:
         v2_error(404, str(exc))
     return _to_execution_plan_v2(plan)
 
 
+@requires_scope("run:write")
 @router.post("/{session_id}/execution-plan/execute", response_model=ExecutedRunV2, tags=["planning"])
 def execute_execution_plan_v2(
     session_id: str,
     orchestrator: OrchestratorService = Depends(get_orchestrator_v2),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> ExecutedRunV2:
     """Execute a session's derived execution plan and record the run.
 
     Args:
         session_id: Identifier of the session.
         orchestrator: Orchestrator service dependency.
+        principal: Authenticated caller.
 
     Returns:
         The completed run.
 
     Raises:
-        HTTPException: 404 if ``session_id`` does not exist; 400 if the
-            session has no executable tasks.
+        HTTPException: 404 if ``session_id`` does not exist for the caller's
+            tenant; 400 if the session has no executable tasks; 429 if the
+            tenant is at its concurrent-run quota (ADR-019).
     """
     try:
-        run = orchestrator.execute_plan(session_id)
+        run = orchestrator.execute_plan(session_id, tenant_id=principal.tenant_id)
     except KeyError as exc:
         v2_error(404, str(exc))
     except ValueError as exc:
         v2_error(400, str(exc))
+    except QuotaExceededError as exc:
+        v2_error(429, str(exc))
     return _to_executed_run_v2(run)
 
 

@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 
 from backend.agents.manifest import validate_agent_manifest
 from backend.agents.registry_v2 import AgentRef, AgentRegistry
+from backend.api.authorization import requires_scope
 from backend.api.v2_common import PageMetaV2, PaginationParams, SCHEMA_VERSION_V2, paginate, v2_error
 from backend.config.settings import Settings, get_settings, reset_settings_cache
 from backend.plugins.host import PluginHost, PluginState
@@ -224,6 +225,7 @@ def _build_catalog(
     return items
 
 
+@requires_scope("plugin:read")
 @router.get("", response_model=ExtensionCatalogResponseV2)
 def list_extensions(
     kind: ExtensionKind | None = Query(default=None, description="Filter to a single extension kind."),
@@ -345,6 +347,7 @@ def _toggle_response(
     return ExtensionActionResponseV2(item=item)
 
 
+@requires_scope("plugin:admin")
 @router.post("/{kind}/{item_id:path}/enable", response_model=ExtensionActionResponseV2)
 def enable_extension(
     kind: ExtensionKind,
@@ -357,6 +360,7 @@ def enable_extension(
     return _toggle_response(kind, item_id, True, agent_registry, skill_registry, plugin_host)
 
 
+@requires_scope("plugin:admin")
 @router.post("/{kind}/{item_id:path}/disable", response_model=ExtensionActionResponseV2)
 def disable_extension(
     kind: ExtensionKind,
@@ -416,6 +420,7 @@ def _agent_extension_response(ref: AgentRef) -> AgentExtensionResponseV2:
     )
 
 
+@requires_scope("plugin:read")
 @router.get("/agents/{agent_id:path}", response_model=AgentExtensionResponseV2)
 def get_agent_extension(
     agent_id: str,
@@ -439,6 +444,7 @@ def get_agent_extension(
     return _agent_extension_response(ref)
 
 
+@requires_scope("plugin:admin")
 @router.put("/agents/{agent_id:path}", response_model=AgentExtensionResponseV2)
 def upsert_agent_extension(
     agent_id: str,

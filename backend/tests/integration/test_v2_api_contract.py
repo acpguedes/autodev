@@ -178,3 +178,25 @@ class TestConfigV2:
         response = client.put("/v2/config", json={"config": {"llm": {"temperature": "not-a-number"}}})
         assert response.status_code == 422
         assert isinstance(response.json()["detail"], list)
+
+
+class TestOpenApiAuthMetadata:
+    """Auth-aware OpenAPI generation (E11-S2 Task 5)."""
+
+    def test_every_protected_openapi_operation_publishes_scope(self, client: TestClient) -> None:
+        from backend.api.main import app  # noqa: PLC0415
+        from backend.api.openapi_ext import protected_operations_without_scope  # noqa: PLC0415
+
+        assert protected_operations_without_scope(app.openapi()) == []
+
+    def test_openapi_emits_only_canonical_roles(self, client: TestClient) -> None:
+        from backend.api.main import app  # noqa: PLC0415
+
+        role_enum = app.openapi()["components"]["schemas"]["Role"]["enum"]
+        assert role_enum == ["owner", "admin", "maintainer", "operator", "viewer"]
+
+    def test_openapi_publishes_the_three_security_schemes(self, client: TestClient) -> None:
+        from backend.api.main import app  # noqa: PLC0415
+
+        schemes = app.openapi()["components"]["securitySchemes"]
+        assert set(schemes) == {"oidcBearer", "serviceBearer", "sessionCookie"}

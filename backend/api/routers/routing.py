@@ -25,6 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from backend.agents.registry_v2 import AgentRegistry
+from backend.api.authorization import requires_scope
 from backend.api.routers.agents_v2 import get_agent_registry
 from backend.persistence.database import get_store
 from backend.routing.contract import (
@@ -101,6 +102,7 @@ def get_routing_feedback_service() -> RoutingFeedbackService:
     return RoutingFeedbackService(get_store())
 
 
+@requires_scope("flow:read")
 @router.post("/route")
 def route_request(
     body: RouteRequestBody,
@@ -200,6 +202,7 @@ class SelectRequestBody(BaseModel):
     budget: SelectBudgetBody = Field(default_factory=SelectBudgetBody)
 
 
+@requires_scope("flow:execute")
 @router.post("/select")
 def select_request(
     body: SelectRequestBody,

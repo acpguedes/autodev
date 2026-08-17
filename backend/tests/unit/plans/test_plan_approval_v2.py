@@ -206,8 +206,11 @@ class TestStateMachine:
             assert envelope.partitionKey == "s14"
             assert envelope.data["sessionId"] == "s14"
             assert envelope.data["stepIndex"] == 0
+        # ADR-018: a body-supplied "actor" is parseable but ignored — the
+        # recorded actor is always the authenticated principal's subject
+        # (the local zero-config principal here).
         for envelope in envelopes[1:]:
-            assert envelope.data["actor"] == "alice"
+            assert envelope.data["actor"] == "local"
         assert envelopes[0].data == {
             "sessionId": "s14",
             "stepIndex": 0,
@@ -250,7 +253,9 @@ class TestStepAddAndRemove:
         client.post("/v2/plans/s17/steps", json={"content": "Step B", "actor": "alice"})
         envelopes = get_event_bus().replay("s17")
         assert envelopes[-1].type == "plan.step.added"
-        assert envelopes[-1].data == {"sessionId": "s17", "stepIndex": 1, "actor": "alice"}
+        # ADR-018: actor is the authenticated principal's subject, not the
+        # body-supplied "actor".
+        assert envelopes[-1].data == {"sessionId": "s17", "stepIndex": 1, "actor": "local"}
 
     def test_remove_draft_step_reindexes_remaining_steps(self, client: TestClient) -> None:
         _seed_plan(client, "s18", ["Step A", "Step B", "Step C"])
@@ -303,7 +308,9 @@ class TestStepAddAndRemove:
 
     def test_remove_step_emits_plan_step_removed_event(self, client: TestClient) -> None:
         _seed_plan(client, "s24", ["Step A", "Step B"])
+        # ADR-018: actor is the authenticated principal's subject, not a
+        # caller-supplied query parameter (kept here to prove it's ignored).
         client.delete("/v2/plans/s24/steps/1", params={"actor": "carol"})
         envelopes = get_event_bus().replay("s24")
         assert envelopes[-1].type == "plan.step.removed"
-        assert envelopes[-1].data == {"sessionId": "s24", "stepIndex": 1, "actor": "carol"}
+        assert envelopes[-1].data == {"sessionId": "s24", "stepIndex": 1, "actor": "local"}

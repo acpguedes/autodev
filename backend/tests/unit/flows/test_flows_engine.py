@@ -14,6 +14,7 @@ from backend.flows.manifest import validate_flow_manifest
 from backend.flows.registry import FlowRegistry
 from backend.flows.triggers import TriggerError, cron_matches, normalize_trigger
 from backend.persistence.sqlite_adapter import SQLiteStore
+from backend.tests.observability_helpers import capture_observability
 
 
 def _linear_flow(flow_id: str = "autodev/flow-linear") -> dict[str, Any]:
@@ -51,8 +52,16 @@ def _linear_flow(flow_id: str = "autodev/flow-linear") -> dict[str, Any]:
         "edges": [
             {"from": "prepare", "to": "work"},
             {"from": "work", "to": "gate"},
-            {"from": "gate", "to": "finish", "when": "{{ nodes.work.output.ok == true }}"},
-            {"from": "gate", "to": "work", "when": "{{ nodes.work.output.ok == false }}"},
+            {
+                "from": "gate",
+                "to": "finish",
+                "when": "{{ nodes.work.output.ok == true }}",
+            },
+            {
+                "from": "gate",
+                "to": "work",
+                "when": "{{ nodes.work.output.ok == false }}",
+            },
         ],
     }
 
@@ -111,6 +120,36 @@ class TestGraphExecution:
         assert run.status == "completed"
         assert order == ["prepare", "work", "finish"]
         assert run.output == {"done": True}
+
+    def test_flow_emits_final_run_and_step_statuses(self, tmp_path: Path) -> None:
+        """Run and step spans close terminally under one trace hierarchy."""
+        with capture_observability() as capture:
+            engine, callables = _engine(tmp_path)
+            _register_linear_callables(callables)
+            engine.registry.register_raw(_linear_flow())
+            result = engine.start_run(
+                "autodev/flow-linear",
+                input={"task": "ship"},
+                tenant_id="tenant-1",
+            )
+            capture.runtime.force_flush()
+
+        spans = capture.span_exporter.get_finished_spans()
+        run_span = next(span for span in spans if span.name == "autodev.run")
+        step_spans = [
+            span for span in spans if span.name.startswith("autodev.run.step.")
+        ]
+        run_span_attributes = run_span.attributes
+        assert run_span_attributes is not None
+        assert run_span_attributes["autodev.run_id"] == result.run_id
+        assert run_span_attributes["autodev.status"] == "completed"
+        assert step_spans
+        for step_span in step_spans:
+            step_span_attributes = step_span.attributes
+            assert step_span_attributes is not None
+            assert step_span_attributes["autodev.status"] == "completed"
+            assert step_span.parent is not None
+            assert step_span.parent.span_id == run_span.context.span_id
 
     def test_steps_persist_status_and_attempts(self, tmp_path: Path) -> None:
         """Each activation persists a step with status/attempt/sequence."""

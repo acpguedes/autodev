@@ -408,7 +408,10 @@ class TestHumanApi:
         events = client.get(f"/v2/flows/runs/{run_id}/events").json()["events"]
         recorded = [e for e in events if e["name"] == "flow.human.decision.recorded"]
         assert len(recorded) == 1
-        assert recorded[0]["payload"]["actor"] == "alice"
+        # ADR-018: a body-supplied "actor" is parseable but ignored — the
+        # recorded actor is always the authenticated principal's subject
+        # (the local zero-config principal here).
+        assert recorded[0]["payload"]["actor"] == "local"
 
     def test_invalid_decision_rejected(self, client: TestClient) -> None:
         """Decisions violating the form schema return 422."""
@@ -480,4 +483,6 @@ class TestHumanApi:
             headers={"Authorization": "Bearer s3cret"},
         ).json()["events"]
         recorded = [e for e in events if e["name"] == "flow.human.decision.recorded"]
-        assert recorded[0]["payload"]["actor"] == "alice"
+        # ADR-018: actor is the authenticated principal's subject, not the
+        # body-supplied "actor" — the legacy compatibility PAT's subject.
+        assert recorded[0]["payload"]["actor"] == "legacy"

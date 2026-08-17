@@ -36,6 +36,7 @@ from backend.config.settings import Settings, get_settings
 from backend.events.bus import WILDCARD, EventBus, InMemoryEventBus, RedisEventBus
 from backend.events.catalog import EventEnvelope, make_envelope
 from backend.events.store import EventStore
+from backend.observability.context import current_trace_id
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,10 @@ def get_event_store() -> EventStore:
     from backend.persistence.database import get_store
 
     store = get_store()
-    if _event_store_instance is None or _event_store_instance.backing_store is not store:
+    if (
+        _event_store_instance is None
+        or _event_store_instance.backing_store is not store
+    ):
         _event_store_instance = EventStore(store)
     return _event_store_instance
 
@@ -135,17 +139,20 @@ def emit_event(
         bus: Event bus override; falls back to :func:`get_event_bus`.
     """
     try:
+        effective_trace_id = trace_id or current_trace_id()
         envelope = make_envelope(
             type_,
             tenant_id=tenant_id,
             partition_key=partition_key,
             data=data,
             subject=subject,
-            trace_id=trace_id,
+            trace_id=effective_trace_id,
         )
         (bus or get_event_bus()).publish(envelope)
     except Exception:  # noqa: BLE001 - eventing must never break a run
-        logger.exception("Failed to emit event %s for partition %s", type_, partition_key)
+        logger.exception(
+            "Failed to emit event %s for partition %s", type_, partition_key
+        )
 
 
 __all__ = [

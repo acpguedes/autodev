@@ -81,8 +81,8 @@ def test_each_request_gets_distinct_request_id() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_counter_increments_after_request() -> None:
-    """The request counter for a route increments after a matching request."""
+def test_counter_aggregates_dynamic_paths_by_route_template() -> None:
+    """The legacy registry bounds cardinality with the matched route template."""
     # Use an isolated registry to avoid cross-test interference.
     registry = MetricsRegistry()
 
@@ -96,16 +96,17 @@ def test_counter_increments_after_request() -> None:
     try:
         _app.add_middleware(RequestTracingMiddleware)  # type: ignore[arg-type]
 
-        @_app.get("/count-me")
-        def count_me() -> dict:
+        @_app.get("/count-me/{item_id}")
+        def count_me(item_id: str) -> dict[str, str]:
             """Return an empty payload used to trigger a counted request."""
-            return {}
+            return {"item_id": item_id}
 
         client = TestClient(_app)
-        client.get("/count-me")
+        client.get("/count-me/customer-a")
+        client.get("/count-me/customer-b")
         snap = registry.snapshot()
         counts = {f"{m} {p}": v.count for (m, p), v in snap.items()}
-        assert counts.get("GET /count-me", 0) >= 1
+        assert counts == {"GET /count-me/{item_id}": 2}
     finally:
         _mw_module._registry = original_registry
 

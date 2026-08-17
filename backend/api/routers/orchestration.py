@@ -24,6 +24,10 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from backend.api.authorization import require_v2_principal, requires_scope
+from backend.auth.contracts import PrincipalV2
+from backend.quotas.contracts import QuotaExceededError
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["orchestration"])
@@ -96,19 +100,24 @@ def _get_orchestrator() -> Any:
 # ---------------------------------------------------------------------------
 
 
-def _run_dynamic(orchestrator: Any, session_id: str, message: str) -> DynamicChatResponse:
+def _run_dynamic(
+    orchestrator: Any, session_id: str, message: str, tenant_id: str
+) -> DynamicChatResponse:
     """Build a run-type-routed LangGraph and invoke it for *session_id*.
 
     Args:
         orchestrator: Shared orchestrator service providing session/agent state.
         session_id: Identifier of the existing orchestration session.
         message: User message to route through the graph.
+        tenant_id: Tenant the session must belong to (the authenticated
+            principal's tenant — never a client-supplied value).
 
     Returns:
         The response describing the dynamic run's outcome.
 
     Raises:
-        HTTPException: With status 404 if the session does not exist.
+        HTTPException: With status 404 if the session does not exist for
+            ``tenant_id``.
         RuntimeError: If the run-type-routed graph fails to build.
     """
     from backend.orchestrator.routing import RunTypeRouter  # noqa: PLC0415
@@ -122,7 +131,7 @@ def _run_dynamic(orchestrator: Any, session_id: str, message: str) -> DynamicCha
     from uuid import uuid4  # noqa: PLC0415
 
     store = orchestrator._store
-    session_record = store.get_session(session_id)
+    session_record = store.get_session(session_id, tenant_id=tenant_id)
     if session_record is None:
         raise HTTPException(status_code=404, detail=f"Session {session_id!r} not found.")
 
@@ -139,7 +148,7 @@ def _run_dynamic(orchestrator: Any, session_id: str, message: str) -> DynamicCha
         logger.warning("build_graph_for_run_type failed (%s), falling back", exc)
         raise RuntimeError("graph build failed") from exc
 
-    history_records = store.list_messages(session_id)
+    history_records = store.list_messages(session_id, tenant_id=tenant_id)
     from backend.orchestrator.service import HistoryItem  # noqa: PLC0415
     history = [HistoryItem(role=r["role"], content=r["content"]) for r in history_records]
     user_entry = HistoryItem(role="user", content=message)
@@ -185,24 +194,32 @@ def _run_dynamic(orchestrator: Any, session_id: str, message: str) -> DynamicCha
 # ---------------------------------------------------------------------------
 
 
-def _run_fallback(orchestrator: Any, session_id: str, message: str) -> DynamicChatResponse:
+def _run_fallback(
+    orchestrator: Any, session_id: str, message: str, tenant_id: str
+) -> DynamicChatResponse:
     """Delegate to the standard ``OrchestratorService.handle_message``.
 
     Args:
         orchestrator: Shared orchestrator service.
         session_id: Identifier of the existing orchestration session.
         message: User message to handle.
+        tenant_id: Tenant the session must belong to (the authenticated
+            principal's tenant — never a client-supplied value).
 
     Returns:
         The response describing the fallback run's outcome.
 
     Raises:
-        HTTPException: With status 404 if the session does not exist.
+        HTTPException: With status 404 if the session does not exist for
+            ``tenant_id``; 429 if the tenant is at its concurrent-run quota
+            (ADR-019).
     """
     try:
-        run = orchestrator.handle_message(session_id, message)
+        run = orchestrator.handle_message(session_id, message, tenant_id=tenant_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except QuotaExceededError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     return DynamicChatResponse(
         run_id=run.run_id,
         session_id=run.session_id,
@@ -223,10 +240,12 @@ def _run_fallback(orchestrator: Any, session_id: str, message: str) -> DynamicCh
 # ---------------------------------------------------------------------------
 
 
+@requires_scope("session:write")
 @router.post("/chat/dynamic", response_model=DynamicChatResponse)
 def dynamic_chat(
     body: DynamicChatRequest,
     orchestrator: Any = Depends(_get_orchestrator),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> DynamicChatResponse:
     """Send a message through the dynamic routing path (opt-in via env flag).
 
@@ -238,18 +257,21 @@ def dynamic_chat(
     Args:
         body: Parsed request body with the session id and message.
         orchestrator: Shared orchestrator service dependency.
+        principal: Authenticated caller; its tenant is the only source of
+            scope for the referenced session.
 
     Returns:
         The response describing the run's outcome, dynamic or fallback.
     """
     dynamic_enabled = os.environ.get("AUTODEV_DYNAMIC_ORCH", "").strip() == "1"
+    tenant_id = principal.tenant_id
 
     if dynamic_enabled:
         try:
-            return _run_dynamic(orchestrator, body.session_id, body.message)
+            return _run_dynamic(orchestrator, body.session_id, body.message, tenant_id)
         except (ImportError, RuntimeError) as exc:
             logger.warning(
                 "Dynamic routing unavailable (%s) — falling back to standard path", exc
             )
 
-    return _run_fallback(orchestrator, body.session_id, body.message)
+    return _run_fallback(orchestrator, body.session_id, body.message, tenant_id)

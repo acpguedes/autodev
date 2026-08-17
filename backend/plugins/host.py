@@ -15,6 +15,7 @@ from typing import Any, Callable, Iterable
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
+from backend.config.settings import get_settings
 from backend.persistence.database import get_store
 from backend.plugins.events import PluginEvent
 from backend.plugins.manifest import PluginManifest, load_manifest, validate_manifest
@@ -116,6 +117,32 @@ class ScopedHostApi:
         return self.broker.get_secret(name)
 
 
+def _privileged_in_process_permissions(
+    manifest: PluginManifest,
+) -> tuple[str, ...]:
+    """Return sensitive permissions that require a real isolation boundary.
+
+    Args:
+        manifest: Parsed plugin manifest.
+
+    Returns:
+        Canonical names of requested privileged permission blocks.
+    """
+    permissions = manifest.permissions
+    requested: list[str] = []
+    if permissions.network_egress:
+        requested.append("permissions.network.egress")
+    if permissions.filesystem_read:
+        requested.append("permissions.filesystem.read")
+    if permissions.filesystem_write:
+        requested.append("permissions.filesystem.write")
+    if permissions.exec_commands:
+        requested.append("permissions.exec.commands")
+    if permissions.secrets:
+        requested.append("permissions.secrets")
+    return tuple(requested)
+
+
 class PluginHost:
     """Discovers, installs, and manages the lifecycle of plugins."""
 
@@ -127,8 +154,10 @@ class PluginHost:
         host_api_version: str = HOST_API_VERSION,
         workspace: Path | str = ".",
         secrets: dict[str, str] | None = None,
+        production_mode: bool | None = None,
+        trusted_in_process_plugins: Iterable[str] | None = None,
     ) -> None:
-        """Initialize the host.
+        """Initialize the host and its production trust policy.
 
         Args:
             store: Durable store to use; defaults to :func:`get_store`.
@@ -136,6 +165,12 @@ class PluginHost:
             host_api_version: Host API version plugins are checked against.
             workspace: Root directory scoping plugin filesystem access.
             secrets: Secrets exposed to plugins by name.
+            production_mode: Whether to enforce the E11-S4 trusted-only
+                in-process plugin boundary; defaults to
+                ``get_settings().autodev_profile == "prod"``.
+            trusted_in_process_plugins: Operator-trusted in-process plugin
+                ids; defaults to
+                ``get_settings().trusted_in_process_plugin_ids()``.
         """
         self._store = PluginStore(store or get_store())
         self._plugin_dirs = tuple(Path(path) for path in plugin_dirs)
@@ -143,6 +178,18 @@ class PluginHost:
         self._workspace = Path(workspace)
         self._secrets = secrets or {}
         self._loaded: dict[str, ScopedHostApi] = {}
+        if production_mode is None or trusted_in_process_plugins is None:
+            settings = get_settings()
+        self._production_mode = (
+            production_mode
+            if production_mode is not None
+            else settings.autodev_profile == "prod"
+        )
+        self._trusted_in_process_plugins = frozenset(
+            trusted_in_process_plugins
+            if trusted_in_process_plugins is not None
+            else settings.trusted_in_process_plugin_ids()
+        )
 
     @property
     def events(self) -> list[PluginEvent]:
@@ -354,14 +401,47 @@ class PluginHost:
         return manifests
 
     def _compatibility_reason(self, manifest: PluginManifest) -> str:
-        """Check a manifest's declared host API range against this host's version.
+        """Check host-API compatibility and the production in-process trust policy.
 
         Returns:
-            An incompatibility reason, or an empty string if compatible.
+            An incompatibility or rejection reason, or an empty string if the
+            manifest may install.
         """
         specifier = SpecifierSet(manifest.host_api.replace(" ", ","))
         if self._host_api_version not in specifier:
             return f"hostApi {manifest.host_api} is incompatible with host {self._host_api_version}"
+        return self._production_in_process_reason(manifest)
+
+    def _production_in_process_reason(self, manifest: PluginManifest) -> str:
+        """Return a production rejection reason for an unsafe in-process plugin.
+
+        Args:
+            manifest: Parsed plugin manifest.
+
+        Returns:
+            A rejection reason, or an empty string when the plugin may install.
+        """
+        if not self._production_mode or manifest.runtime.loader != "in-process":
+            return ""
+
+        if manifest.id not in self._trusted_in_process_plugins:
+            return (
+                "production requires an explicit operator trust grant for "
+                f"in-process plugin {manifest.id}"
+            )
+
+        if manifest.runtime.isolation not in {None, "none"}:
+            return (
+                "the in-process loader cannot satisfy runtime.isolation="
+                f"{manifest.runtime.isolation!r}"
+            )
+
+        privileged = _privileged_in_process_permissions(manifest)
+        if privileged:
+            return (
+                "production rejects privileged permissions for trusted in-process "
+                f"plugins: {', '.join(privileged)}"
+            )
         return ""
 
     def _persist(self, candidate: PluginCandidate, *, state: PluginState, reason: str = "") -> PluginRecord:

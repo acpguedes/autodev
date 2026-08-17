@@ -214,6 +214,54 @@ class PlanStepMutationData(BaseModel):
     actor: str
 
 
+class AccessRequestData(BaseModel):
+    """Shared payload of ``access.request.allowed``/``access.request.denied`` (E11-S2).
+
+    Best-effort mirror of the authoritative :class:`~backend.auth.contracts.AccessAuditRecord`
+    durable row — never contains credentials, cookies, raw headers, request
+    bodies, or prompts.
+    """
+
+    subjectId: str
+    authMethod: str
+    credentialId: str | None = None
+    roles: list[str]
+    requiredScope: str
+    resourceType: str
+    resourceId: str | None = None
+    method: str
+    routeTemplate: str
+    decision: str
+    reason: str
+    requestId: str
+
+
+class QuotaWarningData(BaseModel):
+    """Payload of ``quota.warning`` (E11-S3, ADR-019).
+
+    Emitted once per tenant/resource/window the first time recorded usage
+    crosses the configured warning ratio.
+    """
+
+    resource: str
+    used: int
+    limit: int
+    windowKey: str
+
+
+class QuotaExceededData(BaseModel):
+    """Payload of ``quota.exceeded`` (E11-S3, ADR-019).
+
+    Emitted the first time a usage-recording or admission call is denied
+    for a tenant/resource/window.
+    """
+
+    resource: str
+    used: int
+    limit: int
+    windowKey: str
+
+
 @dataclass(frozen=True)
 class EventDefinition:
     """Catalog entry describing one event type (§14.5 table).
@@ -268,6 +316,10 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition("plan.step.removed", "Control Plane API", "tenantId", PlanStepMutationData),
     EventDefinition("patch.changedfiles.listed", "Control Plane API", "runId", PatchChangedFilesListedData),
     EventDefinition("patch.discarded", "Control Plane API", "runId", PatchDiscardedData),
+    EventDefinition("access.request.allowed", "Control Plane API", "tenantId", AccessRequestData),
+    EventDefinition("access.request.denied", "Control Plane API", "tenantId", AccessRequestData),
+    EventDefinition("quota.warning", "Control Plane API", "tenantId", QuotaWarningData),
+    EventDefinition("quota.exceeded", "Control Plane API", "tenantId", QuotaExceededData),
 )
 
 

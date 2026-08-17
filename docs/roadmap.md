@@ -198,11 +198,14 @@ Success criteria:
 
 ## Release 0.9 - Observability and operations
 
-> **Partly superseded by the v2 platform.** OpenTelemetry instrumentation and
-> Prometheus metrics below are now delivered by the v2 E0 foundations (E0-S4:
-> request and run-step spans, Prometheus 5xx counters — see
-> [`docs/ops/observability.md`](ops/observability.md)). Grafana/Loki dashboards
-> remain open. See [`docs/v2_platform/progress.md`](v2_platform/progress.md).
+> **Superseded by the v2 platform.** OpenTelemetry instrumentation, Prometheus
+> metrics, and Grafana/Loki dashboards below are now delivered by v2 E11-S1
+> (Beta wave, complete 2026-08-15): correlated traces/metrics/logs, a
+> self-hosted Collector/Prometheus/Tempo/Loki/Grafana stack, configurable
+> sampling and retention, and a provisioned overview dashboard — see
+> [`docs/ops/observability.md`](ops/observability.md). Alert delivery and
+> operational runbooks remain open in E11-S4. See
+> [`docs/v2_platform/progress.md`](v2_platform/progress.md).
 
 Goals:
 - OpenTelemetry instrumentation

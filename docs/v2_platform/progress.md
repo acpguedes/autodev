@@ -118,7 +118,7 @@ order.
 
 | # | Entry | Evidence | Status |
 | --- | --- | --- | --- |
-| D1 | **E11 was tracked as `Not started 0/4` while three of its stories were already merged on its epic branch.** `epic/e11-observability-security-multitenant` carries E11-S1 (observability stack), E11-S2 (RBAC + authentication) and E11-S4 (execution security + runbooks), and `story/e11-s3-multitenant-quotas-budgets` has three commits on top. None of it is on `main`. The tracker's "Next action: E11-S1" was therefore pointing at finished work. | `git log main..origin/epic/e11-observability-security-multitenant` | Tracker corrected below; the branch still needs E11-S3 finished and an epic → `main` PR. |
+| D1 | **E11 was tracked as `Not started 0/4` while three of its stories were already merged on its epic branch.** `epic/e11-observability-security-multitenant` carries E11-S1 (observability stack), E11-S2 (RBAC + authentication) and E11-S4 (execution security + runbooks), and `story/e11-s3-multitenant-quotas-budgets` has three commits on top. None of it is on `main`. The tracker's "Next action: E11-S1" was therefore pointing at finished work. | `git log main..origin/epic/e11-observability-security-multitenant` | **Resolved (2026-08-17).** E11-S3 finished (ADR-019) and the epic → `main` PR merged; E11 is Done 4/4 on `main`. |
 | D2 | **The in-process plugin import sandbox denies transitive *host* imports.** `PluginPermissions.import_sandbox` (`backend/plugins/permissions.py`) guards `builtins.__import__` against `NETWORK_MODULES` without distinguishing a plugin's own network use from an import of `backend.*` that transitively reaches `urllib`. From a cold process the reference plugin `autodev/agent-coder` is quarantined with "network imports require permissions.network.egress"; a running server is unaffected because the host modules are already in `sys.modules`. This also makes `test_flows_api.py::TestAgentFlowEndToEnd` order-dependent — it fails when run alone. | `backend/tests/integration/test_alpha_gate_flow_replay.py` (module docstring reproduces it); `pytest "backend/tests/unit/flows/test_flows_api.py::TestAgentFlowEndToEnd"` in isolation | **Open — needs a decision.** Narrowing the guard changes a security boundary, so it is not being changed unilaterally: it wants an ADR on what the in-process import sandbox is meant to protect against, given that the `in-process` loader exists precisely to let plugins import the host. |
 | D3 | **`ContextComposer.compose` blocks past its own per-provider timeout.** Its docstring promises a slow provider "never ... blocks the other providers' results", but the surrounding `with ThreadPoolExecutor(...)` runs `shutdown(wait=True)` on exit, so the call does not return until every worker finishes. | `backend/tests/unit/observability/test_context_indexing_tracing.py::test_timed_out_provider_span_records_its_real_duration` (pins the behavior, does not fix it) | Open — recorded in `phases/e7_context_rag.md`; fix belongs to an E7 follow-up or E26. |
 
@@ -189,13 +189,30 @@ door: root service descriptor, self-hosted `/docs` under the strict CSP, and
 single-command `make run`. A visual-parity audit of the screens against the prototype
 (fonts, tokens, spacing, per-screen interaction details, per-screen checklist derived
 from ADR-012 and the prototype `shots/`) remains deferred as a proposed **E19**.
-**Next action: finish E11-S3 (multi-tenant + quotas/budgets) on
-`story/e11-s3-multitenant-quotas-budgets`, merge it into
-`epic/e11-observability-security-multitenant`, then open the epic → `main` PR
-with the full suite green — that PR also carries the corrected E11 phase doc.**
-E11-S1, E11-S2 and E11-S4 are already merged on the epic branch; the previous
-"Next action: E11-S1" in this tracker was pointing at finished work (doc-drift
-D1). Follow `agent_guide.md` §1-4 quality rules (mandatory from E3 onward).
+**E11 is now complete (4/4) and merged to `main`** (E11-S1/S2/S4 on
+2026-08-15, E11-S3 on 2026-08-17): correlated OpenTelemetry traces/metrics/logs
+on a self-hosted Collector/Prometheus/Tempo/Loki/Grafana stack (ADR-017);
+mandatory OIDC/service-key/session Control Plane RBAC enforced on every route
+with durable access/denial auditing (ADR-018); a trusted-only in-process
+plugin boundary and a hardened, read-only-root sandbox with a mandatory
+Docker network-denial CI gate (ADR-020); a widened HIGH/CRITICAL
+secret/vulnerability/license CI gate with an expiring-exception policy; full
+settings/backup credential redaction; fail-closed, Alertmanager-alerted
+PostgreSQL backups with an executable incident-response runbook; and
+**E11-S3 — multi-tenant isolation plus quotas/budgets** (ADR-019): the
+authenticated tenant is threaded through every Control Plane route
+(including a real cross-tenant leak found and closed in `chat_v2.py`'s
+turn endpoints, which had never resolved the principal), a durable
+per-tenant quota/budget store and service (`backend/quotas/`) backing
+`/v2/quotas` and `autodev quotas get|set`, fail-closed concurrent-run
+admission in the Agent Runtime, tenant-budget narrowing plus monthly usage
+accounting in the Reasoning Engine, and a Grafana quota dashboard — see
+`docs/ops/observability.md`, `docs/security.md`,
+`docs/v2_platform/runbooks/e11_incident_response.md`,
+`docs/v2_platform/phases/e11_observability_security_multitenant.md`. E11-S4
+was implemented in parallel with E11-S2 in a separate worktree since both
+depend only on E11-S1. Doc-drift D1 (E11 undercounted while merged work sat
+off `main`) is resolved now that the epic → `main` PR has landed.
 
 ## Epic status
 
@@ -212,7 +229,7 @@ D1). Follow `agent_guide.md` §1-4 quality rules (mandatory from E3 onward).
 | E8 | Persistence & Data | Alpha/Beta | Done | 4/4 | E0 | [phases/e8_persistence_data.md](phases/e8_persistence_data.md) |
 | E9 | APIs, Events & MCP | Alpha/Beta | Done | 4/4 | E8, E2, E6 | [phases/e9_apis_events_mcp.md](phases/e9_apis_events_mcp.md) |
 | E10 | UI/UX & Design System | Beta | Done | 4/4 | E3, E9, E1 | [phases/e10_ui_ux_design_system.md](phases/e10_ui_ux_design_system.md) |
-| E11 | Observability, Security & Multi-tenant | Beta | In progress \*\* | 3/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
+| E11 | Observability, Security & Multi-tenant | Beta | Done | 4/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
 | E12 | Quality & Evals | Alpha/Beta | Complete | 4/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
 | E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
@@ -242,18 +259,9 @@ D1). Follow `agent_guide.md` §1-4 quality rules (mandatory from E3 onward).
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 
-Total: **74/178 stories complete** across 40 epics (E19 is a proposed
+Total: **75/178 stories complete** across 40 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
-\*\* **E11 is not on `main`.** E11-S1, E11-S2 and E11-S4 are merged into
-`epic/e11-observability-security-multitenant` (pushed to origin) and E11-S3 is
-in progress on `story/e11-s3-multitenant-quotas-budgets`; none of it has reached
-`main` yet. The three completed stories are counted above because they are done
-work, but a reader looking only at `main` will not find them. The E11 phase doc
-**on `main` is stale** (still "Not started · 0/4"); the accurate one lives on the
-epic branch and arrives with the epic → `main` PR — it is deliberately not
-patched here to avoid a pointless merge conflict with that PR. See doc-drift
-entry D1.
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
 "51" predated E15–E18 completion and had drifted; +13 planned stories from
 the new E32–E35 Beta-hardening epics; +22 planned stories from the E36–E40
@@ -380,6 +388,126 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-08-17** — **E11-S3 — Multi-tenant and quotas/budgets is complete**
+  (dependencies E8, E4, E11-S2 Done; see ADR-019). **E11 is now 4/4 Done.**
+  T1 closed real cross-tenant leaks by threading the E11-S2 principal's
+  tenant through every Control Plane route that had been hardcoding
+  `DEFAULT_TENANT_ID` or trusting a client-supplied selector — including
+  `GET /v2/context/retrieve` (the gap S2 flagged) and, found during this
+  story's own review rather than left latent, `chat_v2.py`'s turn endpoints
+  (`POST`/`GET /v2/sessions/{id}/turns`, `GET /v2/turns/{id}`), which had
+  never resolved the authenticated principal at all — any caller could post
+  into or read another tenant's session turns. T2 landed a durable
+  per-tenant quota/budget layer (`backend/quotas/`: policy CAS, concurrency
+  leases, storage reservations, monthly usage windows, request-rate
+  buckets) wired into `GET/PUT /v2/quotas/usage|policy` (`quota:read`/
+  `quota:admin`), `autodev quotas get|set`, per-tenant storage reservation
+  on artifact writes, and per-credential request-rate admission in the one
+  app-level auth dependency every `/v2` route already runs through. T3
+  enforces budgets in both places the story's CF asks for: the Agent
+  Runtime gets fail-closed concurrent-run admission (a lease acquired
+  before a run record exists, released unconditionally on success or
+  failure); the Reasoning Engine narrows every run's token/cost/wall-clock/
+  step ceiling to the tenant's `default_run_budget` and records real
+  monthly usage after each run, without letting a post-hoc monthly-limit
+  denial corrupt an already-completed result. Four `autodev_quota_*`
+  OpenTelemetry gauges (mirroring E11-S1's backup-gauge pattern) back a new
+  Grafana dashboard (`infrastructure/observability/grafana/dashboards/quotas.json`).
+  Deliberately not built here, and said so in the phase doc rather than
+  silently left: real per-call LLM cost/token accounting in the older
+  LangGraph `OrchestratorService` agent pipeline (still hardcoded
+  `costUsd: 0.0`/`tokens: 0`, pre-existing, E14's job) and E5's cost-aware
+  model selection actually enforcing `respect_tenant_quota` (parsed only,
+  needs a larger selection-signature change). **Merged to `main`.**
+
+- **2026-08-15** — **E11-S2 — RBAC and authentication is complete**
+  (dependency E9-S1 Done; see ADR-018). Real Control Plane authentication
+  and authorization replace the permissive placeholder: OIDC bearer JWTs
+  (full `iss`/`aud`/`exp`/tenant/role/scope claim + JWKS-signature
+  validation, algorithm allowlist never inferred from the token header),
+  governed hash-only service keys (`adk_live_...`, 1–90 day expiry,
+  immediately revocable, `autodev auth service-key create|list|revoke`),
+  and browser sessions via OIDC authorization-code + PKCE (HttpOnly/Secure
+  cookie, encrypted refresh token). Canonical five-role RBAC
+  (`viewer`<`operator`<`maintainer`<`admin`<`owner`; legacy `author` accepted
+  only as an input alias for `maintainer`) enforced by one global FastAPI
+  dependency, covering every route across all 26 `backend/api/routers/*.py`
+  modules including auto-discovered plugin routers — a repo-wide contract
+  test (`test_every_non_public_route_declares_policy`) now fails CI if a new
+  route ships unannotated. Local zero-config access is unchanged; production
+  startup refuses to serve traffic without complete OIDC/JWKS settings or an
+  active service credential. Every allow/deny decision against a resolved
+  principal is durably audited before the caller sees the result — a
+  required-audit-write failure denies an otherwise-allowed request
+  (`503 security.audit_unavailable`) rather than letting an unauditable
+  allow through — retrievable per-tenant via `GET /v2/audit/access`.
+  Closed the "trusted actor" gap by name: flow human-decisions and every
+  plan-approval/plan mutation now record the authenticated principal as the
+  actor, never a client-supplied body/query field. OpenAPI now publishes
+  `oidcBearer`/`serviceBearer`/`sessionCookie` security schemes and derives
+  each operation's `x-autodev-required-scope` directly from its
+  `@requires_scope` declaration — no second, hand-maintained scope registry.
+  Flagged for E11-S3, not fixed here (no per-resource tenant data exists
+  yet): `GET /v2/context/retrieve` accepts a caller-supplied `tenant_id`
+  query parameter with no check against the authenticated principal.
+
+- **2026-08-15** — **E11-S4 — Execution security and runbooks is complete**
+  (story `E11-S4-T1`-`T3` done; dependencies E1, E8-S4). Trusted-only
+  in-process plugin boundary (ADR-020): production requires an explicit
+  `AUTODEV_TRUSTED_IN_PROCESS_PLUGINS` grant and still rejects
+  `runtime.isolation` or privileged-permission `in-process` plugins. The
+  validation sandbox is now driven by one typed `SandboxPolicy`: read-only
+  root filesystem with a bounded `/tmp`, a read-only mount of only the
+  resolved/guarded workspace (a `cwd` escaping `AUTODEV_PROJECT_ROOT` is
+  blocked before any process spawns), a bounded timeout (return code `124`
+  on kill), and a real-Docker security contract
+  (`backend/tests/integration/test_sandbox_security_contract.py`) that is a
+  mandatory, non-skippable CI gate. `make run_secret_scanning` now scans the
+  full working tree (tracked and untracked) via a read-only bind mount, not
+  a stale container-image copy. The Trivy SCA gate widened from
+  CRITICAL-only/vuln-only/ignore-unfixed to
+  `HIGH,CRITICAL`/`vuln,license`/`ignore-unfixed: false`, gated by an
+  expiring-exception policy (`.trivyignore.yaml`,
+  `scripts/validate_security_exceptions.py`). `Settings.redacted_model_dump()`
+  is now the sole credential-redaction policy (`DATABASE_URL`/
+  `AUTODEV_REDIS_URL` masked when they embed a password;
+  `AUTODEV_MINIO_ACCESS_KEY`/`_SECRET_KEY` always masked), production rejects
+  an empty or known-default PostgreSQL/MinIO credential, and
+  `infrastructure/docker-compose.yml` no longer bakes in a fallback
+  credential. PostgreSQL backup/restore now fails closed when configured but
+  missing `pg_dump`/`pg_restore` (previously silently skipped), passes the
+  database password only via `PGPASSWORD` (never argv/error text), and
+  records every attempt to a durable, sanitized, `0600` status file exposed
+  as `autodev_backup_*` Prometheus gauges through the E11-S1 meter.
+  `AutoDevBackupNeverSucceeded`/`AutoDevBackupStale`/`AutoDevBackupFailing`
+  alert through a new Alertmanager service under the existing
+  `observability` Compose profile, each linking
+  `docs/v2_platform/runbooks/e11_incident_response.md`. Live-verified:
+  `promtool check rules` and `amtool check-config` both SUCCESS; a live
+  Prometheus instance confirmed `activeAlertmanagers` reachable and the
+  `autodev-e11-s4-backup` rule group evaluating (`AutoDevBackupNeverSucceeded`
+  correctly `pending` with no prior backup). This story was implemented in a
+  separate worktree in parallel with E11-S2 (both depend only on E11-S1);
+  epic-level story count and "Next action" above are reconciled by whichever
+  story lands second.
+
+- **2026-08-15** — **E11-S1 — Observability (OpenTelemetry) is complete**
+  (Beta epic **E11 now 1/4 In Progress**; dependency E0 Done). Correlated
+  traces/metrics/logs by `run_id`/32-character W3C `trace_id`; self-hosted
+  OpenTelemetry Collector + Prometheus + Tempo + Loki + Grafana stack behind
+  the `observability` Compose profile (`make observability-up|verify|down`,
+  ADR-017); configurable sampling (`OTEL_TRACES_SAMPLER`/`_ARG`) and
+  per-signal retention (`AUTODEV_OBSERVABILITY_TRACE_RETENTION`/
+  `_METRIC_RETENTION`/`_LOG_RETENTION`); `OTEL_ENABLED=false` emergency
+  rollback. Instrumentation overhead verified at ~2.6–2.8% (target <5%) after
+  caching the runtime's tracer lookup and switching the benchmark's
+  synthetic I/O wait from `time.sleep` to a monotonic busy-wait, which
+  otherwise buried the ~80us/operation instrumentation signal under this
+  environment's OS scheduler jitter (`scripts/measure_observability_overhead.py`).
+  Live-verified: `make observability-up && make observability-verify` reports
+  Grafana/Prometheus/Tempo/Loki all healthy, including a fix for Prometheus's
+  default scrape relabeling silently overwriting the exporter's own `job`
+  label (`honor_labels: true`). Next: E11-S2 (RBAC and authentication).
 - **2026-08-17** — **Gap-closure pass on `epic/gap-closure-alpha`** (no new
   epic opened, per the "feche os gaps" protocol in the root `CLAUDE.md`).
 

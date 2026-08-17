@@ -350,3 +350,74 @@ def test_repository_context_clamps_limit_to_valid_range(capsys: pytest.CaptureFi
     payload = json.loads(capsys.readouterr().out)
     assert exit_code == 0
     assert len(payload["candidate_files"]) <= 25
+
+
+# ---------------------------------------------------------------------------
+# quotas get/set (E11-S3)
+# ---------------------------------------------------------------------------
+
+
+def _quotas_set_args(tenant_id: str = "acme-corp", **overrides: str) -> list[str]:
+    args = [
+        "quotas",
+        "set",
+        tenant_id,
+        "--max-concurrent-runs",
+        "5",
+        "--max-storage-bytes",
+        "1000000",
+        "--monthly-token-limit",
+        "500000",
+        "--monthly-cost-microusd",
+        "200000",
+        "--requests-per-second",
+        "10",
+    ]
+    for flag, value in overrides.items():
+        args.extend([flag, value])
+    return args
+
+
+def test_quotas_set_then_get_round_trips(capsys: pytest.CaptureFixture[str]) -> None:
+    """``quotas set`` durably stores a policy that ``quotas get`` then reports."""
+    set_exit_code = main(_quotas_set_args("acme-corp", **{"--max-run-tokens": "10000"}))
+    set_payload = json.loads(capsys.readouterr().out)
+    assert set_exit_code == 0
+    assert set_payload["status"] == "ok"
+    assert set_payload["policy"]["max_concurrent_runs"] == 5
+    assert set_payload["policy"]["default_run_budget"]["max_tokens"] == 10000
+    assert set_payload["policy"]["version"] == 1
+
+    get_exit_code = main(["quotas", "get", "acme-corp"])
+    get_payload = json.loads(capsys.readouterr().out)
+    assert get_exit_code == 0
+    assert get_payload["policy"]["max_concurrent_runs"] == 5
+    assert get_payload["usage"] == {
+        "concurrent_runs": 0,
+        "storage_bytes_used": 0,
+        "monthly_tokens_used": 0,
+        "monthly_cost_microusd_used": 0,
+        "month_window_key": get_payload["usage"]["month_window_key"],
+    }
+
+
+def test_quotas_get_without_a_stored_policy_falls_back_to_local_defaults(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """``quotas get`` for an unconfigured tenant returns the finite local-mode defaults."""
+    exit_code = main(["quotas", "get", "never-configured"])
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 0
+    assert payload["policy"]["tenant_id"] == "never-configured"
+    assert payload["policy"]["max_concurrent_runs"] > 0
+
+
+def test_quotas_set_rejects_a_stale_expected_version(capsys: pytest.CaptureFixture[str]) -> None:
+    """``quotas set`` with a stale ``--expected-version`` fails closed, not silently."""
+    main(_quotas_set_args("acme-corp"))
+    capsys.readouterr()
+
+    exit_code = main(_quotas_set_args("acme-corp", **{"--expected-version": "99"}))
+    err_payload = json.loads(capsys.readouterr().err)
+    assert exit_code == 1
+    assert err_payload["status"] == "error"

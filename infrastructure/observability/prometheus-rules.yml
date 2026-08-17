@@ -1,0 +1,51 @@
+groups:
+  - name: autodev-observability
+    rules:
+      - record: autodev:http_error_ratio:rate5m
+        expr: |
+          sum(rate(http_server_request_duration_count{http_response_status_code=~"5.."}[5m]))
+          /
+          clamp_min(sum(rate(http_server_request_duration_count[5m])), 1)
+      - record: autodev:http_latency_p95_seconds:rate5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, http_route) (
+              rate(http_server_request_duration_bucket[5m])
+            )
+          )
+
+  - name: autodev-e11-s4-backup
+    rules:
+      - alert: AutoDevBackupNeverSucceeded
+        expr: absent(autodev_backup_last_success_timestamp_seconds)
+        for: 5m
+        labels:
+          severity: critical
+          service: backup
+        annotations:
+          summary: AutoDev has no successful backup metric
+          description: No successful backup was observed during the five-minute RPO window.
+          runbook_url: https://github.com/acpguedes/autodev/blob/main/docs/v2_platform/runbooks/e11_incident_response.md#backup-never-succeeded
+
+      - alert: AutoDevBackupStale
+        expr: time() - autodev_backup_last_success_timestamp_seconds > 300
+        for: 1m
+        labels:
+          severity: critical
+          service: backup
+        annotations:
+          summary: AutoDev backup is older than the RPO
+          description: The latest successful backup is more than five minutes old.
+          runbook_url: https://github.com/acpguedes/autodev/blob/main/docs/v2_platform/runbooks/e11_incident_response.md#backup-stale
+
+      - alert: AutoDevBackupFailing
+        expr: autodev_backup_consecutive_failures > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: backup
+        annotations:
+          summary: AutoDev backup attempt failed
+          description: One or more consecutive backup attempts failed; inspect tooling and storage immediately.
+          runbook_url: https://github.com/acpguedes/autodev/blob/main/docs/v2_platform/runbooks/e11_incident_response.md#backup-failing

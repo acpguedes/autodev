@@ -29,6 +29,7 @@ from backend.routing.contract import (
 from backend.routing.policy import RoutingPolicy
 from backend.routing.router import Router
 from backend.routing.selector import Selector
+from backend.observability.tracing import record_decision
 
 
 class RoutingService:
@@ -54,10 +55,14 @@ class RoutingService:
         """
         self._policy = policy
         self._router: RouterPlugin = router if router is not None else Router()
-        self._selector: SelectorPlugin = selector if selector is not None else Selector()
+        self._selector: SelectorPlugin = (
+            selector if selector is not None else Selector()
+        )
         self._on_event = on_event
 
-    def route(self, req: RouteRequest, *, context: Mapping[str, Any] | None = None) -> RouteDecision:
+    def route(
+        self, req: RouteRequest, *, context: Mapping[str, Any] | None = None
+    ) -> RouteDecision:
         """Classify ``req`` under the service's policy and trace the decision.
 
         Args:
@@ -129,8 +134,32 @@ class RoutingService:
             name: Dotted event name.
             payload: Structured payload for the event.
         """
+        run_id_value = payload.get("run_id", "")
+        run_id = run_id_value if isinstance(run_id_value, str) else ""
+        attributes: dict[str, str] = {}
+        for payload_key, attribute_key in (
+            ("task_type", "task_type"),
+            ("intent", "intent"),
+            ("agent_id", "agent_id"),
+            ("model", "model_id"),
+        ):
+            value = payload.get(payload_key)
+            if isinstance(value, str):
+                attributes[attribute_key] = value
+        outcome_value = payload.get("agent_id", payload.get("task_type", "recorded"))
+        outcome = outcome_value if isinstance(outcome_value, str) else "recorded"
+        record_decision(
+            name=name,
+            outcome=outcome,
+            run_id=run_id,
+            attributes=attributes,
+        )
         if self._on_event is not None:
-            self._on_event(TraceEvent(sequence=-1, name=name, payload=payload, timestamp=time.time()))
+            self._on_event(
+                TraceEvent(
+                    sequence=-1, name=name, payload=payload, timestamp=time.time()
+                )
+            )
 
 
 __all__ = ["RoutingService"]

@@ -203,7 +203,11 @@ class EventStore:
     # ---------------------------------------------------------------- reads
 
     def list_events(
-        self, partition_key: str, *, after_sequence: int | None = None
+        self,
+        partition_key: str,
+        *,
+        after_sequence: int | None = None,
+        tenant_id: str | None = None,
     ) -> list[StoredEvent]:
         """List a partition's stored events in append order.
 
@@ -211,21 +215,26 @@ class EventStore:
             partition_key: Partition to read.
             after_sequence: Exclusive-start sequence; ``None`` reads from the
                 beginning.
+            tenant_id: When given, only events stored under this tenant are
+                returned. Callers behind authentication must always pass
+                the resolved principal's tenant here — never a
+                client-supplied value.
 
         Returns:
-            Ordered stored events strictly after ``after_sequence``.
+            Ordered stored events strictly after ``after_sequence``, scoped
+            to ``tenant_id`` when given.
         """
+        clause = " AND tenant_id = {p}" if tenant_id is not None else ""
         sql = self._sql(
             "SELECT sequence, stored_at, event_id, type, occurred_at, tenant_id, "
             "partition_key, trace_id, subject_json, data_json, schema_version "
-            "FROM events WHERE partition_key = {p} AND sequence > {p} "
-            "ORDER BY sequence"
+            "FROM events WHERE partition_key = {p} AND sequence > {p}"
+            f"{clause} ORDER BY sequence"
         )
-        rows = (
-            self._connect()
-            .execute(sql, (partition_key, after_sequence or 0))
-            .fetchall()
-        )
+        params: tuple[Any, ...] = (partition_key, after_sequence or 0)
+        if tenant_id is not None:
+            params = (*params, tenant_id)
+        rows = self._connect().execute(sql, params).fetchall()
         return [decode_event(row) for row in rows]
 
     def get_projection(self, partition_key: str) -> EventProjection | None:

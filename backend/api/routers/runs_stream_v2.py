@@ -25,14 +25,14 @@ Design notes:
   call, so a missed or coalesced wake-up never drops an event. The
   in-process bus backends have no ``unsubscribe``; a long-lived subscriber
   per connection is an accepted, documented limitation of this iteration.
-* **Tenant scoping (E9-S2-T3).** ``PrincipalV2`` has no tenant field yet
-  (RBAC is a deferred, no-op seam — see ``backend/api/rbac_v2.py``), so the
-  enforced tenant is derived from the run's own record
-  (``FlowRunStore.get_run(run_id).tenant_id``), not from the caller. An
-  explicit ``?tenantId=`` query parameter is accepted only as a
-  double-check: a mismatch reports 404 (not 403), the same as an unknown
-  run id, so as to not confirm a run's existence to a caller in the wrong
-  tenant.
+* **Tenant scoping (E9-S2-T3, tightened E11-S3/ADR-019).** The authenticated
+  ``PrincipalV2.tenant_id`` is the only source of the enforced tenant —
+  never the run's own record and never a caller-supplied value. A stream
+  request for a run owned by a different tenant is treated exactly like an
+  unknown run id (404, not 403), so as to not confirm a run's existence to
+  a caller in the wrong tenant. An optional ``?tenantId=`` query parameter
+  is accepted only as a redundant consistency check against
+  ``principal.tenant_id`` itself — it can never widen or replace it.
 * **Type filter (E9-S2-T3).** ``?types=`` takes a comma-separated list of
   catalog event type names; any name not in :data:`EVENT_CATALOG` is a 400.
 """
@@ -47,7 +47,8 @@ from typing import AsyncIterator
 from fastapi import APIRouter, Depends, Header, Query, Request
 from starlette.responses import StreamingResponse
 
-from backend.api.rbac_v2 import require_v2_principal
+from backend.api.authorization import requires_scope
+from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
 from backend.api.v2_common import SCHEMA_VERSION_V2, v2_error
 from backend.events.bus import EventBus, WILDCARD
 from backend.events.catalog import EVENT_CATALOG, EventEnvelope
@@ -188,22 +189,24 @@ async def _stream_events(
         return
 
 
+@requires_scope("run:read")
 @router.get("/{run_id}/events/stream", tags=["runs"])
 async def stream_run_events(
     request: Request,
     run_id: str,
     cursor: str | None = Query(default=None, description="Resume cursor (exclusive-start)."),
     types: str | None = Query(default=None, description="Comma-separated event type allow-list."),
-    tenant_id: str | None = Query(default=None, alias="tenantId", description="Expected tenant; must match the run's own tenant."),
+    tenant_id: str | None = Query(default=None, alias="tenantId", description="Redundant consistency check; must equal the caller's own tenant."),
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
     engine: FlowEngine = Depends(get_flow_engine_v2),
     bus: EventBus = Depends(get_runs_stream_bus),
+    principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> StreamingResponse:
     """Stream a run's catalog events as Server-Sent Events.
 
     Resumes past a ``Last-Event-ID`` header (preferred) or ``?cursor=``
     query parameter, optionally filtered by ``?types=``, scoped to the
-    run's own tenant.
+    authenticated caller's tenant.
 
     Args:
         request: The incoming request (used for disconnect detection).
@@ -211,22 +214,28 @@ async def stream_run_events(
         cursor: Fallback resume cursor when no ``Last-Event-ID`` header is
             sent.
         types: Optional comma-separated event-type filter.
-        tenant_id: Optional explicit tenant check; must match the run's
-            owning tenant when supplied.
+        tenant_id: Optional redundant consistency check; must equal
+            ``principal.tenant_id`` when supplied — it never selects or
+            widens the enforced tenant.
         last_event_id: Standard SSE resume header; wins over ``?cursor=``.
         engine: Flow engine dependency, used only for its run store.
         bus: Event bus dependency to replay from and subscribe to.
+        principal: Authenticated caller; its tenant is the only source of
+            scope for the referenced run.
 
     Returns:
         A ``text/event-stream`` response.
 
     Raises:
         HTTPException: 404 (via :func:`v2_error`) if ``run_id`` is unknown
-            or ``tenantId`` does not match the run's tenant; 400 if
-            ``types`` contains an uncataloged event type.
+            for the caller's tenant, or if ``tenantId`` is supplied and
+            does not equal the caller's own tenant; 400 if ``types``
+            contains an uncataloged event type.
     """
-    run = engine.runs.get_run(run_id)
-    if run is None or (tenant_id is not None and tenant_id != run.tenant_id):
+    if tenant_id is not None and tenant_id != principal.tenant_id:
+        v2_error(404, f"unknown run {run_id!r}")
+    run = engine.runs.get_run(run_id, tenant_id=principal.tenant_id)
+    if run is None:
         v2_error(404, f"unknown run {run_id!r}")
 
     parsed_types = _parse_types(types)
