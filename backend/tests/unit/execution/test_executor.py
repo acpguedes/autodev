@@ -15,6 +15,7 @@ import pytest
 from backend.events.runtime import get_event_bus, reset_event_bus_for_tests
 from backend.execution.contracts import ExecutionAction, ExecutionResult
 from backend.execution.executor import TaskExecutor
+from backend.execution.policy import PolicyDecision
 from backend.orchestrator.service import ExecutionTask
 
 
@@ -124,6 +125,50 @@ def test_a_failed_action_marks_the_task_outcome_failed_and_emits_the_failed_even
     assert "execution.action.started" in types
     assert "execution.action.failed" in types
     assert "execution.action.completed" not in types
+
+
+@dataclass
+class _FakePolicy:
+    """Always returns the scripted decision, recording each call."""
+
+    decision: PolicyDecision
+    calls: list[ExecutionAction]
+
+    def evaluate(self, *, tenant_id: str, action: ExecutionAction, run_id: str, actor: str = "system"):
+        self.calls.append(action)
+        return self.decision
+
+
+def test_a_policy_denied_action_never_reaches_the_runner() -> None:
+    runner = _FakeRunner(outcomes={}, dispatched=[])
+    policy = _FakePolicy(decision=PolicyDecision(allowed=False, matched=True, reason="deny rule"), calls=[])
+    executor = TaskExecutor(runner, policy=policy)
+    task = _task("coding-1", "implementation", "Add the missing endpoint")
+
+    outcome = executor.execute(task, run_id="run-1", tenant_id="acme")
+
+    assert outcome.status == "failed"
+    assert outcome.results[0].status == "failed"
+    assert "policy denied" in (outcome.results[0].error or "")
+    assert runner.dispatched == []
+    assert len(policy.calls) == 1
+
+    envelopes = get_event_bus().replay("run-1")
+    types = [envelope.type for envelope in envelopes]
+    assert types == ["execution.action.failed"]
+
+
+def test_a_policy_allowed_action_reaches_the_runner_as_before() -> None:
+    runner = _FakeRunner(outcomes={}, dispatched=[])
+    policy = _FakePolicy(decision=PolicyDecision(allowed=True, matched=True, reason="allow rule"), calls=[])
+    executor = TaskExecutor(runner, policy=policy)
+    task = _task("coding-1", "implementation", "Add the missing endpoint")
+
+    outcome = executor.execute(task, run_id="run-1", tenant_id="acme")
+
+    assert outcome.status == "completed"
+    assert len(runner.dispatched) == 1
+    assert len(policy.calls) == 1
 
 
 def test_a_succeeded_action_emits_started_and_completed_events() -> None:

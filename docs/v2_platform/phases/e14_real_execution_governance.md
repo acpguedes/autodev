@@ -6,7 +6,7 @@ budgets, and end-to-end traces"). S1-S4 (executor, policy engine, execution
 modes, sandbox runners) can start once E3's core and E9-S1 land, without
 waiting on all of E11; S5 (Web UX) additionally depends on E10; S6-S7
 (shell/CLI) can proceed in parallel once S3 lands.
-**Status:** In progress · **Stories:** 1/7 complete (E14-S1 done, see below)
+**Status:** In progress · **Stories:** 2/7 complete (E14-S1, E14-S2 done, see below)
 **Depends on:** E2, E3, E9-S1, E11-S4; environment layer provided by E32
 (Beta cut of the isolated execution environment)
 **Enables:** the Beta exit criterion's real execution flow; consumed by E10
@@ -66,12 +66,20 @@ hardened per-action-type sandboxing (E14-S4) yet.
 | DoD (specific) | Test coverage per action type; `docs/execution/engine.md`; RFC+ADR if the contract is a MAJOR change (agent_guide.md §5) |
 | Dependencies | E2-S3, E3-S2, E9-S1 |
 
-### E14-S2 — Permission & Policy Engine
+### E14-S2 — Permission & Policy Engine — **Complete** (2026-08-17)
 
 Subtasks:
-- `E14-S2-T1`: policy model — allow/deny list per action category (shell, fs-write, patch, network, secrets-read, validation), scoped to project/repository/session.
-- `E14-S2-T2`: fail-closed policy evaluator — no action without an explicit policy entry is permitted.
-- `E14-S2-T3`: audit trail — every decision (allowed/denied/pending) recorded with actor and reason.
+- `E14-S2-T1`: policy model — allow/deny list per action category (shell, fs-write, patch, network, secrets-read, validation), scoped to project/repository/session. **Done** — `backend/execution/policy.py` (`PolicyRule`, `PolicyCategory`, `PolicyScopeKind`, `ACTION_TYPE_TO_POLICY_CATEGORY`).
+- `E14-S2-T2`: fail-closed policy evaluator — no action without an explicit policy entry is permitted. **Done** — `PolicyService.evaluate` wired into `TaskExecutor`; production fails closed without a stored rule (`PolicyMissingError`), local/dev falls back to a permissive default (mirrors `QuotaService`, ADR-019) to preserve the Alpha gate's local-first guarantee.
+- `E14-S2-T3`: audit trail — every decision (allowed/denied/pending) recorded with actor and reason. **Done** — `execution_policy_decisions` table + `execution.policy.allowed`/`.denied` events (42 catalog types).
+
+RFC-010 + ADR-022 filed before implementation. REST: `GET/POST
+/v2/execution/policy` (`policy:read`/`policy:admin`). Full design notes,
+including the specificity-based precedence rule and its fail-closed
+tie-break: `docs/execution/permissions.md`. Scope boundary: dynamic
+permission REST endpoints land with E14-S3 (which is what actually grants
+them); `network`/`secrets-read` categories are declared but no runner
+emits them yet.
 
 | Criterion | Detail |
 | --- | --- |

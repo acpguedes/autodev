@@ -12,6 +12,18 @@ from __future__ import annotations
 
 from backend.execution.contracts import ExecutionAction, ExecutionActionType, ExecutionResult
 from backend.execution.executor import TaskExecutionOutcome, TaskExecutor
+from backend.execution.policy import (
+    ACTION_TYPE_TO_POLICY_CATEGORY,
+    PolicyCategory,
+    PolicyDecision,
+    PolicyEffect,
+    PolicyEvaluator,
+    PolicyMissingError,
+    PolicyRule,
+    PolicyScopeKind,
+    PolicyService,
+    PolicyStore,
+)
 from backend.execution.runner import ActionRunner, InProcessActionRunner
 
 __all__ = [
@@ -22,4 +34,14 @@ __all__ = [
     "TaskExecutor",
     "ActionRunner",
     "InProcessActionRunner",
+    "ACTION_TYPE_TO_POLICY_CATEGORY",
+    "PolicyCategory",
+    "PolicyDecision",
+    "PolicyEffect",
+    "PolicyEvaluator",
+    "PolicyMissingError",
+    "PolicyRule",
+    "PolicyScopeKind",
+    "PolicyService",
+    "PolicyStore",
 ]

@@ -239,7 +239,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E11 | Observability, Security & Multi-tenant | Beta | Done | 4/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
 | E12 | Quality & Evals | Alpha/Beta | Complete | 4/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
-| E14 | Real Task Execution & Governed Autonomy | Beta | In progress | 1/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
+| E14 | Real Task Execution & Governed Autonomy | Beta | In progress | 2/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 | E15 | Frontend Redesign: Design Language & App Shell | Beta | Done | 4/4 | E10 | [phases/e15_design_language_shell.md](phases/e15_design_language_shell.md) |
 | E16 | Frontend Redesign: Control-Plane API Enablement | Beta | Done | 4/4 | E9, E3, E8-S1 | [phases/e16_redesign_api_enablement.md](phases/e16_redesign_api_enablement.md) |
 | E17 | Frontend Redesign: Control Center Screens | Beta | Done | 6/6 | E15, E16 | [phases/e17_control_center_screens.md](phases/e17_control_center_screens.md) |
@@ -266,7 +266,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 
-Total: **76/178 stories complete** across 40 epics (E19 is a proposed
+Total: **77/178 stories complete** across 40 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -394,6 +394,30 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-17** — **E14-S2 — Permission & Policy Engine is complete, E14
+  now In progress · 2/7** (RFC-010 + ADR-022 accepted first, per the epic's
+  gate). Every action `TaskExecutor` dispatches is now gated by
+  `PolicyService.evaluate` (`backend/execution/policy.py`) before it
+  reaches the runner: category-scoped allow/deny rules (`shell`,
+  `fs-write`, `patch`, `network`, `secrets-read`, `validation`), a durable
+  per-decision audit trail, and two additive events
+  (`execution.policy.allowed`/`.denied`, 40 → 42 catalog types). Mirrors
+  `QuotaService`'s already-accepted resolution rule (ADR-019): a tenant
+  with any stored rule is governed by exactly those; a tenant with none
+  fails closed in production and falls back to a permissive default
+  outside production, preserving the Alpha gate's local-first guarantee —
+  a policy engine that blocked everything by default locally would have
+  regressed `test_local_first_mode.py`. Precedence when multiple rules
+  match: specificity (dynamic-permission-with-pattern > static-with-pattern
+  > dynamic-without-pattern > static-without-pattern) before effect,
+  explicit `deny` winning ties within the top tier — this lets a future
+  hybrid-mode "always" grant carve an exception out of a broader static
+  deny while a specific static deny still overrides a broad static allow.
+  REST: `GET/POST /v2/execution/policy` (`policy:read`/`policy:admin`).
+  Dynamic-permission REST endpoints deliberately deferred to E14-S3, which
+  is what actually grants them. **Not merged to `main`** — E14 has 5 more
+  stories.
 
 - **2026-08-17** — **E14 kicked off — E14-S1 (Real Task Executor) complete,
   E14 now In progress · 1/7** (branch `epic/e14-real-execution-governance`,

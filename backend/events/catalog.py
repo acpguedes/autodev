@@ -287,6 +287,14 @@ class ExecutionActionFailedData(BaseModel):
     error: str
 
 
+class ExecutionPolicyDecisionData(BaseModel):
+    """Shared payload of ``execution.policy.allowed``/``.denied`` (E14-S2, RFC-010)."""
+
+    actionId: str
+    category: str
+    reason: str
+
+
 @dataclass(frozen=True)
 class EventDefinition:
     """Catalog entry describing one event type (§14.5 table).
@@ -348,6 +356,8 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition("execution.action.started", "Task Executor", "runId", ExecutionActionStartedData),
     EventDefinition("execution.action.completed", "Task Executor", "runId", ExecutionActionCompletedData),
     EventDefinition("execution.action.failed", "Task Executor", "runId", ExecutionActionFailedData),
+    EventDefinition("execution.policy.allowed", "Policy Engine", "runId", ExecutionPolicyDecisionData),
+    EventDefinition("execution.policy.denied", "Policy Engine", "runId", ExecutionPolicyDecisionData),
 )
 
 
