@@ -79,9 +79,63 @@ external KMS/vault backend are deferred, not silently dropped).
 
 ## Injection into execution environments (E33-S2)
 
-<!-- Filled in by E33-S2: env-var injection via ValidationJob.extra_env,
-     EnvironmentManager wiring, redaction across logs/events/artifacts,
-     the leak-fixture test. -->
+Secrets materialize only inside the E32 environment's process, as
+environment variables resolved at `command_sandbox()` time -- never
+through model context or plan/patch artifacts.
+
+- `EnvironmentProfile.env_allowlist` (E32-S2's own "ambient credentials
+  denied unless named here" gate) is reused as the injection declaration
+  surface: no second allowlist mechanism was introduced.
+  `EnvironmentManager.resolve_secrets_for_profile(handle)` resolves each
+  allowlisted name against `SecretReference(tenant_id=handle.tenant_id,
+  project=handle.profile.profile_id, name=name)` -- scoped to the
+  *profile*, a stable admin-provisioned unit, not the run id (fresh per
+  run, so nothing could ever be pre-created against it). A name with no
+  matching stored secret is silently skipped, not an error -- not every
+  allowlisted env var need be secret-backed.
+- `CompositeActionRunner.bind_environment()` (`backend/execution/runner.py`)
+  calls `resolve_secrets_for_profile()` once per binding (not once per
+  dispatched action) and threads the resulting `dict[str, str]` through
+  `ValidationJob.extra_env` (`backend/validation/models.py`) into
+  `SandboxRunner._run_docker`/`_run_local`
+  (`backend/validation/sandbox.py`) as `--env NAME=value` pairs / a merged
+  subprocess `env=`. The value exists only as a local dict handed straight
+  to the subprocess call -- it is never attached to any other object.
+
+### Redaction (E33-S2-T2)
+
+Exact-value redaction only (`backend/secret_store/redaction.py`) --
+**guaranteed** for every value this process has actually resolved from the
+secret store; entropy-based detection of unknown secret-shaped strings is
+explicitly out of scope (**best-effort would be the wrong word: it simply
+is not attempted**), documented here rather than silently omitted.
+
+- `SecretRedactor` — built from one environment's exact
+  `{value: SecretReference}` map (populated by
+  `resolve_secrets_for_profile`). `EnvironmentManager.collect_artifacts()`
+  scrubs every task's stdout/stderr transcript and diff with it *before*
+  persistence (`backend/environments/manager.py`) -- redaction happens
+  before the write, not at display time.
+- A broader, process-wide safety net
+  (`register_live_secret_value`/`redact_event_data`) scrubs every value
+  this process has ever resolved from **every** emitted event's `data`
+  payload, inside `emit_event()` itself (`backend/events/runtime.py`) --
+  every event producer is protected, including ones with no direct
+  relationship to `EnvironmentManager` (e.g. `run.timeline.*`), without
+  each one remembering to redact its own payload.
+- **Overhead:** redaction is `O(known-values × text-length)` exact
+  substring replacement per emitted event/persisted artifact; the known-value
+  set is small (only values actually resolved), so this is not a measured
+  bottleneck at Beta scale.
+
+### Leak fixture (E33-S2-T3)
+
+A task that echoes an injected secret's exact value into its stdout/diff
+has that value redacted from the persisted artifact *and* triggers a
+durable `secret.leak.suspected` audit event (`tenantId`/`project`/`name`/
+`runId`/`location`, never the value) via
+`EnvironmentManager._audit_leaks()`. Covered by
+`backend/tests/unit/environments/test_manager.py::test_collect_artifacts_redacts_leaked_secret_and_audits`.
 
 ## Rotation, revocation & audit (E33-S3)
 

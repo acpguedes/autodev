@@ -10,19 +10,28 @@ from backend.artifacts.pointers import ArtifactPointerStore
 from backend.artifacts.store import LocalArtifactStore
 from backend.config.settings import Settings
 from backend.environments.backends import HardenedContainerBackend, UnavailableBackend
-from backend.environments.contracts import EnvironmentBackendError, EnvironmentBackendKind
+from backend.environments.contracts import (
+    EnvironmentBackendError,
+    EnvironmentBackendKind,
+    EnvironmentProfile,
+)
 from backend.environments.manager import EnvironmentCapacityExceededError, EnvironmentManager
 from backend.environments.store import EnvironmentStore
 from backend.events.runtime import get_event_bus, reset_event_bus_for_tests
 from backend.execution.contracts import ExecutionResult
 from backend.persistence.sqlite_adapter import SQLiteStore
+from backend.secret_store.redaction import reset_registry_for_tests as _reset_secret_registry
+from backend.secret_store.service import SecretService
+from backend.secret_store.store import SecretStore
 
 
 @pytest.fixture(autouse=True)
 def _reset_bus():
     reset_event_bus_for_tests()
+    _reset_secret_registry()
     yield
     reset_event_bus_for_tests()
+    _reset_secret_registry()
 
 
 def _manager(
@@ -31,6 +40,7 @@ def _manager(
     max_concurrent: int = 4,
     ttl_seconds: int = 3600,
     backend_kind: EnvironmentBackendKind = EnvironmentBackendKind.HARDENED_CONTAINER,
+    secret_service: "SecretService | None" = None,
 ) -> EnvironmentManager:
     store = EnvironmentStore(db_path=tmp_path / "environments.db")
     settings = Settings(
@@ -53,6 +63,8 @@ def _manager(
         artifact_store=artifact_store,
         artifact_pointers=pointers,
         backend_override=(backend_kind, backend),
+        secret_service=secret_service
+        or SecretService(store=SecretStore(db_path=tmp_path / "secrets.db"), settings=settings),
     )
 
 
@@ -202,3 +214,77 @@ def test_reap_orphans_frees_capacity_for_new_provisions(tmp_path: Path) -> None:
     # environment above before checking the ceiling.
     handle2 = manager.provision(run_id="run-2", tenant_id="t1", workspace_ref=str(ws))
     assert handle2.run_id == "run-2"
+
+
+# ---------------------------------------------------------------------------
+# Secret injection & redaction (E33-S2)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_secrets_for_profile_resolves_allowlisted_names(tmp_path: Path) -> None:
+    secret_store = SecretStore(db_path=tmp_path / "secrets.db")
+    settings = Settings(_env_file=None, autodev_secret_encryption_key="k")  # type: ignore[call-arg]
+    secret_service = SecretService(store=secret_store, settings=settings)
+    from backend.secret_store.contracts import SecretReference
+
+    secret_service.create(
+        SecretReference(tenant_id="t1", project="default", name="GIT_TOKEN"),
+        "s3cr3t-value",
+        actor_id="test",
+    )
+    manager = _manager(tmp_path, secret_service=secret_service)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    profile = EnvironmentProfile(env_allowlist=("GIT_TOKEN", "UNBACKED_VAR"))
+    handle = manager.provision(run_id="run-1", tenant_id="t1", workspace_ref=str(ws), profile=profile)
+
+    extra_env = manager.resolve_secrets_for_profile(handle)
+
+    assert extra_env == {"GIT_TOKEN": "s3cr3t-value"}
+
+
+def test_resolve_secrets_for_profile_empty_when_no_allowlist(tmp_path: Path) -> None:
+    manager = _manager(tmp_path)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    handle = manager.provision(run_id="run-1", tenant_id="t1", workspace_ref=str(ws))
+    assert manager.resolve_secrets_for_profile(handle) == {}
+
+
+def test_collect_artifacts_redacts_leaked_secret_and_audits(tmp_path: Path) -> None:
+    secret_store = SecretStore(db_path=tmp_path / "secrets.db")
+    settings = Settings(_env_file=None, autodev_secret_encryption_key="k")  # type: ignore[call-arg]
+    secret_service = SecretService(store=secret_store, settings=settings)
+    from backend.secret_store.contracts import SecretReference
+
+    secret_service.create(
+        SecretReference(tenant_id="t1", project="default", name="GIT_TOKEN"),
+        "s3cr3t-value",
+        actor_id="test",
+    )
+    manager = _manager(tmp_path, secret_service=secret_service)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    profile = EnvironmentProfile(env_allowlist=("GIT_TOKEN",))
+    handle = manager.provision(run_id="run-1", tenant_id="t1", workspace_ref=str(ws), profile=profile)
+    manager.resolve_secrets_for_profile(handle)
+
+    leaking_result = ExecutionResult(
+        action_id="a1",
+        task_id="t1",
+        step_key="s1",
+        status="succeeded",
+        started_at="x",
+        completed_at="y",
+        stdout="the token is s3cr3t-value",
+    )
+    manager.collect_artifacts(handle, [leaking_result])
+
+    artifact_store = manager._resolve_artifact_store()  # noqa: SLF001
+    key = f"t1/environments/{handle.environment_id}/a1.log"
+    stored = artifact_store.get_artifact("logs", key)
+    assert b"s3cr3t-value" not in stored
+    assert b"REDACTED" in stored
+
+    types = [e.type for e in get_event_bus().replay("run-1")]
+    assert "secret.leak.suspected" in types

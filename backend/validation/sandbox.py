@@ -19,6 +19,7 @@ element of ``ValidationJob.command``.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -271,6 +272,7 @@ class SandboxRunner:
             "HOME=/tmp",
             "--env",
             "PYTHONDONTWRITEBYTECODE=1",
+            *(f"--env={name}={value}" for name, value in job.extra_env.items()),
             "--mount",
             f"type=bind,source={workspace},target=/workspace,readonly",
             "--workdir=/workspace",
@@ -305,6 +307,7 @@ class SandboxRunner:
         )
 
     def _run_local(self, job: ValidationJob, workspace: Path) -> ValidationResult:
+        env = {**os.environ, **job.extra_env} if job.extra_env else None
         try:
             completed = subprocess.run(
                 job.command,
@@ -313,6 +316,7 @@ class SandboxRunner:
                 cwd=workspace,
                 timeout=self._policy.timeout_seconds,
                 check=False,
+                env=env,
             )
         except subprocess.TimeoutExpired:
             return ValidationResult(

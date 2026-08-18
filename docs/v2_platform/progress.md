@@ -279,7 +279,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E30 | FinOps & Autonomy Governance | v2.2 | Not started | 0/4 | E2, E3 (ADR-006), E5, E11 | [phases/e30_finops_governance.md](phases/e30_finops_governance.md) |
 | E31 | Library Spec Registry | v2.2 | Not started | 0/4 | E20, E7, E14; E13 (publish) | [phases/e31_library_spec_registry.md](phases/e31_library_spec_registry.md) |
 | E32 | Isolated Execution Environment (Beta slice) | Beta | Done | 4/4 | E14, E11-S4; E28 (contracts) | [phases/e32_isolated_execution_beta.md](phases/e32_isolated_execution_beta.md) |
-| E33 | Secrets & Credential Governance | Beta | In progress | 1/3 | E32, E0-S5, E11-S4 | [phases/e33_secrets_credential_governance.md](phases/e33_secrets_credential_governance.md) |
+| E33 | Secrets & Credential Governance | Beta | In progress | 2/3 | E32, E0-S5, E11-S4 | [phases/e33_secrets_credential_governance.md](phases/e33_secrets_credential_governance.md) |
 | E34 | Packaging & Global Install | Beta | Not started | 0/3 | E14-S7 (CLI), E32 | [phases/e34_packaging_global_install.md](phases/e34_packaging_global_install.md) |
 | E35 | Beta Readiness Gates & Evidence | Beta | Not started | 0/3 | E32-E34, E11, E12 | [phases/e35_beta_readiness_gates.md](phases/e35_beta_readiness_gates.md) |
 | E36 | SDD Operating Model & Document Authority | v2.3 | Not started | 0/4 | E20-E23 | [phases/e36_sdd_operating_model.md](phases/e36_sdd_operating_model.md) |
@@ -416,6 +416,28 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-18** — **E33-S2 — Injection into execution environments &
+  redaction is complete, E33 now In progress · 2/3** (branch
+  `epic/e33-secrets-credential-governance`, story
+  `story/e33-s2-injection-and-redaction`). Secrets materialize only inside
+  the E32 environment's process: `EnvironmentProfile.env_allowlist` (E32-S2's
+  existing declaration surface -- no second one added) is resolved by
+  `EnvironmentManager.resolve_secrets_for_profile()` at `bind_environment()`
+  time and threaded through the new
+  `ValidationJob.extra_env`/`SandboxRunner._run_docker`/`_run_local`
+  (`backend/validation/`) as `--env`/subprocess-env, never through model
+  context or plan/patch artifacts. Redaction (`backend/secret_store/redaction.py`):
+  an exact-value `SecretRedactor` scrubs every task's stdout/diff *before*
+  `EnvironmentManager.collect_artifacts()` persists it, and a process-wide
+  registry scrubs every emitted event's `data` payload inside
+  `emit_event()` itself (`backend/events/runtime.py`) -- every producer
+  protected, not just environment events. A task that echoes a secret's
+  value produces redacted evidence and a durable `secret.leak.suspected`
+  audit event (catalog 51, unchanged count -- reserved in S1). Scope
+  reduction stated honestly (`docs/security/secrets.md`): exact-value
+  redaction is guaranteed, entropy-based detection of unknown
+  secret-shaped strings is not attempted at all (not "best-effort").
 
 - **2026-08-18** — **E33-S1 — Secret store abstraction & format decision is
   complete, E33 now In progress · 1/3** (branch
