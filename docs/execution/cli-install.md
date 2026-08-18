@@ -107,6 +107,14 @@ full options table and rationale.
   `autodev secrets create` (E33-S1, value read from stdin only) before or
   after bootstrap; bootstrap itself has no secret-material surface.
 
+## Upgrade & version compatibility (E34-S3)
+
+`autodev upgrade` — see `docs/execution/upgrade.md` for the full detail:
+backs up the state store before migrating (E8-S4 `BackupManager`), refuses
+outright if the database's recorded schema is newer than the installed
+code knows (`SchemaVersionMismatchError`), and rollback reuses the same
+backup/restore machinery rather than a bespoke mechanism.
+
 ## Scope reduction (stated, not hidden)
 
 No standalone binary or native OS installer (e.g. a single-file executable,

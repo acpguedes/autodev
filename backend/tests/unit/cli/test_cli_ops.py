@@ -9,6 +9,7 @@ import pytest
 from backend.cli import build_parser, main
 from backend.ops.bootstrap import BootstrapResult
 from backend.ops.doctor import DiagnosticCheck
+from backend.ops.upgrade import UpgradeResult
 
 
 def test_doctor_and_bootstrap_subcommands_parse() -> None:
@@ -19,6 +20,13 @@ def test_doctor_and_bootstrap_subcommands_parse() -> None:
 
     bootstrap_args = parser.parse_args(["bootstrap"])
     assert bootstrap_args.command == "bootstrap"
+
+    upgrade_args = parser.parse_args(
+        ["upgrade", "--backup-dir", "/tmp/x", "--target-version", "v1"]
+    )
+    assert upgrade_args.command == "upgrade"
+    assert upgrade_args.backup_dir == "/tmp/x"
+    assert upgrade_args.target_version == "v1"
 
 
 def test_doctor_handler_exits_zero_when_all_checks_pass(
@@ -78,3 +86,39 @@ def test_bootstrap_handler_exits_nonzero_on_preflight_failure(
     exit_code = main(["bootstrap"])
 
     assert exit_code == 1
+
+
+def test_upgrade_handler_exits_zero_on_success(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    result = UpgradeResult(status="ok", detail="applied", backup_dir="/tmp/backup")
+    captured: dict[str, object] = {}
+
+    def _fake_run_upgrade(backup_dir, target_version=None):
+        captured["backup_dir"] = backup_dir
+        captured["target_version"] = target_version
+        return result
+
+    monkeypatch.setattr("backend.ops.upgrade.run_upgrade", _fake_run_upgrade)
+
+    exit_code = main(["upgrade", "--backup-dir", "/tmp/backup", "--target-version", "v1"])
+
+    assert exit_code == 0
+    assert captured == {"backup_dir": "/tmp/backup", "target_version": "v1"}
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "ok"
+
+
+def test_upgrade_handler_exits_nonzero_when_refused(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    result = UpgradeResult(status="refused", detail="database schema is newer")
+    monkeypatch.setattr(
+        "backend.ops.upgrade.run_upgrade", lambda backup_dir, target_version=None: result
+    )
+
+    exit_code = main(["upgrade"])
+
+    assert exit_code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["status"] == "refused"
