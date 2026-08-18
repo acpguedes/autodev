@@ -31,6 +31,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="CLI estruturada para configurar e operar o AutoDev Architect localmente.",
     )
     parser.add_argument(
+        "--version",
+        action="store_true",
+        help="Print version, commit, and build-date metadata and exit (E34-S1).",
+    )
+    parser.add_argument(
         "--shell",
         action="store_true",
         help="Start the governed interactive shell (E14-S6), talking only to the Control Plane API.",
@@ -288,6 +293,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     """
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.version:
+        from backend.ops.version import get_version_info
+
+        print(json.dumps(get_version_info().as_dict(), ensure_ascii=False))
+        return 0
 
     # --command works standalone too (E14-S7): "autodev --command '<goal>'"
     # is the shell's one-shot round trip without entering the REPL, exactly
