@@ -1,7 +1,7 @@
 # E33 — Secrets & Credential Governance (Beta)
 
 **Wave:** v2.0-beta — "plataforma completa em produção controlada".
-**Status:** Not started · **Stories:** 0/3 complete
+**Status:** In progress · **Stories:** 1/3 complete
 **Depends on:** E11 (RBAC, audit), E32 (execution environments — injection
 target), E0 (config foundations)
 **Enables:** governed real execution with credentials (E14 tasks that need
@@ -61,7 +61,7 @@ Subtasks:
   run timeline events, traces and stored artifacts; redaction applied
   before persistence, not at display time.
 - `E33-S2-T3`: leak fixture — a task that echoes a secret produces redacted
-  logs/artifacts and a typed `secret.leak_suspected` audit event.
+  logs/artifacts and a typed `secret.leak.suspected` audit event.
 
 | Criterion | Detail |
 | --- | --- |

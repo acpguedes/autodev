@@ -279,7 +279,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E30 | FinOps & Autonomy Governance | v2.2 | Not started | 0/4 | E2, E3 (ADR-006), E5, E11 | [phases/e30_finops_governance.md](phases/e30_finops_governance.md) |
 | E31 | Library Spec Registry | v2.2 | Not started | 0/4 | E20, E7, E14; E13 (publish) | [phases/e31_library_spec_registry.md](phases/e31_library_spec_registry.md) |
 | E32 | Isolated Execution Environment (Beta slice) | Beta | Done | 4/4 | E14, E11-S4; E28 (contracts) | [phases/e32_isolated_execution_beta.md](phases/e32_isolated_execution_beta.md) |
-| E33 | Secrets & Credential Governance | Beta | Not started | 0/3 | E32, E0-S5, E11-S4 | [phases/e33_secrets_credential_governance.md](phases/e33_secrets_credential_governance.md) |
+| E33 | Secrets & Credential Governance | Beta | In progress | 1/3 | E32, E0-S5, E11-S4 | [phases/e33_secrets_credential_governance.md](phases/e33_secrets_credential_governance.md) |
 | E34 | Packaging & Global Install | Beta | Not started | 0/3 | E14-S7 (CLI), E32 | [phases/e34_packaging_global_install.md](phases/e34_packaging_global_install.md) |
 | E35 | Beta Readiness Gates & Evidence | Beta | Not started | 0/3 | E32-E34, E11, E12 | [phases/e35_beta_readiness_gates.md](phases/e35_beta_readiness_gates.md) |
 | E36 | SDD Operating Model & Document Authority | v2.3 | Not started | 0/4 | E20-E23 | [phases/e36_sdd_operating_model.md](phases/e36_sdd_operating_model.md) |
@@ -416,6 +416,34 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-18** — **E33-S1 — Secret store abstraction & format decision is
+  complete, E33 now In progress · 1/3** (branch
+  `epic/e33-secrets-credential-governance`, story
+  `story/e33-s1-secret-store-abstraction`; ADR-014 accepted). New module
+  `backend/secret_store/` (named to avoid shadowing the stdlib `secrets`
+  module): `SecretReference`/`SecretMetadata`/`SecretStatus` contracts that
+  never carry a value; `crypto.py` reuses the Fernet envelope-encryption
+  primitive already established for browser refresh tokens
+  (`backend.auth.crypto.derive_fernet`), keyed by
+  `AUTODEV_SECRET_ENCRYPTION_KEY`; `SecretStore` (SQLite-backed, versioned,
+  scoped to `tenant_id/project/name`, mirroring the `backend/quotas/` and
+  `backend/environments/` self-contained-store precedent rather than the
+  core persistence migration runner — see ADR-014's stated scope
+  reduction); `SecretService` wraps crypto + store and durably audits
+  every create/rotate/revoke/resolve (`secret.created`/`.rotated`/
+  `.revoked`/`.resolved`, catalog 46 → 51 with `secret.leak.suspected`
+  reserved for E33-S2's leak fixture). RBAC: `secret:use` (VIEWER+, read
+  metadata only) and `secret:manage` (ADMIN+, create/rotate/revoke),
+  mirroring the `quota:read`/`quota:admin` split. REST:
+  `backend/api/routers/secrets_v2.py` (auto-discovered, no manual
+  registration) — every response model carries metadata only, so "no API
+  returns a stored value" holds structurally. CLI: `autodev secrets
+  create|rotate|revoke|list`, value always via `--value-stdin`, never a
+  CLI argument. Docs: `docs/security/secrets.md`,
+  `docs/v2_platform/decisions/ADR-014-secret-store-format.md` (Proposed ->
+  Accepted). Not yet built (E33-S2/S3 scope): injection into E32
+  environments, redaction, rotation-triggered fixture testing.
 
 - **2026-08-18** — **E32 — Isolated Execution Environment (Beta slice) is
   complete (4/4)**, on `epic/e32-isolated-execution-beta` (branched from
