@@ -7,9 +7,31 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-17 (**E14 kicked off — E14-S1 (Real Task Executor)
-complete, E14 now In progress · 1/7** — branch
-`epic/e14-real-execution-governance`. `execute_plan` performs real work for
+**Last updated:** 2026-08-18 (**E32 complete — 4/4**, branch
+`epic/e32-isolated-execution-beta` — the Beta cut of the isolated
+execution environment: a backend-agnostic `EnvironmentBackend` abstraction
+(`backend/environments/`) with configuration-only selection (unset →
+`hardened_container`, the ADR-013-accepted default built on the existing
+`SandboxRunner`; unrecognized → the fail-closed `UnavailableBackend`
+sentinel); default-deny network egress and workspace-scoped filesystem
+access, both typed and durably audited; a provision → execute → collect →
+teardown lifecycle wired into `OrchestratorService._process_tasks` (one
+environment per dispatch batch, torn down on completion or pause,
+TTL-reaped if orphaned) with a per-tenant concurrency ceiling; artifact
+egress (stdout/diff) through the E0/E8 artifact store, best-effort so a
+storage failure never fails the run; and an additive `environment` field
+on every `ExecutionResult` plus four new catalog events (42 → 46) so an
+auditor can reconstruct which backend/profile a run used from durable
+records alone. Scope boundary recorded in
+`docs/environments/beta_isolation.md`: no plugin-facing
+`execution_environment` extension point yet, and workspace provisioning
+binds to the existing `project_root` rather than a fresh ref-pinned
+checkout — both deferred to E28 alongside the microVM-class backend and
+snapshot mechanism that would first exercise them. `epic/e14-real-execution-governance`
+merged to `main` via PR #104 (2026-08-17) beforehand — see the previous
+entry below for E14's own scope. Previous entry: 2026-08-17 (**E14 kicked
+off — E14-S1 (Real Task Executor) complete, E14 now In progress · 1/7** —
+branch `epic/e14-real-execution-governance`. `execute_plan` performs real work for
 the first time: `TaskExecutor`/`InProcessActionRunner`
 (`backend/execution/`) reuse the existing patch engine and v1 sandbox
 runner; RFC-009 + ADR-021 accepted. See the Changelog entry below and
@@ -256,7 +278,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E29 | Durable Learning & Skill Library | v2.2 | Not started | 0/4 | E6, E7, E8, E22 | [phases/e29_learning_skill_library.md](phases/e29_learning_skill_library.md) |
 | E30 | FinOps & Autonomy Governance | v2.2 | Not started | 0/4 | E2, E3 (ADR-006), E5, E11 | [phases/e30_finops_governance.md](phases/e30_finops_governance.md) |
 | E31 | Library Spec Registry | v2.2 | Not started | 0/4 | E20, E7, E14; E13 (publish) | [phases/e31_library_spec_registry.md](phases/e31_library_spec_registry.md) |
-| E32 | Isolated Execution Environment (Beta slice) | Beta | Not started | 0/4 | E14, E11-S4; E28 (contracts) | [phases/e32_isolated_execution_beta.md](phases/e32_isolated_execution_beta.md) |
+| E32 | Isolated Execution Environment (Beta slice) | Beta | Done | 4/4 | E14, E11-S4; E28 (contracts) | [phases/e32_isolated_execution_beta.md](phases/e32_isolated_execution_beta.md) |
 | E33 | Secrets & Credential Governance | Beta | Not started | 0/3 | E32, E0-S5, E11-S4 | [phases/e33_secrets_credential_governance.md](phases/e33_secrets_credential_governance.md) |
 | E34 | Packaging & Global Install | Beta | Not started | 0/3 | E14-S7 (CLI), E32 | [phases/e34_packaging_global_install.md](phases/e34_packaging_global_install.md) |
 | E35 | Beta Readiness Gates & Evidence | Beta | Not started | 0/3 | E32-E34, E11, E12 | [phases/e35_beta_readiness_gates.md](phases/e35_beta_readiness_gates.md) |
@@ -266,7 +288,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 
-Total: **82/178 stories complete** across 40 epics (E19 is a proposed
+Total: **86/178 stories complete** across 40 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -395,9 +417,47 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-08-18** — **E32 — Isolated Execution Environment (Beta slice) is
+  complete (4/4)**, on `epic/e32-isolated-execution-beta` (branched from
+  `main` after E14 merged via PR #104). ADR-013 accepted: hardened
+  container (`backend/environments/backends.py::HardenedContainerBackend`,
+  built on E14-S4's `SandboxRunner`) is the Beta default behind a
+  backend-agnostic `EnvironmentBackend` protocol
+  (`backend/environments/contracts.py`); `UnavailableBackend` is the
+  fail-closed sentinel a typo'd `AUTODEV_EXECUTION_ENVIRONMENT_BACKEND`
+  resolves to (unset resolves to the default, never to a silent guess).
+  **E32-S2** added durably audited, fail-closed network/filesystem policy
+  checks (`backend/environments/policy.py`) — a declared network allowlist
+  that the Beta backend cannot mechanically enforce denies provisioning
+  outright rather than silently over- or under-granting access. **E32-S3**
+  added the provision → execute → collect → teardown lifecycle
+  (`EnvironmentManager`, `EnvironmentStore`) wired into
+  `OrchestratorService._process_tasks`: one environment per dispatch
+  batch, a per-tenant concurrency ceiling
+  (`AUTODEV_ENVIRONMENT_MAX_CONCURRENT`), TTL-based orphan reaping
+  (`AUTODEV_ENVIRONMENT_TTL_SECONDS`), and best-effort artifact egress
+  (stdout/diff) through the existing E0/E8 artifact store — a storage
+  failure is logged and skipped, never fails the run. **E32-S4** added an
+  additive `environment` field to every `ExecutionResult`
+  (`backend/execution/contracts.py`) and four append-only catalog events
+  (`environment.instance.provisioned`/`environment.access.allowed`/
+  `.denied`/`environment.instance.retired`; catalog 42 → 46), so
+  `EnvironmentManager.list_for_run`/`.list_decisions_for_run` let an
+  auditor reconstruct a run's isolation history from durable records
+  alone. Two scope boundaries recorded honestly rather than silently
+  narrowed (`docs/environments/beta_isolation.md`): no plugin-facing
+  `execution_environment` `ExtensionPointKind` yet (the protocol is
+  code-level backend-agnostic, not SDK-wired), and workspace provisioning
+  binds to the orchestrator's existing `project_root` rather than a fresh
+  ref-pinned checkout — both deferred to E28, which is the actual
+  consumer of the SDK wiring and the snapshot mechanism a real checkout
+  step would feed. Docs: `docs/environments/beta_isolation.md`,
+  `docs/v2_platform/decisions/ADR-013-beta-isolation-backend.md`
+  (Proposed -> Accepted).
+
 - **2026-08-17** — **E14 — Real Task Execution & Governed Autonomy is
-  complete (7/7)**, on `epic/e14-real-execution-governance`
-  (not yet merged to `main` — pending the epic -> `main` PR).
+  complete (7/7)**, on `epic/e14-real-execution-governance`, merged to
+  `main` via PR #104 on 2026-08-17.
   **E14-S7 — `autodev` CLI Packaging & Install** closed the epic: no new
   packaging mechanism was needed (`backend/pyproject.toml`'s
   `[project.scripts] autodev = "backend.cli:main"` predates this story);

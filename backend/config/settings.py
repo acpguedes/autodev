@@ -221,6 +221,20 @@ class Settings(BaseSettings):
     #: into its configurable fallback (default: deny and stop the run).
     autodev_execution_decision_timeout_seconds: int = Field(default=3_600, ge=1)
 
+    # --- Isolated execution environments (E32, ADR-013) ---
+    #: Selects the isolation backend behind the execution-environment
+    #: abstraction. Callers never choose a backend; only configuration
+    #: does. Empty resolves to the Beta default (``hardened_container``);
+    #: an unrecognized value resolves to the fail-closed ``unavailable``
+    #: sentinel (see ``backend.environments.registry.resolve_backend``).
+    autodev_execution_environment_backend: str = ""
+    #: Per-tenant ceiling on concurrently active provisioned environments
+    #: (E32-S3-T1), mirroring the E11-S3 concurrent-run lease pattern.
+    autodev_environment_max_concurrent: int = Field(default=8, ge=1)
+    #: TTL, in seconds, an environment may remain provisioned without
+    #: teardown before it is reaped as an orphan.
+    autodev_environment_ttl_seconds: int = Field(default=1_800, ge=1)
+
     @classmethod
     def settings_customise_sources(
         cls,

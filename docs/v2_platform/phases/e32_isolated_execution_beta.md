@@ -1,7 +1,7 @@
 # E32 — Isolated Execution Environment (Beta cut)
 
 **Wave:** v2.0-beta — "plataforma completa em produção controlada".
-**Status:** Not started · **Stories:** 0/4 complete
+**Status:** Done · **Stories:** 4/4 complete (E32-S1..S4, 2026-08-18)
 **Depends on:** E14-S4 (governed sandbox runners contract), E0 (MinIO
 artifacts), E11 (audit sink, additive)
 **Enables:** E28 (v2.2 tiered isolation & machine snapshots build on this
@@ -9,7 +9,7 @@ contract), E12 (contract tests for the isolation extension point), the
 v2.0-beta gate on isolated real execution
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.9
 (v2.0-beta), §2.5; `docs/v2_platform/beta_gap_analysis.md`; ADR-013
-(pending)
+(accepted)
 
 ## Objective
 
@@ -44,7 +44,15 @@ its environment profile for audit.
 
 ## Stories
 
-### E32-S1 — Execution-environment abstraction & backend selection
+### E32-S1 — Execution-environment abstraction & backend selection — **Complete** (2026-08-18)
+
+`backend/environments/contracts.py` (`EnvironmentProfile`, `EnvironmentBackend`
+protocol), `backends.py` (`HardenedContainerBackend`, `UnavailableBackend`),
+`registry.py` (`resolve_backend`, configuration-only selection).
+`CompositeActionRunner.bind_environment` (`backend/execution/runner.py`)
+consumes the contract; `ExecutionResult` gains an additive `environment`
+field. ADR-013 accepted (hardened container default; `UnavailableBackend`
+proves the second implementation).
 
 Subtasks:
 - `E32-S1-T1`: environment contract — a declared environment profile
@@ -67,7 +75,15 @@ Subtasks:
 | DoD (specific) | Contract tests green for the default backend; `docs/environments/beta_isolation.md` |
 | Dependencies | E14-S4 |
 
-### E32-S2 — Fail-closed network & filesystem policy
+### E32-S2 — Fail-closed network & filesystem policy — **Complete** (2026-08-18)
+
+`backend/environments/policy.py` (`evaluate_network_provisioning`,
+`evaluate_filesystem_access`); denials are durably recorded and emitted as
+`environment.access.allowed`/`.denied` by `EnvironmentManager.evaluate_filesystem`.
+Scope boundary: Beta enforces default-deny egress mechanically; a declared
+per-profile allowlist is not yet mechanically enforceable and therefore
+fails closed at provisioning rather than being silently granted or
+ignored (see `docs/environments/beta_isolation.md`).
 
 Subtasks:
 - `E32-S2-T1`: default-deny network egress for task execution; explicit
@@ -86,7 +102,20 @@ Subtasks:
 | DoD (specific) | Egress-deny and host-path-deny tests; policy section in `docs/environments/beta_isolation.md` |
 | Dependencies | E32-S1, E14-S2 (approval surface, additive) |
 
-### E32-S3 — Environment lifecycle & workspace provisioning
+### E32-S3 — Environment lifecycle & workspace provisioning — **Complete** (2026-08-18)
+
+`backend/environments/manager.py` (`EnvironmentManager.provision`/
+`collect_artifacts`/`teardown`/`reap_orphans`), `store.py`
+(`EnvironmentStore`, durable lifecycle records). Wired into
+`OrchestratorService._process_tasks`: one environment per dispatch batch,
+provisioned before and torn down (collecting artifacts) after — including
+on an approval-mode pause, so a paused run's environment is reaped by TTL
+rather than held indefinitely; resume provisions a fresh one. Concurrency
+bounded per tenant by `AUTODEV_ENVIRONMENT_MAX_CONCURRENT`. Scope
+boundary: workspace provisioning binds to the orchestrator's existing
+`project_root` rather than a fresh ref-pinned checkout (see
+`docs/environments/beta_isolation.md`) — deferred alongside E28-S1's
+snapshot mechanism.
 
 Subtasks:
 - `E32-S3-T1`: lifecycle — provision → execute → collect artifacts/diffs →
@@ -107,7 +136,14 @@ Subtasks:
 | DoD (specific) | Lifecycle + orphan-reaping tests; provisioning baseline recorded in `docs/environments/beta_isolation.md` |
 | Dependencies | E32-S1, E14-S1, E0-S7 (artifacts) |
 
-### E32-S4 — Isolation audit & evidence
+### E32-S4 — Isolation audit & evidence — **Complete** (2026-08-18)
+
+`ExecutionResult.environment` (additive field: `environmentId`,
+`backendKind`, `profileHash`) on every action result;
+`EnvironmentManager.list_for_run`/`.list_decisions_for_run` reconstruct a
+run's environment/policy history from durable records.
+`environment.instance.provisioned`/`environment.access.*`/
+`environment.instance.retired` events (catalog 42 → 46 types).
 
 Subtasks:
 - `E32-S4-T1`: every execution record carries the resolved environment
@@ -129,18 +165,24 @@ Subtasks:
 
 ## Contracts & decisions
 
-- **ADR-013 — Isolation backend for Beta** (pending): container hardening
-  vs bubblewrap vs gVisor vs microVM. Options, trade-offs and
-  recommendation documented; decision does not block E32-S1..S4 because
-  the abstraction is backend-agnostic. Escalation of the backend is E28
-  (v2.2) scope.
-- Extension point `execution_environment` gets a mandatory contract test
-  (E12).
+- **ADR-013 — Isolation backend for Beta** (accepted 2026-08-18): hardened
+  container is the Beta default, behind the backend-agnostic
+  `EnvironmentBackend` protocol; `UnavailableBackend` proves the second
+  implementation. Escalation to a microVM-class backend is E28 (v2.2)
+  scope, consuming this contract unchanged.
+- Extension point `execution_environment`: the `EnvironmentBackend`
+  protocol is code-level backend-agnostic, proven by two implementations
+  and covered by unit contract tests (`backend/tests/unit/environments/`).
+  It is **not** wired into the plugin SDK's `ExtensionPointKind` catalog —
+  that (letting a third-party plugin ship an isolation backend) is
+  deferred to E28 alongside the microVM backend it would first be
+  exercised against; see `docs/environments/beta_isolation.md`.
 
 ## DoR / DoD
 
 - **DoR:** E14-S4 contract reviewed; ADR-013 filed; gap analysis subsection
   (`beta_gap_analysis.md`) approved.
-- **DoD:** all story DoDs; `docs/environments/beta_isolation.md` published;
-  v2.0-beta gate criteria (§18.9) reference E32 evidence; no push/PR
-  without explicit authorization.
+- **DoD:** all story DoDs met; `docs/environments/beta_isolation.md`
+  published; ADR-013 accepted; v2.0-beta gate criteria (§18.9) reference
+  E32 evidence (`docs/v2_platform/progress.md`); no push/PR without
+  explicit authorization.

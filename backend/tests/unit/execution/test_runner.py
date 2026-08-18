@@ -200,3 +200,147 @@ def test_patch_runner_rejects_non_file_or_patch_actions(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="PatchRunner"):
         runner.run(action)
+
+
+def _environment_manager(tmp_path: Path):
+    """Build a real E32 EnvironmentManager for CompositeActionRunner binding tests."""
+    from backend.artifacts.pointers import ArtifactPointerStore
+    from backend.artifacts.store import LocalArtifactStore
+    from backend.config.settings import Settings
+    from backend.environments.backends import HardenedContainerBackend
+    from backend.environments.contracts import EnvironmentBackendKind
+    from backend.environments.manager import EnvironmentManager
+    from backend.environments.store import EnvironmentStore
+    from backend.persistence.sqlite_adapter import SQLiteStore
+
+    store = EnvironmentStore(db_path=tmp_path / "environments.db")
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        storage_backend="local",
+        autodev_artifact_dir=str(tmp_path / "artifacts"),
+    )
+    artifact_store = LocalArtifactStore(str(tmp_path / "artifacts"))
+    pointers = ArtifactPointerStore(store=SQLiteStore(f"sqlite:///{tmp_path / 'pointers.db'}"))
+    return EnvironmentManager(
+        store=store,
+        settings=settings,
+        artifact_store=artifact_store,
+        artifact_pointers=pointers,
+        backend_override=(EnvironmentBackendKind.HARDENED_CONTAINER, HardenedContainerBackend()),
+    )
+
+
+def test_unbound_composite_runner_tags_no_environment(tmp_path: Path) -> None:
+    runner = InProcessActionRunner(project_root=tmp_path, enable_writes=True)
+    action = ExecutionAction(
+        action_id="a1",
+        type=ExecutionActionType.CREATE_FILE,
+        task_id="task-1",
+        step_key="task-1",
+        path="notes/task-1.md",
+        content="content",
+    )
+
+    result = runner.run(action)
+
+    assert result.environment == {}
+
+
+def test_bind_environment_tags_every_result_with_environment_identity(tmp_path: Path) -> None:
+    manager = _environment_manager(tmp_path)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    handle = manager.provision(run_id="run-1", tenant_id="t1", workspace_ref=str(ws))
+
+    runner = InProcessActionRunner(
+        project_root=ws, enable_writes=True, environment_manager=manager
+    )
+    runner.bind_environment(handle)
+    action = ExecutionAction(
+        action_id="a1",
+        type=ExecutionActionType.CREATE_FILE,
+        task_id="task-1",
+        step_key="task-1",
+        path="notes/task-1.md",
+        content="content",
+    )
+
+    result = runner.run(action)
+
+    assert result.environment == {
+        "environmentId": handle.environment_id,
+        "backendKind": "hardened_container",
+        "profileHash": handle.profile.content_hash(),
+    }
+
+
+def test_bind_environment_denies_a_traversal_action_without_dispatching(tmp_path: Path) -> None:
+    manager = _environment_manager(tmp_path)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    handle = manager.provision(run_id="run-1", tenant_id="t1", workspace_ref=str(ws))
+
+    runner = InProcessActionRunner(
+        project_root=ws, enable_writes=True, environment_manager=manager
+    )
+    runner.bind_environment(handle)
+    action = ExecutionAction(
+        action_id="a1",
+        type=ExecutionActionType.CREATE_FILE,
+        task_id="task-1",
+        step_key="task-1",
+        path="../../etc/passwd",
+        content="pwned",
+    )
+
+    result = runner.run(action)
+
+    assert result.status == "failed"
+    assert "environment policy denied" in (result.error or "")
+    assert not (ws.parent.parent / "etc" / "passwd").exists()
+
+
+def test_bind_environment_none_reverts_to_unbound_behavior(tmp_path: Path) -> None:
+    manager = _environment_manager(tmp_path)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    handle = manager.provision(run_id="run-1", tenant_id="t1", workspace_ref=str(ws))
+
+    runner = InProcessActionRunner(
+        project_root=ws, enable_writes=True, environment_manager=manager
+    )
+    runner.bind_environment(handle)
+    runner.bind_environment(None)
+    action = ExecutionAction(
+        action_id="a1",
+        type=ExecutionActionType.CREATE_FILE,
+        task_id="task-1",
+        step_key="task-1",
+        path="notes/task-1.md",
+        content="content",
+    )
+
+    result = runner.run(action)
+
+    assert result.environment == {}
+
+
+def test_bind_environment_without_manager_raises() -> None:
+    runner = InProcessActionRunner(project_root=Path("."), enable_writes=True)
+
+    from backend.environments.contracts import (
+        EnvironmentBackendKind,
+        EnvironmentHandle,
+        EnvironmentProfile,
+    )
+
+    handle = EnvironmentHandle(
+        environment_id="env-1",
+        run_id="run-1",
+        tenant_id="t1",
+        profile=EnvironmentProfile(),
+        backend_kind=EnvironmentBackendKind.HARDENED_CONTAINER,
+        workspace_path=Path("."),
+    )
+    with pytest.raises(RuntimeError, match="environment_manager"):
+        runner.bind_environment(handle)

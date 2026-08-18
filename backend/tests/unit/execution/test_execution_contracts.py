@@ -36,6 +36,7 @@ def test_execution_result_to_dict_round_trips_all_fields() -> None:
         "diff": "--- a\n+++ b\n",
         "artifacts": ["notes/task-1.md"],
         "error": None,
+        "environment": {},
     }
 
 
