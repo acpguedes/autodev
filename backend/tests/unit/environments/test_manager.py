@@ -288,3 +288,47 @@ def test_collect_artifacts_redacts_leaked_secret_and_audits(tmp_path: Path) -> N
 
     types = [e.type for e in get_event_bus().replay("run-1")]
     assert "secret.leak.suspected" in types
+
+
+def test_rotated_secret_takes_effect_on_next_provision(tmp_path: Path) -> None:
+    """E33-S3-T1: a rotated secret's new value is what the *next* provision resolves."""
+    from backend.secret_store.contracts import SecretReference
+
+    secret_store = SecretStore(db_path=tmp_path / "secrets.db")
+    settings = Settings(_env_file=None, autodev_secret_encryption_key="k")  # type: ignore[call-arg]
+    secret_service = SecretService(store=secret_store, settings=settings)
+    reference = SecretReference(tenant_id="t1", project="default", name="GIT_TOKEN")
+    secret_service.create(reference, "v1", actor_id="test")
+
+    manager = _manager(tmp_path, secret_service=secret_service)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    profile = EnvironmentProfile(env_allowlist=("GIT_TOKEN",))
+    handle1 = manager.provision(run_id="run-1", tenant_id="t1", workspace_ref=str(ws), profile=profile)
+    assert manager.resolve_secrets_for_profile(handle1) == {"GIT_TOKEN": "v1"}
+    manager.teardown(handle1)
+
+    secret_service.rotate(reference, "v2", actor_id="test")
+
+    handle2 = manager.provision(run_id="run-2", tenant_id="t1", workspace_ref=str(ws), profile=profile)
+    assert manager.resolve_secrets_for_profile(handle2) == {"GIT_TOKEN": "v2"}
+
+
+def test_revoked_secret_is_skipped_on_next_provision(tmp_path: Path) -> None:
+    """A revoked reference resolves to nothing for injection -- fails closed, not an exception."""
+    from backend.secret_store.contracts import SecretReference
+
+    secret_store = SecretStore(db_path=tmp_path / "secrets.db")
+    settings = Settings(_env_file=None, autodev_secret_encryption_key="k")  # type: ignore[call-arg]
+    secret_service = SecretService(store=secret_store, settings=settings)
+    reference = SecretReference(tenant_id="t1", project="default", name="GIT_TOKEN")
+    secret_service.create(reference, "v1", actor_id="test")
+    secret_service.revoke(reference, actor_id="test")
+
+    manager = _manager(tmp_path, secret_service=secret_service)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    profile = EnvironmentProfile(env_allowlist=("GIT_TOKEN",))
+    handle = manager.provision(run_id="run-1", tenant_id="t1", workspace_ref=str(ws), profile=profile)
+
+    assert manager.resolve_secrets_for_profile(handle) == {}

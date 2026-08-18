@@ -66,6 +66,27 @@ def test_revoke_fails_resolution_closed(tmp_path: Path) -> None:
         service.resolve_for_injection(_ref(), actor_id="env-1")
 
 
+def test_rotate_emits_secret_rotated_event_without_a_value(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    service.create(_ref(), "v1", actor_id="alice")
+    service.rotate(_ref(), "v2", actor_id="alice")
+    envelopes = get_event_bus().replay("t1")
+    rotated = [e for e in envelopes if e.type == "secret.rotated"]
+    assert len(rotated) == 1
+    assert rotated[0].data["version"] == 2
+    assert "v2" not in str(rotated[0].data)
+
+
+def test_revoke_emits_secret_revoked_event_without_a_value(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    service.create(_ref(), "v1", actor_id="alice")
+    service.revoke(_ref(), actor_id="alice")
+    envelopes = get_event_bus().replay("t1")
+    revoked = [e for e in envelopes if e.type == "secret.revoked"]
+    assert len(revoked) == 1
+    assert revoked[0].data["actorId"] == "alice"
+
+
 def test_resolve_emits_secret_resolved_event(tmp_path: Path) -> None:
     service = _service(tmp_path)
     service.create(_ref(), "v1", actor_id="alice")

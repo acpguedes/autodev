@@ -139,10 +139,37 @@ durable `secret.leak.suspected` audit event (`tenantId`/`project`/`name`/
 
 ## Rotation, revocation & audit (E33-S3)
 
-Every `create`/`rotate`/`revoke`/`resolve` durably emits a `secret.*`
-event (`backend/events/catalog.py`: `secret.created`, `secret.rotated`,
-`secret.revoked`, `secret.resolved`, plus `secret.leak.suspected` for the
-E33-S2 leak fixture) carrying the scoped reference, version, and actor —
-never a value. `resolve_latest_active` fails closed with
-`SecretRevokedError` once a reference is revoked; there is no path back to
-an older active version.
+- **Rotation takes effect on next provision (E33-S3-T1).** Nothing caches
+  a resolved value across provisions: `EnvironmentManager.resolve_secrets_for_profile`
+  re-resolves from the store on every `bind_environment()` call, so a
+  secret rotated between two provisions is picked up by the next one
+  automatically — no cache to invalidate, no propagation delay. An
+  environment already bound before a rotation keeps the value it already
+  resolved for its own lifetime (unsurprising: it never re-resolves mid-run).
+  Covered by `test_rotated_secret_takes_effect_on_next_provision`
+  (`backend/tests/unit/environments/test_manager.py`).
+- **Revocation fails closed everywhere, not just at the store.**
+  `SecretStore.resolve_latest_active` raises `SecretRevokedError` once a
+  reference's latest version is revoked — there is no path back to an
+  older active version. At the injection boundary, a revoked (or simply
+  never-created) allowlisted name is *skipped*, not raised: an environment
+  provisions successfully with one fewer resolved env var rather than
+  failing the whole batch over one credential. Covered by
+  `test_revoked_secret_is_skipped_on_next_provision` and
+  `SecretService`'s own `test_revoke_fails_resolution_closed`.
+- **Audit (E33-S3-T2).** Every `create`/`rotate`/`revoke`/`resolve`
+  durably emits a `secret.*` event (`backend/events/catalog.py`:
+  `secret.created`, `secret.rotated`, `secret.revoked`, `secret.resolved`,
+  plus `secret.leak.suspected` for the E33-S2 leak fixture) carrying the
+  scoped reference, version, and actor — never a value. Covered by
+  `test_rotate_emits_secret_rotated_event_without_a_value` and
+  `test_revoke_emits_secret_revoked_event_without_a_value`
+  (`backend/tests/unit/secret_store/test_service.py`), alongside the
+  create/resolve coverage from E33-S1/S2.
+- **Beta gate wiring (E33-S3-T3).** The v2.0-beta gate's "no plaintext
+  secrets" criterion is *evidenced* here (redaction tests +
+  reference-only audit trail); adding the actual checklist row to
+  `docs/v2_platform/progress.md` §18.9 is E35-S1-T1's job (E35 — Beta
+  Readiness Gates & Evidence), which explicitly owns expanding that gate
+  with the E32/E33/E34 criteria — E33 supplies the evidence, not the
+  checklist edit.
