@@ -24,13 +24,17 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Protocol
+from typing import TYPE_CHECKING, Optional, Protocol
 
 from backend.execution.contracts import ExecutionAction, ExecutionActionType, ExecutionResult
 from backend.patches.engine import apply_patch, generate_patch
 from backend.patches.models import Patch
 from backend.validation.models import ValidationJob
 from backend.validation.sandbox import SandboxRunner
+
+if TYPE_CHECKING:
+    from backend.environments.contracts import EnvironmentHandle
+    from backend.environments.manager import EnvironmentManager
 
 
 class ActionRunner(Protocol):
@@ -221,8 +225,28 @@ class ValidationRunner:
         return _run_via_sandbox(action, self._sandbox_runner, _timestamp())
 
 
+def _action_target_path(action: ExecutionAction) -> str:
+    """Return the filesystem/cwd target an action's environment check applies to."""
+    if action.type is ExecutionActionType.APPLY_PATCH and action.patch is not None:
+        return action.patch.path
+    if action.path is not None:
+        return action.path
+    return action.cwd
+
+
 class CompositeActionRunner:
-    """Dispatches each action to the dedicated runner for its type (E14-S4)."""
+    """Dispatches each action to the dedicated runner for its type (E14-S4).
+
+    Optionally environment-aware (E32-S1-T1): when bound to a provisioned
+    :class:`~backend.environments.contracts.EnvironmentHandle` via
+    :meth:`bind_environment`, every dispatch is first checked against the
+    environment's fail-closed filesystem policy, and ``run_command``/
+    ``run_validation`` actions dispatch through the environment-scoped
+    sandbox rather than the fixed default -- every resulting
+    :class:`~backend.execution.contracts.ExecutionResult` names the
+    environment it ran under. Unbound (the default), behavior is
+    unchanged from E14-S4.
+    """
 
     def __init__(
         self,
@@ -230,6 +254,7 @@ class CompositeActionRunner:
         project_root: Path,
         sandbox_runner: Optional[SandboxRunner] = None,
         enable_writes: Optional[bool] = None,
+        environment_manager: Optional["EnvironmentManager"] = None,
     ) -> None:
         """Initialize the composite runner and its three dedicated runners.
 
@@ -239,25 +264,86 @@ class CompositeActionRunner:
             sandbox_runner: Sandbox shared by :class:`CommandRunner` and
                 :class:`ValidationRunner`; defaults to a settings-derived
                 :class:`SandboxRunner` (fail-closed, disabled unless
-                ``AUTODEV_ENABLE_SANDBOX=1``).
+                ``AUTODEV_ENABLE_SANDBOX=1``). Used only while no
+                environment is bound.
             enable_writes: Explicit override for whether file/patch writes
                 are applied; ``None`` (default) consults
                 ``AUTODEV_ENABLE_PATCH_APPLY`` (fail-closed). Forwarded to
                 :class:`PatchRunner`.
+            environment_manager: Optional E32 environment manager; when
+                given, :meth:`bind_environment` can scope dispatch to a
+                provisioned environment (E32-S1-T1).
         """
         shared_sandbox = sandbox_runner or SandboxRunner()
         self._patch_runner = PatchRunner(project_root=project_root, enable_writes=enable_writes)
         self._command_runner = CommandRunner(sandbox_runner=shared_sandbox)
         self._validation_runner = ValidationRunner(sandbox_runner=shared_sandbox)
+        self._environment_manager = environment_manager
+        self._environment_handle: Optional["EnvironmentHandle"] = None
+
+    def bind_environment(self, handle: Optional["EnvironmentHandle"]) -> None:
+        """Scope subsequent dispatches to a provisioned environment, or clear the binding.
+
+        Args:
+            handle: The environment to scope dispatch to; ``None`` reverts
+                to the default (unbound) behavior.
+
+        Raises:
+            RuntimeError: If *handle* is given but no ``environment_manager``
+                was supplied at construction.
+        """
+        if handle is not None and self._environment_manager is None:
+            raise RuntimeError("bind_environment requires an environment_manager")
+        self._environment_handle = handle
+
+    def _environment_metadata(self) -> dict[str, str]:
+        handle = self._environment_handle
+        if handle is None:
+            return {}
+        return {
+            "environmentId": handle.environment_id,
+            "backendKind": handle.backend_kind.value,
+            "profileHash": handle.profile.content_hash(),
+        }
 
     def run(self, action: ExecutionAction) -> ExecutionResult:
         """Dispatch *action* to the runner for its type and return the result."""
+        handle = self._environment_handle
+        if handle is not None:
+            assert self._environment_manager is not None  # guaranteed by bind_environment
+            denial = self._environment_manager.evaluate_filesystem(
+                handle, path=_action_target_path(action)
+            )
+            if denial is not None:
+                now = datetime.now(timezone.utc).isoformat()
+                result = ExecutionResult(
+                    action_id=action.action_id,
+                    task_id=action.task_id,
+                    step_key=action.step_key,
+                    status="failed",
+                    started_at=now,
+                    completed_at=now,
+                    error=f"environment policy denied: {denial.reason}",
+                )
+                result.environment = self._environment_metadata()
+                return result
+
         if action.type in (
             ExecutionActionType.CREATE_FILE,
             ExecutionActionType.EDIT_FILE,
             ExecutionActionType.APPLY_PATCH,
         ):
-            return self._patch_runner.run(action)
+            result = self._patch_runner.run(action)
+        else:
+            result = self._run_command_or_validation(action)
+        result.environment = self._environment_metadata()
+        return result
+
+    def _run_command_or_validation(self, action: ExecutionAction) -> ExecutionResult:
+        if self._environment_handle is not None:
+            assert self._environment_manager is not None
+            sandbox = self._environment_manager.command_sandbox(self._environment_handle)
+            return _run_via_sandbox(action, sandbox, _timestamp())
         if action.type is ExecutionActionType.RUN_COMMAND:
             return self._command_runner.run(action)
         return self._validation_runner.run(action)
