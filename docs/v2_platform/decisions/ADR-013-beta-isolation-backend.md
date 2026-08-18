@@ -1,10 +1,9 @@
 # ADR-013 — Isolation Backend for Beta Execution Environments
 
-- **Status:** Proposed (decision pending — do not resolve silently)
-- **Date:** 2026-07-17
+- **Status:** Accepted
+- **Date:** 2026-07-17 (proposed) / 2026-08-18 (accepted)
 - **Epic:** E32
-- **Stories:** E32-S1..S4 (implementable behind the abstraction while pending)
-- **Decide by:** before E32-S2 starts
+- **Stories:** E32-S1..S4 (implemented behind the abstraction)
 
 ## Context
 
@@ -24,17 +23,26 @@ contract changes.
 | gVisor (runsc) | Syscall interception, materially stronger than plain containers; drop-in OCI runtime | Linux-only; syscall compat gaps; performance overhead; not available where KVM/host constraints bite |
 | microVM (Firecracker/Kata) | Strongest boundary; the E28 target class | Requires KVM (excludes default WSL2/macOS dev hosts); heaviest operational lift; premature for Beta |
 
-## Recommendation (not a decision)
+## Decision
 
-Hardened container as the Beta default backend behind the E32 abstraction,
-with the backend interface proven by a second implementation stub; microVM
-class arrives as E28-S2 (`untrusted`) in v2.2. gVisor documented as the
-self-host option where stronger isolation is required before v2.2.
+Hardened container (`backend.environments.backends.HardenedContainerBackend`,
+built on the existing `backend.validation.sandbox.SandboxRunner`) is the
+Beta default backend behind the E32 abstraction. The backend interface is
+proven backend-agnostic by a second implementation,
+`UnavailableBackend` (the fail-closed sentinel selected for an unset/
+unrecognized backend configuration — see
+`docs/environments/beta_isolation.md`). microVM class arrives as E28-S2
+(`untrusted`) in v2.2, consuming this same `EnvironmentBackend` contract
+unchanged. gVisor remains documented as the self-host option where
+stronger isolation is required before v2.2.
 
-## Consequences (of the pending state)
+## Consequences
 
-- E32-S1 must keep callers backend-agnostic so any option remains viable.
-- E32-S2 (fail-closed policy) is backend-independent and proceeds.
-- The decision owner and milestone are tracked in the E35-S3 open-decisions
-  register; resolving this ADR updates §18.9 evidence expectations, not the
-  E32 contract.
+- E32-S1 kept callers backend-agnostic (`backend.environments.registry.resolve_backend`
+  is the single selection point; `ExecutionAction`/`ExecutionResult` are
+  unchanged when the backend is swapped in configuration).
+- E32-S2's fail-closed network/filesystem policy is backend-independent
+  and implemented (`backend/environments/policy.py`).
+- E28 must consume `backend.environments.contracts.EnvironmentBackend`
+  unchanged when it adds the microVM-class backend; it must not fork the
+  contract.

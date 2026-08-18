@@ -295,6 +295,31 @@ class ExecutionPolicyDecisionData(BaseModel):
     reason: str
 
 
+class EnvironmentInstanceProvisionedData(BaseModel):
+    """Payload of ``environment.instance.provisioned`` (E32-S3/S4)."""
+
+    environmentId: str
+    backendKind: str
+    profileId: str
+    profileHash: str
+
+
+class EnvironmentAccessDecisionData(BaseModel):
+    """Shared payload of ``environment.access.allowed``/``.denied`` (E32-S2/S4)."""
+
+    environmentId: str
+    category: str
+    target: str
+    reason: str
+
+
+class EnvironmentInstanceRetiredData(BaseModel):
+    """Payload of ``environment.instance.retired`` (E32-S3)."""
+
+    environmentId: str
+    reason: str
+
+
 @dataclass(frozen=True)
 class EventDefinition:
     """Catalog entry describing one event type (§14.5 table).
@@ -358,6 +383,30 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition("execution.action.failed", "Task Executor", "runId", ExecutionActionFailedData),
     EventDefinition("execution.policy.allowed", "Policy Engine", "runId", ExecutionPolicyDecisionData),
     EventDefinition("execution.policy.denied", "Policy Engine", "runId", ExecutionPolicyDecisionData),
+    EventDefinition(
+        "environment.instance.provisioned",
+        "Environment Manager",
+        "runId",
+        EnvironmentInstanceProvisionedData,
+    ),
+    EventDefinition(
+        "environment.access.allowed",
+        "Environment Manager",
+        "runId",
+        EnvironmentAccessDecisionData,
+    ),
+    EventDefinition(
+        "environment.access.denied",
+        "Environment Manager",
+        "runId",
+        EnvironmentAccessDecisionData,
+    ),
+    EventDefinition(
+        "environment.instance.retired",
+        "Environment Manager",
+        "runId",
+        EnvironmentInstanceRetiredData,
+    ),
 )
 
 

@@ -36,8 +36,10 @@ from backend.agents import (
     ResponderAgent,
     ValidatorAgent,
 )
+from backend.environments.contracts import EnvironmentBackendError, EnvironmentHandle
+from backend.environments.manager import EnvironmentCapacityExceededError, EnvironmentManager
 from backend.events.runtime import emit_event
-from backend.execution.contracts import ExecutionAction
+from backend.execution.contracts import ExecutionAction, ExecutionResult
 from backend.execution.decisions import DecisionService
 from backend.execution.executor import TaskExecutionOutcome, TaskExecutor
 from backend.execution.modes import ExecutionMode
@@ -281,6 +283,7 @@ class OrchestratorService:
         quota_service: QuotaService | None = None,
         policy_service: PolicyService | None = None,
         decision_service: DecisionService | None = None,
+        environment_manager: EnvironmentManager | None = None,
     ) -> None:
         """Initialize the service, wiring default agents and the durable store.
 
@@ -300,6 +303,13 @@ class OrchestratorService:
                 fresh :class:`~backend.execution.decisions.DecisionService`.
                 Backs approval/hybrid-mode pauses in :meth:`execute_plan`/
                 :meth:`resume_plan_execution`.
+            environment_manager: Isolated execution-environment lifecycle
+                manager (E32); defaults to a fresh
+                :class:`~backend.environments.manager.EnvironmentManager`.
+                :meth:`_process_tasks` provisions one environment per
+                dispatch batch, scopes every derived action's runner to it,
+                and tears it down (collecting artifacts) once the batch
+                finishes or pauses.
         """
         self._config = config or OrchestratorConfig()
         self._project_root = project_root
@@ -310,11 +320,13 @@ class OrchestratorService:
         self._quota_service = quota_service or QuotaService()
         self._policy_service = policy_service or PolicyService()
         self._decision_service = decision_service or DecisionService()
+        self._environment_manager = environment_manager or EnvironmentManager()
         self._graph = self._compile_graph()
-        self._task_executor = TaskExecutor(
-            InProcessActionRunner(project_root=(self._project_root or Path(".")).resolve()),
-            policy=self._policy_service,
+        self._composite_runner = InProcessActionRunner(
+            project_root=(self._project_root or Path(".")).resolve(),
+            environment_manager=self._environment_manager,
         )
+        self._task_executor = TaskExecutor(self._composite_runner, policy=self._policy_service)
 
     def _acquire_run_lease(self, *, tenant_id: str, run_id: str) -> None:
         """Admit a new run against the tenant's concurrent-run ceiling, or fail closed.
@@ -925,34 +937,101 @@ class OrchestratorService:
         execution preserves partial state" criterion rather than adding a
         second mechanism for it.
 
+        Provisions one E32 execution environment for this batch (a no-op
+        when *tasks* is empty), scopes every dispatched action's runner to
+        it, and tears it down -- collecting the batch's declared outputs
+        via the artifact store first -- once the batch finishes or pauses.
+        A provisioning failure (capacity ceiling or backend error) denies
+        every task in the batch rather than silently falling back to
+        unisolated execution (E32-S3/S4 fail-closed).
+
         Returns:
             ``(current_state, paused)``.
         """
         current_state = steps[-1].step_key if steps else "starting"
-        for offset, task in enumerate(tasks):
-            index = start_index + offset
-            started_at = self._timestamp()
-            actions = self._task_executor.derive_actions(task)
-            outcome, pending = self._resolve_task_actions(
-                task=task, actions=actions, run_id=run_id, tenant_id=tenant_id, mode=mode
-            )
-            completed_at = self._timestamp()
-            current_state = task.task_id
+        if not tasks:
+            return current_state, False
 
-            if pending is not None:
+        environment_handle: Optional[EnvironmentHandle] = None
+        environment_denied_reason: Optional[str] = None
+        try:
+            environment_handle = self._environment_manager.provision(
+                run_id=run_id,
+                tenant_id=tenant_id,
+                workspace_ref=str((self._project_root or Path(".")).resolve()),
+            )
+            self._composite_runner.bind_environment(environment_handle)
+        except (EnvironmentCapacityExceededError, EnvironmentBackendError) as exc:
+            environment_denied_reason = f"execution environment unavailable: {exc}"
+
+        action_results: List[ExecutionResult] = []
+        try:
+            for offset, task in enumerate(tasks):
+                index = start_index + offset
+                started_at = self._timestamp()
+                actions = self._task_executor.derive_actions(task)
+                outcome, pending = self._resolve_task_actions(
+                    task=task,
+                    actions=actions,
+                    run_id=run_id,
+                    tenant_id=tenant_id,
+                    mode=mode,
+                    environment_denied_reason=environment_denied_reason,
+                )
+                completed_at = self._timestamp()
+                current_state = task.task_id
+
+                if pending is not None:
+                    results.append(
+                        AgentExecution(
+                            agent="executor",
+                            content=f"[{index}/{total_count}] {task.title} — awaiting a decision",
+                            metadata={
+                                "task_id": task.task_id,
+                                "title": task.title,
+                                "description": task.description,
+                                "source_agent": task.source_agent,
+                                "category": task.category,
+                                "status": "awaiting_approval",
+                                "decision_id": pending.decision_id,
+                                "actions": [],
+                            },
+                        )
+                    )
+                    steps.append(
+                        RunStep(
+                            step_key=task.task_id,
+                            agent=task.source_agent,
+                            status=StepStatus.AWAITING_APPROVAL,
+                            started_at=started_at,
+                            completed_at=completed_at,
+                        )
+                    )
+                    history.append(
+                        HistoryItem(
+                            role="executor",
+                            content=f"Paused task {index}: {task.title} awaiting a decision.",
+                        )
+                    )
+                    return current_state, True
+
+                assert outcome is not None
+                action_results.extend(outcome.results)
+                step_status = (
+                    StepStatus.COMPLETED if outcome.status == "completed" else StepStatus.FAILED
+                )
                 results.append(
                     AgentExecution(
                         agent="executor",
-                        content=f"[{index}/{total_count}] {task.title} — awaiting a decision",
+                        content=f"[{index}/{total_count}] {task.title}",
                         metadata={
                             "task_id": task.task_id,
                             "title": task.title,
                             "description": task.description,
                             "source_agent": task.source_agent,
                             "category": task.category,
-                            "status": "awaiting_approval",
-                            "decision_id": pending.decision_id,
-                            "actions": [],
+                            "status": outcome.status,
+                            "actions": [result.to_dict() for result in outcome.results],
                         },
                     )
                 )
@@ -960,7 +1039,7 @@ class OrchestratorService:
                     RunStep(
                         step_key=task.task_id,
                         agent=task.source_agent,
-                        status=StepStatus.AWAITING_APPROVAL,
+                        status=step_status,
                         started_at=started_at,
                         completed_at=completed_at,
                     )
@@ -968,49 +1047,18 @@ class OrchestratorService:
                 history.append(
                     HistoryItem(
                         role="executor",
-                        content=f"Paused task {index}: {task.title} awaiting a decision.",
+                        content=(
+                            f"{'Completed' if step_status == StepStatus.COMPLETED else 'Failed'} "
+                            f"task {index}: {task.title} ({task.category})."
+                        ),
                     )
                 )
-                return current_state, True
-
-            assert outcome is not None
-            step_status = (
-                StepStatus.COMPLETED if outcome.status == "completed" else StepStatus.FAILED
-            )
-            results.append(
-                AgentExecution(
-                    agent="executor",
-                    content=f"[{index}/{total_count}] {task.title}",
-                    metadata={
-                        "task_id": task.task_id,
-                        "title": task.title,
-                        "description": task.description,
-                        "source_agent": task.source_agent,
-                        "category": task.category,
-                        "status": outcome.status,
-                        "actions": [result.to_dict() for result in outcome.results],
-                    },
-                )
-            )
-            steps.append(
-                RunStep(
-                    step_key=task.task_id,
-                    agent=task.source_agent,
-                    status=step_status,
-                    started_at=started_at,
-                    completed_at=completed_at,
-                )
-            )
-            history.append(
-                HistoryItem(
-                    role="executor",
-                    content=(
-                        f"{'Completed' if step_status == StepStatus.COMPLETED else 'Failed'} "
-                        f"task {index}: {task.title} ({task.category})."
-                    ),
-                )
-            )
-        return current_state, False
+            return current_state, False
+        finally:
+            if environment_handle is not None:
+                self._environment_manager.collect_artifacts(environment_handle, action_results)
+                self._environment_manager.teardown(environment_handle)
+                self._composite_runner.bind_environment(None)
 
     def _resolve_task_actions(
         self,
@@ -1020,13 +1068,26 @@ class OrchestratorService:
         run_id: str,
         tenant_id: str,
         mode: ExecutionMode,
+        environment_denied_reason: Optional[str] = None,
     ) -> tuple[Optional[TaskExecutionOutcome], Optional[PendingDecision]]:
         """Dispatch *actions* or request a human decision, per *mode*.
 
         Returns exactly one of ``(outcome, None)`` or ``(None, pending)`` —
         the latter only when a decision is still :attr:`DecisionStatus.PENDING`
         (i.e. genuinely blocking, not yet resolved or self-expired).
+
+        Args:
+            environment_denied_reason: When set (E32-S3/S4), this batch's
+                execution environment failed to provision; every action is
+                denied without dispatching, regardless of mode.
         """
+        if environment_denied_reason is not None and actions:
+            return (
+                self._task_executor.deny_all(
+                    actions, run_id=run_id, tenant_id=tenant_id, reason=environment_denied_reason
+                ),
+                None,
+            )
         if not actions or mode is ExecutionMode.AUTO:
             return self._task_executor.dispatch(actions, run_id=run_id, tenant_id=tenant_id), None
 
