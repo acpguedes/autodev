@@ -1,6 +1,7 @@
-# `autodev` CLI Packaging & Install (E14-S7)
+# `autodev` CLI Packaging & Install (E14-S7, E34-S1)
 
-> Story definition: `docs/v2_platform/phases/e14_real_execution_governance.md#e14-s7`.
+> Story definitions: `docs/v2_platform/phases/e14_real_execution_governance.md#e14-s7`,
+> `docs/v2_platform/phases/e34_packaging_global_install.md#e34-s1`.
 
 ## Install
 
@@ -49,6 +50,29 @@ already verifies) — `autodev` runs fully self-hosted out of the box.
 
 Every pre-existing subcommand (`config`, `quotas`, `sessions`, `plan`,
 `run`, `repository`, `artifacts`, `sdk`) is unchanged.
+
+## Packaging (E34-S1, ADR-015 Accepted)
+
+`[project.scripts] autodev = "backend.cli:main"` is a **strategy-agnostic
+entry point**: `pip install -e backend/`, `pipx install backend/`, and
+`uv tool install backend/` all resolve it identically. ADR-015 (Accepted)
+chose a hybrid strategy — this pip-compatible package for the `autodev` CLI,
+plus the existing `docker-compose` bundle (`make container-up-full`) for the
+self-hosted platform — over a bespoke installer script; see the ADR for the
+full options table and rationale.
+
+- **`autodev --version`**: prints `{"version", "commit", "build_date"}` as
+  JSON (`backend/ops/version.py`). `version` comes from installed package
+  metadata; `commit`/`build_date` are `"unknown"` for a plain source
+  install, or set via `AUTODEV_BUILD_COMMIT`/`AUTODEV_BUILD_DATE` by a
+  packaging step that wants reproducible build provenance baked into the
+  artifact.
+- **Clean-environment install verification**: `scripts/verify_clean_install.sh`
+  builds a wheel from `backend/`, installs it into a fresh virtualenv, and
+  runs `autodev --version` / `autodev config validate` from a temp directory
+  outside the repo — proving the install path with no repo checkout, no
+  editable install, and no accidental reliance on the current working
+  directory.
 
 ## Scope reduction (stated, not hidden)
 
