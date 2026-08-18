@@ -32,6 +32,13 @@ from backend.environments.store import EnvironmentDecisionRecord, EnvironmentRec
 from backend.events.runtime import emit_event
 from backend.execution.contracts import ExecutionResult
 from backend.quotas.contracts import QuotaExceededError
+from backend.secret_store.contracts import (
+    SecretNotFoundError,
+    SecretReference,
+    SecretRevokedError,
+)
+from backend.secret_store.redaction import SecretRedactor
+from backend.secret_store.service import SecretService
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +76,7 @@ class EnvironmentManager:
         artifact_store: Optional[ArtifactStore] = None,
         artifact_pointers: Optional[ArtifactPointerStore] = None,
         backend_override: Optional[tuple[EnvironmentBackendKind, EnvironmentBackend]] = None,
+        secret_service: Optional[SecretService] = None,
     ) -> None:
         """Build the manager over a store and settings snapshot.
 
@@ -84,9 +92,19 @@ class EnvironmentManager:
             backend_override: Explicit ``(kind, backend)`` pair, bypassing
                 :func:`~backend.environments.registry.resolve_backend`
                 (tests only; production always resolves from configuration).
+            secret_service: Secret store service used to resolve
+                allowlisted env vars at ``command_sandbox`` time (E33-S2);
+                defaults to a fresh
+                :class:`~backend.secret_store.service.SecretService`.
         """
         self._store = store or EnvironmentStore()
         self._settings = settings or get_settings()
+        self._secret_service = secret_service or SecretService(settings=self._settings)
+        #: environment_id -> {resolved plaintext value: reference it came
+        #: from}, populated by resolve_secrets_for_profile() and consulted
+        #: by collect_artifacts() for reference-attributed redaction/leak
+        #: detection (E33-S2-T2/T3). Cleared on teardown().
+        self._resolved_secrets: dict[str, dict[str, SecretReference]] = {}
         # Resolved lazily (see _resolve_artifact_store/_resolve_artifact_pointers):
         # touching the configured artifact backend (e.g. creating
         # AUTODEV_ARTIFACT_DIR) is real I/O that should only happen when
@@ -192,6 +210,49 @@ class EnvironmentManager:
         """
         return self._backend.command_sandbox(handle)
 
+    def resolve_secrets_for_profile(self, handle: EnvironmentHandle) -> dict[str, str]:
+        """Resolve every allowlisted env var backed by a stored secret, for injection only (E33-S2-T1).
+
+        Only names in ``handle.profile.env_allowlist`` are even considered
+        (the E32-S2 "ambient credentials denied unless named here" gate);
+        an allowlisted name with no matching stored secret is silently
+        skipped -- not every allowlisted env var need be secret-backed.
+        Scoped to ``(handle.tenant_id, handle.profile.profile_id, name)``:
+        a profile is the stable, admin-provisioned unit secrets are
+        attached to, unlike ``run_id`` which is fresh per run and could
+        never have a secret pre-created against it.
+
+        Resolved values are registered with the process-wide redaction
+        registry (:mod:`backend.secret_store.redaction`) and kept, keyed by
+        this environment, for reference-attributed leak detection in
+        :meth:`collect_artifacts` -- they are returned only as a plain
+        ``dict`` handed straight to the sandbox's process env, never stored
+        on any other object.
+
+        Args:
+            handle: The provisioned environment to resolve secrets for.
+
+        Returns:
+            A mapping of env var name to resolved plaintext value, suitable
+            for :attr:`~backend.validation.models.ValidationJob.extra_env`.
+        """
+        extra_env: dict[str, str] = {}
+        live_by_value: dict[str, SecretReference] = {}
+        for name in handle.profile.env_allowlist:
+            reference = SecretReference(
+                tenant_id=handle.tenant_id, project=handle.profile.profile_id, name=name
+            )
+            try:
+                secret_handle = self._secret_service.resolve_for_injection(
+                    reference, actor_id=handle.environment_id
+                )
+            except (SecretNotFoundError, SecretRevokedError):
+                continue
+            extra_env[name] = secret_handle.value
+            live_by_value[secret_handle.value] = reference
+        self._resolved_secrets[handle.environment_id] = live_by_value
+        return extra_env
+
     def evaluate_filesystem(self, handle: EnvironmentHandle, *, path: str) -> Optional[EnvironmentDenial]:
         """Check and durably audit a filesystem access against *handle*'s policy.
 
@@ -256,6 +317,14 @@ class EnvironmentManager:
             ``AUTODEV_ARTIFACT_DIR`` in a local/dev environment) is logged
             and skipped rather than failing the run -- evidence durability
             does not gate task execution.
+
+        Redaction (E33-S2-T2/T3): before anything is persisted, every
+        secret value resolved for this environment
+        (:meth:`resolve_secrets_for_profile`) is scrubbed from the
+        transcript/diff text. A match is also durably audited as
+        ``secret.leak.suspected`` -- a task echoing a secret produces
+        redacted evidence *and* a typed audit trail, never a silent
+        redaction.
         """
         if not results:
             return []
@@ -269,34 +338,56 @@ class EnvironmentManager:
                 handle.run_id,
             )
             return []
+        redactor = SecretRedactor(self._resolved_secrets.get(handle.environment_id, {}))
         object_keys: list[str] = []
         for result in results:
             if result.stdout or result.stderr:
                 transcript = f"$ (exit {result.exit_code})\n{result.stdout}\n--- stderr ---\n{result.stderr}"
                 key = f"{handle.tenant_id}/environments/{handle.environment_id}/{result.action_id}.log"
+                self._audit_leaks(redactor, transcript, handle=handle, location=key)
                 if self._try_persist(
                     artifact_store,
                     artifact_pointers,
                     kind=ArtifactKind.LOG,
                     key=key,
-                    payload=transcript.encode("utf-8"),
+                    payload=redactor.scrub(transcript).encode("utf-8"),
                     content_type="text/plain",
                     handle=handle,
                 ):
                     object_keys.append(key)
             if result.diff:
                 key = f"{handle.tenant_id}/environments/{handle.environment_id}/{result.action_id}.diff"
+                self._audit_leaks(redactor, result.diff, handle=handle, location=key)
                 if self._try_persist(
                     artifact_store,
                     artifact_pointers,
                     kind=ArtifactKind.RUN_EXPORT,
                     key=key,
-                    payload=result.diff.encode("utf-8"),
+                    payload=redactor.scrub(result.diff).encode("utf-8"),
                     content_type="text/x-diff",
                     handle=handle,
                 ):
                     object_keys.append(key)
         return object_keys
+
+    def _audit_leaks(
+        self, redactor: SecretRedactor, text: str, *, handle: EnvironmentHandle, location: str
+    ) -> None:
+        """Durably emit ``secret.leak.suspected`` for every reference found verbatim in *text*."""
+        for leak in redactor.find_leaks(text, location=location):
+            emit_event(
+                "secret.leak.suspected",
+                tenant_id=leak.reference.tenant_id,
+                partition_key=handle.run_id,
+                data={
+                    "tenantId": leak.reference.tenant_id,
+                    "project": leak.reference.project,
+                    "name": leak.reference.name,
+                    "runId": handle.run_id,
+                    "location": leak.location,
+                },
+                subject={"runId": handle.run_id, "environmentId": handle.environment_id},
+            )
 
     def _try_persist(
         self,
@@ -338,6 +429,7 @@ class EnvironmentManager:
             reason: Human-readable teardown reason (``"completed"``,
                 ``"failed"``, or ``"orphan_reaped"``).
         """
+        self._resolved_secrets.pop(handle.environment_id, None)
         self._backend.teardown(handle)
         self._store.mark_status(
             handle.environment_id,

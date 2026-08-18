@@ -2,16 +2,27 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
 class ValidationJob:
-    """Describes a validation command to execute."""
+    """Describes a validation command to execute.
+
+    Attributes:
+        job_id: Unique identifier for this job.
+        command: The command and its arguments.
+        cwd: Working directory, relative to the sandbox policy's project root.
+        extra_env: Additional environment variables to inject into the
+            command's process (e.g. resolved secret values, E33-S2). Never
+            logged or included in any persisted record -- it exists only to
+            be handed to the subprocess call.
+    """
 
     job_id: str
     command: list[str]
     cwd: str = "."
+    extra_env: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass

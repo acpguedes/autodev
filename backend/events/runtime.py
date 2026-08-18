@@ -129,6 +129,11 @@ def emit_event(
     type, a schema-invalid payload, or a bus/transport error — is logged and
     swallowed so that a run's own execution is never disrupted by eventing.
 
+    Before validation, ``data`` is scrubbed of every secret value this
+    process has resolved (E33-S2-T2,
+    :func:`backend.secret_store.redaction.redact_event_data`) — every
+    producer's payload is protected without each one redacting its own.
+
     Args:
         type_: Event type; must exist in the catalog.
         tenant_id: Tenant emitting the event.
@@ -139,12 +144,14 @@ def emit_event(
         bus: Event bus override; falls back to :func:`get_event_bus`.
     """
     try:
+        from backend.secret_store.redaction import redact_event_data  # noqa: PLC0415
+
         effective_trace_id = trace_id or current_trace_id()
         envelope = make_envelope(
             type_,
             tenant_id=tenant_id,
             partition_key=partition_key,
-            data=data,
+            data=redact_event_data(data),
             subject=subject,
             trace_id=effective_trace_id,
         )

@@ -16,6 +16,7 @@ from backend.config.settings import Settings, get_settings
 from backend.events.runtime import emit_event
 from backend.secret_store.contracts import SecretMetadata, SecretReference
 from backend.secret_store.crypto import decrypt_secret_value, encrypt_secret_value
+from backend.secret_store.redaction import register_live_secret_value
 from backend.secret_store.store import SecretStore
 
 
@@ -128,6 +129,7 @@ class SecretService:
         """
         ciphertext, metadata = self._store.resolve_latest_active(reference)
         value = decrypt_secret_value(ciphertext, settings=self._settings)
+        register_live_secret_value(value)
         self._audit("secret.resolved", metadata, actor_id=actor_id)
         return SecretHandle(reference=reference, value=value, metadata=metadata)
 
