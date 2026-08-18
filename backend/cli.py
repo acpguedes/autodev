@@ -31,6 +31,11 @@ def build_parser() -> argparse.ArgumentParser:
         description="CLI estruturada para configurar e operar o AutoDev Architect localmente.",
     )
     parser.add_argument(
+        "--version",
+        action="store_true",
+        help="Print version, commit, and build-date metadata and exit (E34-S1).",
+    )
+    parser.add_argument(
         "--shell",
         action="store_true",
         help="Start the governed interactive shell (E14-S6), talking only to the Control Plane API.",
@@ -243,6 +248,31 @@ def build_parser() -> argparse.ArgumentParser:
     permissions_revoke_parser.add_argument("--base-url", default=None)
     permissions_revoke_parser.set_defaults(handler=_handle_permissions_revoke)
 
+    subparsers.add_parser(
+        "doctor", help="Run preflight diagnostics (E34-S2)"
+    ).set_defaults(handler=_handle_doctor)
+
+    subparsers.add_parser(
+        "bootstrap",
+        help="Preflight-check and initialize the configured state store for self-host (E34-S2)",
+    ).set_defaults(handler=_handle_bootstrap)
+
+    upgrade_parser = subparsers.add_parser(
+        "upgrade",
+        help="Back up, then migrate the configured state store, refusing an incompatible schema (E34-S3)",
+    )
+    upgrade_parser.add_argument(
+        "--backup-dir",
+        default=None,
+        help="Directory for the pre-upgrade backup; default: .autodev/upgrade-backups/<timestamp>.",
+    )
+    upgrade_parser.add_argument(
+        "--target-version",
+        default=None,
+        help="Version label to look up release notes for in CHANGELOG.md.",
+    )
+    upgrade_parser.set_defaults(handler=_handle_upgrade)
+
     try:
         from backend.cli_plugins import register_subcommands
         register_subcommands(subparsers)
@@ -288,6 +318,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     """
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    if args.version:
+        from backend.ops.version import get_version_info
+
+        print(json.dumps(get_version_info().as_dict(), ensure_ascii=False))
+        return 0
 
     # --command works standalone too (E14-S7): "autodev --command '<goal>'"
     # is the shell's one-shot round trip without entering the REPL, exactly
@@ -820,6 +856,61 @@ def _handle_permissions_revoke(args: argparse.Namespace) -> int:
         response.raise_for_status()
     print(f"Revoked {args.permission_id}")
     return 0
+
+
+def _handle_doctor(_: argparse.Namespace) -> int:
+    """Handle ``autodev doctor`` (E34-S2-T3): run preflight diagnostics.
+
+    Returns:
+        Process exit code: ``0`` if every check passed, ``1`` otherwise.
+    """
+    from backend.ops.doctor import diagnostics_ok, run_diagnostics
+
+    checks = run_diagnostics()
+    ok = diagnostics_ok(checks)
+    print(
+        json.dumps(
+            {"status": "ok" if ok else "fail", "checks": [c.as_dict() for c in checks]},
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0 if ok else 1
+
+
+def _handle_bootstrap(_: argparse.Namespace) -> int:
+    """Handle ``autodev bootstrap`` (E34-S2-T1): preflight-check then initialize the state store.
+
+    Returns:
+        Process exit code: ``0`` on success, ``1`` if preflight diagnostics failed.
+    """
+    from backend.ops.bootstrap import bootstrap
+
+    result = bootstrap()
+    print(json.dumps(result.as_dict(), indent=2, ensure_ascii=False))
+    return 0 if result.status == "ok" else 1
+
+
+def _handle_upgrade(args: argparse.Namespace) -> int:
+    """Handle ``autodev upgrade`` (E34-S3-T1): back up, then migrate the state store.
+
+    Args:
+        args: Parsed CLI arguments, with optional ``backup_dir``/``target_version``.
+
+    Returns:
+        Process exit code: ``0`` on success, ``1`` if the backup failed or the
+        compatibility check refused the migration.
+    """
+    import datetime
+
+    from backend.ops.upgrade import run_upgrade
+
+    backup_dir = args.backup_dir or (
+        f".autodev/upgrade-backups/{datetime.datetime.now(datetime.timezone.utc):%Y%m%dT%H%M%SZ}"
+    )
+    result = run_upgrade(backup_dir, target_version=args.target_version)
+    print(json.dumps(result.as_dict(), indent=2, ensure_ascii=False))
+    return 0 if result.status == "ok" else 1
 
 
 def _handle_start_web(args: argparse.Namespace) -> int:

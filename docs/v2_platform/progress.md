@@ -7,7 +7,45 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-18 (**E33 complete — 3/3**, branch
+**Last updated:** 2026-08-18 (**E34 complete — 3/3**, branch
+`epic/e34-packaging-global-install` (branched from `main` after E33 merged
+via PR #106) — the Beta packaging/distribution slice: ADR-015 (Global
+Installation Strategy) resolved Proposed -> Accepted, choosing a hybrid of
+the already-strategy-agnostic `[project.scripts] autodev = "backend.cli:main"`
+console-script entry point (works identically under `pip`/`pipx`/`uv tool`)
+for the CLI, plus the existing `docker-compose` bundle for self-host — no
+new packaging mechanism was needed, only version reporting
+(`autodev --version` -> `backend/ops/version.py`, package version + best-effort
+commit/build-date) and `scripts/verify_clean_install.sh` (builds a wheel,
+installs into a fresh venv, runs from a temp dir outside the repo). New
+`backend/ops/` package (distinct from `backend.config`/`backend.persistence`,
+matching E34's packaging/bootstrap/upgrade ownership boundary vs E14's CLI
+UX): `doctor.py` (typed, ordered preflight checks — settings, port,
+project_root, database, storage_backend, skipping dependents when `settings`
+itself fails) and `bootstrap.py` (same preflight fail-closed, then
+initializes the configured state store via the existing idempotent migration
+runner — never handles a plaintext secret value, by design). Storage posture
+(SQLite/local vs PostgreSQL/s3) turned out to already be explicit, fail-closed
+configuration (`Settings.validate_profile`, a pydantic `model_validator`) —
+E34-S2 documented it rather than reimplementing it. `MigrationRunner.run_pending()`
+(shared by SQLite and PostgreSQL) now raises `SchemaVersionMismatchError`
+and refuses outright when a database's recorded schema version is newer than
+the installed code's migration list knows — the E34-S3 compatibility check,
+protecting every caller, not just the new `autodev upgrade` command, which
+backs up the state/artifact stores first (reusing the E8-S4 `BackupManager`
+contract) and only then attempts to migrate; rollback posture is documented
+as restore-from-backup with the existing E8-S4 tooling rather than a new
+mechanism, and `--target-version` surfaces a best-effort `CHANGELOG.md`
+excerpt as groundwork for the GA v1->v2 upgrade requirement (E13). Docs:
+`docs/execution/cli-install.md` (extended), `docs/execution/upgrade.md`
+(new), `docs/v2_platform/decisions/ADR-015-global-install-strategy.md`
+(Proposed -> Accepted). Scope reduction stated honestly: no installer script
+(`curl | sh`) and no standalone/native binary — `pip`/`pipx`/`uv` plus the
+wheel-based clean-install verification cover the documented path; the
+v2.0-beta gate's actual clean-environment-install checklist row (§18.9) is
+left to E35-S1-T1 (Beta Readiness Gates & Evidence), which owns expanding
+that gate with the E32/E33/E34 criteria — not duplicated here. Not merged to
+`main`. Previous entry: 2026-08-18 (**E33 complete — 3/3**, branch
 `epic/e33-secrets-credential-governance` (branched from
 `epic/e32-isolated-execution-beta`, which is not yet merged to `main`) —
 the Beta secret layer: a scoped-reference secret store
@@ -35,7 +73,10 @@ and a true external KMS/vault backend are deferred behind the swappable
 `SecretBackendKind` contract; adding the "no plaintext secrets" row to the
 v2.0-beta gate checklist (§18.9) is E35-S1-T1's job, not E33's — E33
 supplies the evidence (redaction + audit tests), not the checklist edit.
-Not merged to `main`. Previous entry: 2026-08-18 (**E32 complete — 4/4**,
+Merged to `main` via PR #106 (2026-08-18), together with the E32 commits it
+was branched from (doc-drift fix: this entry previously read "Not merged to
+`main`", written before PR #106 landed). Previous entry: 2026-08-18 (**E32
+complete — 4/4**,
 branch `epic/e32-isolated-execution-beta` — the Beta cut of the isolated
 execution environment: a backend-agnostic `EnvironmentBackend` abstraction
 (`backend/environments/`) with configuration-only selection (unset →
@@ -308,7 +349,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E31 | Library Spec Registry | v2.2 | Not started | 0/4 | E20, E7, E14; E13 (publish) | [phases/e31_library_spec_registry.md](phases/e31_library_spec_registry.md) |
 | E32 | Isolated Execution Environment (Beta slice) | Beta | Done | 4/4 | E14, E11-S4; E28 (contracts) | [phases/e32_isolated_execution_beta.md](phases/e32_isolated_execution_beta.md) |
 | E33 | Secrets & Credential Governance | Beta | Done | 3/3 | E32, E0-S5, E11-S4 | [phases/e33_secrets_credential_governance.md](phases/e33_secrets_credential_governance.md) |
-| E34 | Packaging & Global Install | Beta | Not started | 0/3 | E14-S7 (CLI), E32 | [phases/e34_packaging_global_install.md](phases/e34_packaging_global_install.md) |
+| E34 | Packaging & Global Install | Beta | Done | 3/3 | E14-S7 (CLI), E32 | [phases/e34_packaging_global_install.md](phases/e34_packaging_global_install.md) |
 | E35 | Beta Readiness Gates & Evidence | Beta | Not started | 0/3 | E32-E34, E11, E12 | [phases/e35_beta_readiness_gates.md](phases/e35_beta_readiness_gates.md) |
 | E36 | SDD Operating Model & Document Authority | v2.3 | Not started | 0/4 | E20-E23 | [phases/e36_sdd_operating_model.md](phases/e36_sdd_operating_model.md) |
 | E37 | Harness & Looping Excellence: Context-Independent Agents | v2.3 | Not started | 0/5 | E23, E26, E27, E8, E14, E32 | [phases/e37_harness_looping_context_independence.md](phases/e37_harness_looping_context_independence.md) |
@@ -316,7 +357,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 
-Total: **89/178 stories complete** across 40 epics (E19 is a proposed
+Total: **92/178 stories complete** across 40 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -444,6 +485,64 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-18** — **E34 — Packaging & Global Install (Beta) is complete
+  (3/3)**, on `epic/e34-packaging-global-install` (branched from `main`
+  after E33 merged via PR #106). **E34-S3** closed the epic: upgrade &
+  version compatibility. `MigrationRunner.run_pending()`
+  (`backend/persistence/migrations/runner.py`, shared by SQLite and
+  PostgreSQL) now raises `SchemaVersionMismatchError` and refuses to run
+  when a namespace's recorded schema version is newer than the installed
+  code's migration list — protects every caller, not just the new command.
+  `autodev upgrade [--backup-dir DIR] [--target-version X]`
+  (`backend/ops/upgrade.py`) backs up the state/artifact stores first,
+  reusing the E8-S4 `BackupManager` contract, and only then attempts to
+  migrate; a refused upgrade still leaves a fresh backup behind. Rollback
+  posture is documented as restore-from-backup with the existing E8-S4
+  tooling (`docs/execution/upgrade.md`) — no bespoke rollback mechanism was
+  built, since a migration's `down` step is frequently a no-op by design
+  and was never meant to reconstruct dropped data. `--target-version`
+  surfaces a best-effort `CHANGELOG.md` excerpt, deliberately minimal
+  groundwork for the GA v1→v2 upgrade requirement (E13).
+
+- **2026-08-18** — **E34-S2 — Self-host bootstrap & storage posture is
+  complete, E34 now In progress · 2/3**. New `backend/ops/` package
+  (distinct from `backend.config`/`backend.persistence`, matching E34's
+  packaging/bootstrap/upgrade scope vs E14's CLI-UX scope):
+  `backend/ops/doctor.py` runs five typed, ordered preflight checks
+  (`settings`, `port`, `project_root`, `database`, `storage_backend`) —
+  when `settings` itself fails, the dependent checks are skipped rather
+  than run against configuration already known invalid.
+  `backend/ops/bootstrap.py` runs the same preflight fail-closed, then
+  initializes the configured state store by constructing it (schema
+  migrations apply as an existing, idempotent side effect); safe to
+  re-run. Storage posture (SQLite/local vs PostgreSQL/s3) turned out to
+  already be explicit, fail-closed configuration
+  (`Settings.validate_profile`, a pydantic `model_validator` that raises
+  rather than silently choosing a side) — this story documented it in
+  `docs/execution/cli-install.md` rather than reimplementing it. Bootstrap
+  never accepts or writes a plaintext secret value; a deployment that
+  needs secrets present creates them out-of-band via `autodev secrets
+  create` (E33-S1). `autodev doctor` / `autodev bootstrap` CLI subcommands
+  added to `backend/cli.py`.
+
+- **2026-08-18** — **E34-S1 — Install strategy & packaging is complete,
+  E34 now In progress · 1/3** (ADR-015 accepted). ADR-015 (Global
+  Installation Strategy) resolved Proposed → Accepted: a hybrid of the
+  already-strategy-agnostic `[project.scripts] autodev = "backend.cli:main"`
+  console-script entry point (identical under `pip`/`pipx`/`uv tool`) for
+  the CLI, plus the existing `docker-compose` bundle for self-host — no new
+  packaging mechanism was needed. `autodev --version`
+  (`backend/ops/version.py`) prints installed package version plus
+  best-effort commit/build-date metadata
+  (`AUTODEV_BUILD_COMMIT`/`AUTODEV_BUILD_DATE` overrides for a packaging
+  step that wants reproducible provenance baked in; `"unknown"` for a
+  plain source install). `scripts/verify_clean_install.sh` proves the
+  install path with no repo checkout: builds a wheel from `backend/`,
+  installs it into a fresh venv, and runs `autodev --version`/`autodev
+  config validate` from a temp directory outside the repo. No installer
+  script (`curl | sh`) was built — not justified over `pip`/`pipx`/`uv`
+  without adoption feedback demanding it, per the ADR's own recommendation.
 
 - **2026-08-18** — **E33 — Secrets & Credential Governance (Beta) is
   complete (3/3)**, on `epic/e33-secrets-credential-governance` (branched

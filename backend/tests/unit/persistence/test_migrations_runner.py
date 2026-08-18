@@ -17,7 +17,11 @@ from collections.abc import Callable
 
 import pytest
 
-from backend.persistence.migrations.runner import Migration, MigrationRunner
+from backend.persistence.migrations.runner import (
+    Migration,
+    MigrationRunner,
+    SchemaVersionMismatchError,
+)
 
 
 def _make_conn() -> sqlite3.Connection:
@@ -324,6 +328,36 @@ def test_run_down_more_steps_than_current_raises_value_error() -> None:
     runner.run_pending()
     with pytest.raises(ValueError, match="invalid rollback target"):
         runner.run_down(steps=5)
+
+
+def test_run_pending_refuses_when_db_schema_is_newer_than_known_migrations() -> None:
+    """E34-S3-T1: a database ahead of the installed code's migration list is refused, not silently no-op'd."""
+    conn = _make_conn()
+
+    def up_one(c: sqlite3.Connection) -> None:
+        c.execute("CREATE TABLE t1 (id INTEGER)")
+
+    def up_two(c: sqlite3.Connection) -> None:
+        c.execute("CREATE TABLE t2 (id INTEGER)")
+
+    MigrationRunner(conn, [up_one, up_two], namespace="store").run_pending()
+
+    # Simulate a code downgrade: only migration one is known now.
+    older_runner = MigrationRunner(conn, [up_one], namespace="store")
+    with pytest.raises(SchemaVersionMismatchError, match="newer"):
+        older_runner.run_pending()
+
+
+def test_run_pending_applies_normally_when_db_schema_is_not_newer() -> None:
+    """The compatibility check does not block the ordinary in-sync/behind case."""
+    conn = _make_conn()
+    calls: list[str] = []
+
+    runner = MigrationRunner(conn, [lambda c: calls.append("one")], namespace="store")
+    runner.run_pending()
+
+    assert calls == ["one"]
+    assert runner._current_version() == 1
 
 
 def test_no_op_down_default_is_used_for_bare_callables() -> None:

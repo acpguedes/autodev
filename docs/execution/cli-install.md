@@ -1,6 +1,7 @@
-# `autodev` CLI Packaging & Install (E14-S7)
+# `autodev` CLI Packaging & Install (E14-S7, E34-S1)
 
-> Story definition: `docs/v2_platform/phases/e14_real_execution_governance.md#e14-s7`.
+> Story definitions: `docs/v2_platform/phases/e14_real_execution_governance.md#e14-s7`,
+> `docs/v2_platform/phases/e34_packaging_global_install.md#e34-s1`.
 
 ## Install
 
@@ -49,6 +50,70 @@ already verifies) — `autodev` runs fully self-hosted out of the box.
 
 Every pre-existing subcommand (`config`, `quotas`, `sessions`, `plan`,
 `run`, `repository`, `artifacts`, `sdk`) is unchanged.
+
+## Packaging (E34-S1, ADR-015 Accepted)
+
+`[project.scripts] autodev = "backend.cli:main"` is a **strategy-agnostic
+entry point**: `pip install -e backend/`, `pipx install backend/`, and
+`uv tool install backend/` all resolve it identically. ADR-015 (Accepted)
+chose a hybrid strategy — this pip-compatible package for the `autodev` CLI,
+plus the existing `docker-compose` bundle (`make container-up-full`) for the
+self-hosted platform — over a bespoke installer script; see the ADR for the
+full options table and rationale.
+
+- **`autodev --version`**: prints `{"version", "commit", "build_date"}` as
+  JSON (`backend/ops/version.py`). `version` comes from installed package
+  metadata; `commit`/`build_date` are `"unknown"` for a plain source
+  install, or set via `AUTODEV_BUILD_COMMIT`/`AUTODEV_BUILD_DATE` by a
+  packaging step that wants reproducible build provenance baked into the
+  artifact.
+- **Clean-environment install verification**: `scripts/verify_clean_install.sh`
+  builds a wheel from `backend/`, installs it into a fresh virtualenv, and
+  runs `autodev --version` / `autodev config validate` from a temp directory
+  outside the repo — proving the install path with no repo checkout, no
+  editable install, and no accidental reliance on the current working
+  directory.
+
+## Self-host bootstrap & storage posture (E34-S2)
+
+- **`autodev doctor`**: read-only preflight diagnostics
+  (`backend/ops/doctor.py`), in a fixed order — `settings` (profile/storage
+  consistency, via the existing `Settings.validate_profile` fail-closed
+  validator), `port` (configured `AUTODEV_HOST`/`AUTODEV_PORT` free to
+  bind), `project_root` (writable), `database` (SQLite parent dir writable,
+  or a real bounded-timeout PostgreSQL connection), `storage_backend`
+  (local artifact dir writable, or `AUTODEV_MINIO_ENDPOINT` set for `s3`).
+  Prints `{"status", "checks": [{"name", "status", "detail"}, ...]}`; exits
+  `1` if any check fails. When `settings` itself fails, the remaining
+  checks are skipped (they need valid settings to know what to probe) —
+  the JSON output has exactly one check, not five failures.
+- **`autodev bootstrap`**: runs the same preflight (`backend/ops/bootstrap.py`),
+  and on success initializes the configured state store (SQLite or
+  PostgreSQL schema migrations, applied as a side effect of constructing
+  the store — the same idempotent migration runner every other entry point
+  uses). Fails closed: a failing preflight check touches no state and is
+  reported the same way `doctor` reports it. Safe to re-run.
+- **Storage posture** is explicit configuration, not a silent fallback:
+  `AUTODEV_PROFILE=local` requires a `sqlite://` `DATABASE_URL` and
+  `STORAGE_BACKEND=local`; `AUTODEV_PROFILE=prod` requires
+  `postgresql://`/`postgres://` and `STORAGE_BACKEND=s3` with MinIO
+  credentials set (`backend/config/settings.py::validate_profile`, a
+  pydantic `model_validator` that raises rather than defaulting either
+  side). `autodev config validate --profile <local|prod>` and
+  `autodev doctor` both surface this — there is no configuration state in
+  which the storage backend is chosen implicitly.
+- **Secrets**: bootstrap never accepts or writes a plaintext secret value.
+  A deployment that needs secrets present creates them out-of-band via
+  `autodev secrets create` (E33-S1, value read from stdin only) before or
+  after bootstrap; bootstrap itself has no secret-material surface.
+
+## Upgrade & version compatibility (E34-S3)
+
+`autodev upgrade` — see `docs/execution/upgrade.md` for the full detail:
+backs up the state store before migrating (E8-S4 `BackupManager`), refuses
+outright if the database's recorded schema is newer than the installed
+code knows (`SchemaVersionMismatchError`), and rollback reuses the same
+backup/restore machinery rather than a bespoke mechanism.
 
 ## Scope reduction (stated, not hidden)
 
