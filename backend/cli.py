@@ -257,6 +257,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Preflight-check and initialize the configured state store for self-host (E34-S2)",
     ).set_defaults(handler=_handle_bootstrap)
 
+    upgrade_parser = subparsers.add_parser(
+        "upgrade",
+        help="Back up, then migrate the configured state store, refusing an incompatible schema (E34-S3)",
+    )
+    upgrade_parser.add_argument(
+        "--backup-dir",
+        default=None,
+        help="Directory for the pre-upgrade backup; default: .autodev/upgrade-backups/<timestamp>.",
+    )
+    upgrade_parser.add_argument(
+        "--target-version",
+        default=None,
+        help="Version label to look up release notes for in CHANGELOG.md.",
+    )
+    upgrade_parser.set_defaults(handler=_handle_upgrade)
+
     try:
         from backend.cli_plugins import register_subcommands
         register_subcommands(subparsers)
@@ -871,6 +887,28 @@ def _handle_bootstrap(_: argparse.Namespace) -> int:
     from backend.ops.bootstrap import bootstrap
 
     result = bootstrap()
+    print(json.dumps(result.as_dict(), indent=2, ensure_ascii=False))
+    return 0 if result.status == "ok" else 1
+
+
+def _handle_upgrade(args: argparse.Namespace) -> int:
+    """Handle ``autodev upgrade`` (E34-S3-T1): back up, then migrate the state store.
+
+    Args:
+        args: Parsed CLI arguments, with optional ``backup_dir``/``target_version``.
+
+    Returns:
+        Process exit code: ``0`` on success, ``1`` if the backup failed or the
+        compatibility check refused the migration.
+    """
+    import datetime
+
+    from backend.ops.upgrade import run_upgrade
+
+    backup_dir = args.backup_dir or (
+        f".autodev/upgrade-backups/{datetime.datetime.now(datetime.timezone.utc):%Y%m%dT%H%M%SZ}"
+    )
+    result = run_upgrade(backup_dir, target_version=args.target_version)
     print(json.dumps(result.as_dict(), indent=2, ensure_ascii=False))
     return 0 if result.status == "ok" else 1
 

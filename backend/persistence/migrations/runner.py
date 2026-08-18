@@ -8,6 +8,17 @@ from typing import Any, Callable, Literal, Sequence, Union
 
 MigrationFn = Callable[[Any], None]
 
+
+class SchemaVersionMismatchError(RuntimeError):
+    """Raised when a database's recorded schema version is newer than the running code knows.
+
+    This is the E34-S3-T1 compatibility check: it means the code was
+    downgraded (or points at a database migrated by a newer install)
+    without the database being downgraded to match. Running pending
+    migrations in that state would be a no-op that masks the real problem,
+    so :meth:`MigrationRunner.run_pending` refuses outright instead.
+    """
+
 #: Connections accepted by :class:`MigrationRunner`: a ``sqlite3.Connection``
 #: for SQLite stores, or a psycopg connection (or connection-like object
 #: exposing ``execute``/``commit``) for PostgreSQL stores.
@@ -165,9 +176,24 @@ class MigrationRunner:
         self._conn.commit()
 
     def run_pending(self) -> None:
-        """Run all migrations whose 1-based index exceeds the current version."""
+        """Run all migrations whose 1-based index exceeds the current version.
+
+        Raises:
+            SchemaVersionMismatchError: If the database's recorded version
+                for this namespace is newer than the last index in
+                ``migrations`` — the compatibility check required by
+                E34-S3-T1. No migration runs in that case.
+        """
         self._ensure_version_table()
         current = self._current_version()
+        known = len(self._migrations)
+        if current > known:
+            raise SchemaVersionMismatchError(
+                f"database schema version {current} for namespace {self._namespace!r} is newer "
+                f"than this installed version supports (knows up to version {known}). Refusing "
+                "to run migrations — upgrade the AutoDev installation before connecting to this "
+                "database, or restore a compatible backup."
+            )
         for idx, migration in enumerate(self._migrations, start=1):
             if idx > current:
                 migration.up(self._conn)
@@ -212,4 +238,11 @@ class MigrationRunner:
         self.rollback_to(current - steps)
 
 
-__all__ = ["Engine", "Migration", "MigrationEntry", "MigrationFn", "MigrationRunner"]
+__all__ = [
+    "Engine",
+    "Migration",
+    "MigrationEntry",
+    "MigrationFn",
+    "MigrationRunner",
+    "SchemaVersionMismatchError",
+]
