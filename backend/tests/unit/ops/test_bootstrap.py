@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 
 from backend.config.settings import reset_settings_cache
@@ -10,7 +12,7 @@ from backend.persistence.database import reset_store_cache
 
 
 @pytest.fixture(autouse=True)
-def _reset_caches() -> None:
+def _reset_caches() -> Iterator[None]:
     reset_settings_cache()
     reset_store_cache()
     yield

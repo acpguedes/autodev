@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import socket
+from collections.abc import Iterator
 
 import pytest
 
@@ -11,7 +12,7 @@ from backend.ops.doctor import diagnostics_ok, run_diagnostics
 
 
 @pytest.fixture(autouse=True)
-def _reset_settings() -> None:
+def _reset_settings() -> Iterator[None]:
     reset_settings_cache()
     yield
     reset_settings_cache()
