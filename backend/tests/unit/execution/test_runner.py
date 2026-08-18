@@ -1,0 +1,202 @@
+"""Tests for the execution runners (E14-S1/S4, ADR-021).
+
+Covers one representative case per action type through the
+``InProcessActionRunner``/``CompositeActionRunner`` alias: file writes
+reuse the E0 patch engine, command/validation actions reuse the v1
+``SandboxRunner`` precursor, and both stay fail-closed by default. Also
+covers the three dedicated E14-S4 runners directly: type-rejection
+(a runner never silently runs an action outside its scope) and
+fail-closed-without-Docker for ``CommandRunner``.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from unittest.mock import patch
+
+import pytest
+
+from backend.execution.contracts import ExecutionAction, ExecutionActionType
+from backend.execution.runner import CommandRunner, InProcessActionRunner, PatchRunner, ValidationRunner
+from backend.patches.models import Patch
+from backend.validation.sandbox import SandboxPolicy, SandboxRunner
+
+
+def _sandbox(project_root: Path, **overrides: object) -> SandboxRunner:
+    defaults: dict[str, object] = dict(
+        enabled=True,
+        allow_local=True,
+        docker_network="none",
+        project_root=project_root,
+        timeout_seconds=10,
+    )
+    defaults.update(overrides)
+    return SandboxRunner(policy=SandboxPolicy(**defaults))  # type: ignore[arg-type]
+
+
+def test_create_file_writes_real_content_when_writes_are_enabled(tmp_path: Path) -> None:
+    runner = InProcessActionRunner(project_root=tmp_path, enable_writes=True)
+    action = ExecutionAction(
+        action_id="a1",
+        type=ExecutionActionType.CREATE_FILE,
+        task_id="task-1",
+        step_key="task-1",
+        path="notes/task-1.md",
+        content="# Task 1\n\nDo the thing.\n",
+    )
+
+    result = runner.run(action)
+
+    assert result.status == "succeeded"
+    assert result.artifacts == ["notes/task-1.md"]
+    assert "+# Task 1" in result.diff
+    assert (tmp_path / "notes/task-1.md").read_text() == "# Task 1\n\nDo the thing.\n"
+
+
+def test_create_file_dry_runs_by_default_and_writes_nothing(tmp_path: Path) -> None:
+    runner = InProcessActionRunner(project_root=tmp_path)
+    action = ExecutionAction(
+        action_id="a1",
+        type=ExecutionActionType.CREATE_FILE,
+        task_id="task-1",
+        step_key="task-1",
+        path="notes/task-1.md",
+        content="content",
+    )
+
+    result = runner.run(action)
+
+    assert result.status == "succeeded"
+    assert result.artifacts == []
+    assert not (tmp_path / "notes/task-1.md").exists()
+
+
+def test_create_file_rejects_path_traversal(tmp_path: Path) -> None:
+    runner = InProcessActionRunner(project_root=tmp_path, enable_writes=True)
+    action = ExecutionAction(
+        action_id="a1",
+        type=ExecutionActionType.CREATE_FILE,
+        task_id="task-1",
+        step_key="task-1",
+        path="../outside.md",
+        content="leak",
+    )
+
+    result = runner.run(action)
+
+    assert result.status == "failed"
+    assert "outside" in (result.error or "").lower() or "traversal" in (result.error or "").lower()
+    assert not (tmp_path.parent / "outside.md").exists()
+
+
+def test_apply_patch_delegates_to_the_patch_engine(tmp_path: Path) -> None:
+    (tmp_path / "existing.txt").write_text("old\n")
+    runner = InProcessActionRunner(project_root=tmp_path, enable_writes=True)
+    patch = Patch(path="existing.txt", original="old\n", updated="new\n", diff="--- a\n+++ b\n")
+    action = ExecutionAction(
+        action_id="a1",
+        type=ExecutionActionType.APPLY_PATCH,
+        task_id="task-1",
+        step_key="task-1",
+        patch=patch,
+    )
+
+    result = runner.run(action)
+
+    assert result.status == "succeeded"
+    assert (tmp_path / "existing.txt").read_text() == "new\n"
+
+
+def test_run_command_routes_through_the_sandbox_runner(tmp_path: Path) -> None:
+    runner = InProcessActionRunner(
+        project_root=tmp_path, sandbox_runner=_sandbox(tmp_path)
+    )
+    action = ExecutionAction(
+        action_id="a1",
+        type=ExecutionActionType.RUN_COMMAND,
+        task_id="task-1",
+        step_key="task-1",
+        command=["python3", "-c", "print('hi')"],
+        cwd=".",
+    )
+
+    with patch("shutil.which", return_value=None):
+        result = runner.run(action)
+
+    assert result.status == "succeeded"
+    assert result.exit_code == 0
+    assert "hi" in result.stdout
+
+
+def test_run_validation_fails_closed_when_sandbox_is_disabled_by_default(
+    tmp_path: Path,
+) -> None:
+    runner = InProcessActionRunner(project_root=tmp_path)
+    action = ExecutionAction(
+        action_id="a1",
+        type=ExecutionActionType.RUN_VALIDATION,
+        task_id="task-1",
+        step_key="task-1",
+        command=["pytest"],
+        cwd=".",
+    )
+
+    result = runner.run(action)
+
+    assert result.status == "succeeded"
+    assert result.exit_code == 0
+    assert result.artifacts == []
+
+
+def test_command_runner_fails_closed_without_docker_and_without_local_opt_in(
+    tmp_path: Path,
+) -> None:
+    """E14-S4: CommandRunner never falls back to unsandboxed exec by itself."""
+    policy = SandboxPolicy(
+        enabled=True, allow_local=False, docker_network="none", project_root=tmp_path, timeout_seconds=5
+    )
+    runner = CommandRunner(sandbox_runner=SandboxRunner(policy=policy))
+    action = ExecutionAction(
+        action_id="a1",
+        type=ExecutionActionType.RUN_COMMAND,
+        task_id="task-1",
+        step_key="task-1",
+        command=["python3", "-c", "print('hi')"],
+        cwd=".",
+    )
+
+    with patch("shutil.which", return_value=None):
+        result = runner.run(action)
+
+    assert result.status == "failed"
+    assert result.exit_code == 1
+
+
+def test_command_runner_rejects_non_command_actions() -> None:
+    runner = CommandRunner()
+    action = ExecutionAction(
+        action_id="a1", type=ExecutionActionType.RUN_VALIDATION, task_id="t1", step_key="t1", command=["pytest"]
+    )
+
+    with pytest.raises(ValueError, match="CommandRunner"):
+        runner.run(action)
+
+
+def test_validation_runner_rejects_non_validation_actions() -> None:
+    runner = ValidationRunner()
+    action = ExecutionAction(
+        action_id="a1", type=ExecutionActionType.RUN_COMMAND, task_id="t1", step_key="t1", command=["pytest"]
+    )
+
+    with pytest.raises(ValueError, match="ValidationRunner"):
+        runner.run(action)
+
+
+def test_patch_runner_rejects_non_file_or_patch_actions(tmp_path: Path) -> None:
+    runner = PatchRunner(project_root=tmp_path)
+    action = ExecutionAction(
+        action_id="a1", type=ExecutionActionType.RUN_COMMAND, task_id="t1", step_key="t1", command=["pytest"]
+    )
+
+    with pytest.raises(ValueError, match="PatchRunner"):
+        runner.run(action)

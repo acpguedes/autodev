@@ -262,6 +262,39 @@ class QuotaExceededData(BaseModel):
     windowKey: str
 
 
+class ExecutionActionStartedData(BaseModel):
+    """Payload of ``execution.action.started`` (E14-S1, RFC-009)."""
+
+    actionId: str
+    taskId: str
+    type: str
+
+
+class ExecutionActionCompletedData(BaseModel):
+    """Payload of ``execution.action.completed`` (E14-S1, RFC-009)."""
+
+    actionId: str
+    taskId: str
+    status: str
+    exitCode: int
+
+
+class ExecutionActionFailedData(BaseModel):
+    """Payload of ``execution.action.failed`` (E14-S1, RFC-009)."""
+
+    actionId: str
+    taskId: str
+    error: str
+
+
+class ExecutionPolicyDecisionData(BaseModel):
+    """Shared payload of ``execution.policy.allowed``/``.denied`` (E14-S2, RFC-010)."""
+
+    actionId: str
+    category: str
+    reason: str
+
+
 @dataclass(frozen=True)
 class EventDefinition:
     """Catalog entry describing one event type (§14.5 table).
@@ -320,6 +353,11 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition("access.request.denied", "Control Plane API", "tenantId", AccessRequestData),
     EventDefinition("quota.warning", "Control Plane API", "tenantId", QuotaWarningData),
     EventDefinition("quota.exceeded", "Control Plane API", "tenantId", QuotaExceededData),
+    EventDefinition("execution.action.started", "Task Executor", "runId", ExecutionActionStartedData),
+    EventDefinition("execution.action.completed", "Task Executor", "runId", ExecutionActionCompletedData),
+    EventDefinition("execution.action.failed", "Task Executor", "runId", ExecutionActionFailedData),
+    EventDefinition("execution.policy.allowed", "Policy Engine", "runId", ExecutionPolicyDecisionData),
+    EventDefinition("execution.policy.denied", "Policy Engine", "runId", ExecutionPolicyDecisionData),
 )
 
 

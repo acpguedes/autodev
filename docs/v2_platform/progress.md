@@ -7,7 +7,14 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-17 (**Gap-closure pass, no new epic** — branch
+**Last updated:** 2026-08-17 (**E14 kicked off — E14-S1 (Real Task Executor)
+complete, E14 now In progress · 1/7** — branch
+`epic/e14-real-execution-governance`. `execute_plan` performs real work for
+the first time: `TaskExecutor`/`InProcessActionRunner`
+(`backend/execution/`) reuse the existing patch engine and v1 sandbox
+runner; RFC-009 + ADR-021 accepted. See the Changelog entry below and
+`docs/execution/engine.md`. Not merged to `main`.) Previous entry: 2026-08-17
+(**Gap-closure pass, no new epic** — branch
 `epic/gap-closure-alpha`. Closed the E17 S1↔S4 reopen-as-chat fast-follow, four
 of E7's five deferred story-DoD items (indexing + context spans, language and
 fusion docs, a retrieval recall/latency benchmark harness), and walked the
@@ -232,7 +239,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E11 | Observability, Security & Multi-tenant | Beta | Done | 4/4 | E0, E8, E9-S1, E4 | [phases/e11_observability_security_multitenant.md](phases/e11_observability_security_multitenant.md) |
 | E12 | Quality & Evals | Alpha/Beta | Complete | 4/4 | E0, E1-E6, E5 | [phases/e12_quality_evals.md](phases/e12_quality_evals.md) |
 | E13 | Marketplace & GA | GA | Not started | 0/4 | E1, E12-S2, E11-S4, E0-E12 | [phases/e13_marketplace_ga.md](phases/e13_marketplace_ga.md) |
-| E14 | Real Task Execution & Governed Autonomy | Beta | Not started | 0/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
+| E14 | Real Task Execution & Governed Autonomy | Beta | Done | 7/7 | E2, E3, E9-S1, E11-S4 | [phases/e14_real_execution_governance.md](phases/e14_real_execution_governance.md) |
 | E15 | Frontend Redesign: Design Language & App Shell | Beta | Done | 4/4 | E10 | [phases/e15_design_language_shell.md](phases/e15_design_language_shell.md) |
 | E16 | Frontend Redesign: Control-Plane API Enablement | Beta | Done | 4/4 | E9, E3, E8-S1 | [phases/e16_redesign_api_enablement.md](phases/e16_redesign_api_enablement.md) |
 | E17 | Frontend Redesign: Control Center Screens | Beta | Done | 6/6 | E15, E16 | [phases/e17_control_center_screens.md](phases/e17_control_center_screens.md) |
@@ -259,7 +266,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 
-Total: **75/178 stories complete** across 40 epics (E19 is a proposed
+Total: **82/178 stories complete** across 40 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -387,6 +394,180 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-17** — **E14 — Real Task Execution & Governed Autonomy is
+  complete (7/7)**, on `epic/e14-real-execution-governance`
+  (not yet merged to `main` — pending the epic -> `main` PR).
+  **E14-S7 — `autodev` CLI Packaging & Install** closed the epic: no new
+  packaging mechanism was needed (`backend/pyproject.toml`'s
+  `[project.scripts] autodev = "backend.cli:main"` predates this story);
+  `autodev` with no args now starts uvicorn + opens the browser at E18's
+  existing root descriptor (`AUTODEV_HOST`/`AUTODEV_PORT` overrides,
+  `Ctrl+C` to stop); `--command "<goal>"` now works standalone (previously
+  only meaningful with `--shell`); `autodev permissions list|revoke`
+  mirrors E14-S5's dynamic-permissions panel over HTTP. Docs:
+  `docs/execution/cli-install.md`. No standalone binary/native installer
+  was built — `pip install -e backend/` is the documented, tested path;
+  a native installer would be its own ADR-worthy packaging decision the
+  story's DoR didn't require.
+
+  Epic summary across all 7 stories: `OrchestratorService.execute_plan`
+  went from a pure simulation (S1's own "v1 precursor" framing) to a real,
+  policy-gated (S2), mode-aware (S3, approval/auto/hybrid with durable
+  pause/resume), hardened (S4, three dedicated sandbox-backed runners),
+  and fully operable (S5 Web UX, S6 governed shell, S7 packaging) executor.
+  Two RFC/ADR pairs (RFC-009/ADR-021 for the action/result contract,
+  RFC-010/ADR-022 for the policy engine) were filed before their
+  respective implementations, per the epic's own gate. Every story stated
+  its scope reductions explicitly rather than silently narrowing DoD (no
+  pre-approval diff preview, no cancel endpoint, no live shell SSE
+  streaming, no native installer) — see each story's `docs/execution/*.md`.
+  The Beta exit criterion this epic anchors remains open pending a
+  dedicated wave-gate evidence pass across every Beta anchor epic (see
+  the epic exit checklist in the phase doc) — not a gap in E14 itself.
+
+- **2026-08-17** — **E14-S6 — Governed Interactive Shell is complete, E14
+  now In progress · 6/7**. `autodev --shell` (`backend/cli_shell.py`) — a
+  REPL that talks only to `/v2` over HTTP, never
+  `backend.orchestrator`/`backend.execution`/`backend.persistence` or any
+  other backend module (a static-analysis AST-import contract test
+  enforces this). Flow: create session -> post a turn (drives the agent
+  pipeline the plan is derived from) -> execute under the active mode
+  (`--mode auto|approval|hybrid`) -> condensed per-task summary. A run
+  that pauses shows its pending decision inline (approve/approve-always/
+  deny, the same vocabulary as E14-S5's Web UX) and resumes automatically.
+  `--command "<goal>"` runs one goal non-interactively. `backend/cli.py`
+  gained a top-level `--shell`/`--mode`/`--command`/`--base-url` alongside
+  its existing required-subcommand parser (`required=False` now, with an
+  explicit `parser.error()` preserving the old "a command is required"
+  behavior when neither is given); existing subcommands are unchanged,
+  documented as out of this story's scope in `docs/execution/shell.md`.
+  Scope note: no live SSE streaming in the shell — the synchronous
+  execute/resume response already carries every result for a condensed
+  summary, avoiding an indefinitely-open stream with no clean end signal;
+  a follow-up could reuse E14-S5's already-proven SSE consumption pattern.
+  **Not merged to `main`** — E14 has 1 more story (S7 CLI packaging).
+
+- **2026-08-17** — **E14-S5 — Web UX for Governed Execution is complete,
+  E14 now In progress · 5/7**. New `/execution` screen
+  (`frontend/app/execution/page.tsx`, added to the primary nav rail):
+  pending-decision approve-once/approve-always/deny
+  (`ActionApprovalPanel`), dynamic-permission list/revoke
+  (`DynamicPermissionsList`), and a real-time `execution.action.*` log
+  (`ExecutionActionLog`) plus a resume control — wired exclusively to
+  `/v2/execution/*` (`frontend/lib/execution_v2.ts`) and the E9-S2 SSE
+  transport. The plan called for extending `lib/timeline.ts`'s
+  `applyTimelineEvent`; reading it showed its 4-stage
+  planning/analysis/patch/validation model doesn't fit
+  `execution.action.*` events (different payload shape, no stage), so a
+  small parallel module (`lib/execution_events.ts`) reuses the same SSE
+  transport primitives instead — the transport itself needed zero
+  server-side changes, confirming the S5/S6/S7 research. One Storybook
+  story file per new component (axe a11y caught and fixed a real
+  `text-ds-fg-3`-at-12px contrast failure before merge) and one Playwright
+  e2e spec (`e2e/execution-approval.spec.ts`), matching the existing
+  per-screen coverage bar. Scope reductions stated in
+  `docs/execution/web-ux.md`: no pre-approval diff preview (nothing to
+  preview before an action runs) and no cancel button (E14-S3 never shipped
+  a cancel endpoint). **Not merged to `main`** — E14 has 2 more stories (S6
+  governed shell, S7 CLI packaging).
+
+- **2026-08-17** — **E14-S4 — Sandbox-Backed Runners is complete, E14 now
+  In progress · 4/7**. `InProcessActionRunner` split into three dedicated
+  runners behind the unchanged `ActionRunner` protocol: `CommandRunner`
+  (`run_command`, hardened Docker sandbox, no network by default),
+  `PatchRunner` (`create_file`/`edit_file`/`apply_patch`, E0 patch engine,
+  structurally incapable of reaching `subprocess`), `ValidationRunner`
+  (`run_validation`, shares the sandbox with `CommandRunner` but stays a
+  separate class for independent future hardening).
+  `CompositeActionRunner` dispatches by action type; `InProcessActionRunner`
+  is now a backward-compatible alias for it — same constructor signature,
+  same contract, zero caller changes. Reused the existing E11-S4
+  real-Docker sandbox contract test (one new assertion that `CommandRunner`
+  routes through the identical `SandboxPolicy`) rather than duplicating it;
+  added a fail-closed-without-Docker unit test at the `ExecutionAction`
+  layer. Docs: `docs/execution/engine.md`. **Not merged to `main`** — E14
+  has 3 more stories (S5 Web UX, S6 governed shell, S7 CLI packaging).
+
+- **2026-08-17** — **E14-S3 — Execution Modes (Approval, Auto, Hybrid) is
+  complete, E14 now In progress · 3/7**. `OrchestratorService.execute_plan`
+  gains an optional `mode` parameter (`ExecutionMode`, default `auto` —
+  byte-for-byte unchanged behavior from S1/S2). `approval` mode pauses
+  every task with a derived action for a human decision; `hybrid` pauses
+  only when E14-S2's policy engine doesn't cover it (`matched=False`),
+  auto-executing what it does cover. A pause does not block the request:
+  it durably records a `PendingDecision`
+  (`backend/execution/decisions.py`, reusing E3-S4's pause/decide/expire
+  *pattern* — not its Flow-Engine-bound code, which
+  `OrchestratorService`'s run/task model doesn't share — and the existing
+  `run.human.requested`/`.resolved` events, so no new event types were
+  needed), marks that step `awaiting_approval`, and **stops processing
+  further tasks**, persisting everything completed so far. `resume_plan_execution`
+  continues a paused run by re-deriving the plan and skipping every
+  terminal step — no task-list snapshot is persisted; `mode` is a
+  per-call parameter passed again on resume, not stored run state.
+  Hybrid's "always" option persists a dynamic permission
+  (`PolicyService.grant_dynamic_permission`) so equivalent future actions
+  auto-allow without pausing again; "deny" fails just that task and
+  execution continues; a pending decision past its deadline
+  (`AUTODEV_EXECUTION_DECISION_TIMEOUT_SECONDS`, default 3600s)
+  self-expires to `timed_out` on next read and is treated as deny-and-stop,
+  per the story's documented timeout fallback. REST:
+  `POST /v2/sessions/{id}/execution-plan/{execute,resume}` (mode-aware),
+  `GET /v2/execution/decisions` + `POST .../resolve`,
+  `GET/DELETE /v2/execution/policy/dynamic`. Docs: `docs/execution/modes.md`.
+  **Not merged to `main`** — E14 has 4 more stories.
+
+- **2026-08-17** — **E14-S2 — Permission & Policy Engine is complete, E14
+  now In progress · 2/7** (RFC-010 + ADR-022 accepted first, per the epic's
+  gate). Every action `TaskExecutor` dispatches is now gated by
+  `PolicyService.evaluate` (`backend/execution/policy.py`) before it
+  reaches the runner: category-scoped allow/deny rules (`shell`,
+  `fs-write`, `patch`, `network`, `secrets-read`, `validation`), a durable
+  per-decision audit trail, and two additive events
+  (`execution.policy.allowed`/`.denied`, 40 → 42 catalog types). Mirrors
+  `QuotaService`'s already-accepted resolution rule (ADR-019): a tenant
+  with any stored rule is governed by exactly those; a tenant with none
+  fails closed in production and falls back to a permissive default
+  outside production, preserving the Alpha gate's local-first guarantee —
+  a policy engine that blocked everything by default locally would have
+  regressed `test_local_first_mode.py`. Precedence when multiple rules
+  match: specificity (dynamic-permission-with-pattern > static-with-pattern
+  > dynamic-without-pattern > static-without-pattern) before effect,
+  explicit `deny` winning ties within the top tier — this lets a future
+  hybrid-mode "always" grant carve an exception out of a broader static
+  deny while a specific static deny still overrides a broad static allow.
+  REST: `GET/POST /v2/execution/policy` (`policy:read`/`policy:admin`).
+  Dynamic-permission REST endpoints deliberately deferred to E14-S3, which
+  is what actually grants them. **Not merged to `main`** — E14 has 5 more
+  stories.
+
+- **2026-08-17** — **E14 kicked off — E14-S1 (Real Task Executor) complete,
+  E14 now In progress · 1/7** (branch `epic/e14-real-execution-governance`,
+  story `story/e14-s1-real-task-executor`; RFC-009 + ADR-021 accepted per the
+  epic's exit checklist). `OrchestratorService.execute_plan` no longer
+  simulates: `TaskExecutor` (`backend/execution/executor.py`) maps each
+  derived `ExecutionTask` to zero or more `ExecutionAction`s and dispatches
+  them to `InProcessActionRunner` (`backend/execution/runner.py`), which
+  reuses the existing E0 patch engine (`backend/patches/engine.py`) for
+  file/patch actions and the v1 `SandboxRunner` precursor
+  (`backend/validation/sandbox.py`) for command/validation actions — no new
+  sandboxing was built in this story (that is E14-S4). `validation`-category
+  tasks naming a known tool (pytest/ruff/npm/python) now run through the
+  sandbox; `implementation`-category tasks now write a real, observable
+  execution-note file under `.autodev/execution-notes/`; other categories
+  still derive no action. `StepStatus` gained `FAILED` so a task with a
+  failed action is reported as such; `OrchestratorRun`/`RunStep`/
+  `AgentExecution` external shapes are unchanged, so the three existing
+  callers (`sessions_v2.py`, `api/main.py`, `cli.py`) needed no changes.
+  Both the patch-write path and the sandbox stay fail-closed by default
+  (`AUTODEV_ENABLE_PATCH_APPLY`/`AUTODEV_ENABLE_SANDBOX`, both off), so
+  default behavior for existing callers is unchanged until an operator opts
+  in. Three additive events (`execution.action.started`/`.completed`/
+  `.failed`) join `EVENT_CATALOG` (37 → 40 types). No policy/permission
+  engine yet (E14-S2), no execution modes (E14-S3) — see
+  `docs/execution/engine.md` for the full scope boundary. **Not merged to
+  `main`** — E14 has 6 more stories before the epic → `main` PR.
 
 - **2026-08-17** — **E11-S3 — Multi-tenant and quotas/budgets is complete**
   (dependencies E8, E4, E11-S2 Done; see ADR-019). **E11 is now 4/4 Done.**

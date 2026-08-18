@@ -37,7 +37,14 @@ test("local zero-config resolves and displays the local owner principal", async 
   }
 
   await expect(loading).toHaveCount(0);
-  await expect(page.getByText("local")).toBeVisible();
+  // Scoped to the "Subject" <dt>/<dd> pair, not a bare getByText("local"):
+  // the local zero-config principal's authMethod is *also* literally
+  // "local", so an unscoped match resolves to two elements (strict-mode
+  // violation) once a real backend actually answers this request.
+  const subjectValue = page
+    .locator("dt", { hasText: "Subject" })
+    .locator("xpath=following-sibling::dd[1]");
+  await expect(subjectValue).toHaveText("local");
   await expect(page.getByText("default")).toBeVisible();
   await expect(page.getByText("owner")).toBeVisible();
 });

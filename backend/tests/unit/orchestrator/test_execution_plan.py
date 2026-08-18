@@ -57,3 +57,24 @@ def test_execution_plan_endpoints_return_tasks_and_execute_them(tmp_path: Path) 
     assert execute_payload["run_type"] == "plan_execution"
     assert len(execute_payload["steps"]) == len(plan_payload["tasks"])
     assert execute_payload["results"]
+
+
+def test_execute_plan_performs_real_work_instead_of_simulating_it(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """E14-S1: implementation tasks write a real, observable file (RFC-009)."""
+    monkeypatch.setenv("AUTODEV_ENABLE_PATCH_APPLY", "1")
+    orchestrator = _build_orchestrator(tmp_path)
+    session = orchestrator.create_plan("Criar plano executável por tarefas")
+    orchestrator.handle_message(
+        session.session_id, "produza análise e checklist de implementação"
+    )
+
+    run = orchestrator.execute_plan(session.session_id)
+
+    note_files = list((tmp_path / ".autodev" / "execution-notes").glob("coding-*.md"))
+    assert note_files
+    assert any(
+        "Expose agent contract schemas" in note.read_text() for note in note_files
+    )
+    assert all(step.status == "completed" for step in run.steps)

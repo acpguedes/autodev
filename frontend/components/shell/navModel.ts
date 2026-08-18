@@ -36,6 +36,7 @@ export const SHELL_PRIMARY_NAV: readonly ShellNavItem[] = [
   { key: "chat", href: "/", labelKey: "shell.nav.items.chat" },
   { key: "plans", href: "/plans" as Route, labelKey: "shell.nav.items.plans" },
   { key: "patches", href: "/patches" as Route, labelKey: "shell.nav.items.patches" },
+  { key: "execution", href: "/execution" as Route, labelKey: "shell.nav.items.execution" },
   { key: "flows", href: "/flows" as Route, labelKey: "shell.nav.items.flows" },
   { key: "sessions", href: "/sessions" as Route, labelKey: "shell.nav.items.sessions", badge: "sessions" },
   { key: "config", href: "/config" as Route, labelKey: "shell.nav.items.config" },

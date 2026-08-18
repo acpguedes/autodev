@@ -106,6 +106,50 @@
       "executePlan": "Não foi possível executar as etapas aprovadas."
     }
   },
+  "execution": {
+    "pageTitle": "Execução",
+    "pageSubtitle": "Decisões de ação pendentes, permissões dinâmicas e um log de execução em tempo real (modos aprovação/híbrido).",
+    "refresh": "Atualizar",
+    "loading": "Carregando...",
+    "decisionsHeading": "Decisões pendentes",
+    "permissionsHeading": "Permissões dinâmicas",
+    "logHeading": "Log de execução",
+    "emptyDecisions": "Nenhuma decisão pendente para este tenant.",
+    "emptyPermissions": "Nenhuma permissão dinâmica concedida ainda.",
+    "runIdLabel": "Execução",
+    "runIdPlaceholder": "Informe um id de execução para acompanhar o log",
+    "watch": "Acompanhar",
+    "resume": "Retomar execução",
+    "resuming": "Retomando...",
+    "decision": {
+      "approve": "Aprovar",
+      "approveAlways": "Aprovar sempre",
+      "deny": "Negar",
+      "task": "Tarefa: {{taskId}}",
+      "expiresAt": "Expira em {{expiresAt}}"
+    },
+    "permission": {
+      "revoke": "Revogar"
+    },
+    "log": {
+      "noRun": "Informe um id de execução acima para acompanhar o log.",
+      "empty": "Nenhum evento de execução ainda.",
+      "status": {
+        "idle": "Ocioso.",
+        "connecting": "Conectando...",
+        "open": "Ao vivo.",
+        "closed": "Stream encerrado.",
+        "error": "Erro no stream."
+      }
+    },
+    "errors": {
+      "loadDecisions": "Não foi possível carregar as decisões pendentes.",
+      "resolveDecision": "Não foi possível resolver a decisão.",
+      "loadPermissions": "Não foi possível carregar as permissões dinâmicas.",
+      "revokePermission": "Não foi possível revogar a permissão.",
+      "resume": "Não foi possível retomar a execução."
+    }
+  },
   "shell": {
     "nav": {
       "groupWorkspace": "Espaço de trabalho",
@@ -114,6 +158,7 @@
         "chat": "Chat",
         "plans": "Planos",
         "patches": "Patches",
+        "execution": "Execução",
         "flows": "Fluxos",
         "sessions": "Sessões",
         "config": "Configuração",

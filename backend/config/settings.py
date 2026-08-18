@@ -216,6 +216,10 @@ class Settings(BaseSettings):
     #: Production requires an explicit, durably-stored policy per tenant;
     #: local mode falls back to the finite defaults above.
     autodev_quota_production_requires_policy: bool = True
+    #: Wall-clock seconds a pending execution-action decision (E14-S3,
+    #: approval/hybrid modes) may stay unanswered before it self-expires
+    #: into its configurable fallback (default: deny and stop the run).
+    autodev_execution_decision_timeout_seconds: int = Field(default=3_600, ge=1)
 
     @classmethod
     def settings_customise_sources(
