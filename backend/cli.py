@@ -119,6 +119,54 @@ def build_parser() -> argparse.ArgumentParser:
     )
     quotas_set_parser.set_defaults(handler=_handle_quotas_set)
 
+    secrets_parser = subparsers.add_parser(
+        "secrets", help="Gerencia segredos com referência escopada por tenant (E33-S1)"
+    )
+    secrets_subparsers = secrets_parser.add_subparsers(dest="secrets_command", required=True)
+
+    secrets_create_parser = secrets_subparsers.add_parser(
+        "create", help="Cria a primeira versão de um segredo"
+    )
+    secrets_create_parser.add_argument("tenant_id")
+    secrets_create_parser.add_argument("name")
+    secrets_create_parser.add_argument("--project", default="default")
+    secrets_create_parser.add_argument(
+        "--value-stdin",
+        action="store_true",
+        required=True,
+        help="Lê o valor bruto da stdin (nunca como argumento de linha de comando).",
+    )
+    secrets_create_parser.set_defaults(handler=_handle_secrets_create)
+
+    secrets_rotate_parser = secrets_subparsers.add_parser(
+        "rotate", help="Armazena uma nova versão de um segredo existente"
+    )
+    secrets_rotate_parser.add_argument("tenant_id")
+    secrets_rotate_parser.add_argument("name")
+    secrets_rotate_parser.add_argument("--project", default="default")
+    secrets_rotate_parser.add_argument(
+        "--value-stdin",
+        action="store_true",
+        required=True,
+        help="Lê o novo valor bruto da stdin (nunca como argumento de linha de comando).",
+    )
+    secrets_rotate_parser.set_defaults(handler=_handle_secrets_rotate)
+
+    secrets_revoke_parser = secrets_subparsers.add_parser(
+        "revoke", help="Revoga um segredo (falha fechada em resoluções futuras)"
+    )
+    secrets_revoke_parser.add_argument("tenant_id")
+    secrets_revoke_parser.add_argument("name")
+    secrets_revoke_parser.add_argument("--project", default="default")
+    secrets_revoke_parser.set_defaults(handler=_handle_secrets_revoke)
+
+    secrets_list_parser = secrets_subparsers.add_parser(
+        "list", help="Lista metadados dos segredos de um tenant (nunca valores)"
+    )
+    secrets_list_parser.add_argument("tenant_id")
+    secrets_list_parser.add_argument("--project", default=None)
+    secrets_list_parser.set_defaults(handler=_handle_secrets_list)
+
     sessions_parser = subparsers.add_parser("sessions", help="Operações de sessão")
     sessions_subparsers = sessions_parser.add_subparsers(dest="sessions_command", required=True)
     sessions_list_parser = sessions_subparsers.add_parser("list", help="Lista sessões persistidas")
@@ -383,6 +431,110 @@ def _handle_quotas_set(args: argparse.Namespace) -> int:
         print(json.dumps({"status": "error", "error": str(exc)}, ensure_ascii=False), file=sys.stderr)
         return 1
     print(json.dumps({"status": "ok", "policy": _policy_to_dict(stored)}, indent=2, ensure_ascii=False))
+    return 0
+
+
+def _metadata_to_dict(metadata) -> dict:  # type: ignore[no-untyped-def]
+    """Render a secret's metadata as a plain, JSON-serializable dict -- never a value."""
+    return {
+        "tenant_id": metadata.reference.tenant_id,
+        "project": metadata.reference.project,
+        "name": metadata.reference.name,
+        "version": metadata.version,
+        "status": metadata.status.value,
+        "created_at": metadata.created_at,
+        "rotated_at": metadata.rotated_at,
+        "revoked_at": metadata.revoked_at,
+    }
+
+
+def _handle_secrets_create(args: argparse.Namespace) -> int:
+    """Handle ``autodev secrets create``: create the first version of a secret.
+
+    Args:
+        args: Parsed CLI arguments, including ``tenant_id``/``name``/``project``.
+
+    Returns:
+        Process exit code: ``0`` on success, ``1`` if the reference already exists.
+    """
+    from backend.secret_store.contracts import SecretReference
+    from backend.secret_store.service import SecretService
+
+    value = sys.stdin.readline().rstrip("\n")
+    reference = SecretReference(tenant_id=args.tenant_id, project=args.project, name=args.name)
+    try:
+        metadata = SecretService().create(reference, value, actor_id="cli")
+    except ValueError as exc:
+        print(json.dumps({"status": "error", "error": str(exc)}, ensure_ascii=False), file=sys.stderr)
+        return 1
+    print(json.dumps({"status": "ok", "secret": _metadata_to_dict(metadata)}, indent=2, ensure_ascii=False))
+    return 0
+
+
+def _handle_secrets_rotate(args: argparse.Namespace) -> int:
+    """Handle ``autodev secrets rotate``: store a new version of an existing secret.
+
+    Args:
+        args: Parsed CLI arguments, including ``tenant_id``/``name``/``project``.
+
+    Returns:
+        Process exit code: ``0`` on success, ``1`` if the reference is unknown.
+    """
+    from backend.secret_store.contracts import SecretNotFoundError, SecretReference
+    from backend.secret_store.service import SecretService
+
+    value = sys.stdin.readline().rstrip("\n")
+    reference = SecretReference(tenant_id=args.tenant_id, project=args.project, name=args.name)
+    try:
+        metadata = SecretService().rotate(reference, value, actor_id="cli")
+    except SecretNotFoundError as exc:
+        print(json.dumps({"status": "error", "error": str(exc)}, ensure_ascii=False), file=sys.stderr)
+        return 1
+    print(json.dumps({"status": "ok", "secret": _metadata_to_dict(metadata)}, indent=2, ensure_ascii=False))
+    return 0
+
+
+def _handle_secrets_revoke(args: argparse.Namespace) -> int:
+    """Handle ``autodev secrets revoke``: revoke a secret, failing future resolution closed.
+
+    Args:
+        args: Parsed CLI arguments, including ``tenant_id``/``name``/``project``.
+
+    Returns:
+        Process exit code: ``0`` on success, ``1`` if the reference is unknown.
+    """
+    from backend.secret_store.contracts import SecretNotFoundError, SecretReference
+    from backend.secret_store.service import SecretService
+
+    reference = SecretReference(tenant_id=args.tenant_id, project=args.project, name=args.name)
+    try:
+        metadata = SecretService().revoke(reference, actor_id="cli")
+    except SecretNotFoundError as exc:
+        print(json.dumps({"status": "error", "error": str(exc)}, ensure_ascii=False), file=sys.stderr)
+        return 1
+    print(json.dumps({"status": "ok", "secret": _metadata_to_dict(metadata)}, indent=2, ensure_ascii=False))
+    return 0
+
+
+def _handle_secrets_list(args: argparse.Namespace) -> int:
+    """Handle ``autodev secrets list``: list a tenant's secrets' metadata.
+
+    Args:
+        args: Parsed CLI arguments, including ``tenant_id`` and optional ``project``.
+
+    Returns:
+        Process exit code, always ``0``.
+    """
+    from backend.secret_store.service import SecretService
+
+    metadata_list = SecretService().list_metadata(args.tenant_id, project=args.project)
+    print(
+        json.dumps(
+            {"secrets": [_metadata_to_dict(item) for item in metadata_list]},
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
     return 0
 
 

@@ -320,6 +320,34 @@ class EnvironmentInstanceRetiredData(BaseModel):
     reason: str
 
 
+class SecretLifecycleData(BaseModel):
+    """Shared payload of ``secret.created``/``.rotated``/``.revoked`` (E33-S1/S3, ADR-014).
+
+    Carries the scoped reference and version only -- never a value.
+    """
+
+    tenantId: str
+    project: str
+    name: str
+    version: int
+    actorId: str
+
+
+class SecretLeakSuspectedData(BaseModel):
+    """Payload of ``secret.leak.suspected`` (E33-S2-T3).
+
+    Emitted when a known secret value is found (and redacted) in a task's
+    output before it is persisted -- carries the reference and where the
+    match occurred, never the value.
+    """
+
+    tenantId: str
+    project: str
+    name: str
+    runId: str
+    location: str
+
+
 @dataclass(frozen=True)
 class EventDefinition:
     """Catalog entry describing one event type (§14.5 table).
@@ -406,6 +434,13 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
         "Environment Manager",
         "runId",
         EnvironmentInstanceRetiredData,
+    ),
+    EventDefinition("secret.created", "Secret Service", "tenantId", SecretLifecycleData),
+    EventDefinition("secret.rotated", "Secret Service", "tenantId", SecretLifecycleData),
+    EventDefinition("secret.revoked", "Secret Service", "tenantId", SecretLifecycleData),
+    EventDefinition("secret.resolved", "Secret Service", "tenantId", SecretLifecycleData),
+    EventDefinition(
+        "secret.leak.suspected", "Environment Manager", "runId", SecretLeakSuspectedData
     ),
 )
 
