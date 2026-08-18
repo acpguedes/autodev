@@ -248,6 +248,15 @@ def build_parser() -> argparse.ArgumentParser:
     permissions_revoke_parser.add_argument("--base-url", default=None)
     permissions_revoke_parser.set_defaults(handler=_handle_permissions_revoke)
 
+    subparsers.add_parser(
+        "doctor", help="Run preflight diagnostics (E34-S2)"
+    ).set_defaults(handler=_handle_doctor)
+
+    subparsers.add_parser(
+        "bootstrap",
+        help="Preflight-check and initialize the configured state store for self-host (E34-S2)",
+    ).set_defaults(handler=_handle_bootstrap)
+
     try:
         from backend.cli_plugins import register_subcommands
         register_subcommands(subparsers)
@@ -831,6 +840,39 @@ def _handle_permissions_revoke(args: argparse.Namespace) -> int:
         response.raise_for_status()
     print(f"Revoked {args.permission_id}")
     return 0
+
+
+def _handle_doctor(_: argparse.Namespace) -> int:
+    """Handle ``autodev doctor`` (E34-S2-T3): run preflight diagnostics.
+
+    Returns:
+        Process exit code: ``0`` if every check passed, ``1`` otherwise.
+    """
+    from backend.ops.doctor import diagnostics_ok, run_diagnostics
+
+    checks = run_diagnostics()
+    ok = diagnostics_ok(checks)
+    print(
+        json.dumps(
+            {"status": "ok" if ok else "fail", "checks": [c.as_dict() for c in checks]},
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0 if ok else 1
+
+
+def _handle_bootstrap(_: argparse.Namespace) -> int:
+    """Handle ``autodev bootstrap`` (E34-S2-T1): preflight-check then initialize the state store.
+
+    Returns:
+        Process exit code: ``0`` on success, ``1`` if preflight diagnostics failed.
+    """
+    from backend.ops.bootstrap import bootstrap
+
+    result = bootstrap()
+    print(json.dumps(result.as_dict(), indent=2, ensure_ascii=False))
+    return 0 if result.status == "ok" else 1
 
 
 def _handle_start_web(args: argparse.Namespace) -> int:
