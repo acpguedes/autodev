@@ -231,6 +231,48 @@ def test_docker_command_mounts_only_guarded_workspace(tmp_path: Path) -> None:
     assert "--cpus=1" in command
 
 
+def test_docker_command_includes_extra_env(tmp_path: Path) -> None:
+    """extra_env (E33-S2) is passed to docker as --env NAME=value pairs."""
+    completed = MagicMock(returncode=0, stdout="", stderr="")
+    runner = SandboxRunner(allowed_commands=("python",), policy=_policy(tmp_path))
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/docker"),
+        patch("subprocess.run", return_value=completed) as run,
+    ):
+        runner.run(
+            ValidationJob(
+                job_id="with-secret",
+                command=["python", "-c", "print('ok')"],
+                cwd=".",
+                extra_env={"GIT_TOKEN": "s3cr3t-value"},
+            )
+        )
+
+    command = run.call_args.args[0]
+    assert "--env=GIT_TOKEN=s3cr3t-value" in command
+
+
+def test_local_execution_includes_extra_env(tmp_path: Path) -> None:
+    """extra_env (E33-S2) reaches the subprocess environment for local execution."""
+    with patch("shutil.which", return_value=None):
+        runner = SandboxRunner(
+            allowed_commands=["python", "python3"],
+            policy=_policy(tmp_path, allow_local=True),
+        )
+        result = runner.run(
+            ValidationJob(
+                job_id="with-secret",
+                command=["python", "-c", "import os; print(os.environ['GIT_TOKEN'])"],
+                cwd=".",
+                extra_env={"GIT_TOKEN": "s3cr3t-value"},
+            )
+        )
+
+    assert result.backend == "local"
+    assert "s3cr3t-value" in result.stdout
+
+
 def test_docker_timeout_returns_124_with_sanitized_message(tmp_path: Path) -> None:
     """A killed container maps to the timeout(1) return code with no leaked args."""
     runner = SandboxRunner(policy=_policy(tmp_path, timeout_seconds=5))

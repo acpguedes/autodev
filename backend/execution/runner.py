@@ -64,14 +64,30 @@ def _failed(action: ExecutionAction, started_at: str, *, error: str, diff: str =
     )
 
 
-def _run_via_sandbox(action: ExecutionAction, sandbox_runner: SandboxRunner, started_at: str) -> ExecutionResult:
+def _run_via_sandbox(
+    action: ExecutionAction,
+    sandbox_runner: SandboxRunner,
+    started_at: str,
+    *,
+    extra_env: Optional[dict[str, str]] = None,
+) -> ExecutionResult:
     """Wrap *action* into a :class:`ValidationJob` and dispatch to *sandbox_runner*.
 
     Shared by :class:`CommandRunner` and :class:`ValidationRunner` — both
     reuse the same hardened, flag-gated sandbox; only the action type each
     accepts differs.
+
+    Args:
+        extra_env: Environment variables to inject into the job's process
+            (E33-S2) — e.g. secrets resolved for an environment-bound
+            dispatch. ``None``/empty for the default (unbound) path.
     """
-    job = ValidationJob(job_id=action.action_id, command=action.command or [], cwd=action.cwd)
+    job = ValidationJob(
+        job_id=action.action_id,
+        command=action.command or [],
+        cwd=action.cwd,
+        extra_env=extra_env or {},
+    )
     validation_result = sandbox_runner.run(job)
     succeeded = validation_result.returncode == 0
     return ExecutionResult(
@@ -280,9 +296,15 @@ class CompositeActionRunner:
         self._validation_runner = ValidationRunner(sandbox_runner=shared_sandbox)
         self._environment_manager = environment_manager
         self._environment_handle: Optional["EnvironmentHandle"] = None
+        self._environment_extra_env: dict[str, str] = {}
 
     def bind_environment(self, handle: Optional["EnvironmentHandle"]) -> None:
         """Scope subsequent dispatches to a provisioned environment, or clear the binding.
+
+        Resolves the profile's allowlisted secrets once per binding
+        (E33-S2-T1) rather than once per dispatched action, so a batch of
+        several actions against the same environment triggers one
+        resolution pass, not one per action.
 
         Args:
             handle: The environment to scope dispatch to; ``None`` reverts
@@ -295,6 +317,11 @@ class CompositeActionRunner:
         if handle is not None and self._environment_manager is None:
             raise RuntimeError("bind_environment requires an environment_manager")
         self._environment_handle = handle
+        self._environment_extra_env = (
+            self._environment_manager.resolve_secrets_for_profile(handle)
+            if handle is not None and self._environment_manager is not None
+            else {}
+        )
 
     def _environment_metadata(self) -> dict[str, str]:
         handle = self._environment_handle
@@ -343,7 +370,9 @@ class CompositeActionRunner:
         if self._environment_handle is not None:
             assert self._environment_manager is not None
             sandbox = self._environment_manager.command_sandbox(self._environment_handle)
-            return _run_via_sandbox(action, sandbox, _timestamp())
+            return _run_via_sandbox(
+                action, sandbox, _timestamp(), extra_env=self._environment_extra_env
+            )
         if action.type is ExecutionActionType.RUN_COMMAND:
             return self._command_runner.run(action)
         return self._validation_runner.run(action)

@@ -7,8 +7,36 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-18 (**E32 complete — 4/4**, branch
-`epic/e32-isolated-execution-beta` — the Beta cut of the isolated
+**Last updated:** 2026-08-18 (**E33 complete — 3/3**, branch
+`epic/e33-secrets-credential-governance` (branched from
+`epic/e32-isolated-execution-beta`, which is not yet merged to `main`) —
+the Beta secret layer: a scoped-reference secret store
+(`backend/secret_store/`, named to avoid shadowing Python's stdlib
+`secrets` module) that never returns a value over any API, Fernet-based
+envelope encryption reusing the primitive already established for browser
+refresh tokens (ADR-014 accepted: database-encrypted-at-rest, contract-first
+behind `SecretBackendKind`); injection into E32 execution environments via
+the existing `EnvironmentProfile.env_allowlist` gate, resolved fresh on
+every `bind_environment()` call and handed to the sandbox as process env
+(`ValidationJob.extra_env`) — never through model context or artifacts;
+exact-value redaction of collected logs/diffs before persistence plus a
+process-wide safety net inside `emit_event()` itself, so every event
+producer is protected; a typed `secret.leak.suspected` audit event for a
+task that echoes a secret; and rotation that takes effect on the next
+provision with revocation failing resolution closed, both durably audited
+(`secret.created`/`.rotated`/`.revoked`/`.resolved`, catalog 46 → 51).
+`secret:use`/`secret:manage` RBAC scopes mirror the `quota:read`/
+`quota:admin` split; `/v2/secrets` and `autodev secrets` are the REST/CLI
+surfaces, values only ever accepted write-only (stdin for the CLI, never
+a flag). Docs: `docs/security/secrets.md`,
+`docs/v2_platform/decisions/ADR-014-secret-store-format.md` (Proposed ->
+Accepted). Scope reduction stated honestly: Postgres RLS-backed storage
+and a true external KMS/vault backend are deferred behind the swappable
+`SecretBackendKind` contract; adding the "no plaintext secrets" row to the
+v2.0-beta gate checklist (§18.9) is E35-S1-T1's job, not E33's — E33
+supplies the evidence (redaction + audit tests), not the checklist edit.
+Not merged to `main`. Previous entry: 2026-08-18 (**E32 complete — 4/4**,
+branch `epic/e32-isolated-execution-beta` — the Beta cut of the isolated
 execution environment: a backend-agnostic `EnvironmentBackend` abstraction
 (`backend/environments/`) with configuration-only selection (unset →
 `hardened_container`, the ADR-013-accepted default built on the existing
@@ -279,7 +307,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E30 | FinOps & Autonomy Governance | v2.2 | Not started | 0/4 | E2, E3 (ADR-006), E5, E11 | [phases/e30_finops_governance.md](phases/e30_finops_governance.md) |
 | E31 | Library Spec Registry | v2.2 | Not started | 0/4 | E20, E7, E14; E13 (publish) | [phases/e31_library_spec_registry.md](phases/e31_library_spec_registry.md) |
 | E32 | Isolated Execution Environment (Beta slice) | Beta | Done | 4/4 | E14, E11-S4; E28 (contracts) | [phases/e32_isolated_execution_beta.md](phases/e32_isolated_execution_beta.md) |
-| E33 | Secrets & Credential Governance | Beta | Not started | 0/3 | E32, E0-S5, E11-S4 | [phases/e33_secrets_credential_governance.md](phases/e33_secrets_credential_governance.md) |
+| E33 | Secrets & Credential Governance | Beta | Done | 3/3 | E32, E0-S5, E11-S4 | [phases/e33_secrets_credential_governance.md](phases/e33_secrets_credential_governance.md) |
 | E34 | Packaging & Global Install | Beta | Not started | 0/3 | E14-S7 (CLI), E32 | [phases/e34_packaging_global_install.md](phases/e34_packaging_global_install.md) |
 | E35 | Beta Readiness Gates & Evidence | Beta | Not started | 0/3 | E32-E34, E11, E12 | [phases/e35_beta_readiness_gates.md](phases/e35_beta_readiness_gates.md) |
 | E36 | SDD Operating Model & Document Authority | v2.3 | Not started | 0/4 | E20-E23 | [phases/e36_sdd_operating_model.md](phases/e36_sdd_operating_model.md) |
@@ -288,7 +316,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 
-Total: **86/178 stories complete** across 40 epics (E19 is a proposed
+Total: **89/178 stories complete** across 40 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -416,6 +444,76 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-18** — **E33 — Secrets & Credential Governance (Beta) is
+  complete (3/3)**, on `epic/e33-secrets-credential-governance` (branched
+  from `epic/e32-isolated-execution-beta`, itself not yet merged to
+  `main`). **E33-S3** closed the epic: rotation takes effect on the very
+  next `EnvironmentManager.provision()`/`bind_environment()` call (nothing
+  caches a resolved value across provisions, so there is no propagation
+  delay to reason about); a revoked reference is skipped at the injection
+  boundary rather than failing the whole environment (`SecretStore`
+  itself still fails closed with `SecretRevokedError` for any direct
+  resolution attempt); rotate/revoke event-emission tests close out the
+  audit-coverage DoD alongside S1/S2's create/resolve coverage. The
+  v2.0-beta gate's "no plaintext secrets" criterion is evidenced here
+  (redaction + audit tests, `docs/security/secrets.md`) but the actual
+  checklist row in §18.9 is left to E35-S1-T1 (Beta Readiness Gates &
+  Evidence), which explicitly owns expanding that gate with the E32/E33/E34
+  criteria — not duplicating that edit here keeps one epic from silently
+  pre-empting another's DoD. See the S1/S2 entries below for the store,
+  crypto, injection, and redaction implementation. **Not merged to
+  `main`.**
+
+- **2026-08-18** — **E33-S2 — Injection into execution environments &
+  redaction is complete, E33 now In progress · 2/3** (branch
+  `epic/e33-secrets-credential-governance`, story
+  `story/e33-s2-injection-and-redaction`). Secrets materialize only inside
+  the E32 environment's process: `EnvironmentProfile.env_allowlist` (E32-S2's
+  existing declaration surface -- no second one added) is resolved by
+  `EnvironmentManager.resolve_secrets_for_profile()` at `bind_environment()`
+  time and threaded through the new
+  `ValidationJob.extra_env`/`SandboxRunner._run_docker`/`_run_local`
+  (`backend/validation/`) as `--env`/subprocess-env, never through model
+  context or plan/patch artifacts. Redaction (`backend/secret_store/redaction.py`):
+  an exact-value `SecretRedactor` scrubs every task's stdout/diff *before*
+  `EnvironmentManager.collect_artifacts()` persists it, and a process-wide
+  registry scrubs every emitted event's `data` payload inside
+  `emit_event()` itself (`backend/events/runtime.py`) -- every producer
+  protected, not just environment events. A task that echoes a secret's
+  value produces redacted evidence and a durable `secret.leak.suspected`
+  audit event (catalog 51, unchanged count -- reserved in S1). Scope
+  reduction stated honestly (`docs/security/secrets.md`): exact-value
+  redaction is guaranteed, entropy-based detection of unknown
+  secret-shaped strings is not attempted at all (not "best-effort").
+
+- **2026-08-18** — **E33-S1 — Secret store abstraction & format decision is
+  complete, E33 now In progress · 1/3** (branch
+  `epic/e33-secrets-credential-governance`, story
+  `story/e33-s1-secret-store-abstraction`; ADR-014 accepted). New module
+  `backend/secret_store/` (named to avoid shadowing the stdlib `secrets`
+  module): `SecretReference`/`SecretMetadata`/`SecretStatus` contracts that
+  never carry a value; `crypto.py` reuses the Fernet envelope-encryption
+  primitive already established for browser refresh tokens
+  (`backend.auth.crypto.derive_fernet`), keyed by
+  `AUTODEV_SECRET_ENCRYPTION_KEY`; `SecretStore` (SQLite-backed, versioned,
+  scoped to `tenant_id/project/name`, mirroring the `backend/quotas/` and
+  `backend/environments/` self-contained-store precedent rather than the
+  core persistence migration runner — see ADR-014's stated scope
+  reduction); `SecretService` wraps crypto + store and durably audits
+  every create/rotate/revoke/resolve (`secret.created`/`.rotated`/
+  `.revoked`/`.resolved`, catalog 46 → 51 with `secret.leak.suspected`
+  reserved for E33-S2's leak fixture). RBAC: `secret:use` (VIEWER+, read
+  metadata only) and `secret:manage` (ADMIN+, create/rotate/revoke),
+  mirroring the `quota:read`/`quota:admin` split. REST:
+  `backend/api/routers/secrets_v2.py` (auto-discovered, no manual
+  registration) — every response model carries metadata only, so "no API
+  returns a stored value" holds structurally. CLI: `autodev secrets
+  create|rotate|revoke|list`, value always via `--value-stdin`, never a
+  CLI argument. Docs: `docs/security/secrets.md`,
+  `docs/v2_platform/decisions/ADR-014-secret-store-format.md` (Proposed ->
+  Accepted). Not yet built (E33-S2/S3 scope): injection into E32
+  environments, redaction, rotation-triggered fixture testing.
 
 - **2026-08-18** — **E32 — Isolated Execution Environment (Beta slice) is
   complete (4/4)**, on `epic/e32-isolated-execution-beta` (branched from

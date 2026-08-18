@@ -28,6 +28,7 @@ _SECRET_FIELDS = {
     "otel_exporter_otlp_logs_endpoint",
     "autodev_oidc_client_secret",
     "autodev_session_encryption_key",
+    "autodev_secret_encryption_key",
 }
 
 _CREDENTIAL_URL_FIELDS = {
@@ -234,6 +235,14 @@ class Settings(BaseSettings):
     #: TTL, in seconds, an environment may remain provisioned without
     #: teardown before it is reaped as an orphan.
     autodev_environment_ttl_seconds: int = Field(default=1_800, ge=1)
+
+    # --- Secrets & credential governance (E33, ADR-014) ---
+    #: Envelope-encryption key material for at-rest secret values. Empty
+    #: (local mode) derives an ephemeral per-process key, mirroring
+    #: ``autodev_session_encryption_key``'s own local-mode fallback --
+    #: secrets written under an ephemeral key are unreadable across a
+    #: process restart, which is intentional for local/dev use only.
+    autodev_secret_encryption_key: str = ""
 
     @classmethod
     def settings_customise_sources(

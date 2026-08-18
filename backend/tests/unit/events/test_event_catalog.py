@@ -35,9 +35,11 @@ def test_catalog_covers_all_reference_types_with_valid_names() -> None:
     3 E14-S1 ``execution.action.started``/``.completed``/``.failed`` +
     2 E14-S2 ``execution.policy.allowed``/``.denied`` + 4 E32
     ``environment.instance.provisioned``/``environment.access.allowed``/
-    ``.denied``/``environment.instance.retired`` = 46 types.
+    ``.denied``/``environment.instance.retired`` + 5 E33
+    ``secret.created``/``.rotated``/``.revoked``/``.resolved``/
+    ``.leak_suspected`` = 51 types.
     """
-    assert len(EVENT_CATALOG) == 46
+    assert len(EVENT_CATALOG) == 51
     for name, definition in EVENT_CATALOG.items():
         assert name == definition.name
         assert _NAME_RE.fullmatch(name)
