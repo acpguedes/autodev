@@ -1,13 +1,13 @@
 # E34 — Packaging, Global Install & Self-Hosted Distribution
 
 **Wave:** v2.0-beta — "plataforma completa em produção controlada".
-**Status:** Not started · **Stories:** 0/3 complete
+**Status:** Done · **Stories:** 3/3 complete
 **Depends on:** E14 (`autodev` CLI story — E34 owns packaging/distribution,
 E14 keeps CLI UX), E8 (persistence — embedded vs Postgres posture), E0
 **Enables:** the v2.0-beta gate on clean-environment install, GA upgrade
 path (E13), self-hosted adoption
 **Canonical source:** `docs/architecture/v2_platform_reference.md` §18.9
-(v2.0-beta); `docs/v2_platform/beta_gap_analysis.md`; ADR-015 (pending)
+(v2.0-beta); `docs/v2_platform/beta_gap_analysis.md`; ADR-015 (Accepted)
 
 ## Objective
 
