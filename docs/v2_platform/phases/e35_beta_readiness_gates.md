@@ -1,7 +1,7 @@
 # E35 — Beta Readiness: Gates, Evidence & Runbooks
 
 **Wave:** v2.0-beta — "plataforma completa em produção controlada".
-**Status:** Not started · **Stories:** 0/3 complete
+**Status:** Done · **Stories:** 3/3 complete
 **Depends on:** E14 (real execution), E32 (isolation), E33 (secrets), E34
 (install), E11 (observability/audit), E12 (quality gates)
 **Enables:** an honest, testable v2.0-beta gate; GA readiness (E13)
