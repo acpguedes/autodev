@@ -125,18 +125,36 @@ aprovados.
   `autodev` operacional sem checkout do repositório, com versão reportada
   e upgrade entre duas versões preservando dados.
 
-## 7. Riscos, decisões em aberto e ADRs/RFCs exigidos
+## 7. Registro de decisões em aberto (E35-S3-T1, atualizado 2026-08-19)
 
-| Decisão em aberto | ADR | Opções | Recomendação | Decidir até |
+Nenhuma das três decisões abaixo permanece em aberto — todas foram
+resolvidas **dentro do próprio épico** que as motivou, não silenciosamente:
+cada ADR documenta a decisão e as consequências no próprio arquivo. Este
+registro é mantido mesmo assim, como exigido por E35-S3-T1 — "no silent
+resolution" significa que a decisão precisa estar rastreável com opções,
+recomendação, dono e data, e está.
+
+| Decisão | ADR | Opções | Recomendação | Dono | Decidir até | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| Backend de isolamento Beta | [ADR-013](decisions/ADR-013-beta-isolation-backend.md) | container hardening; bubblewrap; gVisor; microVM | container hardening no Beta atrás da abstração; microVM em E28 | Epic owner (E32) | antes de E32-S2 | **Decidida** — Accepted 2026-08-18, container hardening (`HardenedContainerBackend`) |
+| Formato do secret store | [ADR-014](decisions/ADR-014-secret-store-format.md) | arquivo cifrado; DB cifrado at rest; KMS/vault externo | DB cifrado at rest como default self-host; KMS como backend plugável | Epic owner (E33) | antes de E33-S2 | **Decidida** — Accepted 2026-08-18, SQLite cifrado (Fernet) atrás de `SecretBackendKind` |
+| Estratégia de instalação global | [ADR-015](decisions/ADR-015-global-install-strategy.md) | pipx/uv tool; bundle container; script instalador | pipx/uv para CLI + bundle para self-host | Epic owner (E34) | antes de E34-S2 | **Decidida** — Accepted 2026-08-18, híbrido pip/pipx/uv + docker-compose |
+
+`docs/v2_platform/decisions/README.md` ainda listava as três como
+"Proposed" neste ponto — corrigido junto com esta atualização (drift de
+doc, não uma decisão nova).
+
+## 7.1 Registro de riscos Beta (E35-S3-T2)
+
+| Risco | Impacto | Mitigação | Histórias | Status |
 | --- | --- | --- | --- | --- |
-| Backend de isolamento Beta | ADR-013 (Proposed) | container hardening; bubblewrap; gVisor; microVM | container hardening no Beta atrás da abstração; microVM em E28 | antes de E32-S2 |
-| Formato do secret store | ADR-014 (Proposed) | arquivo cifrado; DB cifrado at rest; KMS/vault externo | DB cifrado at rest como default self-host; KMS como backend plugável | antes de E33-S2 |
-| Estratégia de instalação global | ADR-015 (Proposed) | pipx/uv tool; bundle container; script instalador | pipx/uv para CLI + bundle para self-host | antes de E34-S2 |
+| Escape de isolamento | Execução de código não confiável escapa do ambiente isolado, acessando o host ou rede não autorizada | Política default-deny de rede/filesystem, decisão auditada por execução, `UnavailableBackend` como kill switch de configuração; classe microVM mais forte é o alvo de E28 | E32-S2, E32-S4, E28 (v2.2) | Mitigado (Beta); defesa-em-profundidade adicional em E28 |
+| Vazamento de secret | Valor de secret exposto em log, evento, trace, diff ou artefato | Redação de valor exato antes de qualquer persistência, aplicada dentro de `emit_event()` (protege todo produtor); evento `secret.leak.suspected` audita a tentativa | E33-S2, E33-S3 | Mitigado; detecção é exact-match apenas (sem heurística de entropia — limitação declarada) |
+| Upgrade falho | Migração corrompe ou perde dados ao atualizar entre versões | Backup obrigatório antes de migrar (`BackupManager`); `MigrationRunner` recusa uma migração contra schema mais novo que o código conhece (`SchemaVersionMismatchError`); rollback via restore documentado | E34-S3, E8-S4 | Mitigado; sem ambiente de staging para ensaiar o restore (gap aberto, critério 6 do §11) |
+| Execução descontrolada | Uma tarefa consome recursos/orçamento além do previsto, ou roda indefinidamente | Budgets que falham fechado no motor de raciocínio, política de execução por categoria, quotas por tenant, timeout de decisão pendente | E14-S2, E14-S3, E11-S3 | Mitigado |
 
-Riscos principais: escape de isolamento (mitigado por E32-S2/S4 +
-defesa-em-profundidade do E28), vazamento de secret (E33-S2/S3), upgrade
-falho (E34-S3 + backup E8-S4), execução descontrolada (budgets E14 +
-quotas E11). Registro vivo mantido por E35-S3.
+Registro vivo — revisado a cada limite de onda (fim de v2.0-beta, início de
+v2.1), ou sempre que um novo risco material for identificado.
 
 ## 8. Comandos de validação executados
 
