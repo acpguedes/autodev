@@ -457,15 +457,46 @@ Goal: complete intelligence, context, data, API, UI, security, and quality
 capabilities for real, controlled operation. Anchor epics: **E4**, **E5**, **E6**,
 **E7**, **E8-S3/E8-S4**, **E9-S2/S3/S4**, **E10**, **E11**, **E12-S2/S3/S4**,
 **E14** (real task execution, permission/approval policy, governed sandbox
-runners, Web UX + interactive shell for approval, `autodev` CLI install).
+runners, Web UX + interactive shell for approval, `autodev` CLI install),
+**E15/E16/E17** (frontend redesign), **E32** (isolated execution
+environment), **E33** (secrets & credential governance), **E34**
+(packaging & global install), **E35** (this gate itself — evidence map,
+acceptance flow, decisions/risk register, runbooks).
 
-- [ ] The real plan -> code -> apply patch -> validate in sandbox -> evaluate flow runs
-      with RBAC, fail-closed budgets, and end-to-end traces.
-- [ ] Hybrid retrieval reaches p95 < 300 ms and the recall baseline.
-- [ ] Run streaming starts < 1 s.
-- [ ] Every extension point has a green contract test and quality gates block merges.
-- [ ] UI is WCAG 2.2 AA on key screens; flow editor round-trips.
-- [ ] Backup/restore validated (RPO <= 5 min, RTO <= 30 min) in staging.
+Full 12-criterion evidence map (fact vs. recommendation, per E35-S1):
+`docs/v2_platform/beta_gap_analysis.md` §11 — the single source; do not
+duplicate its evidence citations here.
+
+- [x] Every extension point has a green contract test and quality gates block merges.
+- [x] Design language v2 + Execution Control Center app shell (E15), `/v2` API
+      parity (E16), and Control Center screens (E17) are adopted.
+- [x] Real task execution runs by default in a fail-closed isolated
+      environment with an audited backend/profile decision (E32).
+- [x] No secret is ever returned in cleartext by any API/log/event/trace/
+      diff/artifact; a leak fixture is detected and audited (E33).
+- [x] A clean-environment install is documented and verified; an upgrade
+      between two versions preserves data under the schema compatibility
+      check (E34).
+- [~] The real plan -> code -> apply patch -> validate in sandbox -> evaluate flow runs
+      with RBAC, fail-closed budgets, and end-to-end traces — every component
+      individually evidenced; no single composed rehearsal until
+      `docs/v2_platform/beta_acceptance_flow.md` (E35-S2).
+- [~] UI is WCAG 2.2 AA on key screens; flow editor round-trips — round-trip
+      met; WCAG is component-level (Storybook-axe) only, no consolidated
+      per-screen audit.
+- [ ] Hybrid retrieval reaches p95 < 300 ms and the recall baseline — harness
+      exists (`scripts/benchmark_retrieval.py`); no run against a live
+      environment recorded. Open (`phases/e7_context_rag.md`).
+- [ ] Run streaming starts < 1 s — functional correctness tested; no
+      numeric latency assertion exists. Open.
+- [ ] Backup/restore validated (RPO <= 5 min, RTO <= 30 min) in staging — no
+      staging environment exists; validated via documented execution
+      procedure only. Open (`phases/e8_persistence_data.md`).
+
+`[~]` = partially met (real evidence, criterion not fully satisfied). The
+three `[ ]` gaps (retrieval benchmark, streaming latency, staging restore)
+need a live environment E35 does not own; closing them is follow-up work,
+not silently declared done.
 
 ### v2.0-GA — "general availability"
 
