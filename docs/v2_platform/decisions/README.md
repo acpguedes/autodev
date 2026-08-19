@@ -56,9 +56,9 @@ neither.
 | ADR-012 | E15 Design Language & App Shell Implementation Decisions | Accepted | E15 | 2026-07-08 |
 | RFC-007 | Spec & Harness Layer (`spec.yaml`, `harness.yaml`, `/v2/specs`, `/v2/harnesses`) | Draft | E20–E25 | 2026-07-12 |
 | RFC-008 | SOTA Concept Integration Layer (context engineering, verification, environments, learning, FinOps, library specs) | Draft | E26–E31 | 2026-07-13 |
-| ADR-013 | Isolation Backend for Beta Execution Environments | Proposed | E32 | 2026-07-17 |
-| ADR-014 | Secret Store Format | Proposed | E33 | 2026-07-17 |
-| ADR-015 | Global Installation Strategy | Proposed | E34 | 2026-07-17 |
+| ADR-013 | Isolation Backend for Beta Execution Environments | Accepted | E32 | 2026-07-17 |
+| ADR-014 | Secret Store Format | Accepted | E33 | 2026-07-17 |
+| ADR-015 | Global Installation Strategy | Accepted | E34 | 2026-07-17 |
 | ADR-016 | AutoDev-Owned Provider-Neutral Model Gateway Boundary | Accepted | E2-S6 | 2026-08-05 |
 | ADR-017 | Three-Signal Observability Runtime and OSS Backends | Accepted | E11-S1 | 2026-08-15 |
 | ADR-018 | Control Plane Authentication, RBAC, and Access Audit | Accepted | E11-S2 | 2026-08-15 |
