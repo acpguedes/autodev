@@ -1,6 +1,6 @@
 # E34 — Packaging, Global Install & Self-Hosted Distribution
 
-**Wave:** v2.0-beta — "plataforma completa em produção controlada".
+**Wave:** v2.0-beta — "full platform in controlled production".
 **Status:** Done · **Stories:** 3/3 complete
 **Depends on:** E14 (`autodev` CLI story — E34 owns packaging/distribution,
 E14 keeps CLI UX), E8 (persistence — embedded vs Postgres posture), E0

@@ -3,9 +3,93 @@
 All notable changes to AutoDev Architect are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); dates are `YYYY-MM-DD`.
 
-## [Unreleased] — v2.0 Alpha (in progress)
+## [v2.0-beta] — 2026-08-20 — v2 platform, Beta wave
 
-The v2.0 platform rewrite is underway on `main`. Per-story detail lives in
+**Pre-release.** All Beta-wave epics are complete (22 epics, 95/178 stories across the
+full v2 plan); three Beta exit-gate criteria remain open and are listed under *Known
+limitations* below. GA (E13 — Marketplace) is not started.
+
+v2.0 inverts the v1 architecture. The fixed linear pipeline
+(Navigator → Analyzer → Architect → Coder → DevOps → Validator → Responder) is replaced
+by a small core surrounded by typed **extension points** — plugins, agents, flows,
+reasoning strategies, routing/selection policies, skills, context providers, and UI
+panels — each inhabited by versioned, manifest-declared extensions. The v1 documentation
+is archived under [`docs/archive/v1/`](docs/archive/v1/README.md).
+
+### Delivered in the Beta wave
+
+- **E3 — Orchestration Engine**: `flow.yaml` declarative graphs; durable Run/Step
+  execution; checkpointing, retries and deterministic replay; human-in-the-loop nodes;
+  sub-flow and map/reduce composites; base visual flow editor.
+- **E4 — Reasoning**: pluggable Reasoning Strategy extension point; ReAct and
+  Plan-and-Execute reference strategies; Reflection and Debate/ToT; policies and budgets.
+- **E5 — Routing, Selection & Evaluation**: Router (intent/task classification);
+  Selector (agent/model/strategy by policy and cost); Evaluation Service; eval →
+  routing feedback loop.
+- **E6 — Skills v2**: `skill.yaml` spec; Skill Registry with versioning; least-privilege
+  invocation through the Agent Runtime; skill composition; reference skills as plugins.
+- **E7 — Context & RAG**: tree-sitter indexing pipeline; pgvector embeddings; hybrid
+  lexical + vector retrieval; pluggable Context Providers.
+- **E8 — Persistence & Data**: multi-tenant data model with mandatory `tenant_id`
+  scoping and PostgreSQL RLS; Event Store and run durability; MinIO Artifact Store with
+  reference-based GC; backup/restore with RPO/RTO procedures.
+- **E9 — APIs, Events & MCP**: Control Plane API `/v2`; run streaming; event catalog and
+  Event Bus; MCP interoperability.
+- **E10 — UI/UX & Design System**: design system and tokens; key screens; visual flow
+  editor; pluggable UI panels.
+- **E11 — Observability, Security & Multi-tenant**: OpenTelemetry traces/metrics/logs;
+  RBAC and authentication; per-tenant quotas and run budgets; execution-security
+  hardening and incident runbooks.
+- **E12 — Quality & Evals**: test pyramid and coverage gate; contract tests for every
+  extension point; agent evals with a closed feedback loop; CI validation gates that
+  block merges.
+- **E14 — Real Task Execution & Governed Autonomy**: real task executor; permission and
+  policy engine; Approval/Auto/Hybrid execution modes; sandbox-backed runners; Web UX
+  for governed execution; governed interactive shell (`autodev --shell`); `autodev` CLI.
+- **E15–E18 — Frontend redesign**: design language v2 and Execution Control Center
+  shell; `/v2` contract parity for chat, plans, patches and extensions; Control Center
+  screens (chat, plans with step-level approval gates, patches review, sessions/config,
+  extensions hub, flow builder); API front door, self-hosted docs under strict CSP, and
+  a single-command run experience.
+- **E32 — Isolated Execution Environment**: execution-environment abstraction with
+  audited backend selection; fail-closed network and filesystem policy; environment
+  lifecycle and workspace provisioning; isolation audit trail.
+- **E33 — Secrets & Credential Governance**: secret store abstraction; injection into
+  execution environments with redaction; rotation, revocation and audit.
+- **E34 — Packaging & Global Install**: install strategy (ADR-015); self-host bootstrap
+  and storage posture; upgrade path with schema-version compatibility checks.
+- **E35 — Beta Readiness Gates & Evidence**: 12-criterion evidence map; executable Beta
+  acceptance flow; open-decisions and risk registers; incident runbooks.
+
+### Known limitations
+
+Three v2.0-beta exit criteria are **open** — each needs a live environment this wave did
+not own. They are named rather than rounded up; see
+[`docs/v2_platform/beta_gap_analysis.md`](docs/v2_platform/beta_gap_analysis.md) §11.
+
+- **Hybrid retrieval p95 < 300 ms and recall baseline** — the harness exists
+  (`scripts/benchmark_retrieval.py`), but no run against a live environment is recorded.
+- **Run streaming starts < 1 s** — functional correctness is tested; no test asserts a
+  numeric latency bound.
+- **Backup/restore RPO ≤ 5 min / RTO ≤ 30 min in staging** — no staging environment
+  exists; validated only via a documented execution procedure.
+
+Two further criteria are **partial**: the real plan → code → patch → validate → evaluate
+flow is evidenced component-by-component but has no single composed automated rehearsal
+(`docs/v2_platform/beta_acceptance_flow.md` is the checklist that composes it), and WCAG
+2.2 AA coverage is component-level via Storybook-axe with no consolidated per-screen audit.
+
+### Documentation
+
+- Reference documentation translated from Brazilian Portuguese to English
+  (`docs/architecture/v2_platform_reference.md` and the `docs/v2_platform/` tracking set).
+- v1-era architecture documents relocated to `docs/archive/v1/` with a v1 → v2 map.
+
+---
+
+## Previous entries — per-epic detail
+
+Per-story detail lives in
 [`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) (Changelog section);
 epic summaries:
 

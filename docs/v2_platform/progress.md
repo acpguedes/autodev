@@ -14,7 +14,7 @@ claims checklist into an evidence-backed one. **E35-S1** split §18.9's
 combined isolation/secrets criterion into three separately assertable
 criteria (10 isolation/E32, 11 secrets/E33, 12 clean-install-and-upgrade/
 E34) and added a 12-criterion evidence map
-(`docs/v2_platform/beta_gap_analysis.md` §11, "fato vs. recomendação"
+(`docs/v2_platform/beta_gap_analysis.md` §11, "fact vs. recommendation"
 discipline per E35-S1-T3): 7 criteria **Atendido** with named evidence, 2
 **Parcial**, 3 honestly **Aberto** (hybrid-retrieval benchmark never run
 against a live environment, no numeric streaming-latency assertion, no
@@ -588,7 +588,7 @@ Add a dated entry every time a story/epic/wave status changes.
   secrets criterion in `v2_platform_reference.md` §18.9 into three
   separately assertable criteria (10 isolation/E32, 11 secrets/E33, 12
   clean-install-and-upgrade/E34). Added a 12-criterion evidence map to
-  `beta_gap_analysis.md` §11, applying the "fato vs. recomendação"
+  `beta_gap_analysis.md` §11, applying the "fact vs. recommendation"
   discipline (E35-S1-T3) rather than declaring the gate complete: 7
   criteria **Atendido** with named evidence, 2 **Parcial**, 3 honestly
   **Aberto** — the hybrid-retrieval benchmark has never run against a live
@@ -1305,7 +1305,7 @@ Add a dated entry every time a story/epic/wave status changes.
   **RFC-007** (Draft — layer proposal, prior art, posture decision
   "spec-anchored, code-coupled, drift-enforced"), reference-doc extensions
   (new **§22** architecture narrative, roadmap entries **§18.7.12–§18.7.17**,
-  new **v2.1 wave** in §18.9, Sumário entry), six phase docs
+  new **v2.1 wave** in §18.9, Contents entry), six phase docs
   (`phases/e20_spec_core.md` … `phases/e25_extension_studio.md`), the decisions
   index row, and this tracker update (story total 90 → 118 across 25 epics).
   Per-epic ADRs remain required before each epic's first story

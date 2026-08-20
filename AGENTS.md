@@ -167,7 +167,7 @@ gives a terse continuation instruction instead of naming a specific
 story/epic. Resolve them against `docs/v2_platform/progress.md` (the canonical
 tracker) before writing code.
 
-**"continue a implementação" / "execute a próxima etapa|fase|épico"
+**"continue a implementação" / "next stage|phase|epic"
 (or English equivalents):**
 - Pick the next epic that makes sense in wave order: first any unfinished
   **Beta** epic (respecting the `Depends on` column); once Beta is complete,

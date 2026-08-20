@@ -39,7 +39,7 @@ isolation" as a side effect.
 
 Every environment decision for a run is durably recorded — this is what
 gate criterion (10) (`docs/v2_platform/beta_gap_analysis.md` §11) means by
-"comprovado por registros de run, não por configuração":
+"proven by run records, not by configuration":
 
 ```python
 from backend.environments.manager import EnvironmentManager

@@ -1,6 +1,6 @@
 # E32 — Isolated Execution Environment (Beta cut)
 
-**Wave:** v2.0-beta — "plataforma completa em produção controlada".
+**Wave:** v2.0-beta — "full platform in controlled production".
 **Status:** Done · **Stories:** 4/4 complete (E32-S1..S4, 2026-08-18)
 **Depends on:** E14-S4 (governed sandbox runners contract), E0 (MinIO
 artifacts), E11 (audit sink, additive)
