@@ -4288,7 +4288,7 @@ Tokens arrive via streaming (SSE/WebSocket); the `▌` cursor + `aria-live="poli
 #### 15.3.2 Visual flow editor (node canvas)
 
 ```
-┌── Flow: entregar-feature@1.3 ─────────────────── [Validate][Save]┐
+┌── Flow: deliver-feature@1.3 ──────────────────── [Validate][Save]┐
 │ Palette       │  Canvas                          │ Inspector     │
 │ ┌───────────┐ │   ┌────────┐   cond: ok?         │ Node: patch   │
 │ │▸ Agent    │ │   │ plan   │──────┐              │ type: agent   │
@@ -4348,9 +4348,9 @@ Skills use the same table (columns: id, version, IO, permissions, triggers). Edi
 ```
 ┌── Runs ──────────────────── [period ▾][status ▾][🔍]──────────┐
 │ id        flow             status   dur    tokens  cost        │
-│ run_8f2   entregar-feature ● ok     42s    12.4k   $0.09        │
-│ run_8f1   corrigir-bug     ✕ failed 11s     3.1k   $0.02        │
-│ run_8ee   entregar-feature ⟳ active —       —       —           │
+│ run_8f2   deliver-feature  ● ok     42s    12.4k   $0.09        │
+│ run_8f1   fix-bug          ✕ failed 11s     3.1k   $0.02        │
+│ run_8ee   deliver-feature  ⟳ active —       —       —           │
 ├─────────────────────── run_8f2 · Trace ────────────────────────┤
 │ 0s   ├ plan          ✓ 1.2s                                     │
 │ 1.2s ├ patch         ✓ 8.4s   ▓ tokens 5.0k                     │
