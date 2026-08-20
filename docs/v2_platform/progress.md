@@ -7,7 +7,39 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-18 (**E34 complete — 3/3**, branch
+**Last updated:** 2026-08-19 (**E35 complete — 3/3, v2.0-beta wave
+substantially complete**, branch `epic/e35-beta-readiness-gates` (branched
+from `main` after E34 merged via PR #107) — turns the v2.0-beta gate from a
+claims checklist into an evidence-backed one. **E35-S1** split §18.9's
+combined isolation/secrets criterion into three separately assertable
+criteria (10 isolation/E32, 11 secrets/E33, 12 clean-install-and-upgrade/
+E34) and added a 12-criterion evidence map
+(`docs/v2_platform/beta_gap_analysis.md` §11, "fato vs. recomendação"
+discipline per E35-S1-T3): 7 criteria **Atendido** with named evidence, 2
+**Parcial**, 3 honestly **Aberto** (hybrid-retrieval benchmark never run
+against a live environment, no numeric streaming-latency assertion, no
+staging environment for restore validation) — named gaps, not silently
+presumed closed. **E35-S2** delivered `docs/v2_platform/beta_acceptance_flow.md`,
+an executable checklist composing the central plan→approve→code→validate→
+evaluate flow plus four negative paths (permission denied, budget
+exhausted, isolation violation, secret revoked) from real, already-tested
+evidence — no new automated test, since the pieces already exist and this
+is what strings them into one rehearsal. **E35-S3** resolved the open-
+decisions register (ADR-013/014/015 all Accepted within their own epics,
+kept traceable with options/owner/decide-by rather than deleted), added a
+formal Beta risk register (isolation escape, secret leak, failed upgrade,
+runaway execution, each mapped to its mitigating stories), and three
+incident runbooks extending the E11 set
+(`docs/v2_platform/runbooks/e35_*.md`): isolation-violation containment
+(`AUTODEV_EXECUTION_ENVIRONMENT_BACKEND=unavailable` as a config-level kill
+switch), secret rotation under suspected leak, and the three
+`autodev upgrade` failure modes with their correct restore action. Also
+fixed accumulated doc drift found along the way: `decisions/README.md`
+still listed ADR-013/014/015 as Proposed, and E33's own progress.md entry
+still read "Not merged to `main`" after PR #106 had already landed it.
+E35 introduces no new extension points — it governs evidence for existing
+ones, per its own phase doc. Not yet merged to `main`. Previous entry:
+2026-08-18 (**E34 complete — 3/3**, branch
 `epic/e34-packaging-global-install` (branched from `main` after E33 merged
 via PR #106) — the Beta packaging/distribution slice: ADR-015 (Global
 Installation Strategy) resolved Proposed -> Accepted, choosing a hybrid of
@@ -44,8 +76,8 @@ excerpt as groundwork for the GA v1->v2 upgrade requirement (E13). Docs:
 wheel-based clean-install verification cover the documented path; the
 v2.0-beta gate's actual clean-environment-install checklist row (§18.9) is
 left to E35-S1-T1 (Beta Readiness Gates & Evidence), which owns expanding
-that gate with the E32/E33/E34 criteria — not duplicated here. Not merged to
-`main`. Previous entry: 2026-08-18 (**E33 complete — 3/3**, branch
+that gate with the E32/E33/E34 criteria — not duplicated here. Merged to
+`main` via PR #107 (2026-08-19). Previous entry: 2026-08-18 (**E33 complete — 3/3**, branch
 `epic/e33-secrets-credential-governance` (branched from
 `epic/e32-isolated-execution-beta`, which is not yet merged to `main`) —
 the Beta secret layer: a scoped-reference secret store
@@ -350,14 +382,14 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E32 | Isolated Execution Environment (Beta slice) | Beta | Done | 4/4 | E14, E11-S4; E28 (contracts) | [phases/e32_isolated_execution_beta.md](phases/e32_isolated_execution_beta.md) |
 | E33 | Secrets & Credential Governance | Beta | Done | 3/3 | E32, E0-S5, E11-S4 | [phases/e33_secrets_credential_governance.md](phases/e33_secrets_credential_governance.md) |
 | E34 | Packaging & Global Install | Beta | Done | 3/3 | E14-S7 (CLI), E32 | [phases/e34_packaging_global_install.md](phases/e34_packaging_global_install.md) |
-| E35 | Beta Readiness Gates & Evidence | Beta | Not started | 0/3 | E32-E34, E11, E12 | [phases/e35_beta_readiness_gates.md](phases/e35_beta_readiness_gates.md) |
+| E35 | Beta Readiness Gates & Evidence | Beta | Done | 3/3 | E32-E34, E11, E12 | [phases/e35_beta_readiness_gates.md](phases/e35_beta_readiness_gates.md) |
 | E36 | SDD Operating Model & Document Authority | v2.3 | Not started | 0/4 | E20-E23 | [phases/e36_sdd_operating_model.md](phases/e36_sdd_operating_model.md) |
 | E37 | Harness & Looping Excellence: Context-Independent Agents | v2.3 | Not started | 0/5 | E23, E26, E27, E8, E14, E32 | [phases/e37_harness_looping_context_independence.md](phases/e37_harness_looping_context_independence.md) |
 | E38 | SOTA Evidence Matrix & Capability Benchmark | v2.3 | Not started | 0/4 | E12, E20-E23, E27, E28 | [phases/e38_sota_evidence_benchmark.md](phases/e38_sota_evidence_benchmark.md) |
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 
-Total: **92/178 stories complete** across 40 epics (E19 is a proposed
+Total: **95/178 stories complete** across 40 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -457,15 +489,46 @@ Goal: complete intelligence, context, data, API, UI, security, and quality
 capabilities for real, controlled operation. Anchor epics: **E4**, **E5**, **E6**,
 **E7**, **E8-S3/E8-S4**, **E9-S2/S3/S4**, **E10**, **E11**, **E12-S2/S3/S4**,
 **E14** (real task execution, permission/approval policy, governed sandbox
-runners, Web UX + interactive shell for approval, `autodev` CLI install).
+runners, Web UX + interactive shell for approval, `autodev` CLI install),
+**E15/E16/E17** (frontend redesign), **E32** (isolated execution
+environment), **E33** (secrets & credential governance), **E34**
+(packaging & global install), **E35** (this gate itself — evidence map,
+acceptance flow, decisions/risk register, runbooks).
 
-- [ ] The real plan -> code -> apply patch -> validate in sandbox -> evaluate flow runs
-      with RBAC, fail-closed budgets, and end-to-end traces.
-- [ ] Hybrid retrieval reaches p95 < 300 ms and the recall baseline.
-- [ ] Run streaming starts < 1 s.
-- [ ] Every extension point has a green contract test and quality gates block merges.
-- [ ] UI is WCAG 2.2 AA on key screens; flow editor round-trips.
-- [ ] Backup/restore validated (RPO <= 5 min, RTO <= 30 min) in staging.
+Full 12-criterion evidence map (fact vs. recommendation, per E35-S1):
+`docs/v2_platform/beta_gap_analysis.md` §11 — the single source; do not
+duplicate its evidence citations here.
+
+- [x] Every extension point has a green contract test and quality gates block merges.
+- [x] Design language v2 + Execution Control Center app shell (E15), `/v2` API
+      parity (E16), and Control Center screens (E17) are adopted.
+- [x] Real task execution runs by default in a fail-closed isolated
+      environment with an audited backend/profile decision (E32).
+- [x] No secret is ever returned in cleartext by any API/log/event/trace/
+      diff/artifact; a leak fixture is detected and audited (E33).
+- [x] A clean-environment install is documented and verified; an upgrade
+      between two versions preserves data under the schema compatibility
+      check (E34).
+- [~] The real plan -> code -> apply patch -> validate in sandbox -> evaluate flow runs
+      with RBAC, fail-closed budgets, and end-to-end traces — every component
+      individually evidenced; no single composed rehearsal until
+      `docs/v2_platform/beta_acceptance_flow.md` (E35-S2).
+- [~] UI is WCAG 2.2 AA on key screens; flow editor round-trips — round-trip
+      met; WCAG is component-level (Storybook-axe) only, no consolidated
+      per-screen audit.
+- [ ] Hybrid retrieval reaches p95 < 300 ms and the recall baseline — harness
+      exists (`scripts/benchmark_retrieval.py`); no run against a live
+      environment recorded. Open (`phases/e7_context_rag.md`).
+- [ ] Run streaming starts < 1 s — functional correctness tested; no
+      numeric latency assertion exists. Open.
+- [ ] Backup/restore validated (RPO <= 5 min, RTO <= 30 min) in staging — no
+      staging environment exists; validated via documented execution
+      procedure only. Open (`phases/e8_persistence_data.md`).
+
+`[~]` = partially met (real evidence, criterion not fully satisfied). The
+three `[ ]` gaps (retrieval benchmark, streaming latency, staging restore)
+need a live environment E35 does not own; closing them is follow-up work,
+not silently declared done.
 
 ### v2.0-GA — "general availability"
 
@@ -485,6 +548,55 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-19** — **E35 — Beta Readiness Gates & Evidence is complete
+  (3/3)**, on `epic/e35-beta-readiness-gates` (branched from `main` after
+  E34 merged via PR #107). **E35-S3** closed the epic: open-decisions
+  register, risk register & runbooks. `beta_gap_analysis.md` §7's
+  decisions table records ADR-013/014/015 as all **Accepted** — resolved
+  within their own epics rather than left open as this story originally
+  anticipated, kept traceable with options/recommendation/owner/decide-by
+  regardless. New §7.1 Beta risk register maps isolation escape, secret
+  leak, failed upgrade, and runaway execution to their mitigating stories.
+  Three runbooks extend the E11 set: `e35_isolation_violation_incident.md`
+  (config-level kill switch `AUTODEV_EXECUTION_ENVIRONMENT_BACKEND=unavailable`,
+  reconstructing a run's isolation history from `EnvironmentManager`
+  records), `e35_secret_leak_rotation.md` (rotate-then-revoke, redaction-
+  contract verification), `e35_failed_upgrade_restore.md` (the three
+  `autodev upgrade` outcomes — `ok`/`refused`/`backup_failed` — and the
+  correct restore action for each). Also fixed doc drift found along the
+  way: `decisions/README.md` still listed the three ADRs as Proposed, and
+  E33's/E34's own progress.md entries still read "Not merged to `main`"
+  after their PRs (#106, #107) had already landed.
+
+- **2026-08-19** — **E35-S2 — Beta acceptance flow is complete, E35 now In
+  progress · 2/3**. `docs/v2_platform/beta_acceptance_flow.md`: an
+  executable checklist for gate criterion (1) — plan → approve (RBAC) →
+  code/apply patch → validate in sandbox → evaluate — with each step's
+  typed expected outcome and durable event evidence named
+  (`backend/events/catalog.py`), plus four negative paths (permission
+  denied, budget exhausted, isolation violation, secret revoked) each
+  verified to end in a typed audited state with real, already-existing
+  test coverage cited (no new test added — the pieces already exist; this
+  composes them). A rehearsal procedure using only verified real CLI/API
+  surfaces (`POST /v2/plans/{id}/steps/{n}/approve`,
+  `GET /v2/sessions/{id}/runs`, `GET /v2/audit/access`) produces the gate
+  evidence bundle a release candidate needs.
+
+- **2026-08-19** — **E35-S1 — Expanded Beta gate & evidence mapping is
+  complete, E35 now In progress · 1/3**. Split the combined isolation/
+  secrets criterion in `v2_platform_reference.md` §18.9 into three
+  separately assertable criteria (10 isolation/E32, 11 secrets/E33, 12
+  clean-install-and-upgrade/E34). Added a 12-criterion evidence map to
+  `beta_gap_analysis.md` §11, applying the "fato vs. recomendação"
+  discipline (E35-S1-T3) rather than declaring the gate complete: 7
+  criteria **Atendido** with named evidence, 2 **Parcial**, 3 honestly
+  **Aberto** — the hybrid-retrieval benchmark has never run against a live
+  environment (`phases/e7_context_rag.md` already says so), no test
+  asserts the streaming-start latency target, and no staging environment
+  exists to validate backup/restore against (`phases/e8_persistence_data.md`
+  already says so too). Mirrored into `progress.md`'s own v2.0-beta
+  wave-exit checklist, which pointed at nothing concrete before this.
 
 - **2026-08-18** — **E34 — Packaging & Global Install (Beta) is complete
   (3/3)**, on `epic/e34-packaging-global-install` (branched from `main`

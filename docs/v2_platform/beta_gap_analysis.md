@@ -125,18 +125,36 @@ aprovados.
   `autodev` operacional sem checkout do repositório, com versão reportada
   e upgrade entre duas versões preservando dados.
 
-## 7. Riscos, decisões em aberto e ADRs/RFCs exigidos
+## 7. Registro de decisões em aberto (E35-S3-T1, atualizado 2026-08-19)
 
-| Decisão em aberto | ADR | Opções | Recomendação | Decidir até |
+Nenhuma das três decisões abaixo permanece em aberto — todas foram
+resolvidas **dentro do próprio épico** que as motivou, não silenciosamente:
+cada ADR documenta a decisão e as consequências no próprio arquivo. Este
+registro é mantido mesmo assim, como exigido por E35-S3-T1 — "no silent
+resolution" significa que a decisão precisa estar rastreável com opções,
+recomendação, dono e data, e está.
+
+| Decisão | ADR | Opções | Recomendação | Dono | Decidir até | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| Backend de isolamento Beta | [ADR-013](decisions/ADR-013-beta-isolation-backend.md) | container hardening; bubblewrap; gVisor; microVM | container hardening no Beta atrás da abstração; microVM em E28 | Epic owner (E32) | antes de E32-S2 | **Decidida** — Accepted 2026-08-18, container hardening (`HardenedContainerBackend`) |
+| Formato do secret store | [ADR-014](decisions/ADR-014-secret-store-format.md) | arquivo cifrado; DB cifrado at rest; KMS/vault externo | DB cifrado at rest como default self-host; KMS como backend plugável | Epic owner (E33) | antes de E33-S2 | **Decidida** — Accepted 2026-08-18, SQLite cifrado (Fernet) atrás de `SecretBackendKind` |
+| Estratégia de instalação global | [ADR-015](decisions/ADR-015-global-install-strategy.md) | pipx/uv tool; bundle container; script instalador | pipx/uv para CLI + bundle para self-host | Epic owner (E34) | antes de E34-S2 | **Decidida** — Accepted 2026-08-18, híbrido pip/pipx/uv + docker-compose |
+
+`docs/v2_platform/decisions/README.md` ainda listava as três como
+"Proposed" neste ponto — corrigido junto com esta atualização (drift de
+doc, não uma decisão nova).
+
+## 7.1 Registro de riscos Beta (E35-S3-T2)
+
+| Risco | Impacto | Mitigação | Histórias | Status |
 | --- | --- | --- | --- | --- |
-| Backend de isolamento Beta | ADR-013 (Proposed) | container hardening; bubblewrap; gVisor; microVM | container hardening no Beta atrás da abstração; microVM em E28 | antes de E32-S2 |
-| Formato do secret store | ADR-014 (Proposed) | arquivo cifrado; DB cifrado at rest; KMS/vault externo | DB cifrado at rest como default self-host; KMS como backend plugável | antes de E33-S2 |
-| Estratégia de instalação global | ADR-015 (Proposed) | pipx/uv tool; bundle container; script instalador | pipx/uv para CLI + bundle para self-host | antes de E34-S2 |
+| Escape de isolamento | Execução de código não confiável escapa do ambiente isolado, acessando o host ou rede não autorizada | Política default-deny de rede/filesystem, decisão auditada por execução, `UnavailableBackend` como kill switch de configuração; classe microVM mais forte é o alvo de E28 | E32-S2, E32-S4, E28 (v2.2) | Mitigado (Beta); defesa-em-profundidade adicional em E28 |
+| Vazamento de secret | Valor de secret exposto em log, evento, trace, diff ou artefato | Redação de valor exato antes de qualquer persistência, aplicada dentro de `emit_event()` (protege todo produtor); evento `secret.leak.suspected` audita a tentativa | E33-S2, E33-S3 | Mitigado; detecção é exact-match apenas (sem heurística de entropia — limitação declarada) |
+| Upgrade falho | Migração corrompe ou perde dados ao atualizar entre versões | Backup obrigatório antes de migrar (`BackupManager`); `MigrationRunner` recusa uma migração contra schema mais novo que o código conhece (`SchemaVersionMismatchError`); rollback via restore documentado | E34-S3, E8-S4 | Mitigado; sem ambiente de staging para ensaiar o restore (gap aberto, critério 6 do §11) |
+| Execução descontrolada | Uma tarefa consome recursos/orçamento além do previsto, ou roda indefinidamente | Budgets que falham fechado no motor de raciocínio, política de execução por categoria, quotas por tenant, timeout de decisão pendente | E14-S2, E14-S3, E11-S3 | Mitigado |
 
-Riscos principais: escape de isolamento (mitigado por E32-S2/S4 +
-defesa-em-profundidade do E28), vazamento de secret (E33-S2/S3), upgrade
-falho (E34-S3 + backup E8-S4), execução descontrolada (budgets E14 +
-quotas E11). Registro vivo mantido por E35-S3.
+Registro vivo — revisado a cada limite de onda (fim de v2.0-beta, início de
+v2.1), ou sempre que um novo risco material for identificado.
 
 ## 8. Comandos de validação executados
 
@@ -156,3 +174,53 @@ prioriza um Beta honesto e testável: fluxo central de coding completo
 instalação comprováveis, e extensibilidade preservada (contratos + ADRs
 pendentes explícitos) sem comprometer segurança, previsibilidade ou
 qualidade.
+
+## 10. Status de resolução das lacunas (E35, 2026-08-19)
+
+E32, E33 e E34 foram implementados e mesclados a `main` (PRs #105, #106,
+#107). Este parágrafo fecha o ciclo de auditoria aberto na Seção 2, sem
+reescrever o registro histórico acima.
+
+| # | Lacuna | Status | Como foi resolvida |
+| --- | --- | --- | --- |
+| G1 | Gate Beta não exige isolamento comprovado | **Resolvida** | Critério (10) do §18.9 (execução isolada fail-closed, backend/perfil auditado); evidência em §11 abaixo |
+| G2 | Fronteira E14×E28 sem recorte Beta definido | **Resolvida** (já em E32) | `phases/e32_isolated_execution_beta.md` — seção de relação com E14/E28 |
+| G3 | Secrets sem épico Beta | **Resolvida** | Critério (11) do §18.9 (referência escopada, redação, fixture de vazamento auditada); evidência em §11 |
+| G4 | Instalação global sem estratégia de packaging/upgrade | **Resolvida** | Critério (12) do §18.9 (`autodev --version`, install limpo, upgrade com compatibility check); evidência em §11 |
+| G5 | Critérios do gate sem mapa de evidência | **Resolvida** | Seção 11 abaixo — mapa de evidência para os 12 critérios do §18.9 v2.0-beta, com status honesto (Atendido/Parcial/Aberto) |
+| G6 | Caminhos negativos fora da definição de aceitação Beta | **Resolvida** | `docs/v2_platform/beta_acceptance_flow.md` (E35-S2) |
+| G7 | Decisões arquiteturais sem ADR | **Resolvida** | ADR-013/014/015 todos **Accepted** (ver Seção 7 atualizada, E35-S3) |
+| G8 | Runbooks Beta de incidente ausentes | **Resolvida** | `docs/v2_platform/runbooks/e35_*.md` (E35-S3) |
+
+## 11. Mapa de evidência do gate (§18.9 v2.0-beta) — E35-S1-T2
+
+Disciplina fato vs. recomendação (E35-S1-T3): **Atendido** exige evidência
+citável (teste, doc, registro de execução); **Parcial** significa evidência
+real mas incompleta perante o critério; **Aberto** significa que nenhuma
+evidência foi encontrada — é uma lacuna nomeada, não presumida como
+resolvida.
+
+| # | Critério (resumo) | Status | Evidência |
+| --- | --- | --- | --- |
+| 1 | Fluxo real plan→code→patch→validate→evaluate com RBAC, budgets fail-closed, traços fim a fim | **Parcial** | Cada componente tem evidência isolada — RBAC (`backend/tests/unit/security/`, ADR-018), budgets fail-closed (E14-S2 `backend/execution/policy.py` + E11-S3 quotas), traços (`test_orchestrator_agent_step_emits_correlated_span`), execução real (E14-S1..S4). **Sem um teste composto único** cobrindo os cinco passos numa mesma execução — esse é exatamente o objeto de `docs/v2_platform/beta_acceptance_flow.md` (E35-S2), que também não é um novo teste automatizado, é o checklist executável que compõe essa evidência. |
+| 2 | Recuperação híbrida p95 < 300 ms e recall baseline | **Aberto** | `phases/e7_context_rag.md` linha 178 já declara: "unverified without a live [environment]". O harness existe (`backend/repository/retrieval/benchmark.py`, `scripts/benchmark_retrieval.py --max-p95-ms --min-recall`), mas não há execução registrada contra um ambiente vivo comprovando o alvo. |
+| 3 | Streaming de run inicia < 1 s | **Aberto** | `backend/tests/unit/api/test_runs_stream_v2.py` cobre corretude funcional (backlog, resume, heartbeat, desconexão) mas nenhum teste mede um limite de latência numérico. |
+| 4 | Todo ponto de extensão com contract test verde; quality gates bloqueiam merge | **Atendido** | `backend/tests/contract/test_extension_point_coverage.py`; `ci-backend.yml` (`lint-typecheck` + `patch-validation` gates, E12-S4) |
+| 5 | UI WCAG 2.2 AA nas telas-chave; editor de fluxos com round-trip | **Parcial** | Round-trip: `frontend/lib/flow/yaml.ts` + E17-S6 (**Atendido**). WCAG: cobertura por componente via Storybook-axe em E15/E17 (`frontend/**/*.stories.tsx`), mas **nenhuma auditoria WCAG 2.2 AA consolidada por tela** existe — a auditoria de paridade visual E19 (proposta, não planejada) seria o veículo natural para isso. |
+| 6 | Backup/restore validado (RPO ≤ 5 min, RTO ≤ 30 min) em staging | **Aberto** | `phases/e8_persistence_data.md` linhas 203–205: "No staging environment" — validação feita via procedimento de execução documentado (`runbooks/e8_restore_runbook.md`), não em staging real. |
+| 7 | Linguagem de design v2 + app shell E15 adotados | **Atendido** | E15 Done (4/4); `docs/v2_platform/phases/e15_design_language_shell.md` |
+| 8 | Paridade de API `/v2` (E16) | **Atendido** | E16 Done (4/4); `docs/v2_platform/phases/e16_redesign_api_enablement.md` |
+| 9 | Telas do Control Center (E17) | **Atendido** | E17 Done (6/6); `docs/v2_platform/phases/e17_control_center_screens.md` |
+| 10 | Execução isolada fail-closed por padrão, decisão auditada (E32) | **Atendido** | `backend/environments/` (`EnvironmentBackend`, `UnavailableBackend`), catálogo de eventos `environment.instance.*`/`environment.access.*`, `docs/environments/beta_isolation.md`, ADR-013 Accepted |
+| 11 | Nenhum secret em claro; fixture de vazamento auditada (E33) | **Atendido** | `backend/secret_store/redaction.py`, evento `secret.leak.suspected`, `docs/security/secrets.md`, ADR-014 Accepted |
+| 12 | Instalação em ambiente limpo verificada; upgrade preserva dados (E34) | **Atendido** | `scripts/verify_clean_install.sh`, `backend/ops/version.py`, `MigrationRunner.run_pending` (`SchemaVersionMismatchError`), `docs/execution/cli-install.md`, `docs/execution/upgrade.md`, ADR-015 Accepted |
+
+**Resumo honesto**: 7 de 12 critérios **Atendidos** (4, 7, 8, 9, 10, 11,
+12), 2 **Parciais** (1 e 5 — evidência real mas incompleta), 3 **Abertos**
+(2, 3 e 6 — nenhuma evidência de verificação, apenas de
+ferramentas/documentação para verificar). Isso não é o gate "completo" — é
+o gate **mensurável**: cada
+lacuna remanescente é nomeada com sua causa exata, não escondida atrás de
+uma checkbox marcada. Fechar 2 e 6 exige um ambiente vivo (staging /
+dataset de recuperação populado) que está fora do escopo de E35 (E35
+audita e mapeia evidência; não é dono da infraestrutura de staging).
