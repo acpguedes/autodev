@@ -168,8 +168,8 @@ durable `secret.leak.suspected` audit event (`tenantId`/`project`/`name`/
   create/resolve coverage from E33-S1/S2.
 - **Beta gate wiring (E33-S3-T3).** The v2.0-beta gate's "no plaintext
   secrets" criterion is *evidenced* here (redaction tests +
-  reference-only audit trail); adding the actual checklist row to
-  `docs/v2_platform/progress.md` §18.9 is E35-S1-T1's job (E35 — Beta
-  Readiness Gates & Evidence), which explicitly owns expanding that gate
-  with the E32/E33/E34 criteria — E33 supplies the evidence, not the
-  checklist edit.
+  reference-only audit trail). E35 (Beta Readiness Gates & Evidence,
+  Done) has since split this into its own separately assertable §18.9
+  criterion and recorded its evidence status in
+  `docs/v2_platform/beta_gap_analysis.md` §11 — E33 supplies the
+  evidence, E35 the checklist.

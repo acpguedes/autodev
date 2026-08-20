@@ -142,10 +142,30 @@ RFC/ADR changes something a root-level doc claims — e.g. a stack decision reco
   `docs/feature_matrix.md` lists as `stub` or `planned`.** This exact failure mode is
   called out in `docs/archive/v1/mvp_refactor_plan.md`'s evaluation and must not
   recur during the v2 rewrite.
-- **Don't delete historical docs — mark them superseded.** Add a banner (see the
-  existing pattern in `docs/archive/v1/initial_architecture.md`,
-  `docs/archive/v1/target_architecture.md`, and
-  `docs/archive/v1/stack_decisions.md`, which already use dated "Current status"
-  callouts) pointing at the doc that replaced it.
+- **Don't delete historical docs — archive them.** Superseded documents keep their
+  content and gain a dated banner naming the document that replaced them.
+
+  **Amended at the Beta exit (2026-08-20):** this rule previously said to leave a
+  superseded doc in place with a banner. It now says to *relocate* it under
+  `docs/archive/v1/` as well, because banners alone were not enough — a reader
+  browsing `docs/architecture/` or `docs/implementation/` still met v1 content
+  first, and the v1/v2 split was invisible from the tree. The Beta pass moved ten
+  documents (`initial_architecture`, `target_architecture`, `stack_decisions`,
+  `plugin_seams`, `agent_spec`, `dynamic_orchestration`, `skills_subsystem`,
+  `data_model`, `mvp_refactor_plan`, `implementation_strategy`), gave each the
+  standardized banner in `docs/archive/v1/*.md`, and added
+  `docs/archive/v1/README.md` with the full v1 → v2 map. Deletion remains
+  forbidden; the archive is the audit trail. Relocation requires rewriting inbound
+  and outbound relative links, link labels, and prose path mentions — verify with a
+  link check before merging. **The GA pass should follow this convention, not
+  re-litigate it.**
+
+  Not everything pre-v2 is archived: a document that still describes current
+  behaviour stays in place and is updated instead (at the Beta exit:
+  `weaknesses_and_strategies.md`, `patches_and_validation.md`,
+  `self_hosting_oss.md`, and `agents/agent-coder-v1-baseline.md` — the last of
+  which is additionally pinned by
+  `backend/tests/unit/agents/test_agent_coder_plugin.py`, so moving it would break
+  a test).
 - **One rebuild pass per wave exit, tracked as its own changelog entry** in
   `docs/v2_platform/progress.md`, so it's visible that the pass happened and when.
