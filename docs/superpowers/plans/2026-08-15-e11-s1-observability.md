@@ -1414,7 +1414,7 @@ git commit -m "feat(observability): provision oss telemetry stack and dashboard"
 - Modify: `CHANGELOG.md`
 - Modify: `docs/config.md`
 - Modify: `docs/ops/observability.md`
-- Modify: `docs/architecture/stack_decisions.md`
+- Modify: `docs/archive/v1/stack_decisions.md`
 - Modify: `docs/feature_matrix.md`
 - Modify: `docs/roadmap.md`
 - Modify: `docs/v2_platform/phases/e11_observability_security_multitenant.md`
@@ -1543,7 +1543,7 @@ AUTODEV_OBSERVABILITY_LOG_RETENTION=168h
 - [ ] Update project documentation:
 
   - `README.md` and `DESCRIPTION.md`: mark the self-hosted three-signal stack and dashboard as available.
-  - `docs/architecture/stack_decisions.md`: add Collector, Tempo, Loki, Prometheus, and Grafana with ADR-017.
+  - `docs/archive/v1/stack_decisions.md`: add Collector, Tempo, Loki, Prometheus, and Grafana with ADR-017.
   - `docs/feature_matrix.md`: replace the stale “optional OTel tracing” entry with traces/metrics/logs/dashboard/sampling/retention status.
   - `docs/roadmap.md`: mark E11-S1 complete without marking E11 complete.
   - `CHANGELOG.md`: add the E11-S1 operator-facing feature and rollback flag.
@@ -1603,7 +1603,7 @@ Expected: no unfinished implementation markers.
 - [ ] Commit documentation and NFR evidence:
 
 ```bash
-git add scripts/measure_observability_overhead.py backend/tests/unit/observability/test_overhead_measurement.py .env.example README.md DESCRIPTION.md CHANGELOG.md docs/config.md docs/ops/observability.md docs/architecture/stack_decisions.md docs/feature_matrix.md docs/roadmap.md docs/v2_platform/phases/e11_observability_security_multitenant.md docs/v2_platform/progress.md graphify-out
+git add scripts/measure_observability_overhead.py backend/tests/unit/observability/test_overhead_measurement.py .env.example README.md DESCRIPTION.md CHANGELOG.md docs/config.md docs/ops/observability.md docs/archive/v1/stack_decisions.md docs/feature_matrix.md docs/roadmap.md docs/v2_platform/phases/e11_observability_security_multitenant.md docs/v2_platform/progress.md graphify-out
 git commit -m "docs(observability): publish e11-s1 operations and evidence"
 ```
 

@@ -83,7 +83,7 @@ Subtasks:
 - There is no reasoning-strategy abstraction today. Agents in
   `backend/agents/base.py` are pure prompt-to-text (single LLM call, no
   ReAct/Plan-and-Execute loop, no tool-use), so E4 starts from zero. The planned
-  agent tool-use loop (Unit 25 of `docs/implementation/mvp_refactor_plan.md`) is a
+  agent tool-use loop (Unit 25 of `docs/archive/v1/mvp_refactor_plan.md`) is a
   useful precursor for the ReAct-style step cycle in E4-S1/E4-S2, since a bounded
   observe/act loop with tool bindings is a prerequisite for any real ReAct
   implementation.

@@ -175,7 +175,7 @@ separate from the model gateway.
   packaging once `agent-coder` establishes the pattern.
 - Agents today are pure prompt-to-text with **no tool-use loop**
   (`backend/agents/base.py`) — an agentic read/edit/run/observe loop is tracked
-  separately as Unit 25 in `docs/implementation/mvp_refactor_plan.md` and is a direct
+  separately as Unit 25 in `docs/archive/v1/mvp_refactor_plan.md` and is a direct
   precursor to E2-S4's tool broker.
 
 ## Epic exit checklist

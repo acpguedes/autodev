@@ -109,7 +109,7 @@ Subtasks:
 - The repository already has three informal "plugin seams" — auto-discovery of API
   routers (`backend/api/routers/__init__.py`), CLI plugins
   (`backend/cli_plugins/__init__.py`), and the agent registry
-  (`backend/agents/registry.py`) — documented in `docs/architecture/plugin_seams.md`.
+  (`backend/agents/registry.py`) — documented in `docs/archive/v1/plugin_seams.md`.
   This is drop-a-file auto-discovery, useful precedent for E1-S2's discovery
   mechanism, but it has **no manifest, no `hostApi` versioning, no declared
   permissions, and no isolation/sandbox** — the gap E1 as a whole closes.

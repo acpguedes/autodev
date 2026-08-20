@@ -109,7 +109,7 @@ servers as agent tools) is a separate slice, tracked independently.
   under `/v2` and without `schemaVersion` — the closest precursor to E9-S1, requiring
   a deliberate versioning pass rather than a rewrite from zero.
 - There is no SSE/WebSocket streaming today (`GET /sessions/{id}/runs/{run_id}/stream`
-  is `planned`, tracked as Unit 6 in `docs/implementation/mvp_refactor_plan.md`), no
+  is `planned`, tracked as Unit 6 in `docs/archive/v1/mvp_refactor_plan.md`), no
   event catalog/Event Bus, and no MCP interoperability — E9-S2/S3/S4 start from zero.
 
 ## Epic exit checklist

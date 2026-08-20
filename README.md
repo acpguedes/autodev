@@ -107,17 +107,17 @@ The documentation in this repository defines the path from prototype to a comple
 
 The v1 platform ships an extensible, **plugin-seam** architecture: new endpoints, agents, and
 CLI subcommands attach as self-contained modules via auto-discovery, without editing the core
-files. See [`docs/architecture/plugin_seams.md`](docs/architecture/plugin_seams.md) for the
+files. See [`docs/archive/v1/plugin_seams.md`](docs/archive/v1/plugin_seams.md) for the
 seams and the reserved-namespace table. Subsystems built on it:
 
 - **Skills** — a discover/invoke registry with deterministic built-ins; `GET /skills`,
   `POST /skills/{name}/invoke`, and `autodev skills`. See
-  [`docs/implementation/skills_subsystem.md`](docs/implementation/skills_subsystem.md).
+  [`docs/archive/v1/skills_subsystem.md`](docs/archive/v1/skills_subsystem.md).
 - **Specialized agents + registry** — `security`/`refactor`/`docs` agents that self-register;
   `GET /agents`, `autodev agents list`.
 - **Dynamic multi-agent orchestration** — run-type routing/supervisor graphs and an opt-in
   `POST /chat/dynamic` (flag `AUTODEV_DYNAMIC_ORCH=1`). See
-  [`docs/implementation/dynamic_orchestration.md`](docs/implementation/dynamic_orchestration.md).
+  [`docs/archive/v1/dynamic_orchestration.md`](docs/archive/v1/dynamic_orchestration.md).
 - **Plans with approval gates** — a persisted plan store; `GET/PUT /plans/{session_id}`,
   `POST /plans/{session_id}/approve|reject`, and `autodev plans`.
 - **Patch generation & application** — unified-diff engine, dry-run by default; `POST
@@ -211,7 +211,7 @@ AutoDev Architect is intended to be fully operable with open source infrastructu
 - **Inference gateway**: vLLM or Ollama
 - **Embeddings**: local embedding models served through Ollama/vLLM or sentence-transformers services
 
-For rationale, read [`docs/architecture/stack_decisions.md`](docs/architecture/stack_decisions.md).
+For rationale, read [`docs/archive/v1/stack_decisions.md`](docs/archive/v1/stack_decisions.md).
 
 ---
 
@@ -224,16 +224,16 @@ For rationale, read [`docs/architecture/stack_decisions.md`](docs/architecture/s
 
 ### Architecture
 - [`docs/architecture/v2_platform_reference.md`](docs/architecture/v2_platform_reference.md): **v2.0 platform reference** — full design of the customizable/extensible platform (plugins, agents, flows, reasoning, routing/selection/evaluation, skills, UI/UX) with a staged roadmap governed by functional/non-functional criteria and DoR/DoD.
-- [`docs/architecture/initial_architecture.md`](docs/architecture/initial_architecture.md): original early decisions for historical context.
-- [`docs/architecture/target_architecture.md`](docs/architecture/target_architecture.md): target production architecture.
-- [`docs/architecture/stack_decisions.md`](docs/architecture/stack_decisions.md): chosen stack and technical tradeoffs.
+- [`docs/archive/v1/initial_architecture.md`](docs/archive/v1/initial_architecture.md): original early decisions for historical context.
+- [`docs/archive/v1/target_architecture.md`](docs/archive/v1/target_architecture.md): target production architecture.
+- [`docs/archive/v1/stack_decisions.md`](docs/archive/v1/stack_decisions.md): chosen stack and technical tradeoffs.
 - [`docs/architecture/weaknesses_and_strategies.md`](docs/architecture/weaknesses_and_strategies.md): current weaknesses and remediation strategies.
 
 ### Implementation
-- [`docs/implementation/implementation_strategy.md`](docs/implementation/implementation_strategy.md): detailed implementation strategy.
+- [`docs/archive/v1/implementation_strategy.md`](docs/archive/v1/implementation_strategy.md): detailed implementation strategy.
 - [`docs/implementation/self_hosting_oss.md`](docs/implementation/self_hosting_oss.md): OSS/self-hosted setup paths for stub, Ollama, and hybrid modes.
-- [`docs/implementation/agent_spec.md`](docs/implementation/agent_spec.md): role definitions, contracts, and expected outputs for agents.
-- [`docs/implementation/data_model.md`](docs/implementation/data_model.md): persistent data model and storage guidance.
+- [`docs/archive/v1/agent_spec.md`](docs/archive/v1/agent_spec.md): role definitions, contracts, and expected outputs for agents.
+- [`docs/archive/v1/data_model.md`](docs/archive/v1/data_model.md): persistent data model and storage guidance.
 
 ### Implementation status
 - [`docs/feature_matrix.md`](docs/feature_matrix.md): per-feature status (`default / optional / stub / planned`) covering persistence, LLM providers, agents, patches, validation, and more.

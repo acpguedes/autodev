@@ -1,10 +1,11 @@
 # Agent Specification
 
-> **Historical (v1 agent spec) — 2026-07-04:** Superseded by E2's `agent.yaml` manifest contract
-> and Agent Runtime. See [`docs/agents/manifest.md`](../agents/manifest.md) (typed IO + budgets),
-> [`docs/agents/runtime.md`](../agents/runtime.md) (fail-closed execution, tool broker, provider
-> abstraction), and [`docs/agents/registry.md`](../agents/registry.md). Retained as the v1
-> behavioral record.
+> **Archived 2026-08-20 — v1 architecture.** This document describes the v1
+> linear-pipeline design, frozen at the
+> [`v1` release](https://github.com/acpguedes/autodev/releases/tag/v1).
+> Superseded by E2's `agent.yaml` contract and Agent Runtime — see [`docs/agents/manifest.md`](../../agents/manifest.md), [`docs/agents/runtime.md`](../../agents/runtime.md) and [`docs/agents/registry.md`](../../agents/registry.md).
+> Retained as the design audit trail; **not maintained**. See
+> [`docs/archive/v1/README.md`](README.md) for the full v1 -> v2 map.
 
 This document defines the target behavior, responsibilities, and structured outputs for AutoDev Architect agents.
 

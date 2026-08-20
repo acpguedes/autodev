@@ -99,7 +99,7 @@ Subtasks:
 - A skills subsystem already exists and is `default`: a registry with auto-discovery
   (`backend/skills/registry.py`), built-in deterministic skills (`summarize_diff`,
   `extract_symbols_lexical`, `render_checklist`), `GET/POST /skills` endpoints, and a
-  CLI — documented in `docs/implementation/skills_subsystem.md`. This is the direct
+  CLI — documented in `docs/archive/v1/skills_subsystem.md`. This is the direct
   precursor to E6-S1/E6-S2/E6-S5, but skills currently register via explicit import
   rather than a `skill.yaml` manifest, and have **no versioning, no declared
   permissions, no triggers, and no composition/pipeline model** — the gaps E6-S1

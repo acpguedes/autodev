@@ -1,12 +1,11 @@
 # Implementation Strategy
 
-> **Current status (2026-07-04):** The live status of record is now
-> [`docs/v2_platform/progress.md`](../v2_platform/progress.md). The "Current functional slice"
-> call-outs below predate the v2 rewrite and E0–E2: PostgreSQL/Redis/MinIO (E0), the plugin core
-> (E1), and the agent framework (E2) have since landed, so those slice notes describe an earlier
-> state. This document is retained as the general prototype-to-platform path; per
-> [`docs/v2_platform/documentation_rebuild.md`](../v2_platform/documentation_rebuild.md) it retires
-> to a historical pointer at Alpha exit.
+> **Archived 2026-08-20 — v1 architecture.** This document describes the v1
+> linear-pipeline design, frozen at the
+> [`v1` release](https://github.com/acpguedes/autodev/releases/tag/v1).
+> Superseded by the epic/story tracker in [`docs/v2_platform/progress.md`](../../v2_platform/progress.md).
+> Retained as the design audit trail; **not maintained**. See
+> [`docs/archive/v1/README.md`](README.md) for the full v1 -> v2 map.
 
 This document defines the recommended implementation path for evolving AutoDev Architect from prototype to robust platform.
 

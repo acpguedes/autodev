@@ -1,8 +1,16 @@
 # AutoDev Architect — MVP Refactor & Enhancement Plan
 
+> **Archived 2026-08-20 — v1 architecture.** This document describes the v1
+> linear-pipeline design, frozen at the
+> [`v1` release](https://github.com/acpguedes/autodev/releases/tag/v1).
+> Superseded by the epic/story tracker in [`docs/v2_platform/progress.md`](../../v2_platform/progress.md); its open units were subsumed by the v2 epics.
+> Retained as the design audit trail; **not maintained**. See
+> [`docs/archive/v1/README.md`](README.md) for the full v1 -> v2 map.
+
 > Decomposed, part-by-part backlog to take AutoDev Architect from functional skeleton to a
 > polished, modular MVP with product-grade UI/UX. Each unit is independently implementable in
 > an isolated git worktree and individually mergeable. Execute units one at a time.
+
 
 ## Context
 

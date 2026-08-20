@@ -128,7 +128,7 @@ e2e). T1 render, T2 bidirectional edit, and T3 inline validation are all met.
 - Optional dynamic routing already exists behind `AUTODEV_DYNAMIC_ORCH=1`
   (`backend/orchestrator/routing.py`, `backend/orchestrator/graphs.py`,
   `POST /chat/dynamic`) and `SupervisorPolicy` is defined but not wired into
-  execution — see `docs/implementation/dynamic_orchestration.md`. This is real
+  execution — see `docs/archive/v1/dynamic_orchestration.md`. This is real
   precedent for E3-S2's executor and E3-S4/E5's routing, but it is opt-in, linear
   per selected route, and not durable/replayable.
   `SupervisorPolicy` is **superseded** by E5's Router/Selector and is not pending

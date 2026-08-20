@@ -20,7 +20,7 @@ AutoDev Architect becomes an open source, self-hostable, patch-first GenAI engin
 
 A platform-wide buildout landed these subsystems **additively**, attached through plugin
 seams (auto-discovery of API routers, agents, and CLI plugins — see
-[`docs/architecture/plugin_seams.md`](architecture/plugin_seams.md)). All existing behavior
+[`docs/archive/v1/plugin_seams.md`](archive/v1/plugin_seams.md)). All existing behavior
 and tests were preserved; heavier capabilities are gated behind environment flags and their
 optional dependencies are kept out of `backend/requirements.txt`. Mapping to the roadmap:
 
@@ -34,8 +34,8 @@ optional dependencies are kept out of `backend/requirements.txt`. Mapping to the
 | Multi-agent / skills | skills subsystem (registry + built-ins, `/skills` + CLI); specialized `security`/`refactor`/`docs` agents + registry (`/agents` + CLI); dynamic run-type routing/supervisor + opt-in `POST /chat/dynamic` (`AUTODEV_DYNAMIC_ORCH`) |
 | Async groundwork | in-process job queue (optional Redis backend); `POST /jobs`, `GET /jobs/{id}` |
 
-Subsystem docs: [`skills_subsystem.md`](implementation/skills_subsystem.md),
-[`dynamic_orchestration.md`](implementation/dynamic_orchestration.md),
+Subsystem docs: [`skills_subsystem.md`](archive/v1/skills_subsystem.md),
+[`dynamic_orchestration.md`](archive/v1/dynamic_orchestration.md),
 [`patches_and_validation.md`](implementation/patches_and_validation.md).
 
 **Still deferred** (require shared-state/infra, intentionally out of this additive wave):

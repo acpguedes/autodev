@@ -149,7 +149,7 @@ Subtasks:
 - Backend CI (ruff + mypy + pytest) and frontend CI (lint + typecheck + vitest) were
   already `default` (`.github/workflows/ci-backend.yml`, `ci-frontend.yml`) — a solid
   base for E12-S1. E12-S1 added the 85% product-code coverage gate (previously
-  `planned`, tracked as Unit 22 in `docs/implementation/mvp_refactor_plan.md`) and a
+  `planned`, tracked as Unit 22 in `docs/archive/v1/mvp_refactor_plan.md`) and a
   dedicated smoke e2e job (`ci-e2e.yml`); infra/docs validation beyond this remains
   out of scope for E12-S1.
 - There is no contract-test harness, no agent evals, and no CI-enforced Validation
