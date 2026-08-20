@@ -220,7 +220,11 @@ are kept out of `backend/requirements.txt`. See
 
 ## Recommended target stack
 
-AutoDev Architect is intended to be fully operable with open source infrastructure.
+AutoDev Architect is intended to be fully operable with open source infrastructure. This
+section states the **target** stack, not a claim about what is wired today — most of it
+now ships, but Kubernetes deployment in particular is still `planned`
+(`infrastructure/terraform/main.tf` is a placeholder). Check
+[`docs/feature_matrix.md`](docs/feature_matrix.md) for the per-component reality.
 
 ### Application layer
 - **Backend API**: FastAPI
