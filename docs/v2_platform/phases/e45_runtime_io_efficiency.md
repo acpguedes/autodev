@@ -3,7 +3,7 @@
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35 and E41-E43: added after initial Beta
 completion, before the wave is signed off).
-**Status:** Not started · **Stories:** 0/5
+**Status:** Done · **Stories:** 5/5
 **Depends on:** E0 (Redis infrastructure), E8-S2 (event store), E9 (event
 bus/SSE contracts), E43-S6 (chat turns now run on the job queue — the
 highest-volume job type, making queue hygiene load-bearing)
