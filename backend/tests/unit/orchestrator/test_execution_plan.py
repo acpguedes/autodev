@@ -2,8 +2,10 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from backend.agents.base import AgentContext, AgentResult
 from backend.api.main import app, get_orchestrator
-from backend.orchestrator.service import OrchestratorService
+from backend.execution.modes import ExecutionMode
+from backend.orchestrator.service import OrchestratorService, RunStatus
 from backend.persistence import DurableStore
 
 
@@ -78,3 +80,70 @@ def test_execute_plan_performs_real_work_instead_of_simulating_it(
         "Expose agent contract schemas" in note.read_text() for note in note_files
     )
     assert all(step.status == "completed" for step in run.steps)
+
+
+class _FakeCoderAgent:
+    """Stands in for CoderAgent, returning real file content (E41-S2 shape)."""
+
+    name = "coder"
+
+    def __init__(self, files: list[dict[str, str]]) -> None:
+        self._files = files
+
+    def run(self, context: AgentContext) -> AgentResult:
+        return AgentResult(
+            content="Coding tasks:\n- backend/payments: Add charge endpoint",
+            metadata={
+                "coding_tasks": [
+                    {"component": "backend/payments", "task": "Add charge endpoint"}
+                ],
+                "files": self._files,
+                "test_updates": [],
+                "touched_components": ["backend/payments"],
+            },
+        )
+
+
+def test_execute_plan_writes_real_coder_provided_file_content(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """E41-S3: coder-provided real file content is written via the patch engine."""
+    monkeypatch.setenv("AUTODEV_ENABLE_PATCH_APPLY", "1")
+    target_path = "backend/payments/charge.py"
+    file_content = "def charge():\n    return True\n"
+    orchestrator = _build_orchestrator(tmp_path)
+    orchestrator._agents["coder"] = _FakeCoderAgent(
+        files=[{"path": target_path, "content": file_content}]
+    )
+    session = orchestrator.create_plan("Criar plano executável por tarefas")
+    orchestrator.handle_message(
+        session.session_id, "produza análise e checklist de implementação"
+    )
+
+    run = orchestrator.execute_plan(session.session_id, mode=ExecutionMode.AUTO)
+
+    written = tmp_path / target_path
+    assert written.exists()
+    assert written.read_text() == file_content
+    assert all(step.status == "completed" for step in run.steps)
+
+
+def test_execute_plan_in_approval_mode_pauses_before_writing_coder_files(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """E41-S3: a real file write pauses for approval like any other action."""
+    monkeypatch.setenv("AUTODEV_ENABLE_PATCH_APPLY", "1")
+    target_path = "backend/payments/charge.py"
+    orchestrator = _build_orchestrator(tmp_path)
+    orchestrator._agents["coder"] = _FakeCoderAgent(
+        files=[{"path": target_path, "content": "def charge(): ...\n"}]
+    )
+    session = orchestrator.create_plan("Criar plano executável por tarefas")
+    orchestrator.handle_message(
+        session.session_id, "produza análise e checklist de implementação"
+    )
+
+    run = orchestrator.execute_plan(session.session_id, mode=ExecutionMode.APPROVAL)
+
+    assert run.status == RunStatus.AWAITING_APPROVAL
+    assert not (tmp_path / target_path).exists()

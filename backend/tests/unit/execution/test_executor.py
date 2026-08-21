@@ -99,6 +99,31 @@ def test_implementation_task_dispatches_one_create_file_action_under_execution_n
     assert "Add the missing endpoint" in (action.content or "")
 
 
+def test_implementation_task_with_files_dispatches_one_create_file_action_per_file() -> None:
+    runner = _FakeRunner(outcomes={}, dispatched=[])
+    executor = TaskExecutor(runner)
+    task = ExecutionTask(
+        task_id="coding-file-1",
+        title="Write backend/payments/charge.py",
+        description="Write real file content to backend/payments/charge.py",
+        source_agent="coder",
+        category="implementation",
+        files=[
+            {"path": "backend/payments/charge.py", "content": "def charge(): ...\n"},
+            {"path": "backend/payments/__init__.py", "content": ""},
+        ],
+    )
+
+    outcome = executor.execute(task, run_id="run-1", tenant_id="acme")
+
+    assert outcome.status == "completed"
+    assert len(runner.dispatched) == 2
+    assert runner.dispatched[0].type.value == "create_file"
+    assert runner.dispatched[0].path == "backend/payments/charge.py"
+    assert runner.dispatched[0].content == "def charge(): ...\n"
+    assert runner.dispatched[1].path == "backend/payments/__init__.py"
+
+
 @pytest.mark.parametrize("category", ["planning", "analysis", "architecture", "operations"])
 def test_categories_without_a_real_mapping_dispatch_nothing(category: str) -> None:
     runner = _FakeRunner(outcomes={}, dispatched=[])

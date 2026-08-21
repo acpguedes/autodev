@@ -233,16 +233,20 @@ class TaskExecutor:
         return TaskExecutionOutcome(status="failed", results=results)
 
     def derive_actions(self, task: "ExecutionTask") -> list[ExecutionAction]:
-        """Map *task* to zero or more actions (S1 category heuristic).
+        """Map *task* to zero or more actions.
 
         ``"validation"`` tasks whose description names a known tool
         (pytest/ruff/npm/python) become a ``run_validation`` action.
-        ``"implementation"`` tasks become a ``create_file`` action recording
-        the task under ``.autodev/execution-notes/`` — the current coder
-        agent produces a component/description pair, not real code, so this
-        is an honest record of real work rather than fabricated source.
-        Every other category (planning/analysis/architecture/operations)
-        derives no action yet.
+        ``"implementation"`` tasks that carry real file content (E41-S2,
+        coder structured output) become one ``create_file`` action per
+        file, dispatched through the same E0 patch engine
+        (:mod:`backend.patches.engine`) the Patches API already uses
+        (E41-S3) — real source, not a description. An "implementation"
+        task with no file content falls back to recording the task under
+        ``.autodev/execution-notes/`` (pre-E41 coder output produces only a
+        component/description pair, so this remains an honest record of
+        real work rather than fabricated source). Every other category
+        (planning/analysis/architecture/operations) derives no action yet.
         """
         if task.category == "validation":
             command = _extract_validation_command(task.description)
@@ -259,6 +263,18 @@ class TaskExecutor:
                 )
             ]
         if task.category == "implementation":
+            if task.files:
+                return [
+                    ExecutionAction(
+                        action_id=f"{task.task_id}-write-{index}",
+                        type=ExecutionActionType.CREATE_FILE,
+                        task_id=task.task_id,
+                        step_key=task.task_id,
+                        path=file_entry["path"],
+                        content=file_entry["content"],
+                    )
+                    for index, file_entry in enumerate(task.files, start=1)
+                ]
             note_path = f".autodev/execution-notes/{task.task_id}.md"
             content = f"# {task.title}\n\n{task.description}\n"
             return [
