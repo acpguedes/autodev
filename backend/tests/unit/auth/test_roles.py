@@ -81,3 +81,23 @@ def test_owner_only_grant_is_tenant_transfer() -> None:
     owner_scopes = effective_scopes((Role.OWNER,), None)
     assert "tenant:owner" not in admin_scopes
     assert "tenant:owner" in owner_scopes
+
+
+def test_policy_scopes_are_granted() -> None:
+    """``policy:read`` is granted from viewer up; ``policy:admin`` from admin up.
+
+    Regression for E42-S2: ``execution_policy_v2.py`` used ``policy:read``/
+    ``policy:admin`` but neither was ever defined in the grant matrix, so no
+    role -- including OWNER -- could call those endpoints.
+    """
+    viewer_scopes = effective_scopes((Role.VIEWER,), None)
+    operator_scopes = effective_scopes((Role.OPERATOR,), None)
+    admin_scopes = effective_scopes((Role.ADMIN,), None)
+    owner_scopes = effective_scopes((Role.OWNER,), None)
+
+    assert "policy:read" in viewer_scopes
+    assert "policy:read" in operator_scopes
+    assert "policy:admin" not in viewer_scopes
+    assert "policy:admin" not in operator_scopes
+    assert "policy:admin" in admin_scopes
+    assert "policy:admin" in owner_scopes

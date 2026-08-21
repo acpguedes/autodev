@@ -97,6 +97,38 @@ def test_service_credentials_are_isolated_by_tenant(client: TestClient) -> None:
     assert key_id in {item["keyId"] for item in listed_by_a.json()}
 
 
+def test_local_owner_principal_can_use_every_execution_endpoint(client: TestClient) -> None:
+    """The local zero-config principal never 403s on an audited Execution endpoint (E42-S2).
+
+    Regression for the ``policy:read``/``policy:admin`` gap: both scopes
+    were required by ``/v2/execution/policy*`` but never defined in
+    ``backend.auth.roles.ROLE_GRANTS``, so even ``Role.OWNER`` -- the local
+    zero-config principal's role -- could never call them. Exercises every
+    ``@requires_scope``-gated endpoint under ``/v2/execution/*`` and
+    ``/v2/runs/*`` (E42-S2-T1's audit scope) with no ``Authorization``
+    header, i.e. as the local zero-config ``Role.OWNER`` principal.
+    """
+    listed = client.get("/v2/execution/policy")
+    assert listed.status_code == 200, listed.text
+
+    added = client.post(
+        "/v2/execution/policy",
+        json={
+            "category": "shell",
+            "effect": "allow",
+            "scopeKind": "project",
+            "scopeId": "default",
+        },
+    )
+    assert added.status_code == 201, added.text
+
+    dynamic = client.get("/v2/execution/policy/dynamic")
+    assert dynamic.status_code == 200, dynamic.text
+
+    decisions = client.get("/v2/execution/decisions")
+    assert decisions.status_code == 200, decisions.text
+
+
 def test_session_actor_is_derived_from_principal_not_request_body(client: TestClient) -> None:
     """A created session's plan is derived from the caller, not a spoofable field.
 
