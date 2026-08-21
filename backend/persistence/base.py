@@ -105,9 +105,11 @@ class MessageRepository(Protocol):
         self,
         session_id: str,
         run_id: str,
-        history: Iterable[dict[str, str]],
+        messages: Iterable[dict[str, str]],
         tenant_id: str = DEFAULT_TENANT_ID,
-    ) -> None: ...
+    ) -> None:
+        """Append only the new tail; sequences are allocated by the store (E44-S4)."""
+        ...
 
 
 @runtime_checkable

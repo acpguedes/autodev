@@ -691,10 +691,14 @@ class OrchestratorService:
         steps = list(final_state["steps"])
         current_state = final_state["current_state"]
         next_history = [HistoryItem(**item) for item in final_context.history]
+        # Only what this run added: everything up to ``len(history)`` is
+        # already persisted, and the store now appends exactly what it is
+        # given rather than re-reading the conversation to find the tail
+        # itself (E44-S4).
         self._store.append_messages(
             session_id,
             run_id,
-            [item.to_dict() for item in next_history],
+            [item.to_dict() for item in next_history[len(history) :]],
             tenant_id=tenant_id,
         )
         self._store.update_session_artifacts(
@@ -1042,6 +1046,7 @@ class OrchestratorService:
             HistoryItem(role=record["role"], content=record["content"])
             for record in self._store.list_messages(session_id, tenant_id=tenant_id)
         ]
+        persisted_count = len(history)
 
         self._acquire_run_lease(tenant_id=tenant_id, run_id=run_id)
         try:
@@ -1066,6 +1071,7 @@ class OrchestratorService:
             results=results,
             steps=steps,
             history=history,
+            persisted_count=persisted_count,
             current_state=current_state,
             paused=paused,
             total_tasks=len(execution_plan.tasks),
@@ -1172,6 +1178,7 @@ class OrchestratorService:
             HistoryItem(role=record["role"], content=record["content"])
             for record in self._store.list_messages(session_id, tenant_id=tenant_id)
         ]
+        persisted_count = len(history)
         results: List[AgentExecution] = []
         steps: List[RunStep] = []
 
@@ -1194,6 +1201,7 @@ class OrchestratorService:
             results=results,
             steps=steps,
             history=history,
+            persisted_count=persisted_count,
             current_state=current_state,
             paused=paused,
             total_tasks=len(execution_plan.tasks),
@@ -1572,11 +1580,30 @@ class OrchestratorService:
         results: List[AgentExecution],
         steps: List[RunStep],
         history: List[HistoryItem],
+        persisted_count: int,
         current_state: str,
         paused: bool,
         total_tasks: int,
     ) -> OrchestratorRun:
-        """Persist and return the run, completed or paused awaiting a decision."""
+        """Persist and return the run, completed or paused awaiting a decision.
+
+        Args:
+            session_id: Session the run belongs to.
+            run_id: Identifier of the run being finalized.
+            tenant_id: Tenant the run belongs to.
+            results: Agent results accumulated by the run.
+            steps: Step records accumulated by the run.
+            history: The full conversation, including entries this run added.
+            persisted_count: How many of ``history``'s entries were already in
+                the store when it was loaded. Everything beyond that is the
+                tail handed to :meth:`append_messages` (E44-S4).
+            current_state: The run's final flow state.
+            paused: Whether the run stopped awaiting a human decision.
+            total_tasks: Number of planned tasks in the execution plan.
+
+        Returns:
+            The persisted run.
+        """
         status = RunStatus.AWAITING_APPROVAL if paused else RunStatus.COMPLETED
         summary = (
             f"Paused after {len(steps)}/{total_tasks} planned tasks, awaiting a decision."
@@ -1603,7 +1630,7 @@ class OrchestratorService:
         self._store.append_messages(
             session_id,
             run_id,
-            [item.to_dict() for item in ordered_history],
+            [item.to_dict() for item in ordered_history[persisted_count:]],
             tenant_id=tenant_id,
         )
 
@@ -2099,6 +2126,7 @@ def _run_message_job(payload: Dict[str, Any]) -> Dict[str, Any]:
                         HistoryItem(role=record["role"], content=record["content"])
                         for record in orchestrator._store.list_messages(session_id, tenant_id=tenant_id)
                     ]
+                    persisted_count = len(history)
                     current_state, paused = orchestrator._process_tasks(
                         tasks=execution_plan.tasks,
                         run_id=run_id,
@@ -2117,6 +2145,7 @@ def _run_message_job(payload: Dict[str, Any]) -> Dict[str, Any]:
                         results=results,
                         steps=steps,
                         history=history,
+                        persisted_count=persisted_count,
                         current_state=current_state,
                         paused=paused,
                         total_tasks=len(execution_plan.tasks),

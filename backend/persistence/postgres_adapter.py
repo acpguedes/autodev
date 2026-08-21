@@ -514,17 +514,38 @@ class PostgresStore:
         self,
         session_id: str,
         run_id: str,
-        history: Iterable[dict[str, str]],
+        messages: Iterable[dict[str, str]],
         tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None:
-        """Append only the messages in ``history`` beyond what is already stored, scoped to *tenant_id*."""
-        existing = self.list_messages(session_id, tenant_id=tenant_id)
-        start = len(existing)
-        new_messages = list(history)[start:]
+        """Append *messages* to a session's conversation, scoped to *tenant_id* (E44-S4).
+
+        Takes only the new tail, not the full history: sequence numbers are
+        allocated from ``MAX(sequence) + 1`` inside the same transaction as
+        the insert, so an append reads one row regardless of how long the
+        conversation is. The unique ``(tenant_id, session_id, sequence)``
+        index makes concurrent appends fail closed rather than interleave
+        into duplicate sequence numbers.
+
+        Args:
+            session_id: Identifier of the owning session.
+            run_id: Identifier of the run that produced the messages.
+            messages: The new messages to append, in order. Already-persisted
+                messages must not be re-sent.
+            tenant_id: Tenant the messages belong to.
+
+        Raises:
+            psycopg.errors.UniqueViolation: If a concurrent append already
+                claimed one of the allocated sequence numbers.
+        """
+        new_messages = list(messages)
         if not new_messages:
             return
         with self.connect() as conn:
             set_postgres_tenant(conn, tenant_id)
+            row = conn.execute(
+                "SELECT MAX(sequence) FROM messages WHERE session_id = %s", (session_id,)
+            ).fetchone()
+            start = 0 if row is None or row[0] is None else int(row[0]) + 1
             with conn.cursor() as cur:
                 cur.executemany(
                     """
