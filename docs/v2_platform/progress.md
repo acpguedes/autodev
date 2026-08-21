@@ -7,7 +7,17 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-19 (**E35 complete — 3/3, v2.0-beta wave
+**Last updated:** 2026-08-21 (**Planning-only: added Beta-hardening epics
+E44–E47 — backend efficiency & simplification, 18 planned stories**, on
+`main` — four epics distilled from two independent external code analyses
+of the backend, every claim re-verified against the current tree before
+planning: E44 persistence read/write efficiency, E45 runtime I/O
+efficiency (jobs/events/SSE/indexing), E46 execution failure
+classification & self-repair governance, E47 backend structural
+consolidation. See the changelog entry and
+`phases/e44_persistence_efficiency.md` …
+`phases/e47_backend_structural_consolidation.md`. No stories started.)
+Previous entry: 2026-08-19 (**E35 complete — 3/3, v2.0-beta wave
 substantially complete**, branch `epic/e35-beta-readiness-gates` (branched
 from `main` after E34 merged via PR #107) — turns the v2.0-beta gate from a
 claims checklist into an evidence-backed one. **E35-S1** split §18.9's
@@ -291,9 +301,13 @@ in the E32 sandbox, with one bounded self-repair retry on test failure —
 see the changelog entry below and
 [phases/e41_real_code_generation_execution.md](phases/e41_real_code_generation_execution.md).
 
-**Next:** E13 — Marketplace & GA (0/4, not started). Beyond GA, the planned
-v2.1 (E20-E25), v2.2 (E26-E31) and v2.3 (E36-E40) waves are specified but not
-started.
+**Next:** E13 — Marketplace & GA (0/4, not started). Also eligible: the
+newly planned Beta-hardening backend-efficiency epics **E44–E47** (0/18,
+2026-08-21 — persistence read/write efficiency, runtime I/O efficiency,
+failure classification & self-repair governance, structural
+consolidation; E44 and E46 are the independent P0s, E47 is sequenced
+after E44/E46). Beyond GA, the planned v2.1 (E20-E25), v2.2 (E26-E31)
+and v2.3 (E36-E40) waves are specified but not started.
 
 ### Accumulated per-epic record
 
@@ -423,8 +437,12 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E41 | Real Code Generation & Agent-Directed Execution | Beta | Done | 5/5 | E2, E14, E16-S3 | [phases/e41_real_code_generation_execution.md](phases/e41_real_code_generation_execution.md) |
 | E42 | Execution Visibility & Chat/Command UX | Beta | Done | 6/6 | E41, E9, E11, E15-E18 | [phases/e42_execution_visibility_chat_ux.md](phases/e42_execution_visibility_chat_ux.md) |
 | E43 | Execution Transparency: Terminal Transcript, File Browser & Session Stickiness | Beta | Done | 8/8 | E42, E41-S3, E41-S4, E41-S5 | [phases/e43_execution_transparency_file_browser.md](phases/e43_execution_transparency_file_browser.md) |
+| E44 | Persistence Read/Write Efficiency | Beta | Not started | 0/5 | E8, E16-S1, E43 | [phases/e44_persistence_efficiency.md](phases/e44_persistence_efficiency.md) |
+| E45 | Runtime I/O Efficiency: Job Queue, Event Bus, SSE & Indexing | Beta | Not started | 0/5 | E0, E8-S2, E9, E43-S6 | [phases/e45_runtime_io_efficiency.md](phases/e45_runtime_io_efficiency.md) |
+| E46 | Execution Failure Classification & Self-Repair Governance | Beta | Not started | 0/3 | E14, E32, E41-S5, E43-S1 | [phases/e46_failure_classification_self_repair.md](phases/e46_failure_classification_self_repair.md) |
+| E47 | Backend Structural Consolidation | Beta | Not started | 0/5 | E2, E2-S6, E8, E44, E46 | [phases/e47_backend_structural_consolidation.md](phases/e47_backend_structural_consolidation.md) |
 
-Total: **113/196 stories complete** across 43 epics (E19 is a proposed
+Total: **113/214 stories complete** across 47 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -438,6 +456,13 @@ found by directly running the platform end to end against a real OpenAI key:
 descriptions agents produce are silently replaced by hardcoded fallback
 metadata regardless of the real LLM call's outcome. See
 `phases/e41_real_code_generation_execution.md`.)*
+
+*(2026-08-21: +18 planned stories from the new E44–E47 Beta-hardening
+epics — backend efficiency & simplification, distilled from two
+independent external code analyses whose claims were all re-verified
+against the current tree; 196 → 214 stories, 43 → 47 epics. See
+`phases/e44_persistence_efficiency.md` …
+`phases/e47_backend_structural_consolidation.md`.)*
 
 \* **E8-S1 is now complete (2026-07-06)**: on top of the scoped tenancy/
 reversible-migration slice landed as an E7 prerequisite (ADR-010:
@@ -599,6 +624,56 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-08-21** — **Planning-only: added E44–E47 — backend efficiency &
+  simplification (Beta-hardening, 18 planned stories across 4 epics)**.
+  Source: two independent external code analyses of the backend (ChatGPT
+  and Codex, both asked whether the backend could be simplified, made more
+  efficient, and rid of unnecessary loops); both converged on repeated I/O
+  and structural duplication rather than algorithmic loops. Every claim
+  was re-verified against the current tree (`943845f` + the E43-S8 merge)
+  before planning — **all confirmed**, several understated
+  (`orchestrator/service.py` is now 2,046 lines; the `GET /v2/turns/{id}`
+  lookup compounds three N+1 patterns for `1 + 3S + R` worst-case queries;
+  E43-S6 made chat turns the highest-volume job type on a queue that never
+  deletes completed records). **E44 — Persistence Read/Write Efficiency**
+  (5 stories): `get_run` direct lookup (turn fetch ≤ 2 queries), batched
+  step loading (kills the per-run `list_run_steps` N+1 — one fresh
+  connection per run today — in both adapters), DB-level pagination for
+  session/run listings (currently loaded whole then sliced in memory),
+  incremental message append (no full-history reload just to take
+  `len(existing)`), and incremental run-step persistence (replaces
+  DELETE+reinsert of the whole step list on every `update_run`,
+  O(N²) → O(N)). **E45 — Runtime I/O Efficiency** (5 stories): BLPOP
+  worker + graceful shutdown (replaces the idle ~10 LPOP/s poll loop),
+  job-record TTL/retention with O(1) `stats()`, event-bus unsubscribe +
+  SSE `finally` cleanup (today every connect permanently leaks a
+  subscriber — acknowledged in-code), non-blocking replay (sync `XRANGE`
+  currently runs on the event loop) + `XADD MAXLEN` retention, and
+  indexing traversal pruning (today `rglob` descends into
+  `.git`/`.venv`/`node_modules` and persists one statement per chunk) +
+  batched writes. **E46 — Execution Failure Classification & Self-Repair
+  Governance** (3 stories, ADR-023): typed `failure_kind` on
+  `ExecutionResult` set at the failure origin, self-repair gated to
+  `code_failure` only — today a sandbox policy rejection triggers a Coder
+  LLM repair of potentially-correct code, the exact failure mode E42's
+  live run demonstrated at 10/10 validation tasks and E43-S1 fixed only
+  one instance of — plus an at-most-one-repair-per-batch policy. **E47 —
+  Backend Structural Consolidation** (5 stories, sequenced last so
+  structure is extracted from the post-E44/E46 shape): agent-catalog
+  cache (no per-request dynamic imports on `GET /agents`), shared LLM
+  gateway attempt coordinator (retry/fallback/telemetry machine currently
+  duplicated across `complete()`/`_stream_prepared()`, no backoff),
+  Agent/Skill registry unification (15 structurally identical methods),
+  shared persistence codecs + adapter split under the 500-line guideline
+  (closes this tracker's long-standing `postgres_adapter.py` follow-up),
+  and OrchestratorService decomposition. Both analyses' "these loops are
+  healthy, do not touch" verdicts (FlowEngine `_run_loop`, `map_handler`
+  budgeted scheduler, graph-validation DFS) are recorded as explicit
+  non-goals in the phase docs. Same pattern as E32-E35/E41-E43: extends
+  the Beta wave before sign-off. See `phases/e44_persistence_efficiency.md`,
+  `phases/e45_runtime_io_efficiency.md`,
+  `phases/e46_failure_classification_self_repair.md`,
+  `phases/e47_backend_structural_consolidation.md`. No stories started.
 - **2026-08-21** — **E43-S8 added and completed: Chat auto-executes its
   derived plan, live, in the same run.** The user's real ask after testing
   S6/S7: a Chat message only ever drove the conversational agent pipeline —
