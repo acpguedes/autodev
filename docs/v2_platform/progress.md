@@ -413,14 +413,22 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E38 | SOTA Evidence Matrix & Capability Benchmark | v2.3 | Not started | 0/4 | E12, E20-E23, E27, E28 | [phases/e38_sota_evidence_benchmark.md](phases/e38_sota_evidence_benchmark.md) |
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
+| E41 | Real Code Generation & Agent-Directed Execution | Beta | Not started | 0/5 | E2, E14, E16-S3 | [phases/e41_real_code_generation_execution.md](phases/e41_real_code_generation_execution.md) |
 
-Total: **95/178 stories complete** across 40 epics (E19 is a proposed
+Total: **95/183 stories complete** across 41 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
 "51" predated E15–E18 completion and had drifted; +13 planned stories from
 the new E32–E35 Beta-hardening epics; +22 planned stories from the E36–E40
 v2.3 Platform Excellence planning wave.)*
+
+*(2026-08-21: +5 planned stories from the new E41 Beta-hardening epic —
+found by directly running the platform end to end against a real OpenAI key:
+`execute-plan` never calls the patch engine, and even the free-text task
+descriptions agents produce are silently replaced by hardcoded fallback
+metadata regardless of the real LLM call's outcome. See
+`phases/e41_real_code_generation_execution.md`.)*
 
 \* **E8-S1 is now complete (2026-07-06)**: on top of the scoped tenancy/
 reversible-migration slice landed as an E7 prerequisite (ADR-010:
@@ -574,6 +582,22 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-08-21** — **Planning-only: added E41 — Real Code Generation &
+  Agent-Directed Execution (Beta-hardening, 5 planned stories)**. Found by
+  directly running the platform end to end against a real OpenAI key on a
+  trivial goal: `execute-plan` never calls `backend.patches.engine` at all
+  (only the separate, human-driven Patches HTTP API does), and even the
+  free-text task descriptions agents are supposed to produce are not real —
+  `PlannerAgent.build_metadata()` and the inherited `LangChainAgent`
+  default both discard a successful LLM call's real output and always
+  return `fallback_result()`'s hardcoded data, verified live (real,
+  on-topic GPT content in `AgentResult.content`; identical generic fallback
+  text in the stored `artifacts` metadata `execute-plan` actually reads).
+  Same pattern as E32–E35: extends the Beta wave before sign-off rather than
+  starting new GA/v2.1+ scope, since "the platform can turn a goal into
+  working code" is not covered by any of the 12 tracked v2.0-beta exit
+  criteria despite being more fundamental than any of them. See
+  `phases/e41_real_code_generation_execution.md`. No stories started.
 - **2026-08-20** — **Beta-exit documentation rebuild pass executed**
   (`docs/v2_platform/documentation_rebuild.md`, steps 1–6 and 8; step 7 is
   GA-only). Documentation-only: no source file was modified, so no test run
