@@ -35,11 +35,24 @@ class _FakeRedisStreamClient:
         """Report the fake connection as always reachable."""
         return True
 
-    def xadd(self, key: str, fields: dict[str, str]) -> str:
-        """Append an entry to an in-memory stream and return its id."""
+    def xadd(
+        self,
+        key: str,
+        fields: dict[str, str],
+        *,
+        maxlen: int | None = None,
+        approximate: bool = False,
+    ) -> str:
+        """Append an entry to an in-memory stream and return its id.
+
+        When *maxlen* is given, trims the stream to its most recent
+        *maxlen* entries — a simplified stand-in for Redis's ``MAXLEN ~``.
+        """
         entries = self.streams.setdefault(key, [])
         entry_id = f"{len(entries) + 1}-0"
         entries.append((entry_id, dict(fields)))
+        if maxlen is not None and len(entries) > maxlen:
+            del entries[: len(entries) - maxlen]
         return entry_id
 
     def xrange(self, key: str, min: str = "-") -> list[tuple[str, dict[str, str]]]:
@@ -145,6 +158,32 @@ def test_in_memory_bus_unsubscribe_only_removes_its_own_subscription() -> None:
     assert received == [f"second:{event_id}"]
 
 
+def test_in_memory_bus_replay_from_unknown_partition_does_not_create_it() -> None:
+    """Reading an unseen partition never grows the internal partition map (E45-S4)."""
+    bus = InMemoryEventBus()
+
+    assert bus.replay_from("never-seen", None) == []
+    assert bus.replay("never-seen") == []
+
+    assert "never-seen" not in bus._partitions  # noqa: SLF001
+
+
+def test_in_memory_bus_trims_partition_past_max_size() -> None:
+    """Publishing past ``max_partition_size`` drops the oldest entries, keeping cursors stable."""
+    bus = InMemoryEventBus(max_partition_size=2)
+    first, second, third = _envelope(), _envelope(), _envelope()
+    for envelope in (first, second, third):
+        bus.publish(envelope)
+
+    full = bus.replay_from("run_1", None)
+    assert [e.eventId for _cursor, e in full] == [second.eventId, third.eventId]
+
+    # The surviving cursors are still the original sequence numbers ("1", "2"),
+    # not renumbered from zero — resuming from a still-valid client cursor works.
+    assert [cursor for cursor, _ in full] == ["1", "2"]
+    assert bus.replay_from("run_1", "1") == [("2", third)]
+
+
 def test_redis_bus_persists_to_partition_stream_and_replays() -> None:
     """The Redis bus appends the JSON envelope per partition and replays it intact."""
     client = _FakeRedisStreamClient()
@@ -173,6 +212,26 @@ def test_redis_bus_unsubscribe_stops_local_dispatch() -> None:
     bus.publish(_envelope())
 
     assert len(received) == 1
+
+
+def test_redis_bus_trims_stream_to_configured_maxlen() -> None:
+    """Publishing past ``stream_maxlen`` trims the stream (E45-S4)."""
+    client = _FakeRedisStreamClient()
+    bus = RedisEventBus(client=client, stream_maxlen=2)
+    for _ in range(3):
+        bus.publish(_envelope())
+
+    assert len(client.streams["autodev:events:run_1"]) == 2
+
+
+def test_redis_bus_none_maxlen_disables_trimming() -> None:
+    """``stream_maxlen=None`` never passes ``MAXLEN`` to ``XADD``."""
+    client = _FakeRedisStreamClient()
+    bus = RedisEventBus(client=client, stream_maxlen=None)
+    for _ in range(5):
+        bus.publish(_envelope())
+
+    assert len(client.streams["autodev:events:run_1"]) == 5
 
 
 def test_redis_bus_requires_client_or_url() -> None:

@@ -136,6 +136,7 @@ class Settings(BaseSettings):
 
     # --- event bus (E9-S2-T2) ---
     autodev_event_bus: Literal["inmemory", "redis"] = "inmemory"
+    autodev_event_stream_maxlen: int = Field(default=10_000, ge=-1)
 
     # --- event store (E8-S2) ---
     autodev_event_store_enabled: bool = True

@@ -114,16 +114,34 @@ class _SubscriberRegistry:
                 logger.exception("Event subscriber failed for %s", envelope.eventId)
 
 
+_DEFAULT_MAX_PARTITION_SIZE = 10_000
+"""Default cap on retained envelopes per in-memory partition (E45-S4)."""
+
+
 class InMemoryEventBus:
     """In-process bus used locally and in tests (no broker required)."""
 
-    def __init__(self) -> None:
-        """Initialize empty partitions and subscribers."""
+    def __init__(self, *, max_partition_size: int | None = _DEFAULT_MAX_PARTITION_SIZE) -> None:
+        """Initialize empty partitions and subscribers.
+
+        Args:
+            max_partition_size: Maximum envelopes retained per partition;
+                oldest entries are dropped once exceeded. ``None`` disables
+                trimming. Cursors are a monotonically increasing per-partition
+                sequence number (not a raw list index), so they remain valid
+                across trims.
+        """
         self._registry = _SubscriberRegistry()
-        self._partitions: dict[str, list[EventEnvelope]] = defaultdict(list)
+        self._partitions: dict[str, list[tuple[int, EventEnvelope]]] = defaultdict(list)
+        self._next_seq: dict[str, int] = defaultdict(int)
+        self._max_partition_size = max_partition_size
 
     def publish(self, envelope: EventEnvelope) -> str:
         """Append the envelope to its partition and dispatch subscribers.
+
+        Trims the partition to :attr:`_max_partition_size` afterward,
+        dropping the oldest entries first — the durable Event Store (E8-S2)
+        remains the source of record, so this bus is transport only.
 
         Args:
             envelope: Validated envelope from ``make_envelope``.
@@ -131,7 +149,13 @@ class InMemoryEventBus:
         Returns:
             The envelope's ``eventId``.
         """
-        self._partitions[envelope.partitionKey].append(envelope)
+        partition_key = envelope.partitionKey
+        seq = self._next_seq[partition_key]
+        self._next_seq[partition_key] = seq + 1
+        partition = self._partitions[partition_key]
+        partition.append((seq, envelope))
+        if self._max_partition_size is not None and len(partition) > self._max_partition_size:
+            del partition[: len(partition) - self._max_partition_size]
         self._registry.dispatch(envelope)
         return envelope.eventId
 
@@ -146,41 +170,63 @@ class InMemoryEventBus:
             partition_key: Partition to replay.
 
         Returns:
-            Stored envelopes, oldest first.
+            Stored envelopes, oldest first (within the retained window).
         """
-        return list(self._partitions[partition_key])
+        return [envelope for _seq, envelope in self._partitions.get(partition_key, [])]
 
     def replay_from(
         self, partition_key: str, after_cursor: str | None
     ) -> list[tuple[str, EventEnvelope]]:
         """Return a partition's envelopes strictly after a cursor.
 
-        The cursor is the envelope's zero-based position within the
-        partition's append-only list, stringified (``"0"``, ``"1"``, ...).
+        The cursor is the envelope's per-partition sequence number,
+        stringified (``"0"``, ``"1"``, ...) — stable across trimming, unlike
+        a raw list index. Reading an unknown partition never creates one
+        (E45-S4): it returns an empty list without touching the partition
+        map.
 
         Args:
             partition_key: Partition to replay.
             after_cursor: Exclusive-start cursor; ``None`` replays from the
-                beginning of the partition.
+                beginning of the retained window.
 
         Returns:
             Ordered ``(cursor, envelope)`` pairs for events strictly after
             ``after_cursor``.
         """
-        envelopes = self._partitions[partition_key]
-        start = int(after_cursor) + 1 if after_cursor is not None else 0
-        return [(str(index), envelopes[index]) for index in range(start, len(envelopes))]
+        start_seq = int(after_cursor) + 1 if after_cursor is not None else 0
+        return [
+            (str(seq), envelope)
+            for seq, envelope in self._partitions.get(partition_key, [])
+            if seq >= start_seq
+        ]
+
+
+_DEFAULT_STREAM_MAXLEN = 10_000
+"""Default ``XADD MAXLEN ~`` cap applied per partition stream (E45-S4)."""
 
 
 class RedisEventBus:
     """Redis Streams-backed bus: durable, replayable, ordered per partition."""
 
-    def __init__(self, *, client: Any | None = None, url: str = "") -> None:
+    def __init__(
+        self,
+        *,
+        client: Any | None = None,
+        url: str = "",
+        stream_maxlen: int | None = _DEFAULT_STREAM_MAXLEN,
+    ) -> None:
         """Initialize the bus, connecting to Redis and verifying reachability.
 
         Args:
             client: Pre-built Redis client to reuse; a new one is built if omitted.
             url: Redis connection URL, used when ``client`` is omitted.
+            stream_maxlen: Approximate cap (``XADD MAXLEN ~``) applied to
+                each partition stream on publish; ``None`` disables trimming.
+                The durable Event Store (E8-S2) remains the source of
+                record, so trimming the bus stream loses nothing durable —
+                replay older than the retained window degrades explicitly
+                (fewer/no entries returned).
 
         Raises:
             RuntimeError: If the ``redis`` package is not installed.
@@ -193,6 +239,7 @@ class RedisEventBus:
         self._client = client
         self._client.ping()
         self._registry = _SubscriberRegistry()
+        self._stream_maxlen = stream_maxlen
 
     def publish(self, envelope: EventEnvelope) -> str:
         """Append the envelope to its partition stream and dispatch locally.
@@ -206,10 +253,18 @@ class RedisEventBus:
         Returns:
             The envelope's ``eventId``.
         """
-        self._client.xadd(
-            _stream_key(envelope.partitionKey),
-            {"envelope": envelope.model_dump_json()},
-        )
+        if self._stream_maxlen is not None:
+            self._client.xadd(
+                _stream_key(envelope.partitionKey),
+                {"envelope": envelope.model_dump_json()},
+                maxlen=self._stream_maxlen,
+                approximate=True,
+            )
+        else:
+            self._client.xadd(
+                _stream_key(envelope.partitionKey),
+                {"envelope": envelope.model_dump_json()},
+            )
         self._registry.dispatch(envelope)
         return envelope.eventId
 
