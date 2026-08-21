@@ -779,6 +779,26 @@ class OrchestratorService:
             for record in self._store.list_runs(session_id, tenant_id=tenant_id)
         ]
 
+    def get_run(self, run_id: str, *, tenant_id: str = DEFAULT_TENANT_ID) -> RunSummary:
+        """Fetch a single run by id without knowing its session (E44-S1).
+
+        Args:
+            run_id: Identifier of the run.
+            tenant_id: Tenant the run must belong to; a run owned by another
+                tenant is treated exactly like a nonexistent one.
+
+        Returns:
+            The run's :class:`RunSummary`, identical in shape to the entries
+            :meth:`list_runs` returns.
+
+        Raises:
+            KeyError: If ``run_id`` does not exist for ``tenant_id``.
+        """
+        record = self._store.get_run(run_id, tenant_id=tenant_id)
+        if record is None:
+            raise KeyError(f"Unknown run_id: {run_id}")
+        return self._build_run_summary(record)
+
     def build_execution_plan(
         self, session_id: str, *, tenant_id: str = DEFAULT_TENANT_ID
     ) -> ExecutionPlan:

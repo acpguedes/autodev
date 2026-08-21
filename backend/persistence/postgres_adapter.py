@@ -218,21 +218,116 @@ class PostgresStore:
                 """,
                 (session_id,),
             ).fetchall()
-        return [
-            {
-                "id": row[0],
-                "session_id": row[1],
-                "status": row[2],
-                "run_type": row[3],
-                "current_state": row[4],
-                "trigger_message": row[5],
-                "results": _loads(row[6]),
-                "steps": self.list_run_steps(row[0], tenant_id=tenant_id),
-                "created_at": str(row[7]),
-                "completed_at": str(row[8]),
-            }
-            for row in rows
-        ]
+            steps_by_run = self._fetch_steps_for_runs(conn, [row[0] for row in rows])
+        return [self._decode_run(row, steps_by_run.get(row[0], [])) for row in rows]
+
+    def get_run(self, run_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> dict[str, Any] | None:
+        """Fetch a single run by its primary key, visible to *tenant_id* (E44-S1).
+
+        The session-agnostic counterpart to :meth:`list_runs`: it resolves a
+        run without knowing which session owns it, so callers holding only a
+        run id (e.g. ``GET /v2/turns/{turn_id}``) no longer have to scan every
+        session's runs. Costs exactly two statements on one connection — the
+        indexed primary-key lookup plus one batched step query. RLS on
+        ``runs`` already hides other tenants' rows; the explicit
+        ``set_postgres_tenant`` call is what arms it.
+
+        Args:
+            run_id: Identifier of the run to fetch.
+            tenant_id: Tenant the run must belong to; a run owned by another
+                tenant is indistinguishable from a nonexistent one.
+
+        Returns:
+            The decoded run record, or ``None`` when no run with that id is
+            visible to *tenant_id*.
+        """
+        with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
+            row = conn.execute(
+                """
+                SELECT id, session_id, status, run_type, current_state, trigger_message,
+                       results_json, created_at, completed_at
+                FROM runs WHERE id = %s
+                """,
+                (run_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            steps = self._fetch_steps_for_runs(conn, [run_id]).get(run_id, [])
+        return self._decode_run(row, steps)
+
+    @staticmethod
+    def _decode_run(row: Any, steps: list[dict[str, Any]]) -> dict[str, Any]:
+        """Decode one ``runs`` row into the store's public dict shape.
+
+        Pure by design (E44-S1): steps are passed in already fetched, so
+        decoding never issues a query — and never opens a connection — of its
+        own.
+
+        Args:
+            row: The raw ``runs`` row, in this module's fixed column order.
+            steps: The run's already-fetched step records, in execution order.
+
+        Returns:
+            The decoded run record.
+        """
+        return {
+            "id": row[0],
+            "session_id": row[1],
+            "status": row[2],
+            "run_type": row[3],
+            "current_state": row[4],
+            "trigger_message": row[5],
+            "results": _loads(row[6]),
+            "steps": steps,
+            "created_at": str(row[7]),
+            "completed_at": str(row[8]),
+        }
+
+    @staticmethod
+    def _fetch_steps_for_runs(conn: Any, run_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+        """Load every step of *run_ids* in one query, grouped by run id (E44-S1).
+
+        ``run_steps`` has no ``tenant_id`` column or RLS policy of its own
+        (ADR-010); the ``JOIN`` against ``runs`` is what applies the parent's
+        RLS predicate, so steps of another tenant's run never surface here
+        even when its id is passed in explicitly.
+
+        Args:
+            conn: An open, already tenant-scoped connection to reuse; no new
+                connection is opened.
+            run_ids: Run identifiers whose steps should be loaded.
+
+        Returns:
+            A mapping of run id to its steps in execution order. Runs with no
+            steps are absent from the mapping.
+        """
+        if not run_ids:
+            return {}
+        rows = conn.execute(
+            """
+            SELECT rs.run_id, rs.step_key, rs.agent, rs.status, rs.started_at, rs.completed_at,
+                   rs.attempt
+            FROM run_steps rs
+            JOIN runs r ON r.id = rs.run_id
+            WHERE rs.run_id = ANY(%s)
+            ORDER BY rs.id ASC
+            """,
+            (list(run_ids),),
+        ).fetchall()
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            grouped.setdefault(row[0], []).append(
+                {
+                    "step_key": row[1],
+                    "agent": row[2],
+                    "status": row[3],
+                    "started_at": row[4],
+                    "completed_at": row[5],
+                    "attempt": row[6],
+                }
+            )
+        return grouped
 
     def list_run_steps(self, run_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> list[dict[str, Any]]:
         """List all steps recorded for a run, in execution order, scoped to *tenant_id*.

@@ -13,13 +13,12 @@ introduced: every handler is a thin adapter over
 ``backend/api/routers/sessions_v2.py``.
 
 A "turn" is identified 1:1 by the ``run_id`` produced by
-:meth:`OrchestratorService.handle_message`, since the persistence layer's
-``RunRepository`` protocol (``backend/persistence/base.py``) has no
-session-agnostic ``get_run(run_id)`` lookup. ``GET /v2/turns/{turnId}``
-therefore searches across the (typically small) set of known sessions'
-runs for the matching ``run_id``, reusing only
-:class:`OrchestratorService`'s existing public ``list_sessions``/
-``list_runs`` methods rather than adding a new persistence-layer method.
+:meth:`OrchestratorService.handle_message`, so ``GET /v2/turns/{turnId}``
+resolves it through the persistence layer's session-agnostic
+``RunRepository.get_run(run_id)`` lookup (``backend/persistence/base.py``,
+added in E44-S1) via :meth:`OrchestratorService.get_run` — a constant-cost
+primary-key read, replacing the sessions × runs scan this endpoint used
+before.
 """
 
 from __future__ import annotations
@@ -148,28 +147,28 @@ def _to_turn_v2_from_run_summary(summary: RunSummary) -> TurnV2:
 
 
 def _find_turn_by_id(orchestrator: OrchestratorService, turn_id: str, *, tenant_id: str) -> RunSummary | None:
-    """Search every known session's runs for one matching *turn_id*.
+    """Resolve the run backing *turn_id* directly, by primary key.
 
-    A turn is identified 1:1 by its underlying ``run_id``. There is no
-    session-agnostic run lookup in the persistence layer (see module
-    docstring), so this composes only :class:`OrchestratorService`'s
-    existing public ``list_sessions``/``list_runs`` methods.
+    A turn is identified 1:1 by its underlying ``run_id``, so this is a
+    single :meth:`OrchestratorService.get_run` call (E44-S1) — two SQL
+    statements, independent of how many sessions or runs the tenant has.
+    It replaces the previous sessions × runs scan, which cost a query per
+    session plus one per run just to find one row.
 
     Args:
         orchestrator: Orchestrator service dependency.
-        turn_id: The turn (run) identifier to search for.
-        tenant_id: Tenant to scope the search to — the authenticated
+        turn_id: The turn (run) identifier to look up.
+        tenant_id: Tenant to scope the lookup to — the authenticated
             principal's tenant, never a client-supplied value.
 
     Returns:
-        The matching :class:`RunSummary`, or ``None`` if no session has a
+        The matching :class:`RunSummary`, or ``None`` if the tenant has no
         run with that id.
     """
-    for session in orchestrator.list_sessions(tenant_id=tenant_id):
-        for run in orchestrator.list_runs(session.session_id, tenant_id=tenant_id):
-            if run.run_id == turn_id:
-                return run
-    return None
+    try:
+        return orchestrator.get_run(turn_id, tenant_id=tenant_id)
+    except KeyError:
+        return None
 
 
 @requires_scope("session:write")

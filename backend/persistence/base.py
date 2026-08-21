@@ -69,6 +69,10 @@ class RunRepository(Protocol):
         self, session_id: str, tenant_id: str = DEFAULT_TENANT_ID
     ) -> list[dict[str, Any]]: ...
 
+    def get_run(
+        self, run_id: str, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> dict[str, Any] | None: ...
+
     def list_run_steps(
         self, run_id: str, tenant_id: str = DEFAULT_TENANT_ID
     ) -> list[dict[str, Any]]: ...
