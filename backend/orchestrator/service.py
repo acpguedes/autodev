@@ -1883,6 +1883,8 @@ def _run_message_job(payload: Dict[str, Any]) -> Dict[str, Any]:
     try:
         with trace_run(run_id=run_id, tenant_id=tenant_id, flow_id=flow_id) as run_trace:
             session_record = orchestrator._store.get_session(session_id, tenant_id=tenant_id)
+            if session_record is None:
+                raise KeyError(f"Unknown session_id: {session_id}")
             orchestrator._execute_message_run(
                 session_record=session_record,
                 session_id=session_id,

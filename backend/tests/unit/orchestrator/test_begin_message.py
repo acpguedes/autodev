@@ -26,7 +26,7 @@ from backend.config.runtime import reset_runtime_config_cache
 from backend.config.settings import reset_settings_cache
 from backend.jobs.queue import _reset_queue_singleton
 from backend.llm.factory import get_chat_model
-from backend.orchestrator.service import OrchestratorService, OrchestratorRun, RunStatus
+from backend.orchestrator.service import OrchestratorService, OrchestratorRun, RunStatus, RunSummary
 from backend.persistence.database import DurableStore, reset_store_cache
 from backend.quotas.contracts import RunBudgetLimits, TenantQuotaPolicy
 from backend.quotas.service import QuotaService
@@ -96,7 +96,7 @@ def _create_session(service: OrchestratorService) -> str:
     return service.create_plan("Ship the async turn story", tenant_id=_TENANT_ID).session_id
 
 
-def _poll_run_until_terminal(service: OrchestratorService, session_id: str, run_id: str) -> dict:
+def _poll_run_until_terminal(service: OrchestratorService, session_id: str, run_id: str) -> RunSummary:
     """Poll the stored run row until its status is no longer ``running``."""
     deadline = time.monotonic() + _POLL_TIMEOUT_S
     while time.monotonic() < deadline:
