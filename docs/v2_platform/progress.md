@@ -422,7 +422,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 | E41 | Real Code Generation & Agent-Directed Execution | Beta | Done | 5/5 | E2, E14, E16-S3 | [phases/e41_real_code_generation_execution.md](phases/e41_real_code_generation_execution.md) |
 | E42 | Execution Visibility & Chat/Command UX | Beta | Done | 6/6 | E41, E9, E11, E15-E18 | [phases/e42_execution_visibility_chat_ux.md](phases/e42_execution_visibility_chat_ux.md) |
-| E43 | Execution Transparency: Terminal Transcript, File Browser & Session Stickiness | Beta | Done | 7/7 | E42, E41-S3, E41-S4, E41-S5 | [phases/e43_execution_transparency_file_browser.md](phases/e43_execution_transparency_file_browser.md) |
+| E43 | Execution Transparency: Terminal Transcript, File Browser & Session Stickiness | Beta | Done | 8/8 | E42, E41-S3, E41-S4, E41-S5 | [phases/e43_execution_transparency_file_browser.md](phases/e43_execution_transparency_file_browser.md) |
 
 Total: **113/196 stories complete** across 43 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
@@ -599,6 +599,24 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-08-21** — **E43-S8 added and completed: Chat auto-executes its
+  derived plan, live, in the same run.** The user's real ask after testing
+  S6/S7: a Chat message only ever drove the conversational agent pipeline —
+  real file writes/commands still required a second, manual "Run plan"
+  click. New fail-closed flag `autodev_chat_auto_execute` (env
+  `AUTODEV_CHAT_AUTO_EXECUTE`, default off); when on, `_run_message_job`
+  chains `build_execution_plan` + the same `_process_tasks`/
+  `_finalize_plan_run` calls "Run plan" already uses onto the *same*
+  run_id, so `getTurnV2` polling and `RunTimelinePanel`'s live subscription
+  need no new plumbing. "Run plan" is unchanged and stays available either
+  way. Found and fixed a genuine race while stress-testing: an interim
+  "reopen the run as RUNNING" call between the conversation's own
+  completion write and the chained dispatch still left a narrow window
+  where a poller could observe a premature "completed" and stop watching.
+  Root-caused by giving `_execute_message_run` a `finalize: bool = True`
+  parameter — callers chaining more work pass `finalize=False` so the run
+  row is never prematurely marked complete at all. See
+  `phases/e43_execution_transparency_file_browser.md`'s E43-S8.
 - **2026-08-21** — **E43-S7 added and completed: live `run.timeline.*`
   events during Chat turns.** Found via the user's live testing of E43-S6:
   even with async turn creation, the Execution panel stayed on "Waiting"

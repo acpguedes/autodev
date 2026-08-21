@@ -20,6 +20,7 @@
     "sending": "Sending...",
     "currentPlan": "Current plan",
     "initialPlanMessage": "Initial plan created for the goal: {{goal}}",
+    "awaitingApproval": "This turn's auto-execution paused for a decision — resolve it in Execution.",
     "message": {
       "showMore": "Show more",
       "showLess": "Show less"

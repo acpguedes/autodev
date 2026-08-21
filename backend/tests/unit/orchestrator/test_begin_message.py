@@ -215,3 +215,64 @@ def test_failed_background_job_marks_the_run_failed_and_releases_the_lease(
     assert recovered.status == RunStatus.RUNNING
     completed = _poll_run_until_terminal(orchestrator_service, session_id, recovered.run_id)
     assert completed.status == RunStatus.COMPLETED
+
+
+def test_auto_execute_flag_off_leaves_chat_only_behavior_unchanged(
+    orchestrator_service: OrchestratorService,
+) -> None:
+    """E43-S8: with the flag at its default (off), a Chat turn behaves
+    exactly like E43-S6/S7 -- conversation only, no derived tasks appended,
+    regardless of whether the session's artifacts could have derived any."""
+    session_id = _create_session(orchestrator_service)
+
+    run = orchestrator_service.begin_message(session_id, "start", tenant_id=_TENANT_ID)
+    completed = _poll_run_until_terminal(orchestrator_service, session_id, run.run_id)
+
+    assert completed.status == RunStatus.COMPLETED
+    step_keys = {step.step_key for step in completed.steps}
+    # Only the 7 conversational agent steps -- no task-derived step ids
+    # (e.g. "coding-1", "devops-...") ever appear when the flag is off.
+    assert step_keys == {
+        "navigator",
+        "analyzer",
+        "architect",
+        "coder",
+        "devops",
+        "validator",
+        "responder",
+    }
+
+
+def test_auto_execute_flag_on_chains_real_execution_onto_the_same_run(
+    orchestrator_service: OrchestratorService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """E43-S8: with the flag on, a Chat turn that derives at least one
+    executable task (the stub coder agent's fallback always includes
+    non-empty `coding_tasks`) continues, on the same run_id, straight into
+    real task dispatch -- the same path "Run plan" already uses -- instead
+    of stopping at the conversational agents."""
+    monkeypatch.setenv("AUTODEV_CHAT_AUTO_EXECUTE", "true")
+    reset_settings_cache()
+
+    session_id = _create_session(orchestrator_service)
+    run = orchestrator_service.begin_message(session_id, "start", tenant_id=_TENANT_ID)
+    completed = _poll_run_until_terminal(orchestrator_service, session_id, run.run_id)
+
+    assert completed.status in (RunStatus.COMPLETED, RunStatus.AWAITING_APPROVAL)
+    step_keys = {step.step_key for step in completed.steps}
+    conversational_keys = {
+        "navigator",
+        "analyzer",
+        "architect",
+        "coder",
+        "devops",
+        "validator",
+        "responder",
+    }
+    # Real task-derived steps (the coder fallback's coding_tasks -> "coding-N"
+    # implementation tasks, at minimum) now appear on the *same* run, on top
+    # of the conversational ones -- proving the chain, not a second run_id.
+    assert step_keys - conversational_keys
+    assert any(key.startswith("coding-") for key in step_keys)
+
+    reset_settings_cache()
