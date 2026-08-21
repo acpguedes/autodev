@@ -3,7 +3,7 @@
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35, E41, and E42: added after initial Beta
 completion, before the wave is signed off).
-**Status:** Complete · **Stories:** 6/6 (E43-S6 added post-completion, found via the user's own manual verification of E43-S1..S5)
+**Status:** Complete · **Stories:** 7/7 (E43-S6/S7 added post-completion, found via the user's own manual verification of E43-S1..S5)
 **Depends on:** E42 (specifically E42-S1's event stream and E42-S3's
 active-session concept — both real and reused here, not rebuilt), E41-S3
 (patch-apply actions), E41-S4 (agent-directed commands), E41-S5
@@ -263,6 +263,39 @@ Subtasks:
 | DoR (specific) | E43-S2 landed (a `run_id` is only useful early if the transcript renderer already does the right thing once given one) |
 | DoD (specific) | Automated: `backend/tests/unit/orchestrator/test_begin_message.py` (immediate-return shape, synchronous KeyError/QuotaExceededError, real end-to-end completion via the actual background job, and a failed-job path releasing the lease); updated `test_chat_timeline_v2.py`/`test_cli_shell_api_only.py` for the new async contract; full backend + frontend suites green. Not performed: interactive browser click-through (no headless Chrome in this environment) |
 | Dependencies | E43-S2, E43-S3 |
+
+### E43-S7 — Live `run.timeline.*` events during Chat turns — **Complete**
+
+Found via the user's live testing of E43-S6: even with async turn creation
+landed, the Execution panel stayed on "Waiting" for the whole turn. Root
+cause, distinct from S6's: `run.timeline.*` events were only ever emitted
+by the "Run plan" task-dispatch pipeline (`_process_tasks`) — the Chat
+turn's own agent graph (`_execute_message_run`'s `self._graph.invoke(...)`,
+running navigator/analyzer/architect/coder/devops/validator/responder) has
+never emitted them, since before this epic. Not a regression from S6; a
+pre-existing gap this epic's original scope didn't cover.
+
+Subtasks:
+- `E43-S7-T1`: `_make_agent_node`'s node function now emits one
+  `run.timeline.*` event per completed agent, reusing the exact event
+  type/schema/role mapping `_process_tasks` already established
+  (navigator/analyzer → analysis, coder → patch, validator → validation;
+  planner/architect/devops/responder intentionally left off the
+  four-stage timeline) — no new event type, no frontend change needed
+  (`RunTimelinePanel` already renders whatever arrives on this stream).
+- `E43-S7-T2`: `AgentGraphState` gains an optional (`NotRequired`)
+  `tenant_id` field so the emitter knows which tenant to publish under,
+  without touching the separate dynamic-routing graph in
+  `backend/orchestrator/graphs.py` or any other existing construction of
+  this state.
+
+| Criterion | Detail |
+| --- | --- |
+| Functional | Sending a Chat message shows the Execution panel's four stages update live as navigator/analyzer/coder/validator each complete, with that agent's real output — not stuck on "Waiting" for the whole turn |
+| Non-functional | No new event type or schema change; reuses `_process_tasks`'s existing mapping/output cap |
+| DoR (specific) | E43-S6 landed (a `run_id` must exist early for this to be observable) |
+| DoD (specific) | `test_handle_message_emits_live_timeline_events_per_agent` (order, mapping, real output content); updated `test_handle_message_completes_only_after_session_persistence` for the new event count; full backend suite green |
+| Dependencies | E43-S6 |
 
 ## Contracts & decisions
 

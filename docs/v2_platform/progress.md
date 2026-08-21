@@ -422,9 +422,9 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 | E41 | Real Code Generation & Agent-Directed Execution | Beta | Done | 5/5 | E2, E14, E16-S3 | [phases/e41_real_code_generation_execution.md](phases/e41_real_code_generation_execution.md) |
 | E42 | Execution Visibility & Chat/Command UX | Beta | Done | 6/6 | E41, E9, E11, E15-E18 | [phases/e42_execution_visibility_chat_ux.md](phases/e42_execution_visibility_chat_ux.md) |
-| E43 | Execution Transparency: Terminal Transcript, File Browser & Session Stickiness | Beta | Done | 6/6 | E42, E41-S3, E41-S4, E41-S5 | [phases/e43_execution_transparency_file_browser.md](phases/e43_execution_transparency_file_browser.md) |
+| E43 | Execution Transparency: Terminal Transcript, File Browser & Session Stickiness | Beta | Done | 7/7 | E42, E41-S3, E41-S4, E41-S5 | [phases/e43_execution_transparency_file_browser.md](phases/e43_execution_transparency_file_browser.md) |
 
-Total: **112/195 stories complete** across 43 epics (E19 is a proposed
+Total: **113/196 stories complete** across 43 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -599,6 +599,20 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-08-21** — **E43-S7 added and completed: live `run.timeline.*`
+  events during Chat turns.** Found via the user's live testing of E43-S6:
+  even with async turn creation, the Execution panel stayed on "Waiting"
+  the whole turn. Distinct root cause from S6: `run.timeline.*` events were
+  only ever emitted by the "Run plan" task-dispatch pipeline
+  (`_process_tasks`) — the Chat turn's own agent graph
+  (`_execute_message_run`'s `self._graph.invoke(...)`) never emitted them,
+  a pre-existing gap predating this epic. `_make_agent_node`'s node
+  function now emits one `run.timeline.*` event per completed mapped agent
+  (navigator/analyzer → analysis, coder → patch, validator → validation),
+  reusing `_process_tasks`'s exact event type/schema/mapping — no new event
+  type, no frontend change needed (`RunTimelinePanel` already renders
+  whatever arrives). See `phases/e43_execution_transparency_file_browser.md`'s
+  E43-S7.
 - **2026-08-21** — **E43-S6 added and completed: asynchronous turn
   creation.** Found via the user's own manual verification of E43-S1..S5 in
   the actual product UI: sending a Chat message showed "Sending..."
