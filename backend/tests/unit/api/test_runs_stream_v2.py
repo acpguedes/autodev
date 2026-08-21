@@ -357,7 +357,7 @@ class TestStreamEventsGenerator:
             replay_task.cancel()
             with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
                 await replay_task
-            await agen.aclose()
+            await agen.aclose()  # type: ignore[attr-defined]
             return ticked
 
         assert asyncio.run(run())
@@ -396,7 +396,7 @@ class TestStreamEventsGenerator:
             # its `finally: unsubscribe()` still runs either way.
             with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
                 await task
-            await agen.aclose()
+            await agen.aclose()  # type: ignore[attr-defined]
             return len(bus._registry._subscribers[WILDCARD])  # noqa: SLF001
 
         remaining = asyncio.run(run())

@@ -20,6 +20,7 @@ from fastapi.testclient import TestClient
 
 from backend.api.main import app as main_app
 from backend.jobs.queue import (
+    AbstractJobQueue,
     InProcessJobQueue,
     RedisJobQueue,
     _reset_queue_singleton,
@@ -37,7 +38,7 @@ _POLL_TIMEOUT = 5.0
 _POLL_INTERVAL = 0.05
 
 
-def _poll(queue: InProcessJobQueue, job_id: str) -> dict:
+def _poll(queue: AbstractJobQueue, job_id: str) -> dict:
     """Poll a job until it reaches a terminal status or the timeout elapses."""
     deadline = time.monotonic() + _POLL_TIMEOUT
     while time.monotonic() < deadline:

@@ -210,7 +210,7 @@ class _FakeEmbeddingsCursorWriter:
     def __init__(self, conn: _FakeEmbeddingsConnection) -> None:
         self._conn = conn
 
-    def executemany(self, sql: str, seq: object) -> None:
+    def executemany(self, sql: str, seq: "list[tuple]") -> None:
         for row in seq:
             self._conn.execute(sql, row)
 
@@ -292,10 +292,10 @@ def test_upsert_embeddings_issues_a_single_executemany_batch() -> None:
             batch_sizes.append(len(rows))
             return original_executemany(sql, rows)
 
-        cur.executemany = _tracking_executemany
+        cur.executemany = _tracking_executemany  # type: ignore[method-assign]
         return cur
 
-    conn.cursor = _tracking_cursor
+    conn.cursor = _tracking_cursor  # type: ignore[method-assign]
 
     written = upsert_embeddings(conn, chunk_rows, provider, tenant_id="default")
 
