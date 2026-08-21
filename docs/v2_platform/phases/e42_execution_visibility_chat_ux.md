@@ -3,7 +3,7 @@
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35 and E41: added after initial Beta
 completion, before the wave is signed off).
-**Status:** Not started · **Stories:** 0/6
+**Status:** Done · **Stories:** 6/6
 **Depends on:** E41 (the execution path this epic makes visible/usable),
 E9 (event catalog/bus), E11 (auth/scopes), E15-E18 (frontend foundation)
 **Enables:** a genuinely usable Beta UX for the primary Chat-driven flow —
@@ -54,7 +54,7 @@ conversation in a layout that actually looks like a chat.
 
 ## Stories
 
-### E42-S1 — Unify run-event streaming across Flow and Orchestrator paths — **Not started**
+### E42-S1 — Unify run-event streaming across Flow and Orchestrator paths — **Done**
 
 Fix the root cause of the 404. `run.timeline.*` events need one consistent
 source of truth reachable by `run_id` regardless of whether the run was
@@ -81,7 +81,7 @@ Subtasks:
 | DoD (specific) | Contract test per execution path asserting stream resolution |
 | Dependencies | E41, E9 (event bus contract) |
 
-### E42-S2 — Close the local-dev role/scope gap on Execution endpoints — **Not started**
+### E42-S2 — Close the local-dev role/scope gap on Execution endpoints — **Done**
 
 Subtasks:
 - `E42-S2-T1`: audit every `@requires_scope(...)`-gated `/v2/execution/*`
@@ -102,7 +102,7 @@ Subtasks:
 | DoD (specific) | Test enumerating audited endpoints against `Role.OWNER` |
 | Dependencies | E11 (auth/scopes) |
 
-### E42-S3 — Default Plans/Execution pages to the active session — **Not started**
+### E42-S3 — Default Plans/Execution pages to the active session — **Done**
 
 Subtasks:
 - `E42-S3-T1`: Plans and Execution pages read the currently-active session
@@ -120,7 +120,7 @@ Subtasks:
 | DoD (specific) | Manual verification: Chat → Run plan → Plans/Execution show data unprompted |
 | Dependencies | E42-S1 (Execution page also needs the stream fix to show live data, not just historical) |
 
-### E42-S4 — Chat layout: real chat bubbles + collapsible turns — **Not started**
+### E42-S4 — Chat layout: real chat bubbles + collapsible turns — **Done**
 
 Subtasks:
 - `E42-S4-T1`: user messages right-aligned with a distinct background
@@ -142,7 +142,7 @@ Subtasks:
 | DoD (specific) | Visual/manual verification across Chat, Execution, Plans |
 | Dependencies | none |
 
-### E42-S5 — Live command execution panel (stdout/stderr) — **Not started**
+### E42-S5 — Live command execution panel (stdout/stderr) — **Done**
 
 Subtasks:
 - `E42-S5-T1`: a panel (Execution page, and/or inline in Chat) that streams
@@ -169,7 +169,7 @@ Subtasks:
 | DoD (specific) | Manual verification: trigger a run with a validation command, observe live output |
 | Dependencies | E42-S1, E41-S4 (agent-directed commands) |
 
-### E42-S6 — Flow editor canvas space — **Not started**
+### E42-S6 — Flow editor canvas space — **Done**
 
 Subtasks:
 - `E42-S6-T1`: give the visual flow editor canvas more usable screen space

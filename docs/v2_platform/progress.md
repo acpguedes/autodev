@@ -421,9 +421,9 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 | E41 | Real Code Generation & Agent-Directed Execution | Beta | Done | 5/5 | E2, E14, E16-S3 | [phases/e41_real_code_generation_execution.md](phases/e41_real_code_generation_execution.md) |
-| E42 | Execution Visibility & Chat/Command UX | Beta | Not started | 0/6 | E41, E9, E11, E15-E18 | [phases/e42_execution_visibility_chat_ux.md](phases/e42_execution_visibility_chat_ux.md) |
+| E42 | Execution Visibility & Chat/Command UX | Beta | Done | 6/6 | E41, E9, E11, E15-E18 | [phases/e42_execution_visibility_chat_ux.md](phases/e42_execution_visibility_chat_ux.md) |
 
-Total: **100/189 stories complete** across 42 epics (E19 is a proposed
+Total: **106/189 stories complete** across 42 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -598,6 +598,40 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-08-21** — **E42 — Execution Visibility & Chat/Command UX is
+  complete (6/6)**, on `epic/e42-execution-visibility-chat-ux`. **E42-S1**
+  root-caused the 404 precisely: `stream_run_events` gated
+  existence/tenant ownership on the Flow Engine's own `flow_runs` table,
+  but both the Flow Engine and the Orchestrator already published onto the
+  same `EventBus` via `emit_event()` — the stream body already worked for
+  both paths, only the gate didn't. Swapped it to
+  `EventStore.get_projection(run_id)`, fed by both engines, for one
+  engine-agnostic check. **E42-S2** audited every `@requires_scope` under
+  `/v2/execution/*` and `/v2/runs/*`: `policy:read`/`policy:admin` were
+  used by `execution_policy_v2.py` but never defined in `ROLE_GRANTS` —
+  not an `OWNER`-specific gap, a missing scope pair — added to the
+  VIEWER/ADMIN tiers respectively. **E42-S3** extended the shell store
+  with `activeSessionId`/`activeRunId`, published from Chat, consumed by
+  Plans/Execution as their default (manual entry still overrides).
+  **E42-S4** reworked `MessageList` into right/left chat bubbles with
+  collapsible long turns, and fixed Chat's specific nested-scroll bug
+  (audited Plans/Execution too; they already used the correct pattern).
+  **E42-S5** found a gap the epic doc didn't anticipate: the
+  `run.timeline.*` event taxonomy (built in E16-S1 to carry live
+  stdout/log excerpts, role-mapped in `backend/api/timeline_roles.py`) was
+  never actually emitted anywhere — zero non-test call sites in the whole
+  backend. `Orchestrator._process_tasks` now emits one `run.timeline.<stage>`
+  event per task with its captured `ExecutionResult.stdout`/`.stderr`; the
+  frontend consumer (`useRunTimeline` → `ExecutionTimeline`) was already
+  fully built and wired into Chat's execution panel, it only needed real
+  events — the one frontend gap (`applyTimelineEvent` overwriting instead
+  of accumulating a stage's output across multiple same-stage tasks) was
+  also closed. **E42-S6** gave the flow editor's canvas column the same
+  `lg:min-h-0` large-viewport growth its sibling palette column already
+  had, instead of a permanent `min-h-[420px]` cap. `make check`: exit 0
+  (backend lint+typecheck+tests, frontend lint+typecheck+test+build,
+  compose config all clean). Not merged to `main`; no push/PR without
+  explicit authorization.
 - **2026-08-21** — **Planning-only: added E42 — Execution Visibility &
   Chat/Command UX (Beta-hardening, 6 planned stories)**. Found by running
   the now-fixed E41 pipeline through the actual product UI (backend +
