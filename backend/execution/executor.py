@@ -18,7 +18,12 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
 from backend.events.runtime import emit_event
-from backend.execution.contracts import ExecutionAction, ExecutionActionType, ExecutionResult
+from backend.execution.contracts import (
+    ExecutionAction,
+    ExecutionActionType,
+    ExecutionFailureKind,
+    ExecutionResult,
+)
 from backend.execution.policy import PolicyEvaluator
 from backend.execution.runner import ActionRunner
 
@@ -169,6 +174,7 @@ class TaskExecutor:
                         started_at=now,
                         completed_at=now,
                         error=f"policy denied: {decision.reason}",
+                        failure_kind=ExecutionFailureKind.POLICY_DENIED,
                     )
                     results.append(result)
                     emit_event(
@@ -182,6 +188,7 @@ class TaskExecutor:
                             "command": list(action.command) if action.command else None,
                             "path": _action_path(action),
                             "stepLabel": action.step_label,
+                            "failureKind": ExecutionFailureKind.POLICY_DENIED.value,
                         },
                         subject={"runId": run_id, "taskId": action.task_id},
                     )
@@ -217,6 +224,7 @@ class TaskExecutor:
                         "stdout": _capped_tail(result.stdout),
                         "stderr": _capped_tail(result.stderr),
                         "stepLabel": action.step_label,
+                        "failureKind": result.failure_kind.value if result.failure_kind else None,
                     },
                     subject={"runId": run_id, "taskId": action.task_id},
                 )
@@ -241,19 +249,31 @@ class TaskExecutor:
         return TaskExecutionOutcome(status="failed" if failed else "completed", results=results)
 
     def deny_all(
-        self, actions: list[ExecutionAction], *, run_id: str, tenant_id: str, reason: str
+        self,
+        actions: list[ExecutionAction],
+        *,
+        run_id: str,
+        tenant_id: str,
+        reason: str,
+        failure_kind: ExecutionFailureKind = ExecutionFailureKind.POLICY_DENIED,
     ) -> TaskExecutionOutcome:
         """Fail every action without dispatching to policy or the runner.
 
         Used by E14-S3 when a human decision denies a task, or a pending
         decision times out (deny-and-stop fallback) — the decision itself
-        is the reason execution never reaches the runner.
+        is the reason execution never reaches the runner. Also used by
+        E32-S3/S4 when a batch's execution environment failed to
+        provision.
 
         Args:
             actions: The actions the denied task derived.
             run_id: Orchestrator run this belongs to (event partition key).
             tenant_id: Tenant the run belongs to.
             reason: Human-readable denial reason, recorded on every result.
+            failure_kind: Typed reason every result carries (E46-S1,
+                ADR-023); defaults to ``POLICY_DENIED`` (the human-decision
+                case) — callers denying for a different reason (e.g. an
+                unavailable environment) pass the matching kind.
 
         Returns:
             A ``"failed"`` outcome covering every action.
@@ -269,6 +289,7 @@ class TaskExecutor:
                 started_at=now,
                 completed_at=now,
                 error=reason,
+                failure_kind=failure_kind,
             )
             results.append(result)
             emit_event(
@@ -282,6 +303,7 @@ class TaskExecutor:
                     "command": list(action.command) if action.command else None,
                     "path": _action_path(action),
                     "stepLabel": action.step_label,
+                    "failureKind": failure_kind.value,
                 },
                 subject={"runId": run_id, "taskId": action.task_id},
             )

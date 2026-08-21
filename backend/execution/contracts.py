@@ -34,6 +34,24 @@ class ExecutionActionType(StrEnum):
     RUN_VALIDATION = "run_validation"
 
 
+class ExecutionFailureKind(StrEnum):
+    """Typed reason an :class:`ExecutionResult` failed (E46-S1, ADR-023).
+
+    Set at the point where a failure originates (sandbox runner, policy
+    gates, environment manager) -- never inferred by pattern-matching
+    ``stderr`` in the orchestrator. Only :attr:`CODE_FAILURE` is
+    :attr:`ExecutionResult.repairable_by_code_change`.
+    """
+
+    CODE_FAILURE = "code_failure"
+    COMMAND_NOT_ALLOWED = "command_not_allowed"
+    POLICY_DENIED = "policy_denied"
+    ENVIRONMENT_UNAVAILABLE = "environment_unavailable"
+    DEPENDENCY_MISSING = "dependency_missing"
+    TIMEOUT = "timeout"
+    INTERNAL_ERROR = "internal_error"
+
+
 @dataclass(frozen=True, slots=True)
 class ExecutionAction:
     """One unit of real work derived from an ``ExecutionTask``.
@@ -94,6 +112,9 @@ class ExecutionResult:
             the task's plain-language description.
         path: The file target that was written, for ``create_file``/
             ``edit_file``/``apply_patch`` actions (E43-S2).
+        failure_kind: Typed reason this result failed (E46-S1, ADR-023);
+            ``None`` for every success and for results produced before
+            this field existed (backward compatible).
     """
 
     action_id: str
@@ -111,6 +132,19 @@ class ExecutionResult:
     environment: dict[str, Any] = field(default_factory=dict)
     command: list[str] | None = None
     path: str | None = None
+    failure_kind: ExecutionFailureKind | None = None
+
+    @property
+    def repairable_by_code_change(self) -> bool:
+        """Whether this failure is one a Coder code change can plausibly fix (E46-S1).
+
+        ``True`` only for :attr:`ExecutionFailureKind.CODE_FAILURE`; every
+        other kind (policy denial, missing allowlist entry, unavailable
+        environment, timeout, ...) is not something rewriting the
+        generated code can address. ``False`` for successes too --
+        callers gate on this only after checking ``status == "failed"``.
+        """
+        return self.failure_kind is ExecutionFailureKind.CODE_FAILURE
 
     def to_dict(self) -> dict[str, Any]:
         """Render this result as a plain, JSON-safe dict."""
@@ -130,7 +164,13 @@ class ExecutionResult:
             "environment": dict(self.environment),
             "command": list(self.command) if self.command is not None else None,
             "path": self.path,
+            "failure_kind": self.failure_kind.value if self.failure_kind is not None else None,
         }
 
 
-__all__ = ["ExecutionActionType", "ExecutionAction", "ExecutionResult"]
+__all__ = [
+    "ExecutionActionType",
+    "ExecutionFailureKind",
+    "ExecutionAction",
+    "ExecutionResult",
+]

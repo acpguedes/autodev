@@ -447,10 +447,10 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E43 | Execution Transparency: Terminal Transcript, File Browser & Session Stickiness | Beta | Done | 8/8 | E42, E41-S3, E41-S4, E41-S5 | [phases/e43_execution_transparency_file_browser.md](phases/e43_execution_transparency_file_browser.md) |
 | E44 | Persistence Read/Write Efficiency | Beta | Done | 5/5 | E8, E16-S1, E43 | [phases/e44_persistence_efficiency.md](phases/e44_persistence_efficiency.md) |
 | E45 | Runtime I/O Efficiency: Job Queue, Event Bus, SSE & Indexing | Beta | Not started | 0/5 | E0, E8-S2, E9, E43-S6 | [phases/e45_runtime_io_efficiency.md](phases/e45_runtime_io_efficiency.md) |
-| E46 | Execution Failure Classification & Self-Repair Governance | Beta | Not started | 0/3 | E14, E32, E41-S5, E43-S1 | [phases/e46_failure_classification_self_repair.md](phases/e46_failure_classification_self_repair.md) |
+| E46 | Execution Failure Classification & Self-Repair Governance | Beta | Done | 3/3 | E14, E32, E41-S5, E43-S1 | [phases/e46_failure_classification_self_repair.md](phases/e46_failure_classification_self_repair.md) |
 | E47 | Backend Structural Consolidation | Beta | Not started | 0/5 | E2, E2-S6, E8, E44, E46 | [phases/e47_backend_structural_consolidation.md](phases/e47_backend_structural_consolidation.md) |
 
-Total: **118/214 stories complete** across 47 epics (E19 is a proposed
+Total: **121/214 stories complete** across 47 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -631,6 +631,34 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-21** — **E46 — Execution Failure Classification & Self-Repair
+  Governance complete (3/3, ADR-023)**. Self-repair no longer spends a
+  Coder call on a failure it cannot fix. **E46-S1**: `ExecutionFailureKind`
+  (`code_failure`/`command_not_allowed`/`policy_denied`/
+  `environment_unavailable`/`dependency_missing`/`timeout`/
+  `internal_error`) is set at the origin — the sandbox runner's
+  allowlist/workspace-containment checks, `CompositeActionRunner`'s
+  environment-policy denial, `TaskExecutor`'s execution-policy denial and
+  `deny_all` (human decision or environment-provisioning failure) — never
+  inferred from `stderr` afterwards. `ExecutionResult` carries the new
+  additive `failure_kind` plus a derived `repairable_by_code_change`
+  property; `execution.action.failed` gains an additive `failureKind`
+  field. **E46-S2**: `_maybe_self_repair` now skips the Coder entirely —
+  emitting the new `execution.repair.skipped` event and recording
+  `self_check="skipped_non_repairable"` — when every failed result is
+  classified and none is repairable by a code change; a result with no
+  `failure_kind` (pre-E46 producers) still fails the gate open to the old
+  reflex. **E46-S3**: `_process_tasks` now dispatches the whole batch
+  first, then runs one batched repair pass
+  (`_maybe_batch_self_repair`) over every failing validation task instead
+  of one `_maybe_self_repair` call per task — multiple failing validations
+  converge on exactly one Coder call carrying every repairable failure's
+  evidence, one combined write, and only the tasks that were actually
+  repaired are re-validated afterwards. This closes the exact blast radius
+  E42/E43's live run demonstrated (10/10 validation tasks failing on a
+  sandbox policy rejection triggered 10 wasted repair attempts) and E43-S1
+  only patched one instance of.
 
 - **2026-08-21** — **E44 — Persistence Read/Write Efficiency complete
   (5/5)**. Every defect the epic was written against is closed, and each

@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import pytest
 
 from backend.events.runtime import get_event_bus, reset_event_bus_for_tests
-from backend.execution.contracts import ExecutionAction, ExecutionResult
+from backend.execution.contracts import ExecutionAction, ExecutionFailureKind, ExecutionResult
 from backend.execution.executor import TaskExecutor
 from backend.execution.policy import PolicyDecision
 from backend.orchestrator.service import ExecutionTask
@@ -277,12 +277,15 @@ def test_a_policy_denied_action_never_reaches_the_runner() -> None:
     assert outcome.status == "failed"
     assert outcome.results[0].status == "failed"
     assert "policy denied" in (outcome.results[0].error or "")
+    assert outcome.results[0].failure_kind is ExecutionFailureKind.POLICY_DENIED
+    assert outcome.results[0].repairable_by_code_change is False
     assert runner.dispatched == []
     assert len(policy.calls) == 1
 
     envelopes = get_event_bus().replay("run-1")
     types = [envelope.type for envelope in envelopes]
     assert types == ["execution.action.failed"]
+    assert envelopes[0].data["failureKind"] == "policy_denied"
 
 
 def test_a_policy_allowed_action_reaches_the_runner_as_before() -> None:
@@ -332,3 +335,33 @@ def test_completed_and_failed_events_carry_the_real_command_and_output(monkeypat
     failed = next(e for e in envelopes if e.type == "execution.action.failed")
     assert failed.data["command"] == ["pytest"]
     assert failed.data["stderr"] == "scripted stderr"
+
+
+def test_deny_all_defaults_to_policy_denied_failure_kind() -> None:
+    runner = _FakeRunner(outcomes={}, dispatched=[])
+    executor = TaskExecutor(runner)
+    task = _task("coding-1", "implementation", "Add the missing endpoint")
+    actions = executor.derive_actions(task)
+
+    outcome = executor.deny_all(actions, run_id="run-1", tenant_id="acme", reason="human denied this action")
+
+    assert outcome.results[0].failure_kind is ExecutionFailureKind.POLICY_DENIED
+    envelopes = get_event_bus().replay("run-1")
+    assert envelopes[0].data["failureKind"] == "policy_denied"
+
+
+def test_deny_all_accepts_an_explicit_failure_kind() -> None:
+    runner = _FakeRunner(outcomes={}, dispatched=[])
+    executor = TaskExecutor(runner)
+    task = _task("coding-1", "implementation", "Add the missing endpoint")
+    actions = executor.derive_actions(task)
+
+    outcome = executor.deny_all(
+        actions,
+        run_id="run-1",
+        tenant_id="acme",
+        reason="execution environment unavailable: boom",
+        failure_kind=ExecutionFailureKind.ENVIRONMENT_UNAVAILABLE,
+    )
+
+    assert outcome.results[0].failure_kind is ExecutionFailureKind.ENVIRONMENT_UNAVAILABLE
