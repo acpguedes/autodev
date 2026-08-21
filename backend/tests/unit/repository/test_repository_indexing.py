@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
+import sys
 import time
 from pathlib import Path
+
+import pytest
 
 from backend.jobs.queue import InProcessJobQueue, RedisJobQueue
 from backend.persistence.sqlite_adapter import SQLiteStore
@@ -211,6 +215,111 @@ def test_index_scopes_chunks_by_tenant(tmp_path: Path) -> None:
     tenants = {row[0]: row[1] for row in counts}
     assert tenants["tenant-a"] == tenants["tenant-b"]
     assert tenants["tenant-a"] > 0
+
+
+# ---------------------------------------------------------------------------
+# Traversal pruning and batched persistence (E45-S5)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="chmod-based permission trap is POSIX-only")
+def test_iter_source_files_never_descends_into_permission_trapped_ignored_dir(
+    tmp_path: Path,
+) -> None:
+    """An ignored directory the process cannot even read is never entered."""
+    repo = tmp_path / "repo"
+    (repo / "pkg").mkdir(parents=True)
+    (repo / "pkg" / "mod.py").write_text("x = 1\n", encoding="utf-8")
+    trapped = repo / ".venv"
+    trapped.mkdir()
+    (trapped / "lib.py").write_text("y = 2\n", encoding="utf-8")
+    trapped.chmod(0o000)
+    try:
+        found = {str(p.relative_to(repo)) for p in indexing._iter_source_files(repo)}
+    finally:
+        trapped.chmod(0o755)
+
+    assert found == {os.path.join("pkg", "mod.py")}
+
+
+def test_reindex_opens_one_connection_per_batch_not_per_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Files are persisted in batches: connect() is called once per batch, not per file."""
+    monkeypatch.setattr(indexing, "_REINDEX_BATCH_SIZE", 2)
+    store = _make_store(tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    paths = []
+    for i in range(5):
+        file_path = repo / f"m{i}.py"
+        file_path.write_text(f"def f{i}():\n    pass\n", encoding="utf-8")
+        paths.append(str(file_path))
+
+    connect_calls = 0
+    original_connect = store.connect
+
+    def _counting_connect():
+        nonlocal connect_calls
+        connect_calls += 1
+        return original_connect()
+
+    monkeypatch.setattr(store, "connect", _counting_connect)
+
+    written = indexing.reindex(paths, repo_root=repo, tenant_id="default", store=store)
+
+    assert written == 5
+    assert connect_calls == 3  # ceil(5 files / batch size 2)
+
+
+class _CursorSpy:
+    """Wraps a real DB-API cursor, recording each ``executemany`` batch size."""
+
+    def __init__(self, cursor, batch_sizes: list[int]) -> None:
+        self._cursor = cursor
+        self._batch_sizes = batch_sizes
+
+    def executemany(self, sql, seq):
+        rows = list(seq)
+        self._batch_sizes.append(len(rows))
+        return self._cursor.executemany(sql, rows)
+
+    def __getattr__(self, name):
+        return getattr(self._cursor, name)
+
+
+class _ConnSpy:
+    """Wraps a real DB-API connection, routing ``.execute``/``.cursor`` through a spied cursor."""
+
+    def __init__(self, conn) -> None:
+        self._conn = conn
+        self.executemany_batch_sizes: list[int] = []
+
+    def cursor(self):
+        return _CursorSpy(self._conn.cursor(), self.executemany_batch_sizes)
+
+    def execute(self, sql, params=()):
+        return self._conn.execute(sql, params)
+
+    def commit(self) -> None:
+        self._conn.commit()
+
+
+def test_persist_chunks_issues_one_executemany_batch_for_a_multi_chunk_file(
+    tmp_path: Path,
+) -> None:
+    """Multiple new chunks for one file are upserted via a single executemany call."""
+    store = _make_store(tmp_path)
+    chunks = chunking.chunk_source("pkg/mod_a.py", _PY_SAMPLE_A, "python", overlap_lines=0)
+    assert len(chunks) > 1
+
+    with store.connect() as raw_conn:
+        conn = _ConnSpy(raw_conn)
+        written = indexing._persist_chunks(conn, "?", "pkg/mod_a.py", chunks, "default")
+        conn.commit()
+
+    assert written == len(chunks)
+    assert conn.executemany_batch_sizes == [len(chunks)]
 
 
 # ---------------------------------------------------------------------------

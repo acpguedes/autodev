@@ -121,23 +121,31 @@ def upsert_embeddings(
         return 0
 
     vectors = provider.embed([content for _chunk_id, content, _hash in to_embed])
-    written = 0
-    for (chunk_id, _content, content_hash), vector in zip(to_embed, vectors):
-        conn.execute(
-            """
-            INSERT INTO code_embeddings (tenant_id, chunk_id, content_hash, embedding, model)
-            VALUES (%s, %s, %s, %s::vector, %s)
-            ON CONFLICT (tenant_id, chunk_id) DO UPDATE SET
-                content_hash = excluded.content_hash,
-                embedding = excluded.embedding,
-                model = excluded.model,
-                created_at = CURRENT_TIMESTAMP
-            """,
-            (tenant_id, chunk_id, content_hash, _vector_param(vector, adapter_active=adapter_active), model),
+    rows_to_write = [
+        (
+            tenant_id,
+            chunk_id,
+            content_hash,
+            _vector_param(vector, adapter_active=adapter_active),
+            model,
         )
-        written += 1
+        for (chunk_id, _content, content_hash), vector in zip(to_embed, vectors)
+    ]
+    # Single executemany batch (E45-S5) instead of one INSERT per chunk.
+    conn.cursor().executemany(
+        """
+        INSERT INTO code_embeddings (tenant_id, chunk_id, content_hash, embedding, model)
+        VALUES (%s, %s, %s, %s::vector, %s)
+        ON CONFLICT (tenant_id, chunk_id) DO UPDATE SET
+            content_hash = excluded.content_hash,
+            embedding = excluded.embedding,
+            model = excluded.model,
+            created_at = CURRENT_TIMESTAMP
+        """,
+        rows_to_write,
+    )
     conn.commit()
-    return written
+    return len(rows_to_write)
 
 
 def query_top_k(
