@@ -4,17 +4,13 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
-from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
 from backend.agents.manifest import AgentManifest, load_agent_manifest, validate_agent_manifest
 from backend.persistence.database import get_store
-from backend.plugins.events import PluginEvent
-from backend.plugins.manifest import validate_manifest as validate_plugin_manifest
-from backend.plugins.store import PluginStore
+from backend.plugins.registry_core import VersionedExtensionRegistryCore
 
 AGENT_REGISTRY_SCHEMA_VERSION = "2.0"
 
@@ -86,8 +82,17 @@ class AgentRegistry:
         self._store = store or get_store()
         if not hasattr(self._store, "connect"):
             raise TypeError("AgentRegistry requires a durable store with connect()")
-        self._plugin_store = PluginStore(self._store)
-        self._ensure_schema()
+        self._core: VersionedExtensionRegistryCore[AgentRef, AgentManifest] = (
+            VersionedExtensionRegistryCore(
+                self._store,
+                table="agent_registry",
+                id_column="agent_id",
+                kind="agent",
+                schema_version=AGENT_REGISTRY_SCHEMA_VERSION,
+                catalog_key="agents",
+                decode_ref=self._decode_ref,
+            )
+        )
 
     def register(self, manifest: AgentManifest, *, plugin_id: str) -> AgentRef:
         """Insert or update a registration for an agent manifest.
@@ -99,11 +104,7 @@ class AgentRegistry:
         Returns:
             The resulting :class:`AgentRef`.
         """
-        sql = self._upsert_sql
-        params = self._upsert_params(manifest, plugin_id)
-        with self._store.connect() as conn:
-            conn.execute(sql, params)
-            conn.commit()
+        self._core.upsert(manifest, plugin_id=plugin_id)
         return AgentRef(manifest.id, manifest.version, plugin_id, manifest)
 
     def resolve(self, agent_id: str, version_range: str = "*") -> AgentRef:
@@ -119,13 +120,7 @@ class AgentRegistry:
         Raises:
             KeyError: If no registered version satisfies the range.
         """
-        matches = [
-            ref for ref in self.list_agents(agent_id=agent_id)
-            if _version_matches(ref.version, version_range)
-        ]
-        if not matches:
-            raise KeyError(f"No agent {agent_id!r} matches {version_range!r}")
-        return sorted(matches, key=lambda ref: Version(ref.version), reverse=True)[0]
+        return self._core.resolve(agent_id, version_range)
 
     def find_by_capability(self, capability: str) -> list[AgentRef]:
         """Find and rank registered agents that declare a given capability.
@@ -165,24 +160,7 @@ class AgentRegistry:
             version: Exact SemVer version to deprecate.
             reason: Human-readable deprecation reason.
         """
-        placeholder = "%s" if self._is_postgres else "?"
-        with self._store.connect() as conn:
-            conn.execute(
-                f"""
-                UPDATE agent_registry
-                SET deprecated = 1, deprecation_reason = {placeholder}, updated_at = CURRENT_TIMESTAMP
-                WHERE agent_id = {placeholder} AND version = {placeholder}
-                """,
-                (reason, agent_id, version),
-            )
-            conn.commit()
-        self._plugin_store.append_event(
-            PluginEvent(
-                name="agent.version.deprecated",
-                plugin_id=agent_id,
-                payload={"version": version, "reason": reason},
-            )
-        )
+        self._core.deprecate(agent_id, version, reason)
 
     def activate(self, agent_id: str, version: str) -> None:
         """Clear the deprecated flag on a specific agent version and emit a plugin event.
@@ -195,24 +173,7 @@ class AgentRegistry:
             agent_id: Fully qualified agent id.
             version: Exact SemVer version to activate.
         """
-        placeholder = "%s" if self._is_postgres else "?"
-        with self._store.connect() as conn:
-            conn.execute(
-                f"""
-                UPDATE agent_registry
-                SET deprecated = 0, deprecation_reason = '', updated_at = CURRENT_TIMESTAMP
-                WHERE agent_id = {placeholder} AND version = {placeholder}
-                """,
-                (agent_id, version),
-            )
-            conn.commit()
-        self._plugin_store.append_event(
-            PluginEvent(
-                name="agent.version.activated",
-                plugin_id=agent_id,
-                payload={"version": version},
-            )
-        )
+        self._core.activate(agent_id, version)
 
     def list_agents(self, *, agent_id: str | None = None) -> list[AgentRef]:
         """List registered agent versions, optionally filtered by agent id.
@@ -223,16 +184,7 @@ class AgentRegistry:
         Returns:
             Matching agent references, sorted by agent id and descending version.
         """
-        where = ""
-        params: tuple[Any, ...] = ()
-        if agent_id is not None:
-            placeholder = "%s" if self._is_postgres else "?"
-            where = f" WHERE agent_id = {placeholder}"
-            params = (agent_id,)
-        with self._store.connect() as conn:
-            rows = conn.execute(f"SELECT * FROM agent_registry{where}", params).fetchall()
-        refs = [self._decode_ref(row) for row in rows]
-        return sorted(refs, key=lambda ref: (ref.agent_id, Version(ref.version)), reverse=True)
+        return self._core.list_all(ext_id=agent_id)
 
     def catalog(self, *, capability: str | None = None) -> dict[str, Any]:
         """Build a JSON-serializable catalog of registered agents.
@@ -245,107 +197,19 @@ class AgentRegistry:
             A dict with ``schemaVersion`` and an ``agents`` catalog item list.
         """
         refs = self.find_by_capability(capability) if capability else self.list_agents()
-        return {
-            "schemaVersion": AGENT_REGISTRY_SCHEMA_VERSION,
-            "agents": [ref.to_catalog_item() for ref in refs],
-        }
+        return self._core.catalog(refs)
 
     def sync_from_plugin_store(self) -> None:
         """Register agents declared by every enabled plugin in the plugin store."""
-        for row in self._plugin_store.list_plugins():
-            if row["state"] != "enabled":
-                continue
-            result = validate_plugin_manifest(row["manifest_json"])
-            if not result.valid or result.manifest is None:
-                continue
-            plugin_manifest = result.manifest
-            plugin_root = Path(row["manifest_path"]).parent
-            for point in plugin_manifest.extension_points:
-                if point.kind.value != "agent" or not point.manifest:
-                    continue
-                agent_manifest = load_agent_manifest(plugin_root / point.manifest)
-                self.register(agent_manifest, plugin_id=plugin_manifest.id)
+        self._core.sync_from_plugin_store(
+            load_manifest=load_agent_manifest, register=self.register
+        )
 
-    def _ensure_schema(self) -> None:
-        """Create the ``agent_registry`` table and index if they do not exist."""
-        if self._is_postgres:
-            sql = """
-                CREATE TABLE IF NOT EXISTS agent_registry (
-                    agent_id TEXT NOT NULL,
-                    version TEXT NOT NULL,
-                    plugin_id TEXT NOT NULL,
-                    manifest_json JSONB NOT NULL,
-                    deprecated INTEGER NOT NULL DEFAULT 0,
-                    deprecation_reason TEXT NOT NULL DEFAULT '',
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY(agent_id, version)
-                )
-            """
-            index_sql = "CREATE INDEX IF NOT EXISTS idx_pg_agent_registry_plugin ON agent_registry(plugin_id)"
-        else:
-            sql = """
-                CREATE TABLE IF NOT EXISTS agent_registry (
-                    agent_id TEXT NOT NULL,
-                    version TEXT NOT NULL,
-                    plugin_id TEXT NOT NULL,
-                    manifest_json TEXT NOT NULL,
-                    deprecated INTEGER NOT NULL DEFAULT 0,
-                    deprecation_reason TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY(agent_id, version)
-                )
-            """
-            index_sql = "CREATE INDEX IF NOT EXISTS idx_agent_registry_plugin ON agent_registry(plugin_id)"
-        with self._store.connect() as conn:
-            conn.execute(sql)
-            conn.execute(index_sql)
-            conn.commit()
-
-    @property
-    def _is_postgres(self) -> bool:
-        """Whether the backing store is a PostgreSQL database."""
-        return str(getattr(self._store, "database_url", "")).startswith(("postgresql://", "postgres://"))
-
-    @property
-    def _upsert_sql(self) -> str:
-        """The dialect-appropriate upsert statement for ``agent_registry``."""
-        if self._is_postgres:
-            return """
-                INSERT INTO agent_registry (agent_id, version, plugin_id, manifest_json, deprecated, deprecation_reason, updated_at)
-                VALUES (%s, %s, %s, %s::jsonb, 0, '', CURRENT_TIMESTAMP)
-                ON CONFLICT(agent_id, version) DO UPDATE SET
-                    plugin_id = EXCLUDED.plugin_id,
-                    manifest_json = EXCLUDED.manifest_json,
-                    updated_at = CURRENT_TIMESTAMP
-            """
-        return """
-            INSERT INTO agent_registry (agent_id, version, plugin_id, manifest_json, deprecated, deprecation_reason, updated_at)
-            VALUES (?, ?, ?, ?, 0, '', CURRENT_TIMESTAMP)
-            ON CONFLICT(agent_id, version) DO UPDATE SET
-                plugin_id = excluded.plugin_id,
-                manifest_json = excluded.manifest_json,
-                updated_at = CURRENT_TIMESTAMP
-        """
-
-    def _upsert_params(self, manifest: AgentManifest, plugin_id: str) -> tuple[Any, ...]:
-        """Build the parameter tuple for the upsert statement.
+    def _decode_ref(self, raw: dict[str, Any]) -> AgentRef:
+        """Decode one raw, column-keyed row dict into an :class:`AgentRef`.
 
         Args:
-            manifest: Agent manifest being registered.
-            plugin_id: Identifier of the plugin providing the agent.
-
-        Returns:
-            Parameters matching the placeholders in :attr:`_upsert_sql`.
-        """
-        return (manifest.id, manifest.version, plugin_id, json.dumps(manifest.raw))
-
-    def _decode_ref(self, row: Any) -> AgentRef:
-        """Decode a database row into an :class:`AgentRef`.
-
-        Args:
-            row: Row returned by the store, either mapping-like or a plain tuple.
+            raw: Column-name-keyed row, as produced by the core's row decoder.
 
         Returns:
             The decoded agent reference.
@@ -353,20 +217,6 @@ class AgentRegistry:
         Raises:
             ValueError: If the stored manifest JSON fails validation.
         """
-        if hasattr(row, "keys"):
-            raw = {key: row[key] for key in row.keys()}
-        else:
-            columns = (
-                "agent_id",
-                "version",
-                "plugin_id",
-                "manifest_json",
-                "deprecated",
-                "deprecation_reason",
-                "created_at",
-                "updated_at",
-            )
-            raw = dict(zip(columns, row))
         manifest_json = raw["manifest_json"]
         if isinstance(manifest_json, str):
             manifest_json = json.loads(manifest_json)
@@ -381,21 +231,6 @@ class AgentRegistry:
             deprecated=bool(raw.get("deprecated", 0)),
             deprecation_reason=raw.get("deprecation_reason") or "",
         )
-
-
-def _version_matches(version: str, version_range: str) -> bool:
-    """Check whether a version satisfies a SemVer range expression.
-
-    Args:
-        version: Exact SemVer version to test.
-        version_range: Range expression, or ``""``/``"*"`` for any version.
-
-    Returns:
-        ``True`` if ``version`` satisfies ``version_range``.
-    """
-    if version_range in ("", "*"):
-        return True
-    return Version(version) in SpecifierSet(version_range.replace(" ", ","))
 
 
 __all__ = ["AGENT_REGISTRY_SCHEMA_VERSION", "AgentRef", "AgentRegistry"]
