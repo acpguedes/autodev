@@ -5,7 +5,7 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { ActionApprovalPanel } from "@/components/execution/ActionApprovalPanel";
 import { DynamicPermissionsList } from "@/components/execution/DynamicPermissionsList";
 import { ExecutionActionLog } from "@/components/execution/ExecutionActionLog";
-import { useShellHeader } from "@/components/shell/ShellProvider";
+import { useShell, useShellHeader } from "@/components/shell/ShellProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTranslations } from "@/lib/i18n";
@@ -40,6 +40,7 @@ export default function ExecutionPage() {
     subtitle: t("execution.pageSubtitle"),
   });
 
+  const { activeSessionId, activeRunId } = useShell();
   const [decisions, setDecisions] = useState<PendingDecisionV2[]>([]);
   const [permissions, setPermissions] = useState<DynamicPermissionV2[]>([]);
   const [loading, setLoading] = useState(false);
@@ -72,6 +73,21 @@ export default function ExecutionPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Default the watched run and resume-session input to the session/run
+  // active in Chat (E42-S3) instead of requiring a pasted id; the manual
+  // forms below still override either.
+  useEffect(() => {
+    if (activeRunId && !watchedRunId) {
+      setWatchedRunId(activeRunId);
+    }
+  }, [activeRunId, watchedRunId]);
+
+  useEffect(() => {
+    if (activeSessionId && !sessionIdInput) {
+      setSessionIdInput(activeSessionId);
+    }
+  }, [activeSessionId, sessionIdInput]);
 
   const setBusy = useCallback((decisionId: string, busy: boolean) => {
     setDecisionBusy((current) => ({ ...current, [decisionId]: busy }));

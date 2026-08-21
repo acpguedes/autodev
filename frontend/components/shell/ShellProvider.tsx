@@ -30,12 +30,20 @@ export interface ShellContextValue {
   panelWidth: number;
   /** Active nav item key. */
   activeNav: string;
+  /** Session id of the most recently active Chat session, or `null` (E42-S3). */
+  activeSessionId: string | null;
+  /** Run id of the most recent Chat turn, or `null` (E42-S3). */
+  activeRunId: string | null;
   /** Open or close the execution panel. */
   setPanelOpen: (open: boolean) => void;
   /** Toggle the execution panel. */
   togglePanel: () => void;
   /** Record the active nav item key. */
   setActiveNav: (nav: string) => void;
+  /** Record the active Chat session id, or `null` to clear it (E42-S3). */
+  setActiveSessionId: (sessionId: string | null) => void;
+  /** Record the active run id, or `null` to clear it (E42-S3). */
+  setActiveRunId: (runId: string | null) => void;
   /** Current contextual-header content. */
   header: ShellHeaderContent;
   /** Replace the contextual-header content. */
@@ -95,9 +103,13 @@ export function ShellProvider({ children }: { children: React.ReactNode }): Reac
       panelOpen: state.panelOpen,
       panelWidth: state.panelWidth,
       activeNav: state.activeNav,
+      activeSessionId: state.activeSessionId,
+      activeRunId: state.activeRunId,
       setPanelOpen: shellStore.setPanelOpen,
       togglePanel: shellStore.togglePanel,
       setActiveNav: shellStore.setActiveNav,
+      setActiveSessionId: shellStore.setActiveSessionId,
+      setActiveRunId: shellStore.setActiveRunId,
       header,
       setHeader,
       setNewSessionHandler,

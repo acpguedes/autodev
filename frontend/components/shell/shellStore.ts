@@ -22,6 +22,19 @@ export interface ShellState {
   readonly panelWidth: number;
   /** Key of the active primary/legacy nav item (see `navModel`). */
   readonly activeNav: string;
+  /**
+   * Session id of the most recently active Chat session, or `null` before
+   * any session has loaded (E42-S3). Plans/Execution default to this
+   * instead of requiring a pasted session id; manual entry still overrides
+   * it.
+   */
+  readonly activeSessionId: string | null;
+  /**
+   * Run id of the most recent Chat turn (a turn's id doubles as its run
+   * id), or `null` when no turn has run yet (E42-S3). The Execution page
+   * defaults its watched run to this.
+   */
+  readonly activeRunId: string | null;
 }
 
 /** `sessionStorage` key that holds the serialized {@link ShellState}. */
@@ -39,6 +52,8 @@ export const DEFAULT_SHELL_STATE: ShellState = Object.freeze({
   panelOpen: false,
   panelWidth: DEFAULT_PANEL_WIDTH,
   activeNav: "chat",
+  activeSessionId: null,
+  activeRunId: null,
 });
 
 /**
@@ -53,6 +68,16 @@ export function clampPanelWidth(width: number): number {
     return DEFAULT_PANEL_WIDTH;
   }
   return Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, Math.round(width)));
+}
+
+/**
+ * Coerce a candidate field into a non-empty string, or `null`.
+ *
+ * @param value - Untrusted field value.
+ * @returns `value` when it's a non-empty string, else `null`.
+ */
+function sanitizeNullableId(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 /**
@@ -80,6 +105,8 @@ export function sanitizeShellState(raw: unknown): ShellState {
       typeof candidate.activeNav === "string" && candidate.activeNav.length > 0
         ? candidate.activeNav
         : DEFAULT_SHELL_STATE.activeNav,
+    activeSessionId: sanitizeNullableId(candidate.activeSessionId),
+    activeRunId: sanitizeNullableId(candidate.activeRunId),
   };
 }
 
@@ -99,6 +126,10 @@ export interface ShellStore {
   setPanelWidth(width: number): void;
   /** Record the active nav item key. */
   setActiveNav(nav: string): void;
+  /** Record the active Chat session id (E42-S3), or `null` to clear it. */
+  setActiveSessionId(sessionId: string | null): void;
+  /** Record the active run id (E42-S3), or `null` to clear it. */
+  setActiveRunId(runId: string | null): void;
 }
 
 /**
@@ -139,7 +170,9 @@ export function createShellStore(storage: ShellStorage | null): ShellStore {
     if (
       next.panelOpen === state.panelOpen &&
       next.panelWidth === state.panelWidth &&
-      next.activeNav === state.activeNav
+      next.activeNav === state.activeNav &&
+      next.activeSessionId === state.activeSessionId &&
+      next.activeRunId === state.activeRunId
     ) {
       return;
     }
@@ -161,6 +194,8 @@ export function createShellStore(storage: ShellStorage | null): ShellStore {
     togglePanel: () => commit({ ...state, panelOpen: !state.panelOpen }),
     setPanelWidth: (width) => commit({ ...state, panelWidth: clampPanelWidth(width) }),
     setActiveNav: (nav) => commit({ ...state, activeNav: nav }),
+    setActiveSessionId: (sessionId) => commit({ ...state, activeSessionId: sessionId }),
+    setActiveRunId: (runId) => commit({ ...state, activeRunId: runId }),
   };
 }
 

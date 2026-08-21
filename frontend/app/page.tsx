@@ -64,7 +64,18 @@ function ExecutionControlCenter() {
   const [activeTurn, setActiveTurn] = useState<TurnV2 | null>(null);
   const [providerStatus, setProviderStatus] = useState<ProviderStatusV2 | null>(null);
   const [providerLoading, setProviderLoading] = useState(true);
-  const { setPanelOpen } = useShell();
+  const { setPanelOpen, setActiveSessionId, setActiveRunId } = useShell();
+
+  // Publish the active session/run to the shell store (E42-S3) so the
+  // Plans/Execution pages can default to them instead of requiring a
+  // pasted id. A turn's id doubles as its run id (see `handleSubmit`).
+  useEffect(() => {
+    setActiveSessionId(sessionId);
+  }, [sessionId, setActiveSessionId]);
+
+  useEffect(() => {
+    setActiveRunId(activeTurn?.turnId ?? null);
+  }, [activeTurn, setActiveRunId]);
 
   useEffect(() => {
     // The provider chip is independent of session bootstrap: a provider
