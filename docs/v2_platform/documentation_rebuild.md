@@ -167,5 +167,22 @@ RFC/ADR changes something a root-level doc claims — e.g. a stack decision reco
   which is additionally pinned by
   `backend/tests/unit/agents/test_agent_coder_plugin.py`, so moving it would break
   a test).
+- **Some documentation is load-bearing — check before renaming or moving it.**
+  "Every changed path is `*.md`" proves no source file changed; it does **not**
+  prove that no source *depends on* a changed doc. Known couplings as of the Beta
+  exit:
+
+  | Document | Depended on by | What breaks |
+  | --- | --- | --- |
+  | `CHANGELOG.md` (`## [Unreleased]` heading) | `backend/ops/upgrade.py::_release_notes_for`, `backend/tests/unit/ops/test_upgrade.py` | Renaming the heading empties the upgrade result's release notes and fails 2 tests |
+  | `docs/agents/agent-coder-v1-baseline.md` | `backend/tests/unit/agents/test_agent_coder_plugin.py` | Moving the file fails the test |
+  | `docs/sdk/agent-coder-plugin.md` | same test | same |
+
+  The Beta pass hit the first one: renaming `## [Unreleased]` to `## [v2.0-beta]`
+  broke `test_upgrade.py`. Before a rename or move, grep the source tree for the
+  filename and for any heading text that looks like a parser anchor:
+  `git grep -n "CHANGELOG\|<filename>" -- 'backend/**/*.py' 'scripts/*.py'`.
+  Keep an `## [Unreleased]` section at the top of `CHANGELOG.md` permanently.
+
 - **One rebuild pass per wave exit, tracked as its own changelog entry** in
   `docs/v2_platform/progress.md`, so it's visible that the pass happened and when.
