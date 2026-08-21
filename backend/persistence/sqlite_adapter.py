@@ -207,7 +207,38 @@ class SQLiteStore:
                 f"SELECT * FROM runs WHERE session_id = ? {clause} ORDER BY rowid DESC",
                 (session_id, *params),
             ).fetchall()
-        return [self._decode_run(row, tenant_id=tenant_id) for row in rows]
+            steps_by_run = self._fetch_steps_for_runs(conn, [row["id"] for row in rows])
+        return [self._decode_run(row, steps_by_run.get(row["id"], [])) for row in rows]
+
+    def get_run(
+        self, run_id: str, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> dict[str, Any] | None:
+        """Fetch a single run by its primary key, scoped to *tenant_id* (E44-S1).
+
+        The session-agnostic counterpart to :meth:`list_runs`: it resolves a
+        run without knowing which session owns it, so callers holding only a
+        run id (e.g. ``GET /v2/turns/{turn_id}``) no longer have to scan every
+        session's runs. Costs exactly two statements on one connection — the
+        indexed primary-key lookup plus one batched step query.
+
+        Args:
+            run_id: Identifier of the run to fetch.
+            tenant_id: Tenant the run must belong to; a run owned by another
+                tenant is indistinguishable from a nonexistent one.
+
+        Returns:
+            The decoded run record, or ``None`` when no run with that id
+            exists within *tenant_id*'s scope.
+        """
+        clause, params = sqlite_tenant_clause(tenant_id)
+        with self.connect() as conn:
+            row = conn.execute(
+                f"SELECT * FROM runs WHERE id = ? {clause}", (run_id, *params)
+            ).fetchone()
+            if row is None:
+                return None
+            steps = self._fetch_steps_for_runs(conn, [run_id]).get(run_id, [])
+        return self._decode_run(row, steps)
 
     def list_run_steps(
         self, run_id: str, tenant_id: str = DEFAULT_TENANT_ID
@@ -484,7 +515,21 @@ class SQLiteStore:
             "updated_at": row["updated_at"],
         }
 
-    def _decode_run(self, row: sqlite3.Row, tenant_id: str = DEFAULT_TENANT_ID) -> dict[str, Any]:
+    @staticmethod
+    def _decode_run(row: sqlite3.Row, steps: list[dict[str, Any]]) -> dict[str, Any]:
+        """Decode one ``runs`` row into the store's public dict shape.
+
+        Pure by design (E44-S1): steps are passed in already fetched, so
+        decoding never issues a query — and never opens a connection — of its
+        own.
+
+        Args:
+            row: The raw ``runs`` row.
+            steps: The run's already-fetched step records, in execution order.
+
+        Returns:
+            The decoded run record.
+        """
         return {
             "id": row["id"],
             "session_id": row["session_id"],
@@ -493,10 +538,43 @@ class SQLiteStore:
             "current_state": row["current_state"],
             "trigger_message": row["trigger_message"],
             "results": json.loads(row["results_json"]),
-            "steps": self.list_run_steps(row["id"], tenant_id=tenant_id),
+            "steps": steps,
             "created_at": row["created_at"],
             "completed_at": row["completed_at"],
         }
+
+    @staticmethod
+    def _fetch_steps_for_runs(
+        conn: sqlite3.Connection, run_ids: list[str]
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Load every step of *run_ids* in one query, grouped by run id (E44-S1).
+
+        The caller has already scoped ``run_ids`` to a tenant by selecting
+        them from a tenant-filtered ``runs`` query, so no further tenant
+        predicate is needed here (``run_steps`` has no ``tenant_id`` column of
+        its own — ADR-010).
+
+        Args:
+            conn: An open connection to reuse; no new connection is opened.
+            run_ids: Run identifiers whose steps should be loaded.
+
+        Returns:
+            A mapping of run id to its steps in execution order. Runs with no
+            steps are absent from the mapping.
+        """
+        if not run_ids:
+            return {}
+        placeholders = ", ".join("?" for _ in run_ids)
+        rows = conn.execute(
+            "SELECT run_id, step_key, agent, status, started_at, completed_at, attempt "
+            f"FROM run_steps WHERE run_id IN ({placeholders}) ORDER BY id ASC",
+            tuple(run_ids),
+        ).fetchall()
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            record = dict(row)
+            grouped.setdefault(record.pop("run_id"), []).append(record)
+        return grouped
 
     def _replace_run_steps(
         self, conn: sqlite3.Connection, run_id: str, steps: list[dict[str, Any]]

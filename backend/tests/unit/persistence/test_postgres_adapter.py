@@ -261,11 +261,11 @@ def test_update_run_issues_update_and_replaces_steps(
 def test_list_runs_maps_rows_and_nests_steps(
     store: PostgresStore, scripted_conn: ScriptedConnection
 ) -> None:
-    """list_runs maps run rows and nests each run's steps via list_run_steps."""
+    """list_runs maps run rows and nests each run's steps from one batched step query."""
     scripted_conn.fetchall_queue.append(
         [("r1", "s1", "running", "auto", "planning", "go", "[]", "2024-01-01", "2024-01-02")]
     )
-    scripted_conn.fetchall_queue.append([("k1", "a1", "done", "t0", "t1", 1)])
+    scripted_conn.fetchall_queue.append([("r1", "k1", "a1", "done", "t0", "t1", 1)])
 
     result = store.list_runs("s1")
 
@@ -284,7 +284,7 @@ def test_list_runs_completed_at_none_becomes_literal_string(
     scripted_conn.fetchall_queue.append(
         [("r1", "s1", "running", "auto", "planning", "go", "[]", "2024-01-01", None)]
     )
-    scripted_conn.fetchall_queue.append([])  # nested list_run_steps call for r1
+    scripted_conn.fetchall_queue.append([])  # batched step query for [r1]
 
     result = store.list_runs("s1")
 
