@@ -154,6 +154,10 @@
       "resume": "Could not resume the run."
     }
   },
+  "files": {
+    "pageTitle": "Files",
+    "pageSubtitle": "Browse the generated project's file tree and read any file in the browser."
+  },
   "shell": {
     "nav": {
       "groupWorkspace": "Workspace",
@@ -163,6 +167,7 @@
         "plans": "Plans",
         "patches": "Patches",
         "execution": "Execution",
+        "files": "Files",
         "flows": "Flows",
         "sessions": "Sessions",
         "config": "Config",
