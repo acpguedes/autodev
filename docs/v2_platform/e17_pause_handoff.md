@@ -1,7 +1,15 @@
 # E17 — Pause Handoff (Control Center Screens)
 
+**Status: closed (2026-08-20).** E17 — Control Center Screens is **Done (6/6)**
+and merged to `main`; every item listed below as pending has since been
+delivered. This document is retained as the historical record of the pause, not
+as an instruction to resume. For current epic state see
+[`progress.md`](progress.md) and
+[`phases/e17_control_center_screens.md`](phases/e17_control_center_screens.md).
+
 > Frozen state of epic E17 at the moment of the pause requested by the user.
-> All 6 story branches are pushed to `origin`. Use this document to resume.
+> All 6 story branches were pushed to `origin`. This document was written to
+> resume from that pause.
 
 ## Branch status
 
