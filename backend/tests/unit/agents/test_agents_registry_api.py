@@ -16,6 +16,7 @@ from typing import Generator
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.api.routers import agents_registry as agents_registry_router
 from backend.persistence.database import reset_store_cache
 
 
@@ -139,6 +140,66 @@ def test_describe_security_agent_returns_200(client: TestClient) -> None:
 def test_describe_unknown_agent_returns_404(client: TestClient) -> None:
     resp = client.get("/agents/no_such_agent_xyz")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Catalog cache — E47-S1
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _reset_agent_catalog_cache() -> Generator[None, None, None]:
+    agents_registry_router.reset_agent_catalog_cache()
+    yield
+    agents_registry_router.reset_agent_catalog_cache()
+
+
+def _counting_builder(calls: dict, monkeypatch: pytest.MonkeyPatch) -> None:
+    original = agents_registry_router._build_agent_map
+
+    def _counting_build() -> dict:
+        calls["count"] += 1
+        return original()
+
+    monkeypatch.setattr(agents_registry_router, "_build_agent_map", _counting_build)
+
+
+def test_catalog_builder_runs_once_across_requests(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = {"count": 0}
+    _counting_builder(calls, monkeypatch)
+
+    for _ in range(5):
+        assert client.get("/agents").status_code == 200
+    assert client.get("/agents/planner").status_code == 200
+
+    assert calls["count"] == 1
+
+
+def test_catalog_rebuilds_after_invalidation(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = {"count": 0}
+    _counting_builder(calls, monkeypatch)
+
+    assert client.get("/agents").status_code == 200
+    assert calls["count"] == 1
+
+    agents_registry_router.reset_agent_catalog_cache()
+
+    assert client.get("/agents").status_code == 200
+    assert calls["count"] == 2
+
+
+def test_catalog_cache_returns_same_object_until_invalidated() -> None:
+    first = agents_registry_router.get_agent_catalog()
+    second = agents_registry_router.get_agent_catalog()
+    assert first is second
+
+    agents_registry_router.reset_agent_catalog_cache()
+    third = agents_registry_router.get_agent_catalog()
+    assert third is not first
 
 
 # ---------------------------------------------------------------------------

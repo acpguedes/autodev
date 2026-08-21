@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 from backend.agents.manifest import validate_agent_manifest
 from backend.agents.registry_v2 import AgentRef, AgentRegistry
 from backend.api.authorization import requires_scope
+from backend.api.routers.agents_registry import reset_agent_catalog_cache
 from backend.api.v2_common import PageMetaV2, PaginationParams, SCHEMA_VERSION_V2, paginate, v2_error
 from backend.config.settings import Settings, get_settings, reset_settings_cache
 from backend.plugins.host import PluginHost, PluginState
@@ -263,6 +264,7 @@ def _toggle_agent(registry: AgentRegistry, agent_id: str, enabled: bool) -> Exte
         registry.activate(ref.agent_id, ref.version)
     else:
         registry.deprecate(ref.agent_id, ref.version, "Disabled via /v2/extensions")
+    reset_agent_catalog_cache()
     return _agent_item(registry.resolve(agent_id, "*"))
 
 

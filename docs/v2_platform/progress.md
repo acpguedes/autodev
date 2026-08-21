@@ -320,10 +320,14 @@ directories during traversal and persists in batched, `executemany`
 transactions — see
 [phases/e45_runtime_io_efficiency.md](phases/e45_runtime_io_efficiency.md).
 
-**Next:** E13 — Marketplace & GA (0/4, not started). Also eligible:
-**E47 — Backend Structural Consolidation** (0/5, now unblocked on both the
-E44 and E46 sides). Beyond GA, the planned v2.1 (E20-E25), v2.2 (E26-E31)
-and v2.3 (E36-E40) waves are specified but not started.
+**E47 — Backend Structural Consolidation is now complete (5/5, 2026-08-21)**,
+the last of the four Beta-hardening backend-efficiency epics — see the
+changelog entry and
+[phases/e47_backend_structural_consolidation.md](phases/e47_backend_structural_consolidation.md).
+
+**Next:** E13 — Marketplace & GA (0/4, not started). Beyond GA, the planned
+v2.1 (E20-E25), v2.2 (E26-E31) and v2.3 (E36-E40) waves are specified but
+not started.
 
 ### Accumulated per-epic record
 
@@ -456,9 +460,9 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E44 | Persistence Read/Write Efficiency | Beta | Done | 5/5 | E8, E16-S1, E43 | [phases/e44_persistence_efficiency.md](phases/e44_persistence_efficiency.md) |
 | E45 | Runtime I/O Efficiency: Job Queue, Event Bus, SSE & Indexing | Beta | Done | 5/5 | E0, E8-S2, E9, E43-S6 | [phases/e45_runtime_io_efficiency.md](phases/e45_runtime_io_efficiency.md) |
 | E46 | Execution Failure Classification & Self-Repair Governance | Beta | Done | 3/3 | E14, E32, E41-S5, E43-S1 | [phases/e46_failure_classification_self_repair.md](phases/e46_failure_classification_self_repair.md) |
-| E47 | Backend Structural Consolidation | Beta | Not started | 0/5 | E2, E2-S6, E8, E44, E46 | [phases/e47_backend_structural_consolidation.md](phases/e47_backend_structural_consolidation.md) |
+| E47 | Backend Structural Consolidation | Beta | Done | 5/5 | E2, E2-S6, E8, E44, E46 | [phases/e47_backend_structural_consolidation.md](phases/e47_backend_structural_consolidation.md) |
 
-Total: **126/214 stories complete** across 47 epics (E19 is a proposed
+Total: **131/214 stories complete** across 47 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -639,6 +643,51 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-21** — **E47 — Backend Structural Consolidation complete (5/5)**,
+  the last of the four Beta-hardening backend-efficiency epics, sequenced
+  after E44/E46 so structure was extracted from the post-fix shape rather
+  than refactored twice. No public `/v2` contract changes; internal
+  consolidation only, verified by the full backend suite (2,018 tests)
+  after each story and once more at epic completion. **E47-S1**: the
+  `GET /agents` catalog (imports, instantiation, `metadata_model()`
+  introspection for all 11 default + specialized agents) is now built once
+  behind a lock and cached, instead of rebuilt on every request; the
+  `/v2/extensions` agent enable/disable toggle invalidates the cache so
+  changes are reflected without a restart. **E47-S2**: `llm/gateway.py`'s
+  `complete()` and `_stream_prepared()` shared attempt machinery — target
+  iteration, capability-error recording, call/token budget checks, attempt
+  numbering, the retry/fallback/fail decision — is now one
+  `_AttemptCoordinator`, with parity tests pinning identical attempt
+  sequences across both paths; a new optional `RetryBackoff` (exponential +
+  jitter, defaulting to zero delay) is available between same-target
+  retries. **E47-S3**: `AgentRegistry` and `SkillRegistry`'s 15 duplicated
+  methods (schema creation, upsert, resolve/list, deprecate/activate +
+  plugin-event emission, catalog rendering, plugin-store sync, SemVer
+  matching) now share one `VersionedExtensionRegistryCore`
+  (`backend/plugins/registry_core.py`) by composition; each registry keeps
+  only its own manifest-format specifics (`find_by_capability`/agent
+  loading vs. `find_by_trigger`/YAML loading). **E47-S4**: `sqlite_adapter.py`
+  (942 ln) and `postgres_adapter.py` (1013 ln) — both over the 500-line
+  guideline — split into packages by data domain (sessions/runs/messages/
+  eval_scoring mixins + store/plan_store), with shared pure codecs
+  (`backend/persistence/codecs.py`: JSON encode/decode, timestamp handling,
+  run/session/step/promotion record shaping, step-batch preparation)
+  factored out; SQL text (placeholders, upsert dialect, RLS) stays
+  per-backend as planned — no ORM, no generic adapter. **E47-S5**:
+  `orchestrator/service.py` (2,401 ln, one class doing everything) became
+  `backend/orchestrator/service/`, split into mixins by concern (chat,
+  queries, plan_lifecycle, task_dispatch, self_repair, graph) composed by
+  `core.OrchestratorService`, each module under 420 lines: the E32
+  execution-environment provision/bind/collect/teardown lifecycle is now
+  its own `ExecutionEnvironmentScope`; `_process_tasks`'
+  results/steps/history triple-append (previously built inline at two
+  separate call sites) is centralized behind one typed
+  `TaskAppendEntry`/`append_task_entry`; `_build_execution_tasks`'s nine
+  near-identical inline loops became one small builder per artifact
+  section, composed by explicit chaining; session/run summary building and
+  the background message-run job pathway moved into their own modules.
+  Public import surface (`backend.orchestrator.service.*`) is unchanged.
 
 - **2026-08-21** — **E46 — Execution Failure Classification & Self-Repair
   Governance complete (3/3, ADR-023)**. Self-repair no longer spends a

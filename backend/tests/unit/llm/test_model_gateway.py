@@ -29,7 +29,7 @@ from backend.llm import (
     TokenUsage,
     ToolCall,
 )
-from backend.llm.gateway import ModelGateway
+from backend.llm.gateway import ModelGateway, RetryBackoff
 from backend.llm.model_config import ModelConfig, ModelLimits, ModelTarget
 from backend.llm.registry import ModelProviderRegistry, resolve_model_config
 from backend.llm.stub_provider import StubModelOutput, StubModelProvider
@@ -967,3 +967,194 @@ def test_span_and_governance_codes_agree_for_a_third_party_provider() -> None:
     assert getattr(raised.value, "code") == "provider_error"
     assert telemetry_codes == {"provider_error"}
     assert span_codes == {"provider_error"}, f"span disagreed: {span_codes}"
+
+
+# ---------------------------------------------------------------------------
+# E47-S2 -- shared attempt coordinator: backoff and cross-mode parity
+# ---------------------------------------------------------------------------
+
+
+def test_retry_backoff_defaults_to_zero_delay() -> None:
+    """The default policy preserves the previous immediate-retry behavior."""
+    backoff = RetryBackoff()
+    assert backoff.delay_for(0) == 0.0
+    assert backoff.delay_for(1) == 0.0
+    assert backoff.delay_for(5) == 0.0
+
+
+def test_retry_backoff_grows_exponentially_and_caps() -> None:
+    """A configured base delay grows per retry and is bounded by max_seconds."""
+    backoff = RetryBackoff(base_seconds=1.0, factor=2.0, max_seconds=3.0)
+    assert backoff.delay_for(0) == 1.0
+    assert backoff.delay_for(1) == 2.0
+    assert backoff.delay_for(2) == 3.0  # would be 4.0 uncapped
+    assert backoff.delay_for(3) == 3.0
+
+
+def test_retry_backoff_jitter_adds_bounded_extra_delay() -> None:
+    """Jitter never pushes the delay below the base computation."""
+    backoff = RetryBackoff(base_seconds=1.0, factor=1.0, max_seconds=10.0, jitter_seconds=0.5)
+    for _ in range(20):
+        delay = backoff.delay_for(0)
+        assert 1.0 <= delay <= 1.5
+
+
+def test_gateway_never_sleeps_between_retries_without_a_configured_backoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No caller opted into backoff, so retries stay immediate (parity with pre-E47-S2)."""
+    sleeps: list[float] = []
+    monkeypatch.setattr("backend.llm.gateway.time.sleep", lambda seconds: sleeps.append(seconds))
+
+    provider = StubModelProvider(
+        responses={"primary": (ModelUnavailableError("down"), "recovered")}
+    )
+    gateway = ModelGateway(ModelProviderRegistry({"stub": provider}))
+    config = ModelConfig(
+        provider="stub", name="primary", retries=1, fallback_on=("unavailable",)
+    )
+
+    response = gateway.complete(_request(), config, metadata=_metadata())
+
+    assert response.message.content[0].text == "recovered"
+    assert sleeps == []
+
+
+def test_gateway_sleeps_the_configured_backoff_between_same_target_retries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A configured RetryBackoff delays each same-target retry, not the first attempt."""
+    sleeps: list[float] = []
+    monkeypatch.setattr("backend.llm.gateway.time.sleep", lambda seconds: sleeps.append(seconds))
+
+    provider = StubModelProvider(
+        responses={
+            "primary": (
+                ModelUnavailableError("down"),
+                ModelUnavailableError("still down"),
+                "recovered",
+            )
+        }
+    )
+    gateway = ModelGateway(
+        ModelProviderRegistry({"stub": provider}),
+        retry_backoff=RetryBackoff(base_seconds=0.01, factor=2.0, jitter_seconds=0.0),
+    )
+    config = ModelConfig(
+        provider="stub", name="primary", retries=2, fallback_on=("unavailable",)
+    )
+
+    response = gateway.complete(_request(), config, metadata=_metadata())
+
+    assert response.message.content[0].text == "recovered"
+    assert sleeps == [0.01, 0.02]
+
+
+def test_backoff_does_not_delay_a_fallback_to_the_next_target(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Backoff only applies to a same-target retry, never to an ordered fallback."""
+    sleeps: list[float] = []
+    monkeypatch.setattr("backend.llm.gateway.time.sleep", lambda seconds: sleeps.append(seconds))
+
+    provider = StubModelProvider(
+        responses={
+            "primary": ModelUnavailableError("down"),
+            "fallback": "safe",
+        }
+    )
+    gateway = ModelGateway(
+        ModelProviderRegistry({"stub": provider}),
+        retry_backoff=RetryBackoff(base_seconds=0.01),
+    )
+    config = ModelConfig(
+        provider="stub",
+        name="primary",
+        retries=0,
+        fallback_on=("unavailable",),
+        fallback=(ModelTarget(provider="stub", name="fallback"),),
+    )
+
+    response = gateway.complete(_request(), config, metadata=_metadata())
+
+    assert response.message.content[0].text == "safe"
+    assert sleeps == []
+
+
+def _failure_script() -> tuple[ModelUnavailableError, ...]:
+    """A scripted sequence exercising retry, then ordered fallback, then success."""
+    return (
+        ModelUnavailableError("down"),
+        ModelUnavailableError("still down"),
+    )
+
+
+def test_complete_and_stream_produce_identical_attempt_and_fallback_sequences() -> None:
+    """E47-S2-T3: the same failure script drives identical attempt bookkeeping.
+
+    ``complete()`` and ``stream()`` share the coordinator's target iteration,
+    capability handling, and retry/fallback decision -- only the per-attempt
+    execution differs. Running the same script through both must therefore
+    produce the same (attempt, provider, model, error_code) sequence.
+    """
+    complete_provider = StubModelProvider(
+        responses={
+            "primary": _failure_script(),
+            "safe-one": ModelUnavailableError("fallback down"),
+            "safe-two": "safe",
+        }
+    )
+    stream_provider = StubModelProvider(
+        responses={
+            "primary": _failure_script(),
+            "safe-one": ModelUnavailableError("fallback down"),
+            "safe-two": "safe",
+        }
+    )
+    config = ModelConfig(
+        provider="stub",
+        name="primary",
+        retries=1,
+        fallback_on=("unavailable",),
+        fallback=(
+            ModelTarget(provider="stub", name="safe-one", retries=0),
+            ModelTarget(provider="stub", name="safe-two", retries=0),
+        ),
+    )
+
+    complete_gateway = ModelGateway(ModelProviderRegistry({"stub": complete_provider}))
+    complete_gateway.complete(_request(), config, metadata=_metadata())
+
+    stream_gateway = ModelGateway(ModelProviderRegistry({"stub": stream_provider}))
+    list(stream_gateway.stream(_request(), config, metadata=_metadata()))
+
+    def _shape(attempts: Iterable) -> list[tuple[int, str, str, str | None]]:
+        return [(a.attempt, a.provider, a.model, a.error_code) for a in attempts]
+
+    assert _shape(complete_gateway.attempts) == _shape(stream_gateway.attempts)
+    assert [call.target.name for call in complete_provider.calls] == [
+        call.target.name for call in stream_provider.calls
+    ]
+
+
+def test_complete_and_stream_agree_on_a_budget_exceeded_short_circuit() -> None:
+    """A budget breach fails the same way, at the same attempt, on both paths."""
+    limits = ModelLimits(max_total_tokens=1)
+    output = StubModelOutput(text="x", usage=TokenUsage(1, 1))
+
+    complete_gateway = ModelGateway(
+        ModelProviderRegistry({"stub": StubModelProvider(responses={"primary": output})})
+    )
+    stream_gateway = ModelGateway(
+        ModelProviderRegistry({"stub": StubModelProvider(responses={"primary": output})})
+    )
+    config = ModelConfig(provider="stub", name="primary", limits=limits)
+
+    with pytest.raises(ModelBudgetExceededError):
+        complete_gateway.complete(_request(), config, metadata=_metadata())
+
+    with pytest.raises(ModelBudgetExceededError):
+        list(stream_gateway.stream(_request(), config, metadata=_metadata()))
+
+    assert [a.error_code for a in complete_gateway.attempts] == ["budget_exceeded"]
+    assert [a.error_code for a in stream_gateway.attempts] == ["budget_exceeded"]
