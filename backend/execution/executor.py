@@ -40,6 +40,11 @@ def _capped_tail(text: str) -> str:
     return text[-_ACTION_OUTPUT_CHAR_CAP:] if len(text) > _ACTION_OUTPUT_CHAR_CAP else text
 
 
+def _file_name(path: str) -> str:
+    """Return the final path segment, for a plain-language "Creating <file>" label (E43-S3)."""
+    return path.rsplit("/", 1)[-1] or path
+
+
 def _action_path(action: ExecutionAction) -> str | None:
     """Return the file target an action wrote, for transcript rendering (E43-S2)."""
     if action.path is not None:
@@ -176,6 +181,7 @@ class TaskExecutor:
                             "error": result.error or "",
                             "command": list(action.command) if action.command else None,
                             "path": _action_path(action),
+                            "stepLabel": action.step_label,
                         },
                         subject={"runId": run_id, "taskId": action.task_id},
                     )
@@ -190,6 +196,7 @@ class TaskExecutor:
                     "type": action.type.value,
                     "command": list(action.command) if action.command else None,
                     "path": _action_path(action),
+                    "stepLabel": action.step_label,
                 },
                 subject={"runId": run_id, "taskId": action.task_id},
             )
@@ -209,6 +216,7 @@ class TaskExecutor:
                         "path": result.path,
                         "stdout": _capped_tail(result.stdout),
                         "stderr": _capped_tail(result.stderr),
+                        "stepLabel": action.step_label,
                     },
                     subject={"runId": run_id, "taskId": action.task_id},
                 )
@@ -226,6 +234,7 @@ class TaskExecutor:
                         "path": result.path,
                         "stdout": _capped_tail(result.stdout),
                         "stderr": _capped_tail(result.stderr),
+                        "stepLabel": action.step_label,
                     },
                     subject={"runId": run_id, "taskId": action.task_id},
                 )
@@ -272,6 +281,7 @@ class TaskExecutor:
                     "error": reason,
                     "command": list(action.command) if action.command else None,
                     "path": _action_path(action),
+                    "stepLabel": action.step_label,
                 },
                 subject={"runId": run_id, "taskId": action.task_id},
             )
@@ -309,6 +319,7 @@ class TaskExecutor:
                         step_key=task.task_id,
                         command=command.split(),
                         cwd=".",
+                        step_label=task.title or None,
                     )
                     for index, command in enumerate(task.commands, start=1)
                 ]
@@ -323,6 +334,7 @@ class TaskExecutor:
                     step_key=task.task_id,
                     command=command,
                     cwd=".",
+                    step_label=task.title or None,
                 )
             ]
         if task.category == "operations":
@@ -335,6 +347,7 @@ class TaskExecutor:
                         step_key=task.task_id,
                         command=command.split(),
                         cwd=".",
+                        step_label=task.title or None,
                     )
                     for index, command in enumerate(task.commands, start=1)
                 ]
@@ -349,6 +362,7 @@ class TaskExecutor:
                         step_key=task.task_id,
                         path=file_entry["path"],
                         content=file_entry["content"],
+                        step_label=f"Creating {_file_name(file_entry['path'])}",
                     )
                     for index, file_entry in enumerate(task.files, start=1)
                 ]
@@ -362,6 +376,7 @@ class TaskExecutor:
                     step_key=task.task_id,
                     path=note_path,
                     content=content,
+                    step_label=task.title or None,
                 )
             ]
         return []

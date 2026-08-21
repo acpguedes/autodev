@@ -21,6 +21,8 @@ export type TranscriptTone = "pending" | "success" | "error";
 export type TranscriptLine = {
   /** Stable key for list rendering. */
   key: string;
+  /** Plain-language step annotation (E43-S3), e.g. "Creating main.py". */
+  stepLabel: string;
   /** The `$ <command>` (or `$ write <path>`) prompt line. */
   command: string;
   /** Real stdout/stderr/error beneath the prompt; empty when not known yet. */
@@ -28,7 +30,7 @@ export type TranscriptLine = {
   tone: TranscriptTone;
 };
 
-/** Shape common to the three `execution.action.*` payloads (E43-S2 fields optional for forward-compat). */
+/** Shape common to the three `execution.action.*` payloads (E43-S2/S3 fields optional for forward-compat). */
 export type ExecutionActionEventData = {
   actionId: string;
   taskId?: string;
@@ -40,7 +42,20 @@ export type ExecutionActionEventData = {
   path?: string | null;
   stdout?: string;
   stderr?: string;
+  stepLabel?: string | null;
 };
+
+/**
+ * Resolve a step's plain-language annotation, falling back to the raw task
+ * id when a task genuinely has no title (E43-S3-DoD).
+ *
+ * @param stepLabel - The task's title, if known.
+ * @param fallbackId - The raw task/action id to fall back to.
+ * @returns The plain-language label, or the raw id.
+ */
+export function formatStepLabel(stepLabel: string | null | undefined, fallbackId: string): string {
+  return stepLabel && stepLabel.trim().length > 0 ? stepLabel : fallbackId;
+}
 
 /**
  * Build the `$ ...` prompt line for one action.
@@ -76,16 +91,17 @@ export function transcriptLineFromActionEvent(
   }
   const command = formatActionCommand(data);
   const key = `${data.actionId}-${eventType}`;
+  const stepLabel = formatStepLabel(data.stepLabel, data.taskId ?? data.actionId);
 
   if (eventType === "execution.action.started") {
-    return { key, command, output: "", tone: "pending" };
+    return { key, stepLabel, command, output: "", tone: "pending" };
   }
   if (eventType === "execution.action.failed") {
     const output = [data.stdout, data.stderr, data.error].filter(Boolean).join("\n");
-    return { key, command, output, tone: "error" };
+    return { key, stepLabel, command, output, tone: "error" };
   }
   const output = [data.stdout, data.stderr].filter(Boolean).join("\n");
-  return { key, command, output, tone: "success" };
+  return { key, stepLabel, command, output, tone: "success" };
 }
 
 /**
@@ -94,18 +110,23 @@ export function transcriptLineFromActionEvent(
  * than a live SSE event -- same shared formatting, different data source.
  *
  * @param action - One `ExecutionResult.to_dict()` entry.
+ * @param taskTitle - The originating task's plain-language title (E43-S3),
+ *   when known -- falls back to the raw action id.
  * @returns The rendered transcript line.
  */
-export function transcriptLineFromActionResult(action: {
-  action_id: string;
-  status: string;
-  command?: string[] | null;
-  path?: string | null;
-  stdout?: string;
-  stderr?: string;
-  error?: string | null;
-  diff?: string;
-}): TranscriptLine {
+export function transcriptLineFromActionResult(
+  action: {
+    action_id: string;
+    status: string;
+    command?: string[] | null;
+    path?: string | null;
+    stdout?: string;
+    stderr?: string;
+    error?: string | null;
+    diff?: string;
+  },
+  taskTitle?: string | null
+): TranscriptLine {
   const command = formatActionCommand({
     actionId: action.action_id,
     command: action.command,
@@ -118,6 +139,7 @@ export function transcriptLineFromActionResult(action: {
       .join("\n") || (failed ? "" : "(no output)");
   return {
     key: action.action_id,
+    stepLabel: formatStepLabel(taskTitle, action.action_id),
     command,
     output,
     tone: failed ? "error" : "success",

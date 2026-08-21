@@ -2,9 +2,21 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatActionCommand,
+  formatStepLabel,
   transcriptLineFromActionEvent,
   transcriptLineFromActionResult,
 } from "../transcript";
+
+describe("formatStepLabel", () => {
+  it("uses the plain-language title when present", () => {
+    expect(formatStepLabel("Creating main.py", "coding-file-1")).toBe("Creating main.py");
+  });
+
+  it("falls back to the raw id when the task has no title", () => {
+    expect(formatStepLabel(undefined, "coding-file-1")).toBe("coding-file-1");
+    expect(formatStepLabel("", "coding-file-1")).toBe("coding-file-1");
+  });
+});
 
 describe("formatActionCommand", () => {
   it("renders the real command when present", () => {
@@ -38,11 +50,13 @@ describe("transcriptLineFromActionEvent", () => {
       command: ["cd", "proj", "&&", "pytest"],
       error: "Command 'cd' is not in the allowed list.",
       stderr: "Command 'cd' is not in the allowed list.",
+      stepLabel: "Run pytest tests/test_charge.py",
     });
 
     expect(line?.command).toBe("$ cd proj && pytest");
     expect(line?.tone).toBe("error");
     expect(line?.output).toContain("Command 'cd' is not in the allowed list.");
+    expect(line?.stepLabel).toBe("Run pytest tests/test_charge.py");
   });
 
   it("renders a completed command's real stdout", () => {
@@ -82,5 +96,20 @@ describe("transcriptLineFromActionResult", () => {
 
     expect(line.command).toBe("$ write main.py");
     expect(line.output).toBe("--- a\n+++ b\n");
+  });
+
+  it("uses the task title as the step label when provided", () => {
+    const line = transcriptLineFromActionResult(
+      { action_id: "a1", status: "succeeded", path: "main.py" },
+      "Creating main.py"
+    );
+
+    expect(line.stepLabel).toBe("Creating main.py");
+  });
+
+  it("falls back to the raw action id with no task title", () => {
+    const line = transcriptLineFromActionResult({ action_id: "a1", status: "succeeded", path: "main.py" });
+
+    expect(line.stepLabel).toBe("a1");
   });
 });

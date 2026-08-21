@@ -194,6 +194,7 @@ function TranscriptOrRawEntry({ item, showRaw }: { item: StreamEvent; showRaw: b
   if (line) {
     return (
       <li className="rounded-md border p-2 text-sm">
+        <p className="text-xs font-medium text-foreground">{line.stepLabel}</p>
         <div className="flex flex-wrap items-center gap-2">
           <code className={`font-mono text-xs ${TONE_CLASS[line.tone]}`}>{line.command}</code>
           <span className="text-xs text-muted-foreground">{item.receivedAt}</span>
