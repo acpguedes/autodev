@@ -1081,7 +1081,7 @@ def test_backoff_does_not_delay_a_fallback_to_the_next_target(
     assert sleeps == []
 
 
-def _failure_script() -> tuple[object, ...]:
+def _failure_script() -> tuple[ModelUnavailableError, ...]:
     """A scripted sequence exercising retry, then ordered fallback, then success."""
     return (
         ModelUnavailableError("down"),

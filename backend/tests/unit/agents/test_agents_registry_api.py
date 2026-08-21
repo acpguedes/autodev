@@ -148,7 +148,7 @@ def test_describe_unknown_agent_returns_404(client: TestClient) -> None:
 
 
 @pytest.fixture(autouse=True)
-def _reset_agent_catalog_cache() -> None:
+def _reset_agent_catalog_cache() -> Generator[None, None, None]:
     agents_registry_router.reset_agent_catalog_cache()
     yield
     agents_registry_router.reset_agent_catalog_cache()
