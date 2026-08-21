@@ -254,15 +254,45 @@ def test_postgres_list_runs_uses_one_batched_step_query(
     assert len(_data_statements(scripted_conn)) == 2
 
 
-def test_sqlite_list_runs_uses_one_batched_step_query(sqlite_store: SQLiteStore) -> None:
-    """SQLite list_runs also costs 2 statements / 1 connection for N runs."""
-    _seed(sqlite_store, sessions=1, runs_per_session=10, tenant_id="default")
+@pytest.mark.parametrize("run_count", [1, 100])
+def test_sqlite_list_runs_uses_one_batched_step_query(
+    sqlite_store: SQLiteStore, run_count: int
+) -> None:
+    """SQLite list_runs costs 2 statements / 1 connection for N runs, not 1 + N."""
+    _seed(sqlite_store, sessions=1, runs_per_session=run_count, tenant_id="default")
     counter = StatementCounter()
     counter.install(sqlite_store)
 
     runs = sqlite_store.list_runs("default-s0")
 
-    assert len(runs) == 10
+    assert len(runs) == run_count
     assert all(len(run["steps"]) == 3 for run in runs)
     assert len(counter.statements) == 2, counter.statements
+    assert counter.connections == 1
+
+
+def test_sqlite_update_run_uses_a_single_connection(sqlite_store: SQLiteStore) -> None:
+    """Persisting a run and its steps opens one connection, not one per row (E44-S2)."""
+    _seed(sqlite_store, sessions=1, runs_per_session=1, tenant_id="default")
+    counter = StatementCounter()
+    counter.install(sqlite_store)
+
+    sqlite_store.update_run(
+        run_id="default-s0-r0",
+        status="completed",
+        current_state="done",
+        results=[],
+        steps=[
+            {
+                "step_key": f"k{i}",
+                "agent": "coder",
+                "status": "completed",
+                "started_at": "t0",
+                "completed_at": "t1",
+                "attempt": 1,
+            }
+            for i in range(25)
+        ],
+    )
+
     assert counter.connections == 1
