@@ -662,6 +662,13 @@ Add a dated entry every time a story/epic/wave status changes.
   The full-replace path survives, clearly named, as
   `replace_run_steps_for_import`. Explicit non-goals held: no ORM, no
   generic SQL abstraction, no caching layer, no event-store changes.
+  One pre-existing defect was fixed on the way: `MigrationRunner` takes no
+  cross-connection lock, and SQLite has no `ADD COLUMN IF NOT EXISTS`, so
+  the check-then-`ALTER` pattern in the `run_type`, `current_state`,
+  `tenant_id` and `content` migrations could race two concurrently
+  constructed stores into a "duplicate column name" crash (it surfaced
+  when E44-S5's own column hit it). `_add_column_if_missing` now
+  centralizes the guard.
 
 - **2026-08-21** — **Planning-only: added E44–E47 — backend efficiency &
   simplification (Beta-hardening, 18 planned stories across 4 epics)**.
