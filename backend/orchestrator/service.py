@@ -39,7 +39,7 @@ from backend.agents import (
 from backend.environments.contracts import EnvironmentBackendError, EnvironmentHandle
 from backend.environments.manager import EnvironmentCapacityExceededError, EnvironmentManager
 from backend.events.runtime import emit_event
-from backend.execution.contracts import ExecutionAction, ExecutionResult
+from backend.execution.contracts import ExecutionAction, ExecutionActionType, ExecutionResult
 from backend.execution.decisions import DecisionService
 from backend.execution.executor import TaskExecutionOutcome, TaskExecutor
 from backend.execution.modes import ExecutionMode
@@ -1020,23 +1020,43 @@ class OrchestratorService:
                     return current_state, True
 
                 assert outcome is not None
+                self_check: Optional[str] = None
+                if task.category == "validation" and task.commands:
+                    outcome, self_check = self._maybe_self_repair(
+                        task=task,
+                        validation_outcome=outcome,
+                        batch_results=action_results,
+                        run_id=run_id,
+                        tenant_id=tenant_id,
+                        mode=mode,
+                    )
+                    emit_event(
+                        "execution.verification.outcome",
+                        tenant_id=tenant_id,
+                        partition_key=run_id,
+                        data={"taskId": task.task_id, "outcome": self_check},
+                        subject={"runId": run_id, "taskId": task.task_id},
+                    )
                 action_results.extend(outcome.results)
                 step_status = (
                     StepStatus.COMPLETED if outcome.status == "completed" else StepStatus.FAILED
                 )
+                execution_metadata: Dict[str, Any] = {
+                    "task_id": task.task_id,
+                    "title": task.title,
+                    "description": task.description,
+                    "source_agent": task.source_agent,
+                    "category": task.category,
+                    "status": outcome.status,
+                    "actions": [result.to_dict() for result in outcome.results],
+                }
+                if self_check is not None:
+                    execution_metadata["self_check"] = self_check
                 results.append(
                     AgentExecution(
                         agent="executor",
                         content=f"[{index}/{total_count}] {task.title}",
-                        metadata={
-                            "task_id": task.task_id,
-                            "title": task.title,
-                            "description": task.description,
-                            "source_agent": task.source_agent,
-                            "category": task.category,
-                            "status": outcome.status,
-                            "actions": [result.to_dict() for result in outcome.results],
-                        },
+                        metadata=execution_metadata,
                     )
                 )
                 steps.append(
@@ -1135,6 +1155,116 @@ class OrchestratorService:
             actions, run_id=run_id, tenant_id=tenant_id, reason=reason
         )
         return outcome, None
+
+    def _maybe_self_repair(
+        self,
+        *,
+        task: "ExecutionTask",
+        validation_outcome: TaskExecutionOutcome,
+        batch_results: List[ExecutionResult],
+        run_id: str,
+        tenant_id: str,
+        mode: ExecutionMode,
+    ) -> tuple[TaskExecutionOutcome, str]:
+        """Attempt one bounded coder repair when *task*'s command failed (E41-S5).
+
+        Only called for "validation" tasks whose ``commands`` came from
+        agent structured output (E41-S4) — a keyword-sniffed command never
+        reaches this method, so stub/unconfigured-provider runs are
+        unaffected. Exactly one retry: feeds the failure's captured output
+        back to the Coder agent, scoped to the files this batch already
+        wrote (never a fresh full plan), and re-runs the same validation
+        command once more. The repair write still goes through
+        :meth:`_resolve_task_actions` (the same approval-mode gate as any
+        other write); a pending decision there is treated as a failed
+        repair rather than a second nested pause, since a bounded
+        best-effort retry should never silently apply an unapproved write.
+
+        Returns:
+            ``(outcome, self_check)`` — ``outcome`` is what the caller
+            should record for *task* (unchanged when no repair was
+            attempted); ``self_check`` is one of ``"first_try_pass"``,
+            ``"repaired_then_pass"``, or ``"failed_after_retry"``.
+        """
+        if validation_outcome.status == "completed":
+            return validation_outcome, "first_try_pass"
+
+        written_paths = sorted({path for result in batch_results for path in result.artifacts})
+        if not written_paths or self._project_root is None:
+            return validation_outcome, "failed_after_retry"
+
+        root = self._project_root.resolve()
+        file_contents: Dict[str, str] = {}
+        for rel_path in written_paths:
+            try:
+                file_contents[rel_path] = (root / rel_path).read_text(encoding="utf-8")
+            except OSError:
+                continue
+        if not file_contents:
+            return validation_outcome, "failed_after_retry"
+
+        failure_lines: list[str] = []
+        for result in validation_outcome.results:
+            if result.stdout:
+                failure_lines.append(f"stdout:\n{result.stdout}")
+            if result.stderr:
+                failure_lines.append(f"stderr:\n{result.stderr}")
+            if result.error:
+                failure_lines.append(f"error: {result.error}")
+        failure_output = "\n".join(failure_lines) or "validation command failed"
+        files_section = "\n\n".join(f"# {path}\n{content}" for path, content in file_contents.items())
+
+        repair_context = AgentContext(
+            session_id=f"{run_id}-repair",
+            goal=task.description,
+            user_request=(
+                f"The following files were written but failed validation "
+                f"({', '.join(task.commands)}). Fix them so the command passes.\n\n"
+                f"Failure output:\n{failure_output}\n\n"
+                f"Current file contents:\n{files_section}"
+            ),
+        )
+        repair_result = self._require_agent("coder").run(repair_context)
+        candidate_files = repair_result.metadata.get("files", [])
+        repaired_files = [
+            entry
+            for entry in candidate_files
+            if isinstance(entry, Mapping) and entry.get("path") in file_contents
+        ]
+        if not repaired_files:
+            return validation_outcome, "failed_after_retry"
+
+        write_actions = [
+            ExecutionAction(
+                action_id=f"{task.task_id}-repair-write-{index}",
+                type=ExecutionActionType.CREATE_FILE,
+                task_id=task.task_id,
+                step_key=task.task_id,
+                path=entry["path"],
+                content=entry["content"],
+            )
+            for index, entry in enumerate(repaired_files, start=1)
+        ]
+        write_outcome, write_pending = self._resolve_task_actions(
+            task=task, actions=write_actions, run_id=run_id, tenant_id=tenant_id, mode=mode
+        )
+        if write_pending is not None or write_outcome is None or write_outcome.status != "completed":
+            combined = list(validation_outcome.results) + list(
+                write_outcome.results if write_outcome is not None else []
+            )
+            return TaskExecutionOutcome(status="failed", results=combined), "failed_after_retry"
+
+        revalidate_actions = self._task_executor.derive_actions(task)
+        revalidate_outcome = self._task_executor.dispatch(
+            revalidate_actions, run_id=run_id, tenant_id=tenant_id
+        )
+        combined_results = (
+            list(validation_outcome.results)
+            + list(write_outcome.results)
+            + list(revalidate_outcome.results)
+        )
+        self_check = "repaired_then_pass" if revalidate_outcome.status == "completed" else "failed_after_retry"
+        return TaskExecutionOutcome(status=revalidate_outcome.status, results=combined_results), self_check
 
     def _finalize_plan_run(
         self,
