@@ -30,6 +30,14 @@ class SessionRepository(Protocol):
 
     def list_sessions(self, tenant_id: str = DEFAULT_TENANT_ID) -> list[dict[str, Any]]: ...
 
+    def list_sessions_page(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        tenant_id: str = DEFAULT_TENANT_ID,
+    ) -> tuple[list[dict[str, Any]], int]: ...
+
     def update_session_artifacts(
         self,
         session_id: str,
@@ -69,9 +77,28 @@ class RunRepository(Protocol):
         self, session_id: str, tenant_id: str = DEFAULT_TENANT_ID
     ) -> list[dict[str, Any]]: ...
 
+    def get_run(
+        self, run_id: str, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> dict[str, Any] | None: ...
+
+    def list_runs_page(
+        self,
+        session_id: str,
+        *,
+        limit: int,
+        offset: int,
+        tenant_id: str = DEFAULT_TENANT_ID,
+    ) -> tuple[list[dict[str, Any]], int]: ...
+
     def list_run_steps(
         self, run_id: str, tenant_id: str = DEFAULT_TENANT_ID
     ) -> list[dict[str, Any]]: ...
+
+    def replace_run_steps_for_import(
+        self, run_id: str, steps: list[dict[str, Any]], tenant_id: str = DEFAULT_TENANT_ID
+    ) -> None:
+        """Full-replace path for import/recovery; execution uses ``update_run`` (E44-S5)."""
+        ...
 
 
 @runtime_checkable
@@ -84,9 +111,11 @@ class MessageRepository(Protocol):
         self,
         session_id: str,
         run_id: str,
-        history: Iterable[dict[str, str]],
+        messages: Iterable[dict[str, str]],
         tenant_id: str = DEFAULT_TENANT_ID,
-    ) -> None: ...
+    ) -> None:
+        """Append only the new tail; sequences are allocated by the store (E44-S4)."""
+        ...
 
 
 @runtime_checkable

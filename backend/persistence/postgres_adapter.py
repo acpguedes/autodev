@@ -144,6 +144,87 @@ class PostgresStore:
             for row in rows
         ]
 
+    def list_sessions_page(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        tenant_id: str = DEFAULT_TENANT_ID,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Return one page of sessions plus the tenant's total session count (E44-S3).
+
+        Paginates in SQL (``LIMIT``/``OFFSET``) rather than loading every row
+        and slicing in the API layer, and derives each session's activity
+        summary from one aggregate over the page's sessions instead of
+        replaying every session's message history.
+
+        Args:
+            limit: Maximum number of sessions to return.
+            offset: Number of sessions to skip, in listing order.
+            tenant_id: Tenant to scope the listing to.
+
+        Returns:
+            A ``(page, total)`` pair. Each page record has the same shape
+            :meth:`get_session` returns, plus ``message_count`` and
+            ``last_activity`` (``None`` when the session has no messages).
+        """
+        with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
+            total = int(conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0])
+            rows = conn.execute(
+                """
+                SELECT id, goal, plan_json, artifacts_json, created_at, updated_at
+                FROM sessions ORDER BY created_at DESC LIMIT %s OFFSET %s
+                """,
+                (limit, offset),
+            ).fetchall()
+            activity = self._fetch_message_activity(conn, [row[0] for row in rows])
+        page: list[dict[str, Any]] = []
+        for row in rows:
+            count, last_activity = activity.get(row[0], (0, None))
+            page.append(
+                {
+                    "id": row[0],
+                    "goal": row[1],
+                    "plan": _loads(row[2]),
+                    "artifacts": _loads(row[3]),
+                    "created_at": str(row[4]),
+                    "updated_at": str(row[5]),
+                    "message_count": count,
+                    "last_activity": last_activity,
+                }
+            )
+        return page, total
+
+    @staticmethod
+    def _fetch_message_activity(
+        conn: Any, session_ids: list[str]
+    ) -> dict[str, tuple[int, str | None]]:
+        """Aggregate message count and last activity for *session_ids* in one query.
+
+        RLS on ``messages`` already restricts the aggregate to the connection's
+        tenant, so no explicit tenant predicate is repeated here.
+
+        Args:
+            conn: An open, already tenant-scoped connection to reuse; no new
+                connection is opened.
+            session_ids: Sessions to summarize.
+
+        Returns:
+            A mapping of session id to ``(message_count, last_activity)``.
+            Sessions with no messages are absent from the mapping.
+        """
+        if not session_ids:
+            return {}
+        rows = conn.execute(
+            """
+            SELECT session_id, COUNT(*), MAX(created_at)
+            FROM messages WHERE session_id = ANY(%s) GROUP BY session_id
+            """,
+            (list(session_ids),),
+        ).fetchall()
+        return {row[0]: (int(row[1]), None if row[2] is None else str(row[2])) for row in rows}
+
     def update_session_artifacts(
         self, session_id: str, artifacts: dict[str, Any], tenant_id: str = DEFAULT_TENANT_ID
     ) -> None:
@@ -179,7 +260,7 @@ class PostgresStore:
                 """,
                 (run_id, session_id, status, run_type, current_state, trigger_message, _json(results), tenant_id),
             )
-            self._replace_run_steps(conn, run_id, steps)
+            self._persist_run_steps(conn, run_id, steps)
             conn.commit()
 
     def update_run(
@@ -203,7 +284,7 @@ class PostgresStore:
                 """,
                 (status, current_state, _json(results), run_id),
             )
-            self._replace_run_steps(conn, run_id, steps)
+            self._persist_run_steps(conn, run_id, steps)
             conn.commit()
 
     def list_runs(self, session_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> list[dict[str, Any]]:
@@ -218,21 +299,157 @@ class PostgresStore:
                 """,
                 (session_id,),
             ).fetchall()
-        return [
-            {
-                "id": row[0],
-                "session_id": row[1],
-                "status": row[2],
-                "run_type": row[3],
-                "current_state": row[4],
-                "trigger_message": row[5],
-                "results": _loads(row[6]),
-                "steps": self.list_run_steps(row[0], tenant_id=tenant_id),
-                "created_at": str(row[7]),
-                "completed_at": str(row[8]),
-            }
-            for row in rows
-        ]
+            steps_by_run = self._fetch_steps_for_runs(conn, [row[0] for row in rows])
+        return [self._decode_run(row, steps_by_run.get(row[0], [])) for row in rows]
+
+    def list_runs_page(
+        self,
+        session_id: str,
+        *,
+        limit: int,
+        offset: int,
+        tenant_id: str = DEFAULT_TENANT_ID,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Return one page of a session's runs plus its total run count (E44-S3).
+
+        Ordering matches :meth:`list_runs` exactly; only the windowing moves
+        from the API layer into SQL.
+
+        Args:
+            session_id: Session whose runs should be listed.
+            limit: Maximum number of runs to return.
+            offset: Number of runs to skip, in listing order.
+            tenant_id: Tenant to scope the listing to.
+
+        Returns:
+            A ``(page, total)`` pair, each page record shaped exactly as
+            :meth:`list_runs` returns.
+        """
+        with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
+            total = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM runs WHERE session_id = %s", (session_id,)
+                ).fetchone()[0]
+            )
+            rows = conn.execute(
+                """
+                SELECT id, session_id, status, run_type, current_state, trigger_message,
+                       results_json, created_at, completed_at
+                FROM runs WHERE session_id = %s ORDER BY created_at DESC LIMIT %s OFFSET %s
+                """,
+                (session_id, limit, offset),
+            ).fetchall()
+            steps_by_run = self._fetch_steps_for_runs(conn, [row[0] for row in rows])
+        return [self._decode_run(row, steps_by_run.get(row[0], [])) for row in rows], total
+
+    def get_run(self, run_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> dict[str, Any] | None:
+        """Fetch a single run by its primary key, visible to *tenant_id* (E44-S1).
+
+        The session-agnostic counterpart to :meth:`list_runs`: it resolves a
+        run without knowing which session owns it, so callers holding only a
+        run id (e.g. ``GET /v2/turns/{turn_id}``) no longer have to scan every
+        session's runs. Costs exactly two statements on one connection — the
+        indexed primary-key lookup plus one batched step query. RLS on
+        ``runs`` already hides other tenants' rows; the explicit
+        ``set_postgres_tenant`` call is what arms it.
+
+        Args:
+            run_id: Identifier of the run to fetch.
+            tenant_id: Tenant the run must belong to; a run owned by another
+                tenant is indistinguishable from a nonexistent one.
+
+        Returns:
+            The decoded run record, or ``None`` when no run with that id is
+            visible to *tenant_id*.
+        """
+        with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
+            row = conn.execute(
+                """
+                SELECT id, session_id, status, run_type, current_state, trigger_message,
+                       results_json, created_at, completed_at
+                FROM runs WHERE id = %s
+                """,
+                (run_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            steps = self._fetch_steps_for_runs(conn, [run_id]).get(run_id, [])
+        return self._decode_run(row, steps)
+
+    @staticmethod
+    def _decode_run(row: Any, steps: list[dict[str, Any]]) -> dict[str, Any]:
+        """Decode one ``runs`` row into the store's public dict shape.
+
+        Pure by design (E44-S1): steps are passed in already fetched, so
+        decoding never issues a query — and never opens a connection — of its
+        own.
+
+        Args:
+            row: The raw ``runs`` row, in this module's fixed column order.
+            steps: The run's already-fetched step records, in execution order.
+
+        Returns:
+            The decoded run record.
+        """
+        return {
+            "id": row[0],
+            "session_id": row[1],
+            "status": row[2],
+            "run_type": row[3],
+            "current_state": row[4],
+            "trigger_message": row[5],
+            "results": _loads(row[6]),
+            "steps": steps,
+            "created_at": str(row[7]),
+            "completed_at": str(row[8]),
+        }
+
+    @staticmethod
+    def _fetch_steps_for_runs(conn: Any, run_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
+        """Load every step of *run_ids* in one query, grouped by run id (E44-S1).
+
+        ``run_steps`` has no ``tenant_id`` column or RLS policy of its own
+        (ADR-010); the ``JOIN`` against ``runs`` is what applies the parent's
+        RLS predicate, so steps of another tenant's run never surface here
+        even when its id is passed in explicitly.
+
+        Args:
+            conn: An open, already tenant-scoped connection to reuse; no new
+                connection is opened.
+            run_ids: Run identifiers whose steps should be loaded.
+
+        Returns:
+            A mapping of run id to its steps in execution order. Runs with no
+            steps are absent from the mapping.
+        """
+        if not run_ids:
+            return {}
+        rows = conn.execute(
+            """
+            SELECT rs.run_id, rs.step_key, rs.agent, rs.status, rs.started_at, rs.completed_at,
+                   rs.attempt
+            FROM run_steps rs
+            JOIN runs r ON r.id = rs.run_id
+            WHERE rs.run_id = ANY(%s)
+            ORDER BY rs.run_id, rs.position ASC, rs.id ASC
+            """,
+            (list(run_ids),),
+        ).fetchall()
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            grouped.setdefault(row[0], []).append(
+                {
+                    "step_key": row[1],
+                    "agent": row[2],
+                    "status": row[3],
+                    "started_at": row[4],
+                    "completed_at": row[5],
+                    "attempt": row[6],
+                }
+            )
+        return grouped
 
     def list_run_steps(self, run_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> list[dict[str, Any]]:
         """List all steps recorded for a run, in execution order, scoped to *tenant_id*.
@@ -253,7 +470,7 @@ class PostgresStore:
                 FROM run_steps rs
                 JOIN runs r ON r.id = rs.run_id
                 WHERE rs.run_id = %s
-                ORDER BY rs.id ASC
+                ORDER BY rs.position ASC, rs.id ASC
                 """,
                 (run_id,),
             ).fetchall()
@@ -297,26 +514,49 @@ class PostgresStore:
         self,
         session_id: str,
         run_id: str,
-        history: Iterable[dict[str, str]],
+        messages: Iterable[dict[str, str]],
         tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None:
-        """Append only the messages in ``history`` beyond what is already stored, scoped to *tenant_id*."""
-        existing = self.list_messages(session_id, tenant_id=tenant_id)
-        start = len(existing)
-        new_messages = list(history)[start:]
+        """Append *messages* to a session's conversation, scoped to *tenant_id* (E44-S4).
+
+        Takes only the new tail, not the full history: sequence numbers are
+        allocated from ``MAX(sequence) + 1`` inside the same transaction as
+        the insert, so an append reads one row regardless of how long the
+        conversation is. The unique ``(tenant_id, session_id, sequence)``
+        index makes concurrent appends fail closed rather than interleave
+        into duplicate sequence numbers.
+
+        Args:
+            session_id: Identifier of the owning session.
+            run_id: Identifier of the run that produced the messages.
+            messages: The new messages to append, in order. Already-persisted
+                messages must not be re-sent.
+            tenant_id: Tenant the messages belong to.
+
+        Raises:
+            psycopg.errors.UniqueViolation: If a concurrent append already
+                claimed one of the allocated sequence numbers.
+        """
+        new_messages = list(messages)
         if not new_messages:
             return
         with self.connect() as conn:
             set_postgres_tenant(conn, tenant_id)
+            row = conn.execute(
+                "SELECT MAX(sequence) FROM messages WHERE session_id = %s", (session_id,)
+            ).fetchone()
+            start = 0 if row is None or row[0] is None else int(row[0]) + 1
             with conn.cursor() as cur:
-                for offset, item in enumerate(new_messages, start=start):
-                    cur.execute(
-                        """
-                        INSERT INTO messages (session_id, run_id, sequence, role, content, tenant_id)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        """,
-                        (session_id, run_id, offset, item["role"], item["content"], tenant_id),
-                    )
+                cur.executemany(
+                    """
+                    INSERT INTO messages (session_id, run_id, sequence, role, content, tenant_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    [
+                        (session_id, run_id, offset, item["role"], item["content"], tenant_id)
+                        for offset, item in enumerate(new_messages, start=start)
+                    ],
+                )
             conn.commit()
 
     def create_eval_result(
@@ -500,26 +740,86 @@ class PostgresStore:
             for row in rows
         ]
 
-    def _replace_run_steps(self, conn: Any, run_id: str, steps: list[dict[str, Any]]) -> None:
-        """Delete and re-insert all step rows for a run."""
-        conn.execute("DELETE FROM run_steps WHERE run_id = %s", (run_id,))
+    @staticmethod
+    def _persist_run_steps(conn: Any, run_id: str, steps: list[dict[str, Any]]) -> None:
+        """Persist a run's ordered step list incrementally (E44-S5).
+
+        Upserts each step onto its ``(run_id, position)`` key in one batched
+        statement (E44-S2) and suppresses the ``DO UPDATE`` when nothing about
+        the row changed, so a checkpoint that adds the Nth step writes one row
+        rather than deleting and re-inserting all N. Trailing rows beyond the
+        current list length are trimmed, which is what makes a shortened list
+        (e.g. a resumed run dropping its ``awaiting_approval`` placeholder)
+        converge.
+
+        Args:
+            conn: An open, already tenant-scoped connection inside the
+                caller's transaction.
+            run_id: Run whose steps are being persisted.
+            steps: The run's full ordered step list.
+        """
+        conn.execute(
+            "DELETE FROM run_steps WHERE run_id = %s AND position >= %s", (run_id, len(steps))
+        )
+        if not steps:
+            return
         with conn.cursor() as cur:
-            for step in steps:
-                cur.execute(
-                    """
-                    INSERT INTO run_steps (run_id, step_key, agent, status, started_at, completed_at, attempt)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """,
+            cur.executemany(
+                """
+                INSERT INTO run_steps
+                    (run_id, position, step_key, agent, status, started_at, completed_at, attempt)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (run_id, position) DO UPDATE SET
+                    step_key = EXCLUDED.step_key,
+                    agent = EXCLUDED.agent,
+                    status = EXCLUDED.status,
+                    started_at = EXCLUDED.started_at,
+                    completed_at = EXCLUDED.completed_at,
+                    attempt = EXCLUDED.attempt
+                WHERE (run_steps.step_key, run_steps.agent, run_steps.status, run_steps.started_at,
+                       run_steps.completed_at, run_steps.attempt)
+                      IS DISTINCT FROM
+                      (EXCLUDED.step_key, EXCLUDED.agent, EXCLUDED.status, EXCLUDED.started_at,
+                       EXCLUDED.completed_at, EXCLUDED.attempt)
+                """,
+                [
                     (
                         run_id,
+                        position,
                         step["step_key"],
                         step["agent"],
                         step["status"],
                         step["started_at"],
                         step["completed_at"],
                         step.get("attempt", 1),
-                    ),
-                )
+                    )
+                    for position, step in enumerate(steps)
+                ],
+            )
+
+    def replace_run_steps_for_import(
+        self, run_id: str, steps: list[dict[str, Any]], tenant_id: str = DEFAULT_TENANT_ID
+    ) -> None:
+        """Discard a run's stored steps and write *steps* in their place (E44-S5).
+
+        The full-replace path, kept for import and recovery flows that restore
+        a run's steps wholesale. Normal execution checkpoints go through
+        :meth:`update_run`, which persists incrementally.
+
+        Args:
+            run_id: Run whose steps are being replaced.
+            steps: The complete ordered step list to store.
+            tenant_id: Tenant the run must belong to; RLS on ``runs`` makes a
+                run outside its scope a no-op.
+        """
+        with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
+            owned = conn.execute("SELECT 1 FROM runs WHERE id = %s", (run_id,)).fetchone()
+            if owned is None:
+                return
+            conn.execute("DELETE FROM run_steps WHERE run_id = %s", (run_id,))
+            self._persist_run_steps(conn, run_id, steps)
+            conn.commit()
 
 
 class PostgresPlanStore:

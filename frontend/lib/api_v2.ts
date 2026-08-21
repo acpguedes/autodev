@@ -40,7 +40,13 @@ export type RunStepV2 = {
   attempt: number;
 };
 
-/** A session, as returned by create/list/get on /v2/sessions. */
+/**
+ * A session, as returned by create/list/get on /v2/sessions.
+ *
+ * `history` is populated by `GET /v2/sessions/{id}`. Listings leave it empty
+ * and report `message_count` / `last_activity` instead (E44-S3), so paging
+ * the list never replays every session's conversation.
+ */
 export type SessionV2 = {
   schemaVersion: string;
   session_id: string;
@@ -48,6 +54,8 @@ export type SessionV2 = {
   plan: string[];
   status: string;
   history: HistoryItemV2[];
+  message_count: number;
+  last_activity: string | null;
 };
 
 /** Paginated collection of sessions. */

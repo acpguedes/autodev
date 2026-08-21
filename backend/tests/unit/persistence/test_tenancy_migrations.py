@@ -375,14 +375,19 @@ def test_postgres_migration_rollback_drops_policy_and_column() -> None:
 
 
 def test_postgres_plan_tables_migration_issues_tenant_rls_ddl() -> None:
-    """The plan store's tenancy migration (E8-S1-T3, appended at the end) issues the expected up DDL.
+    """The plan store's tenancy migration (E8-S1-T3) issues the expected up DDL.
 
     Unlike migration 2, this one also guards with ``CREATE TABLE IF NOT
     EXISTS`` (see :func:`add_tenant_id_and_rls_to_plan_tables`'s docstring
     for why), so both the table creation and the tenancy DDL are asserted.
     """
     conn = FakeConnection()
-    plan_tenant_migration = POSTGRES_STORE_MIGRATIONS[-1]
+    plan_tenant_migration = next(
+        migration
+        for migration in POSTGRES_STORE_MIGRATIONS
+        if isinstance(migration, Migration)
+        and migration.name == "add_tenant_id_and_rls_to_plan_tables"
+    )
     assert isinstance(plan_tenant_migration, Migration)
     assert plan_tenant_migration.name == "add_tenant_id_and_rls_to_plan_tables"
 
@@ -401,7 +406,12 @@ def test_postgres_plan_tables_migration_issues_tenant_rls_ddl() -> None:
 def test_postgres_plan_tables_migration_rollback_drops_policy_and_column() -> None:
     """The plan store's tenancy migration's down step reverts RLS and the ``tenant_id`` column."""
     conn = FakeConnection()
-    plan_tenant_migration = POSTGRES_STORE_MIGRATIONS[-1]
+    plan_tenant_migration = next(
+        migration
+        for migration in POSTGRES_STORE_MIGRATIONS
+        if isinstance(migration, Migration)
+        and migration.name == "add_tenant_id_and_rls_to_plan_tables"
+    )
     assert isinstance(plan_tenant_migration, Migration)
 
     plan_tenant_migration.down(conn)

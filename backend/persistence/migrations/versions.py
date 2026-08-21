@@ -90,17 +90,42 @@ def _m1_create_core_tables(conn: sqlite3.Connection) -> None:
     )
 
 
+def _add_column_if_missing(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    """Add *column* to *table*, tolerating a concurrent migration that beat us to it.
+
+    SQLite has no ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS``, so the only
+    way to make one idempotent is to check ``PRAGMA table_info`` first — and
+    :class:`~backend.persistence.migrations.runner.MigrationRunner` takes no
+    cross-connection lock, so two stores constructed at the same time can both
+    read the pre-``ALTER`` schema and both attempt the add. The loser's error
+    is swallowed here: the column it wanted now exists, which is the outcome
+    it was asking for.
+
+    Args:
+        conn: SQLite connection to apply the change on.
+        table: Table to add the column to.
+        column: Name of the column to add.
+        ddl: The column definition, e.g. ``"TEXT NOT NULL DEFAULT 'x'"``.
+    """
+    existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column in existing:
+        return
+    try:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+    except sqlite3.OperationalError as exc:  # pragma: no cover - concurrent runner
+        if "duplicate column name" not in str(exc):
+            raise
+
+
 def _m2_runs_add_run_type(conn: sqlite3.Connection) -> None:
     """Add the ``run_type`` column to ``runs`` if it does not already exist.
 
     Args:
         conn: SQLite connection to apply the migration on.
     """
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
-    if "run_type" not in existing:
-        conn.execute(
-            "ALTER TABLE runs ADD COLUMN run_type TEXT NOT NULL DEFAULT 'existing_repo_change'"
-        )
+    _add_column_if_missing(
+        conn, "runs", "run_type", "TEXT NOT NULL DEFAULT 'existing_repo_change'"
+    )
 
 
 def _m3_runs_add_current_state(conn: sqlite3.Connection) -> None:
@@ -109,11 +134,9 @@ def _m3_runs_add_current_state(conn: sqlite3.Connection) -> None:
     Args:
         conn: SQLite connection to apply the migration on.
     """
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
-    if "current_state" not in existing:
-        conn.execute(
-            "ALTER TABLE runs ADD COLUMN current_state TEXT NOT NULL DEFAULT 'starting'"
-        )
+    _add_column_if_missing(
+        conn, "runs", "current_state", "TEXT NOT NULL DEFAULT 'starting'"
+    )
 
 
 def _m4_create_plugin_tables(conn: sqlite3.Connection) -> None:
@@ -233,9 +256,7 @@ def _m7_add_tenant_id_to_core_tables(conn: sqlite3.Connection) -> None:
         conn: SQLite connection to apply the migration on.
     """
     for table in TENANT_SCOPED_STORE_TABLES:
-        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-        if "tenant_id" not in existing:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+        _add_column_if_missing(conn, table, "tenant_id", "TEXT NOT NULL DEFAULT 'default'")
 
 
 def _m7_down_remove_tenant_id_from_core_tables(conn: sqlite3.Connection) -> None:
@@ -306,9 +327,7 @@ def _m9_add_content_column_to_code_chunks(conn: sqlite3.Connection) -> None:
     Args:
         conn: SQLite connection to apply the migration on.
     """
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(code_chunks)").fetchall()}
-    if "content" not in existing:
-        conn.execute("ALTER TABLE code_chunks ADD COLUMN content TEXT NOT NULL DEFAULT ''")
+    _add_column_if_missing(conn, "code_chunks", "content", "TEXT NOT NULL DEFAULT ''")
 
 
 def _m9_down_remove_content_column_from_code_chunks(conn: sqlite3.Connection) -> None:
@@ -320,6 +339,78 @@ def _m9_down_remove_content_column_from_code_chunks(conn: sqlite3.Connection) ->
     existing = {row[1] for row in conn.execute("PRAGMA table_info(code_chunks)").fetchall()}
     if "content" in existing:
         conn.execute("ALTER TABLE code_chunks DROP COLUMN content")
+
+
+def _m10_unique_message_sequence(conn: sqlite3.Connection) -> None:
+    """Add a unique index on ``messages (tenant_id, session_id, sequence)`` (E44-S4).
+
+    Sequence numbers are now allocated as ``MAX(sequence) + 1`` inside the
+    append transaction rather than derived from a full re-read of the
+    conversation. This index is what makes that safe: two concurrent appends
+    that read the same maximum collide on insert and fail closed instead of
+    silently writing duplicate sequence numbers.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_tenant_session_sequence "
+        "ON messages (tenant_id, session_id, sequence)"
+    )
+
+
+def _m10_down_unique_message_sequence(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m10_unique_message_sequence` by dropping the index.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    conn.execute("DROP INDEX IF EXISTS idx_messages_tenant_session_sequence")
+
+
+def _m11_run_step_position(conn: sqlite3.Connection) -> None:
+    """Give ``run_steps`` a stable ``position`` key and a unique index on it (E44-S5).
+
+    Steps used to be persisted by deleting every row for a run and
+    re-inserting the whole list on each checkpoint — O(N^2) writes over a run.
+    ``position`` (the step's index in the run's ordered step list) is the
+    upsert key that lets a checkpoint write only the row that actually
+    changed. Existing rows are backfilled from their insertion order, which is
+    exactly the order the old full-replace path wrote them in.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    _add_column_if_missing(conn, "run_steps", "position", "INTEGER NOT NULL DEFAULT 0")
+    # Backfilled unconditionally so the loser of a concurrent ALTER still writes the
+    # positions the winner's rolled-back statement may not have. Rows already
+    # carrying a correct non-zero position are left alone; a row correctly at
+    # 0 recomputes to 0, so re-running this is a no-op.
+    conn.execute(
+        """
+        UPDATE run_steps SET position = (
+            SELECT COUNT(*) FROM run_steps AS earlier
+            WHERE earlier.run_id = run_steps.run_id AND earlier.id < run_steps.id
+        )
+        WHERE position = 0
+        """
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_run_steps_run_position "
+        "ON run_steps (run_id, position)"
+    )
+
+
+def _m11_down_run_step_position(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m11_run_step_position`, dropping the index and column.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    conn.execute("DROP INDEX IF EXISTS idx_run_steps_run_position")
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(run_steps)").fetchall()}
+    if "position" in existing:
+        conn.execute("ALTER TABLE run_steps DROP COLUMN position")
 
 
 STORE_MIGRATIONS: list[MigrationEntry] = [
@@ -343,6 +434,16 @@ STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_m9_add_content_column_to_code_chunks,
         down=_m9_down_remove_content_column_from_code_chunks,
         name="add_content_column_to_code_chunks",
+    ),
+    Migration(
+        up=_m10_unique_message_sequence,
+        down=_m10_down_unique_message_sequence,
+        name="unique_message_sequence",
+    ),
+    Migration(
+        up=_m11_run_step_position,
+        down=_m11_down_run_step_position,
+        name="run_step_position",
     ),
 ]
 
@@ -399,9 +500,7 @@ def _p2_add_tenant_id_to_plan_tables(conn: sqlite3.Connection) -> None:
         conn: SQLite connection to apply the migration on.
     """
     for table in PLAN_STORE_TENANT_SCOPED_TABLES:
-        existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
-        if "tenant_id" not in existing:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+        _add_column_if_missing(conn, table, "tenant_id", "TEXT NOT NULL DEFAULT 'default'")
 
 
 def _p2_down_remove_tenant_id_from_plan_tables(conn: sqlite3.Connection) -> None:

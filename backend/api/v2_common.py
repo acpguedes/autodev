@@ -9,10 +9,14 @@ config) shares three conventions defined here:
   ``schemaVersion``-on-output convention in
   ``backend/api/routers/flows.py`` and ``backend/skills/registry_v2.py``).
 * :class:`PaginationParams` / :func:`paginate` — a single ``limit``/
-  ``offset`` convention for every list endpoint, applied at the API
-  boundary because the backing services (e.g.
-  :meth:`backend.orchestrator.service.OrchestratorService.list_sessions`)
-  return full, unpaginated collections.
+  ``offset`` convention for every list endpoint.
+  :class:`PaginationParams` is the shared query-parameter contract for all
+  of them; :func:`paginate` slices in memory and is for endpoints whose
+  backing service genuinely returns a full, already-materialized collection
+  (e.g. extensions, patches). Endpoints backed by the durable store —
+  sessions, runs, turns — pass the window down to SQL instead (E44-S3) and
+  build :class:`PageMetaV2` from the store's own total, so a page costs a
+  fixed number of queries no matter how much data the tenant has.
 * :func:`v2_error` — a standardized error envelope for domain errors that
   handlers raise deliberately (404 not found, 400 invalid state, ...).
   FastAPI's built-in request-validation errors (422) already use one
@@ -63,6 +67,10 @@ class PageMetaV2(BaseModel):
 
 def paginate(items: Sequence[T], params: PaginationParams) -> tuple[list[T], PageMetaV2]:
     """Slice an already-fetched collection according to *params*.
+
+    For in-memory collections only. Store-backed listings paginate in SQL
+    (E44-S3) and construct :class:`PageMetaV2` directly rather than loading
+    every row to slice it here.
 
     Args:
         items: The full, unpaginated result set returned by the backing

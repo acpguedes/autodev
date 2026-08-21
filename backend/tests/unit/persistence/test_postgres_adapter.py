@@ -4,8 +4,8 @@ Covers ``PostgresStore`` and ``PostgresPlanStore``'s CRUD methods using a
 scripted fake ``psycopg`` module: a single shared :class:`ScriptedConnection`
 (psycopg.connect always returns the same instance, mirroring how the code
 under test opens a fresh "connection" per method call while nested calls
-like ``list_runs`` -> ``list_run_steps`` and ``append_messages`` ->
-``list_messages`` must still observe results in call order) with FIFO
+like ``list_runs`` -> its batched step query must still observe results in
+call order) with FIFO
 ``fetchone``/``fetchall`` queues so exact row values can be scripted per
 test.
 
@@ -52,6 +52,16 @@ class ScriptedCursor:
         self.conn.executed.append((sql, params))
         return self
 
+    def executemany(self, sql: str, params_seq: Any) -> "ScriptedCursor":
+        """Record one batched statement and its full parameter sequence.
+
+        Recorded as a *single* entry (unlike a per-row loop of
+        :meth:`execute`), so tests can assert that batched writes cost one
+        round trip — the E44-S2 contract.
+        """
+        self.conn.executed_many.append((sql, list(params_seq)))
+        return self
+
     def fetchone(self) -> Any:
         """Pop and return the next scripted single-row result, or ``None``."""
         if self.conn.fetchone_queue:
@@ -76,8 +86,9 @@ class ScriptedConnection:
     """
 
     def __init__(self) -> None:
-        """Initialize empty executed-statement log and fetch queues."""
+        """Initialize empty executed-statement logs and fetch queues."""
         self.executed: list[tuple[str, Any]] = []
+        self.executed_many: list[tuple[str, list[Any]]] = []
         self.commits = 0
         self.fetchone_queue: list[Any] = []
         self.fetchall_queue: list[list[Any]] = []
@@ -213,10 +224,10 @@ def test_update_session_artifacts_issues_update(
 # ---------------------------------------------------------------------------
 
 
-def test_create_run_inserts_run_and_replaces_steps(
+def test_create_run_inserts_run_and_persists_steps(
     store: PostgresStore, scripted_conn: ScriptedConnection
 ) -> None:
-    """create_run inserts the run row, deletes existing steps, and re-inserts each."""
+    """create_run inserts the run row, trims surplus steps, and upserts the list."""
     store.create_run(
         run_id="r1",
         session_id="s1",
@@ -232,19 +243,26 @@ def test_create_run_inserts_run_and_replaces_steps(
     )
     sqls = [sql for sql, _ in scripted_conn.executed]
     assert any("INSERT INTO runs" in sql for sql in sqls)
-    assert any("DELETE FROM run_steps" in sql for sql in sqls)
-    insert_step_calls = [(sql, params) for sql, params in scripted_conn.executed if "INSERT INTO run_steps" in sql]
-    assert len(insert_step_calls) == 2
-    assert insert_step_calls[0][1] == ("r1", "k1", "a1", "done", "t0", "t1", 2)
+    # E44-S5: only steps past the end of the new list are deleted, not all of them.
+    trim = [(sql, params) for sql, params in scripted_conn.executed if "DELETE FROM run_steps" in sql][0]
+    assert "position >= %s" in trim[0]
+    assert trim[1] == ("r1", 2)
+    # E44-S2/S5: all steps go in one batched upsert keyed on (run_id, position).
+    batched = [(sql, rows) for sql, rows in scripted_conn.executed_many if "INSERT INTO run_steps" in sql]
+    assert len(batched) == 1
+    assert "ON CONFLICT (run_id, position) DO UPDATE" in batched[0][0]
+    assert "IS DISTINCT FROM" in batched[0][0]
+    rows = batched[0][1]
+    assert rows[0] == ("r1", 0, "k1", "a1", "done", "t0", "t1", 2)
     # Second step omits "attempt"; defaults to 1.
-    assert insert_step_calls[1][1] == ("r1", "k2", "a2", "pending", "t2", None, 1)
+    assert rows[1] == ("r1", 1, "k2", "a2", "pending", "t2", None, 1)
     assert scripted_conn.commits == 1
 
 
-def test_update_run_issues_update_and_replaces_steps(
+def test_update_run_issues_update_and_persists_steps(
     store: PostgresStore, scripted_conn: ScriptedConnection
 ) -> None:
-    """update_run issues an UPDATE and re-runs the delete/insert step replacement."""
+    """update_run issues an UPDATE and re-runs the incremental step persistence."""
     store.update_run(
         run_id="r1",
         status="completed",
@@ -256,16 +274,17 @@ def test_update_run_issues_update_and_replaces_steps(
     assert any("UPDATE runs" in sql for sql in sqls)
     assert any("DELETE FROM run_steps" in sql for sql in sqls)
     assert not any("INSERT INTO run_steps" in sql for sql in sqls)
+    assert not scripted_conn.executed_many
 
 
 def test_list_runs_maps_rows_and_nests_steps(
     store: PostgresStore, scripted_conn: ScriptedConnection
 ) -> None:
-    """list_runs maps run rows and nests each run's steps via list_run_steps."""
+    """list_runs maps run rows and nests each run's steps from one batched step query."""
     scripted_conn.fetchall_queue.append(
         [("r1", "s1", "running", "auto", "planning", "go", "[]", "2024-01-01", "2024-01-02")]
     )
-    scripted_conn.fetchall_queue.append([("k1", "a1", "done", "t0", "t1", 1)])
+    scripted_conn.fetchall_queue.append([("r1", "k1", "a1", "done", "t0", "t1", 1)])
 
     result = store.list_runs("s1")
 
@@ -284,7 +303,7 @@ def test_list_runs_completed_at_none_becomes_literal_string(
     scripted_conn.fetchall_queue.append(
         [("r1", "s1", "running", "auto", "planning", "go", "[]", "2024-01-01", None)]
     )
-    scripted_conn.fetchall_queue.append([])  # nested list_run_steps call for r1
+    scripted_conn.fetchall_queue.append([])  # batched step query for [r1]
 
     result = store.list_runs("s1")
 
@@ -324,47 +343,58 @@ def test_list_messages_maps_rows(store: PostgresStore, scripted_conn: ScriptedCo
     ]
 
 
-def test_append_messages_no_op_when_nothing_new(
+def test_append_messages_no_op_when_tail_is_empty(
     store: PostgresStore, scripted_conn: ScriptedConnection
 ) -> None:
-    """append_messages short-circuits (no connection/insert) when history has no new items."""
-    scripted_conn.fetchall_queue.append(
-        [
-            ("m1", "s1", "r1", 0, "user", "hi", "2024-01-01"),
-            ("m2", "s1", "r1", 1, "assistant", "hello", "2024-01-01"),
-        ]
-    )
-    before_commits = scripted_conn.commits
+    """append_messages short-circuits (no connection/statement) on an empty tail."""
+    before = len(scripted_conn.executed)
 
-    store.append_messages("s1", "r1", [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}])
+    store.append_messages("s1", "r1", [])
 
-    # list_messages() still runs its SELECT to check existing history, but no
-    # INSERT/commit happens since there is nothing new to append.
-    assert scripted_conn.commits == before_commits
-    assert not any("INSERT INTO messages" in sql for sql, _ in scripted_conn.executed)
+    assert len(scripted_conn.executed) == before
+    assert not scripted_conn.executed_many
 
 
-def test_append_messages_inserts_only_new_items_with_continued_sequence(
+def test_append_messages_allocates_sequences_after_the_stored_maximum(
     store: PostgresStore, scripted_conn: ScriptedConnection
 ) -> None:
-    """append_messages inserts only the tail of history beyond what already exists."""
-    scripted_conn.fetchall_queue.append([("m1", "s1", "r1", 0, "user", "hi", "2024-01-01")])
+    """The tail is numbered from MAX(sequence) + 1, read in one row (E44-S4)."""
+    scripted_conn.fetchone_queue.append((0,))  # highest stored sequence
 
     store.append_messages(
         "s1",
         "r1",
         [
-            {"role": "user", "content": "hi"},
             {"role": "assistant", "content": "second"},
             {"role": "user", "content": "third"},
         ],
     )
 
-    inserts = [(sql, params) for sql, params in scripted_conn.executed if "INSERT INTO messages" in sql]
-    assert len(inserts) == 2
-    assert inserts[0][1] == ("s1", "r1", 1, "assistant", "second", "default")
-    assert inserts[1][1] == ("s1", "r1", 2, "user", "third", "default")
+    max_sql, max_params = [
+        (sql, params) for sql, params in scripted_conn.executed if "MAX(sequence)" in sql
+    ][0]
+    assert max_params == ("s1",)
+    assert "FROM messages" in max_sql
+    # E44-S2: the tail is inserted in one batched statement, not one per row.
+    batched = [(sql, rows) for sql, rows in scripted_conn.executed_many if "INSERT INTO messages" in sql]
+    assert len(batched) == 1
+    assert batched[0][1] == [
+        ("s1", "r1", 1, "assistant", "second", "default"),
+        ("s1", "r1", 2, "user", "third", "default"),
+    ]
     assert scripted_conn.commits == 1
+
+
+def test_append_messages_starts_at_zero_for_an_empty_session(
+    store: PostgresStore, scripted_conn: ScriptedConnection
+) -> None:
+    """A session with no messages yet starts its sequence at 0."""
+    scripted_conn.fetchone_queue.append((None,))
+
+    store.append_messages("s1", "r1", [{"role": "user", "content": "hi"}])
+
+    batched = [rows for sql, rows in scripted_conn.executed_many if "INSERT INTO messages" in sql][0]
+    assert batched == [("s1", "r1", 0, "user", "hi", "default")]
 
 
 # ---------------------------------------------------------------------------
