@@ -8,6 +8,7 @@ import threading
 import time
 import uuid
 from abc import ABC, abstractmethod
+from collections import deque
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
@@ -21,6 +22,9 @@ from backend.observability.context import (
 )
 from backend.observability.metrics import QueueSnapshot
 from backend.observability.tracing import get_tracer
+
+_DEFAULT_JOB_RETENTION_SECONDS = 3600
+
 
 class AbstractJobQueue(ABC):
     """Minimal async-job-queue interface."""
@@ -68,17 +72,27 @@ _STATUS_ERROR = "error"
 class InProcessJobQueue(AbstractJobQueue):
     """Thread-pool-backed in-process job queue."""
 
-    def __init__(self, max_workers: int = 4) -> None:
+    def __init__(
+        self, max_workers: int = 4, *, retention_seconds: int = _DEFAULT_JOB_RETENTION_SECONDS
+    ) -> None:
         """Initialize the queue with a bounded thread pool.
 
         Args:
             max_workers: Maximum number of jobs to run concurrently.
+            retention_seconds: How long a completed (done/error) record is
+                kept before it is evicted; negative disables eviction.
         """
         self._executor = ThreadPoolExecutor(max_workers=max_workers)
         self._max_workers = max_workers
         self._store: dict[str, dict] = {}
         self._execution_contexts: dict[str, dict[str, str]] = {}
         self._lock = threading.Lock()
+        self._retention_seconds = retention_seconds
+        self._pending_count = 0
+        self._running_count = 0
+        # Completion order queue: bounds eviction sweep cost to the number of
+        # records actually expired, not the total store size (O(1) stats()).
+        self._completed_order: deque[tuple[float, str]] = deque()
 
     def enqueue(self, job_type: str, payload: dict) -> str:
         """Submit a job to the thread pool for asynchronous execution.
@@ -106,14 +120,17 @@ class InProcessJobQueue(AbstractJobQueue):
                 "result": None, "error": None,
             }
             with self._lock:
+                self._sweep_expired_locked()
                 self._store[job_id] = record
                 self._execution_contexts[job_id] = carrier
+                self._pending_count += 1
             try:
                 self._executor.submit(self._run, job_id, job_type, payload)
             except Exception:
                 with self._lock:
                     self._store.pop(job_id, None)
                     self._execution_contexts.pop(job_id, None)
+                    self._pending_count -= 1
                 raise
         return job_id
 
@@ -140,16 +157,33 @@ class InProcessJobQueue(AbstractJobQueue):
         """Return pending/running counts and in-process worker utilization.
 
         Returns:
-            A snapshot captured atomically under the queue state lock.
+            A snapshot built from incremental counters (O(1); does not scan
+            every job ever enqueued).
         """
         with self._lock:
-            pending = sum(
-                record["status"] == _STATUS_PENDING for record in self._store.values()
-            )
-            running = sum(
-                record["status"] == _STATUS_RUNNING for record in self._store.values()
-            )
+            pending = self._pending_count
+            running = self._running_count
         return QueueSnapshot(pending, running, self._max_workers, running)
+
+    def _sweep_expired_locked(self) -> None:
+        """Evict completed records older than the retention window.
+
+        Must be called while holding :attr:`_lock`. Cost is proportional to
+        the number of records actually expired, not to the store's total
+        size, since :attr:`_completed_order` is consumed in completion
+        order (oldest first).
+        """
+        if self._retention_seconds < 0:
+            return
+        cutoff = time.monotonic() - self._retention_seconds
+        while self._completed_order and self._completed_order[0][0] < cutoff:
+            _completed_at, job_id = self._completed_order.popleft()
+            self._store.pop(job_id, None)
+
+    def _finish_locked(self, job_id: str) -> None:
+        """Record a terminal (done/error) transition. Must be called under :attr:`_lock`."""
+        self._running_count -= 1
+        self._completed_order.append((time.monotonic(), job_id))
 
     def _run(self, job_id: str, job_type: str, payload: dict) -> None:
         """Execute a job's handler in the worker thread and record its outcome.
@@ -161,6 +195,8 @@ class InProcessJobQueue(AbstractJobQueue):
         """
         with self._lock:
             self._store[job_id]["status"] = _STATUS_RUNNING
+            self._pending_count -= 1
+            self._running_count += 1
             carrier = self._execution_contexts[job_id]
         try:
             with attach_execution_context(carrier):
@@ -179,15 +215,18 @@ class InProcessJobQueue(AbstractJobQueue):
                                 "No handler registered for job_type "
                                 f"{job_type!r}."
                             )
+                            self._finish_locked(job_id)
                         return
                     result = handler(payload)
             with self._lock:
                 self._store[job_id]["status"] = _STATUS_DONE
                 self._store[job_id]["result"] = result
+                self._finish_locked(job_id)
         except Exception as exc:  # noqa: BLE001
             with self._lock:
                 self._store[job_id]["status"] = _STATUS_ERROR
                 self._store[job_id]["error"] = str(exc)
+                self._finish_locked(job_id)
         finally:
             with self._lock:
                 self._execution_contexts.pop(job_id, None)
@@ -204,7 +243,8 @@ class RedisJobQueue(AbstractJobQueue):
         client: Any | None = None,
         url: str | None = None,
         start_worker: bool = True,
-        poll_interval: float = 0.1,
+        blpop_timeout: float = 5.0,
+        job_retention_seconds: int = _DEFAULT_JOB_RETENTION_SECONDS,
     ) -> None:
         """Initialize the queue, connecting to Redis and optionally starting a worker.
 
@@ -213,7 +253,13 @@ class RedisJobQueue(AbstractJobQueue):
             url: Redis connection URL, used when ``client`` is omitted; falls
                 back to ``AUTODEV_REDIS_URL``.
             start_worker: Whether to start a background thread processing jobs.
-            poll_interval: Seconds to sleep between empty queue polls.
+            blpop_timeout: Bounded ``BLPOP`` timeout in seconds; the worker
+                blocks for at most this long per empty-queue wait, so
+                :meth:`close` never waits longer than this to observe the
+                stop signal.
+            job_retention_seconds: TTL applied to a job's Redis hash once it
+                reaches a terminal (done/error) status; negative disables
+                expiry.
 
         Raises:
             RuntimeError: If the ``redis`` package is not installed, or if no
@@ -230,13 +276,32 @@ class RedisJobQueue(AbstractJobQueue):
             client = _redis.from_url(redis_url)
         self._client = client
         self._client.ping()
-        self._poll_interval = poll_interval
+        self._blpop_timeout = blpop_timeout
+        self._job_retention_seconds = job_retention_seconds
         self._worker_enabled = start_worker
         self._busy_workers = 0
         self._busy_lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._worker_thread: threading.Thread | None = None
         if start_worker:
-            thread = threading.Thread(target=self._worker_loop, daemon=True)
-            thread.start()
+            self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+            self._worker_thread.start()
+
+    def close(self, *, timeout: float | None = None) -> None:
+        """Signal the worker thread to stop and wait for it to exit.
+
+        Safe to call when no worker was started (a no-op). Idempotent.
+
+        Args:
+            timeout: Maximum seconds to wait for the worker thread to exit;
+                defaults to :attr:`_blpop_timeout` plus a small margin, which
+                bounds the wait since the worker checks the stop signal at
+                most once per ``BLPOP`` timeout.
+        """
+        self._stop_event.set()
+        if self._worker_thread is None:
+            return
+        self._worker_thread.join(timeout=timeout if timeout is not None else self._blpop_timeout + 1.0)
 
     def enqueue(self, job_type: str, payload: dict) -> str:
         """Submit a job by writing its record to Redis and queuing its id.
@@ -332,11 +397,24 @@ class RedisJobQueue(AbstractJobQueue):
         return True
 
     def _worker_loop(self) -> None:
-        """Continuously run pending jobs, sleeping between empty polls."""
-        while True:
-            ran_job = self.run_pending_once()
-            if not ran_job:
-                time.sleep(self._poll_interval)
+        """Block on ``BLPOP`` for pending jobs until :meth:`close` signals stop.
+
+        Each iteration blocks for at most :attr:`_blpop_timeout` seconds, so
+        idle Redis ops are ~0 (one blocked call at a time) and the stop
+        signal is observed within one timeout window.
+        """
+        while not self._stop_event.is_set():
+            try:
+                popped = self._client.blpop([self._pending_key], timeout=self._blpop_timeout)
+            except Exception:
+                if self._stop_event.is_set():
+                    return
+                raise
+            if popped is None:
+                continue
+            _key, raw_job_id = popped
+            job_id = _decode_value(raw_job_id)
+            self._run_redis_job(job_id)
 
     def _run_redis_job(self, job_id: str) -> None:
         """Execute a job's handler and persist its outcome back to Redis.
@@ -397,6 +475,8 @@ class RedisJobQueue(AbstractJobQueue):
             )
         finally:
             self._client.hdel(key, *_REDIS_EXECUTION_CONTEXT_FIELDS)
+            if self._job_retention_seconds >= 0:
+                self._client.expire(key, self._job_retention_seconds)
             with self._busy_lock:
                 self._busy_workers -= 1
 
@@ -471,14 +551,20 @@ def get_queue(settings: Settings | None = None) -> AbstractJobQueue:
         if settings is None:
             want_redis = os.environ.get("AUTODEV_JOB_BACKEND", "").strip().lower() == "redis"
             redis_url = os.environ.get("AUTODEV_REDIS_URL", "")
+            retention_seconds = int(
+                os.environ.get(
+                    "AUTODEV_JOB_RETENTION_SECONDS", str(_DEFAULT_JOB_RETENTION_SECONDS)
+                )
+            )
         else:
             want_redis = settings.autodev_job_backend == "redis"
             redis_url = settings.autodev_redis_url
+            retention_seconds = settings.autodev_job_retention_seconds
         if want_redis:
-            _queue_singleton = RedisJobQueue(url=redis_url)
+            _queue_singleton = RedisJobQueue(url=redis_url, job_retention_seconds=retention_seconds)
             return _queue_singleton
 
-        _queue_singleton = InProcessJobQueue()
+        _queue_singleton = InProcessJobQueue(retention_seconds=retention_seconds)
         return _queue_singleton
 
 

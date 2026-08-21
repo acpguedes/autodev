@@ -309,13 +309,21 @@ epics: every hot Control Plane read/write path is now constant-cost in the
 tenant's data volume — see the changelog entry and
 [phases/e44_persistence_efficiency.md](phases/e44_persistence_efficiency.md).
 
-**Next:** E13 — Marketplace & GA (0/4, not started). Also eligible: the
-remaining Beta-hardening backend-efficiency epics **E45–E47** (0/13 —
-runtime I/O efficiency, failure classification & self-repair governance,
-structural consolidation; E46 is the remaining independent P0, E47 is now
-unblocked on the E44 side and sequenced after E46). Beyond GA, the planned
-v2.1 (E20-E25), v2.2 (E26-E31) and v2.3 (E36-E40) waves are specified but
-not started.
+**E45 — Runtime I/O Efficiency is now complete (5/5, 2026-08-21)**: the
+job worker blocks on `BLPOP` with graceful shutdown instead of busy-polling,
+completed job records carry a configurable TTL/eviction window instead of
+growing forever, the Event Bus's `subscribe()` returns an unsubscribe token
+so the SSE endpoint frees its subscriber on disconnect, `replay_from` is
+offloaded off the event loop and both bus backends bound their retained
+stream/partition length, and repository indexing prunes ignored
+directories during traversal and persists in batched, `executemany`
+transactions — see
+[phases/e45_runtime_io_efficiency.md](phases/e45_runtime_io_efficiency.md).
+
+**Next:** E13 — Marketplace & GA (0/4, not started). Also eligible:
+**E47 — Backend Structural Consolidation** (0/5, now unblocked on both the
+E44 and E46 sides). Beyond GA, the planned v2.1 (E20-E25), v2.2 (E26-E31)
+and v2.3 (E36-E40) waves are specified but not started.
 
 ### Accumulated per-epic record
 
@@ -446,11 +454,11 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E42 | Execution Visibility & Chat/Command UX | Beta | Done | 6/6 | E41, E9, E11, E15-E18 | [phases/e42_execution_visibility_chat_ux.md](phases/e42_execution_visibility_chat_ux.md) |
 | E43 | Execution Transparency: Terminal Transcript, File Browser & Session Stickiness | Beta | Done | 8/8 | E42, E41-S3, E41-S4, E41-S5 | [phases/e43_execution_transparency_file_browser.md](phases/e43_execution_transparency_file_browser.md) |
 | E44 | Persistence Read/Write Efficiency | Beta | Done | 5/5 | E8, E16-S1, E43 | [phases/e44_persistence_efficiency.md](phases/e44_persistence_efficiency.md) |
-| E45 | Runtime I/O Efficiency: Job Queue, Event Bus, SSE & Indexing | Beta | Not started | 0/5 | E0, E8-S2, E9, E43-S6 | [phases/e45_runtime_io_efficiency.md](phases/e45_runtime_io_efficiency.md) |
+| E45 | Runtime I/O Efficiency: Job Queue, Event Bus, SSE & Indexing | Beta | Done | 5/5 | E0, E8-S2, E9, E43-S6 | [phases/e45_runtime_io_efficiency.md](phases/e45_runtime_io_efficiency.md) |
 | E46 | Execution Failure Classification & Self-Repair Governance | Beta | Done | 3/3 | E14, E32, E41-S5, E43-S1 | [phases/e46_failure_classification_self_repair.md](phases/e46_failure_classification_self_repair.md) |
 | E47 | Backend Structural Consolidation | Beta | Not started | 0/5 | E2, E2-S6, E8, E44, E46 | [phases/e47_backend_structural_consolidation.md](phases/e47_backend_structural_consolidation.md) |
 
-Total: **121/214 stories complete** across 47 epics (E19 is a proposed
+Total: **126/214 stories complete** across 47 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous

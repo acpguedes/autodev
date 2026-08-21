@@ -196,8 +196,23 @@ class _FakeEmbeddingsConnection:
             return _FakeEmbeddingsCursor([])
         return _FakeEmbeddingsCursor([])
 
+    def cursor(self) -> "_FakeEmbeddingsCursorWriter":
+        """Return a writer cursor whose ``executemany`` replays each row through :meth:`execute`."""
+        return _FakeEmbeddingsCursorWriter(self)
+
     def commit(self) -> None:
         return None
+
+
+class _FakeEmbeddingsCursorWriter:
+    """Cursor stand-in whose ``executemany`` calls the connection's ``execute`` per row."""
+
+    def __init__(self, conn: _FakeEmbeddingsConnection) -> None:
+        self._conn = conn
+
+    def executemany(self, sql: str, seq: "list[tuple]") -> None:
+        for row in seq:
+            self._conn.execute(sql, row)
 
 
 def test_upsert_embeddings_issues_dedup_upsert_statement() -> None:
@@ -253,6 +268,39 @@ def test_upsert_embeddings_empty_input_is_a_noop() -> None:
     written = upsert_embeddings(conn, [], StubEmbeddingProvider(), tenant_id="default")
     assert written == 0
     assert conn.executed == []
+
+
+def test_upsert_embeddings_issues_a_single_executemany_batch() -> None:
+    """Multiple new rows are written via one executemany call, not one INSERT per row (E45-S5)."""
+    conn = _FakeEmbeddingsConnection()
+    provider = StubEmbeddingProvider(dimension=8)
+    chunk_rows = [
+        (1, "def add(a, b): return a + b", "hash-a"),
+        (2, "class Foo: pass", "hash-b"),
+        (3, "def bar(): pass", "hash-c"),
+    ]
+
+    batch_sizes: list[int] = []
+    original_cursor = conn.cursor
+
+    def _tracking_cursor():
+        cur = original_cursor()
+        original_executemany = cur.executemany
+
+        def _tracking_executemany(sql, seq):
+            rows = list(seq)
+            batch_sizes.append(len(rows))
+            return original_executemany(sql, rows)
+
+        cur.executemany = _tracking_executemany  # type: ignore[method-assign]
+        return cur
+
+    conn.cursor = _tracking_cursor  # type: ignore[method-assign]
+
+    written = upsert_embeddings(conn, chunk_rows, provider, tenant_id="default")
+
+    assert written == 3
+    assert batch_sizes == [3]
 
 
 def test_query_top_k_issues_ann_query_scoped_to_tenant() -> None:

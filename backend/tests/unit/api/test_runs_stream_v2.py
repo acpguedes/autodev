@@ -15,7 +15,9 @@ for consistency with the rest of this module.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -34,7 +36,7 @@ from backend.api.v2_common import SCHEMA_VERSION_V2
 from backend.auth.contracts import AuthMethod, PrincipalV2, Role
 from backend.config.runtime import reset_runtime_config_cache
 from backend.config.settings import reset_settings_cache
-from backend.events.bus import EventBus, InMemoryEventBus
+from backend.events.bus import WILDCARD, EventBus, InMemoryEventBus
 from backend.events.catalog import make_envelope
 from backend.events.runtime import (
     get_event_bus,
@@ -321,6 +323,85 @@ class TestStreamEventsGenerator:
 
         assert len(frames) == 1
         assert "event: flow.run.started" in frames[0]
+
+
+    def test_replay_from_is_offloaded_and_does_not_block_the_event_loop(self) -> None:
+        """A slow, blocking ``replay_from`` runs off the event loop (E45-S4-T1)."""
+
+        class _SlowReplayBus:
+            """Bus stand-in whose ``replay_from`` blocks synchronously."""
+
+            def subscribe(self, _type: str, _subscriber: Any) -> Any:
+                """Return a no-op unsubscribe token."""
+                return lambda: None
+
+            def replay_from(self, _run_id: str, _cursor: Any) -> list[Any]:
+                """Block the calling thread, simulating a slow synchronous XRANGE."""
+                time.sleep(0.05)
+                return []
+
+        async def run() -> bool:
+            bus = _SlowReplayBus()
+            agen = _stream_events(_FakeRequest(), bus, "run-1", None, None)  # type: ignore[arg-type]
+            ticked = False
+
+            async def _tick() -> None:
+                nonlocal ticked
+                await asyncio.sleep(0.01)
+                ticked = True
+
+            replay_task = asyncio.ensure_future(agen.__anext__())
+            tick_task = asyncio.ensure_future(_tick())
+            await asyncio.sleep(0.02)
+            await tick_task
+            replay_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
+                await replay_task
+            await agen.aclose()  # type: ignore[attr-defined]
+            return ticked
+
+        assert asyncio.run(run())
+
+    def test_unsubscribes_on_disconnect(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Disconnect leaves zero subscribers registered on the bus (E45-S3)."""
+        monkeypatch.setattr(runs_stream_v2, "DISCONNECT_POLL_INTERVAL_SEC", 0.01)
+
+        async def run() -> int:
+            bus = InMemoryEventBus()
+            run_id = "run-1"
+            _publish(bus, run_id, "flow.run.started")
+            request = _DisconnectingRequest(connected_polls=1)
+            agen = _stream_events(request, bus, run_id, None, None)  # type: ignore[arg-type]
+            async for _frame in agen:
+                pass
+            return len(bus._registry._subscribers[WILDCARD])  # noqa: SLF001
+
+        remaining = asyncio.run(run())
+
+        assert remaining == 0
+
+    def test_unsubscribes_when_generator_is_cancelled(self) -> None:
+        """A cancelled generator (client abort mid-wait) also unsubscribes cleanly."""
+
+        async def run() -> int:
+            bus = InMemoryEventBus()
+            run_id = "run-1"
+            agen = _stream_events(_FakeRequest(), bus, run_id, None, None)  # type: ignore[arg-type]
+            task = asyncio.ensure_future(agen.__anext__())
+            await asyncio.sleep(0.01)
+            task.cancel()
+            # The generator's own `except CancelledError: return` swallows the
+            # cancellation and completes normally (StopAsyncIteration from
+            # __anext__), rather than the task ending in "cancelled" state —
+            # its `finally: unsubscribe()` still runs either way.
+            with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
+                await task
+            await agen.aclose()  # type: ignore[attr-defined]
+            return len(bus._registry._subscribers[WILDCARD])  # noqa: SLF001
+
+        remaining = asyncio.run(run())
+
+        assert remaining == 0
 
 
 class TestStreamRunEventsHandler:

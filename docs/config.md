@@ -154,7 +154,9 @@ expire.
 | `AUTODEV_REPO_PROVIDER` | `lexical` | Repository provider selector. |
 | `AUTODEV_JOB_BACKEND` | `inprocess` | `inprocess` or `redis`. |
 | `AUTODEV_REDIS_URL` | empty | Redis URL for prod queue/cache/locks. Must use `redis://` or `rediss://`. |
+| `AUTODEV_JOB_RETENTION_SECONDS` | `3600` | How long a completed (done/error) job record is kept before eviction (Redis: `EXPIRE`; in-process: swept on later enqueues); `-1` disables eviction (E45-S2). |
 | `AUTODEV_EVENT_BUS` | `inmemory` | Event Bus backend: `inmemory` or `redis` (Redis Streams). |
+| `AUTODEV_EVENT_STREAM_MAXLEN` | `10000` | Approximate cap on retained envelopes per partition (Redis: `XADD MAXLEN ~`; in-memory: oldest-first trim); `-1` disables trimming. The durable Event Store remains the source of record (E45-S4). |
 | `AUTODEV_EVENT_STORE_ENABLED` | `true` | Durably persist every published event envelope in the State Store (E8-S2). |
 | `AUTODEV_EVENT_RETENTION_DAYS` | `30` | Days to retain stored events of terminal runs before compaction; `-1` keeps them forever. |
 | `STORAGE_BACKEND` | `local` | `local` or `s3` artifact storage. |

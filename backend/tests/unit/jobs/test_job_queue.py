@@ -12,6 +12,7 @@ Coverage:
 
 from __future__ import annotations
 
+import threading
 import time
 
 import pytest
@@ -19,6 +20,7 @@ from fastapi.testclient import TestClient
 
 from backend.api.main import app as main_app
 from backend.jobs.queue import (
+    AbstractJobQueue,
     InProcessJobQueue,
     RedisJobQueue,
     _reset_queue_singleton,
@@ -36,7 +38,7 @@ _POLL_TIMEOUT = 5.0
 _POLL_INTERVAL = 0.05
 
 
-def _poll(queue: InProcessJobQueue, job_id: str) -> dict:
+def _poll(queue: AbstractJobQueue, job_id: str) -> dict:
     """Poll a job until it reaches a terminal status or the timeout elapses."""
     deadline = time.monotonic() + _POLL_TIMEOUT
     while time.monotonic() < deadline:
@@ -94,6 +96,42 @@ def test_inprocess_initial_status_is_pending_or_running_or_done() -> None:
     assert rec["status"] in {"pending", "running", "done", "error"}
 
 
+def test_inprocess_stats_counters_track_enqueue_run_and_completion() -> None:
+    """Pending/running counters move correctly across enqueue -> run -> complete."""
+    queue = InProcessJobQueue(max_workers=1)
+
+    job_id = queue.enqueue("echo", {"msg": "counters"})
+    rec = _poll(queue, job_id)
+
+    assert rec["status"] == "done"
+    assert queue.stats() == QueueSnapshot(0, 0, 1, 0)
+
+
+def test_inprocess_evicts_completed_record_past_retention_window() -> None:
+    """A completed record older than the retention window is evicted on the next enqueue."""
+    queue = InProcessJobQueue(max_workers=1, retention_seconds=0)
+
+    first_id = queue.enqueue("echo", {"msg": "first"})
+    _poll(queue, first_id)
+
+    second_id = queue.enqueue("echo", {"msg": "second"})
+    _poll(queue, second_id)
+
+    assert queue.get(first_id)["status"] == "error"
+    assert queue.get(second_id)["status"] == "done"
+
+
+def test_inprocess_negative_retention_disables_eviction() -> None:
+    """A negative retention setting keeps completed records around indefinitely."""
+    queue = InProcessJobQueue(max_workers=1, retention_seconds=-1)
+
+    job_id = queue.enqueue("echo", {"msg": "kept"})
+    _poll(queue, job_id)
+    queue.enqueue("echo", {"msg": "trigger-sweep-check"})
+
+    assert queue.get(job_id)["status"] == "done"
+
+
 def test_inprocess_enqueue_rolls_back_when_executor_rejects_submission() -> None:
     """A rejected executor submission leaves no pending record or carrier."""
     queue = InProcessJobQueue(max_workers=1)
@@ -114,6 +152,7 @@ class _FakeRedisQueueClient:
         """Initialize empty in-memory hashes and lists."""
         self.hashes: dict[str, dict[str, str]] = {}
         self.queues: dict[str, list[str]] = {}
+        self.expiries: dict[str, int] = {}
 
     def ping(self) -> bool:
         """Report the fake connection as always reachable."""
@@ -152,6 +191,24 @@ class _FakeRedisQueueClient:
         """Return the current length of an in-memory list."""
         return len(self.queues.setdefault(key, []))
 
+    def blpop(self, keys: list[str], timeout: float = 0) -> tuple[str, str] | None:
+        """Pop and return ``(key, value)`` from the first non-empty list, or ``None``.
+
+        A synchronous stand-in for Redis ``BLPOP``: it never actually blocks,
+        which is sufficient for tests that pre-populate the list before
+        calling the worker loop.
+        """
+        for key in keys:
+            values = self.queues.setdefault(key, [])
+            if values:
+                return key, values.pop(0)
+        return None
+
+    def expire(self, key: str, seconds: int) -> bool:
+        """Record the TTL a caller requested for *key*."""
+        self.expiries[key] = seconds
+        return key in self.hashes
+
 
 def test_redis_queue_persists_pending_job_and_runs_registered_handler() -> None:
     """The Redis-backed queue persists a pending job and runs it via its handler."""
@@ -168,6 +225,33 @@ def test_redis_queue_persists_pending_job_and_runs_registered_handler() -> None:
 
     assert record["status"] == "done"
     assert record["result"] == {"echoed": {"msg": "redis"}}
+
+
+def test_redis_queue_worker_loop_processes_job_via_blpop_then_stops_on_close() -> None:
+    """The BLPOP-driven worker loop completes a job and stops promptly on close()."""
+    client = _FakeRedisQueueClient()
+    queue = RedisJobQueue(client=client, start_worker=False, blpop_timeout=0.05)
+    job_id = queue.enqueue("echo", {"msg": "blpop"})
+
+    queue._worker_thread = threading.Thread(target=queue._worker_loop, daemon=True)  # noqa: SLF001
+    queue._worker_thread.start()
+    try:
+        rec = _poll(queue, job_id)
+        assert rec["status"] == "done"
+        assert rec["result"] == {"echoed": {"msg": "blpop"}}
+    finally:
+        queue.close()
+
+    assert not queue._worker_thread.is_alive()  # noqa: SLF001
+
+
+def test_redis_queue_close_is_idempotent_and_safe_without_worker() -> None:
+    """``close()`` is a no-op-safe call when no worker thread was started."""
+    client = _FakeRedisQueueClient()
+    queue = RedisJobQueue(client=client, start_worker=False)
+
+    queue.close()
+    queue.close()
 
 
 # ---------------------------------------------------------------------------

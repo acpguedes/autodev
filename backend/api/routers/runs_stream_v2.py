@@ -24,7 +24,11 @@ Design notes:
   (the header wins when both are present); the stream then replays only
   events strictly after that cursor via
   :meth:`~backend.events.bus.EventBus.replay_from`, never re-delivering an
-  event the client already has.
+  event the client already has. Each call is offloaded via
+  :func:`asyncio.to_thread` (E45-S4) since the Redis backend's
+  ``replay_from`` issues a synchronous ``XRANGE``, and no async Redis client
+  exists anywhere in this codebase yet — offloading is the smallest safe
+  fix that keeps the event loop responsive without introducing one.
 * **Live tail without polling storms.** The handler subscribes to
   :data:`~backend.events.bus.WILDCARD` purely as a wake-up signal — the
   subscriber callback only flips an :class:`asyncio.Event`, marshaled onto
@@ -33,8 +37,9 @@ Design notes:
   The authoritative ``(cursor, envelope)`` pairs actually sent to the client
   always come from a follow-up :meth:`~backend.events.bus.EventBus.replay_from`
   call, so a missed or coalesced wake-up never drops an event. The
-  in-process bus backends have no ``unsubscribe``; a long-lived subscriber
-  per connection is an accepted, documented limitation of this iteration.
+  generator unsubscribes in a ``finally`` block (E45-S3) covering both
+  client disconnect and ``CancelledError``, so a closed connection frees
+  its subscriber instead of leaking into the bus registry.
 * **Tenant scoping (E9-S2-T3, tightened E11-S3/ADR-019).** The authenticated
   ``PrincipalV2.tenant_id`` is the only source of the enforced tenant —
   never the run's own record and never a caller-supplied value. A stream
@@ -173,7 +178,7 @@ async def _stream_events(
     def _on_event(_envelope: EventEnvelope) -> None:
         loop.call_soon_threadsafe(wake.set)
 
-    bus.subscribe(WILDCARD, _on_event)
+    unsubscribe = bus.subscribe(WILDCARD, _on_event)
 
     cursor = start_cursor
     idle_elapsed = 0.0
@@ -181,7 +186,8 @@ async def _stream_events(
         while True:
             if await request.is_disconnected():
                 return
-            for next_cursor, envelope in bus.replay_from(run_id, cursor):
+            batch = await asyncio.to_thread(bus.replay_from, run_id, cursor)
+            for next_cursor, envelope in batch:
                 cursor = next_cursor
                 idle_elapsed = 0.0
                 if types is None or envelope.type in types:
@@ -196,6 +202,8 @@ async def _stream_events(
                     yield ": ping\n\n"
     except asyncio.CancelledError:  # pragma: no cover - depends on server-side disconnect timing
         return
+    finally:
+        unsubscribe()
 
 
 @requires_scope("run:read")

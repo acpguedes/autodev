@@ -97,10 +97,14 @@ def get_event_bus(settings: Settings | None = None) -> EventBus:
     global _bus_instance
     if _bus_instance is None:
         active = settings or get_settings()
+        maxlen = active.autodev_event_stream_maxlen
+        maxlen_or_none = maxlen if maxlen >= 0 else None
         if active.autodev_event_bus == "redis":
-            _bus_instance = RedisEventBus(url=active.autodev_redis_url)
+            _bus_instance = RedisEventBus(
+                url=active.autodev_redis_url, stream_maxlen=maxlen_or_none
+            )
         else:
-            _bus_instance = InMemoryEventBus()
+            _bus_instance = InMemoryEventBus(max_partition_size=maxlen_or_none)
         if active.autodev_event_store_enabled:
             _bus_instance.subscribe(WILDCARD, _persist_envelope)
     return _bus_instance
