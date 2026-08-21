@@ -3,7 +3,7 @@
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35, E41, and E42: added after initial Beta
 completion, before the wave is signed off).
-**Status:** Not started · **Stories:** 0/5
+**Status:** Complete · **Stories:** 8/8 (E43-S6/S7/S8 added post-completion, found via the user's own manual verification of E43-S1..S5)
 **Depends on:** E42 (specifically E42-S1's event stream and E42-S3's
 active-session concept — both real and reused here, not rebuilt), E41-S3
 (patch-apply actions), E41-S4 (agent-directed commands), E41-S5
@@ -59,7 +59,7 @@ looking at by default.
 
 ## Stories
 
-### E43-S1 — Fix sandboxed execution for `cd`-prefixed commands — **Not started**
+### E43-S1 — Fix sandboxed execution for `cd`-prefixed commands — **Complete**
 
 The blocking correctness fix. `backend/validation/sandbox.py`'s allowlist
 check inspects only a command's first token against a fixed executable set
@@ -95,7 +95,7 @@ Subtasks:
 | DoD (specific) | Regression test per T3; E41-S5's retry loop test (T4) passes end to end |
 | Dependencies | E32 (workspace root), E41-S4, E41-S5 |
 
-### E43-S2 — Terminal-style transcript rendering (supersedes E42-S5's raw JSON view) — **Not started**
+### E43-S2 — Terminal-style transcript rendering (supersedes E42-S5's raw JSON view) — **Complete**
 
 **Two separate rendering surfaces need this fix, not one** — confirmed by
 inspecting both directly, not assumed:
@@ -143,7 +143,7 @@ Subtasks:
 | DoD (specific) | Manual verification in both surfaces: trigger a run with both a patch-apply and a validation command, observe both rendered as transcript lines with real output, not echoed commands |
 | Dependencies | E42-S1, E41-S3, E41-S4, E43-S1 (so there's a real passing command to render, not only failures) |
 
-### E43-S3 — Step-level plain-language annotations — **Not started**
+### E43-S3 — Step-level plain-language annotations — **Complete**
 
 Subtasks:
 - `E43-S3-T1`: surface each task's human-readable title/description (already
@@ -162,7 +162,7 @@ Subtasks:
 | DoD (specific) | Manual verification across planning/analysis/patch/validation entries |
 | Dependencies | E43-S2 |
 
-### E43-S4 — Project file tree browser + in-app file viewer — **Not started**
+### E43-S4 — Project file tree browser + in-app file viewer — **Complete**
 
 A new capability — no existing endpoint lists a project's file tree or
 serves raw file content scoped to `project_root`; the closest existing
@@ -190,7 +190,7 @@ Subtasks:
 | DoD (specific) | Test asserting the path-traversal guard rejects an escaping path, mirroring `apply_patch`'s existing test |
 | Dependencies | E41 (project_root resolution) |
 
-### E43-S5 — App-wide session stickiness — **Not started**
+### E43-S5 — App-wide session stickiness — **Complete**
 
 Broadens E42-S3 (which only fixed Plans/Execution) to every page.
 
@@ -210,6 +210,140 @@ Subtasks:
 | DoR (specific) | E42-S3 landed (this generalizes it) |
 | DoD (specific) | Manual verification: select a session, visit every page, confirm consistency |
 | Dependencies | E42-S3 |
+
+### E43-S6 — Asynchronous turn creation (live execution visibility while a turn runs) — **Complete**
+
+Found via the user's own manual verification of E43-S1..S5 in the actual
+product UI (2026-08-21): sending a Chat message showed "Sending..."
+indefinitely, the composer never cleared, and the Execution panel showed
+nothing until navigating away (to Sessions) and back forced a fresh
+re-fetch — by which point the turn had actually finished. Root cause:
+`POST /v2/sessions/{id}/turns` ran the *entire* 7-agent pipeline
+synchronously inside one HTTP request (`OrchestratorService.handle_message`
+→ `self._graph.invoke(...)`), so the frontend had no `run_id` to open its
+live `run.timeline.*`/`execution.action.*` subscription against until the
+response arrived — by which point there was nothing left to stream. Not a
+gap in E43-S2/S3's rendering (confirmed correct); the run_id itself never
+reached the browser early enough to be useful.
+
+Subtasks:
+- `E43-S6-T1`: `OrchestratorService.begin_message` — admits the run
+  (session lookup, run-type inference, concurrency-lease acquisition, the
+  initial `RunStatus.RUNNING` row, and the `flow.run.started` event that
+  creates the run's `EventStore` projection) synchronously, then runs the
+  agent graph in a background job via the existing `backend.jobs.queue`
+  infrastructure (reused as-is; not a new subsystem) and returns
+  immediately. `handle_message` itself is unchanged — the CLI, the frozen
+  v1 `/chat`, and `backend/api/routers/orchestration.py` all still call it
+  and still block synchronously, by design.
+- `E43-S6-T2`: `POST /v2/sessions/{id}/turns` (`chat_v2.py`) calls
+  `begin_message` instead. `GET /v2/turns/{id}` (unchanged) becomes the
+  poll target for the real, completed result.
+- `E43-S6-T3`: added `RunStatus.FAILED` — previously a graph exception left
+  the run row stuck at `running` forever (no `except` around the graph
+  invoke; always had an HTTP caller to surface a 500 to instead). The
+  background job now catches, persists `FAILED` with the error recorded,
+  and releases the lease either way.
+- `E43-S6-T4`: `frontend/app/page.tsx`'s `handleSubmit` sets the active
+  turn immediately (unblocking the Execution panel's live subscription),
+  polls `GET /v2/turns/{id}` to completion, and clears the composer on
+  submit rather than on completion.
+- `E43-S6-T5`: discovered while testing — `backend/cli_shell.py`'s
+  `run_goal` also assumed synchronous turn completion (calling
+  `execute()` immediately after `create_turn()`, deriving the execution
+  plan from artifacts the now-backgrounded pipeline hadn't produced yet,
+  400ing). Added `ShellSession.wait_for_turn` (poll `GET /v2/turns/{id}`,
+  API-only, no `backend.*` imports per this module's own contract) and
+  call it between `create_turn`/`execute`.
+
+| Criterion | Detail |
+| --- | --- |
+| Functional | Sending a Chat message shows the Execution panel populate live (via the already-existing `run.timeline.*` stream) while the turn is still running, not only after it finishes; the composer clears on submit; a failed turn surfaces as `failed`, not stuck at `running` forever |
+| Non-functional | No change to `handle_message`'s three other callers (CLI, legacy v1 `/chat`, `orchestration.py`); no new backend subsystem — reuses the existing `backend.jobs.queue` async job infrastructure and its established "handler registered in the same module that enqueues it" pattern (`backend/repository/indexing.py`'s precedent) |
+| DoR (specific) | E43-S2 landed (a `run_id` is only useful early if the transcript renderer already does the right thing once given one) |
+| DoD (specific) | Automated: `backend/tests/unit/orchestrator/test_begin_message.py` (immediate-return shape, synchronous KeyError/QuotaExceededError, real end-to-end completion via the actual background job, and a failed-job path releasing the lease); updated `test_chat_timeline_v2.py`/`test_cli_shell_api_only.py` for the new async contract; full backend + frontend suites green. Not performed: interactive browser click-through (no headless Chrome in this environment) |
+| Dependencies | E43-S2, E43-S3 |
+
+### E43-S7 — Live `run.timeline.*` events during Chat turns — **Complete**
+
+Found via the user's live testing of E43-S6: even with async turn creation
+landed, the Execution panel stayed on "Waiting" for the whole turn. Root
+cause, distinct from S6's: `run.timeline.*` events were only ever emitted
+by the "Run plan" task-dispatch pipeline (`_process_tasks`) — the Chat
+turn's own agent graph (`_execute_message_run`'s `self._graph.invoke(...)`,
+running navigator/analyzer/architect/coder/devops/validator/responder) has
+never emitted them, since before this epic. Not a regression from S6; a
+pre-existing gap this epic's original scope didn't cover.
+
+Subtasks:
+- `E43-S7-T1`: `_make_agent_node`'s node function now emits one
+  `run.timeline.*` event per completed agent, reusing the exact event
+  type/schema/role mapping `_process_tasks` already established
+  (navigator/analyzer → analysis, coder → patch, validator → validation;
+  planner/architect/devops/responder intentionally left off the
+  four-stage timeline) — no new event type, no frontend change needed
+  (`RunTimelinePanel` already renders whatever arrives on this stream).
+- `E43-S7-T2`: `AgentGraphState` gains an optional (`NotRequired`)
+  `tenant_id` field so the emitter knows which tenant to publish under,
+  without touching the separate dynamic-routing graph in
+  `backend/orchestrator/graphs.py` or any other existing construction of
+  this state.
+
+| Criterion | Detail |
+| --- | --- |
+| Functional | Sending a Chat message shows the Execution panel's four stages update live as navigator/analyzer/coder/validator each complete, with that agent's real output — not stuck on "Waiting" for the whole turn |
+| Non-functional | No new event type or schema change; reuses `_process_tasks`'s existing mapping/output cap |
+| DoR (specific) | E43-S6 landed (a `run_id` must exist early for this to be observable) |
+| DoD (specific) | `test_handle_message_emits_live_timeline_events_per_agent` (order, mapping, real output content); updated `test_handle_message_completes_only_after_session_persistence` for the new event count; full backend suite green |
+| Dependencies | E43-S6 |
+
+### E43-S8 — Chat auto-executes its derived plan, live, in the same run — **Complete**
+
+The user's real ask, confirmed directly after testing E43-S6/S7: a Chat
+message only ever drove the *conversational* agent pipeline (navigator/
+analyzer/architect/coder/devops/validator/responder) — it never wrote
+files or ran commands. That only happened via a second, still-fully-manual
+step: clicking "Run plan" (`execute_plan`). With this story, once a Chat
+turn's conversation derives an execution plan, real execution (file
+writes, validation commands) starts automatically, on the *same* run_id,
+gated behind a new settings flag; "Run plan" is unchanged and stays
+available as a manual trigger/retry regardless of the flag.
+
+Subtasks:
+- `E43-S8-T1`: `backend/config/settings.py` gains
+  `autodev_chat_auto_execute: bool = False` (env `AUTODEV_CHAT_AUTO_EXECUTE`),
+  following the existing `autodev_enable_sandbox`/`autodev_enable_patch_apply`
+  fail-closed convention.
+- `E43-S8-T2`: `_execute_message_run` gains a `finalize: bool = True`
+  parameter. When `False`, it skips its own `RunStatus.COMPLETED`
+  persistence and `flow.run.completed` event — letting a caller chain more
+  work onto the same run_id without ever exposing a premature "completed"
+  status to a concurrent poller (the root cause of an intermittent race
+  found while stress-testing this story: a "reopen the run as RUNNING"
+  follow-up call still left a narrow window where a poller could observe
+  and stop on the premature completion).
+- `E43-S8-T3`: `_run_message_job` (the background job `begin_message`
+  enqueues) reads the flag once; if on, it calls `_execute_message_run(...,
+  finalize=False)`, then `build_execution_plan` + (if any tasks were
+  derived) the same `_process_tasks`/`_finalize_plan_run` calls "Run plan"
+  already uses — appending to the same `results`/`steps`/run row rather
+  than starting a second run. If the flag is on but no tasks were derived
+  (e.g. a question, not a change request), the job persists the chat-only
+  completion itself, since `finalize=False` skipped it.
+- `E43-S8-T4`: no new frontend plumbing — `getTurnV2` polling and
+  `RunTimelinePanel`'s live subscription already key on the same `run_id`,
+  so they transparently observe the longer, chained run. The one new
+  terminal status this can produce (`awaiting_approval`, when the appended
+  execution phase pauses for a decision) was already handled by
+  `page.tsx`'s poll loop from S6.
+
+| Criterion | Detail |
+| --- | --- |
+| Functional | With the flag on, sending a Chat message that derives executable tasks writes real files / runs real validation automatically, on the same run, without a second "Run plan" click; with the flag off (default), behavior is identical to S6/S7 |
+| Non-functional | "Run plan" stays fully manual and unchanged either way; fail-closed default |
+| DoR (specific) | E43-S6 (async run_id) and E43-S7 (live per-agent events) landed |
+| DoD (specific) | `test_auto_execute_flag_off_leaves_chat_only_behavior_unchanged`, `test_auto_execute_flag_on_chains_real_execution_onto_the_same_run` (both in `test_begin_message.py`, the latter stress-tested for the finalize-timing race); full backend orchestrator/api/cli/observability suites green; frontend typecheck + full `vitest run` green |
+| Dependencies | E43-S6, E43-S7 |
 
 ## Contracts & decisions
 
@@ -238,3 +372,20 @@ Subtasks:
   project browsable and readable in-app, and every page reflecting the
   same active session by default; `docs/v2_platform/progress.md` updated;
   no push/PR without explicit authorization.
+
+**Verification actually performed (2026-08-21):** every story has a
+passing automated regression test (`backend/tests/unit/validation/
+test_sandbox_runner.py`, `backend/tests/unit/execution/test_executor.py`,
+`backend/tests/unit/api/test_repository_files_v2.py`, plus
+`frontend/lib/__tests__/transcript.test.ts`); the full backend and
+frontend unit suites pass; S4's new endpoints were confirmed live against
+a throwaway backend instance (`curl` returned real directory/file content
+from the configured project root) and the Files page was confirmed to
+render server-side without error. **Not performed:** the full live
+Chat → Run plan rehearsal this DoD calls for, and interactive
+browser click-through of the transcript/file-browser UI — no headless
+Chrome was available in the execution environment. Given E42-S5's own
+claimed completion turned out (per this epic's own canonical source) to
+not match what shipped, this gap should be closed with a real manual
+pass in the product UI before treating this epic as unconditionally
+signed off.

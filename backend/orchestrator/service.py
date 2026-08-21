@@ -16,7 +16,7 @@ except ImportError:  # pragma: no cover - Python < 3.11 compatibility
         pass
 
 
-from typing import Any, Dict, Iterable, List, Mapping, Optional, TypedDict
+from typing import Any, Dict, Iterable, List, Mapping, NotRequired, Optional, TypedDict
 from pathlib import Path
 from uuid import uuid4
 
@@ -36,6 +36,8 @@ from backend.agents import (
     ResponderAgent,
     ValidatorAgent,
 )
+from backend.config.runtime import get_runtime_config_service
+from backend.config.settings import get_settings
 from backend.environments.contracts import EnvironmentBackendError, EnvironmentHandle
 from backend.environments.manager import EnvironmentCapacityExceededError, EnvironmentManager
 from backend.events.runtime import emit_event
@@ -54,6 +56,7 @@ from backend.execution.policy import (
     match_target,
 )
 from backend.execution.runner import InProcessActionRunner
+from backend.jobs.queue import get_queue, register_handler
 from backend.persistence import DurableStore, get_store
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
 from backend.observability.tracing import trace_run, trace_run_step
@@ -100,6 +103,7 @@ class RunStatus(StrEnum):
     RUNNING = "running"
     COMPLETED = "completed"
     AWAITING_APPROVAL = "awaiting_approval"
+    FAILED = "failed"
 
 
 class StepStatus(StrEnum):
@@ -206,6 +210,21 @@ class OrchestratorRun:
 
 
 @dataclass(slots=True)
+class _PreparedRun:
+    """Result of :meth:`OrchestratorService._prepare_run` (E43-S6).
+
+    Everything a new message-driven run needs before its graph is actually
+    invoked: the session it belongs to, its already-persisted (and
+    lease-admitted) run id, its inferred type, and its observability flow id.
+    """
+
+    session_record: Dict[str, Any]
+    run_id: str
+    run_type: "RunType"
+    flow_id: str
+
+
+@dataclass(slots=True)
 class PlanSession:
     """Data returned after generating a plan."""
 
@@ -266,13 +285,23 @@ class OrchestratorConfig:
 
 
 class AgentGraphState(TypedDict):
-    """State propagated through the LangGraph workflow."""
+    """State propagated through the LangGraph workflow.
+
+    Attributes:
+        tenant_id: Tenant this run belongs to, used to emit live
+            ``run.timeline.*`` events per completed agent node (E43-S6).
+            Optional so the dynamic-routing graph built by
+            ``backend/orchestrator/graphs.py`` (a separate node-builder,
+            unaffected by this) and any other existing construction of this
+            state keep working unchanged.
+    """
 
     context: AgentContext
     results: List[AgentExecution]
     steps: List[RunStep]
     current_state: str
     run_id: str
+    tenant_id: NotRequired[str]
 
 
 _TIMELINE_OUTPUT_CHAR_CAP = 8000
@@ -425,6 +454,72 @@ class OrchestratorService:
             session_id=session_id, goal=goal, plan=plan_steps, status=status
         )
 
+    def _prepare_run(
+        self, session_id: str, message: str, *, tenant_id: str
+    ) -> "_PreparedRun":
+        """Validate the session, admit the run, and persist its initial row.
+
+        Shared setup for :meth:`handle_message` (runs the graph inline) and
+        :meth:`begin_message` (E43-S6: runs the graph in a background job so
+        the run_id reaches the caller before the graph does) — both need the
+        exact same session lookup, run-type inference, lease acquisition, and
+        initial ``RunStatus.RUNNING`` row before diverging on how the graph
+        itself gets invoked.
+
+        Args:
+            session_id: Identifier of the session to continue.
+            message: User message to process.
+            tenant_id: Tenant the session must belong to.
+
+        Returns:
+            The prepared run's session record, run id, run type, and flow id.
+
+        Raises:
+            KeyError: If ``session_id`` does not exist for ``tenant_id``.
+            QuotaExceededError: If the tenant is at its concurrent-run limit.
+        """
+        session_record = self._store.get_session(session_id, tenant_id=tenant_id)
+        if session_record is None:
+            raise KeyError(f"Unknown session_id: {session_id}")
+
+        run_type = self._infer_run_type(goal=session_record["goal"], message=message)
+        run_id = str(uuid4())
+        self._acquire_run_lease(tenant_id=tenant_id, run_id=run_id)
+        self._store.create_run(
+            run_id=run_id,
+            session_id=session_id,
+            status=RunStatus.RUNNING,
+            run_type=run_type,
+            current_state="starting",
+            trigger_message=message,
+            results=[],
+            steps=[],
+            tenant_id=tenant_id,
+        )
+        flow_id = f"orchestrator.{run_type}"
+        # Emitted here (synchronously, before returning) rather than at the
+        # top of _execute_message_run: this event is what creates the run's
+        # EventStore projection (backend/events/store.py's append ->
+        # _upsert_projection), which /v2/runs/{id}/events/stream's existence
+        # check (backend/api/routers/runs_stream_v2.py) requires. Since
+        # E43-S6's begin_message defers _execute_message_run to a background
+        # job, leaving this emit there would race the caller opening that
+        # stream immediately after begin_message returns -- a real,
+        # intermittent 404, not just a test timing artifact.
+        emit_event(
+            "flow.run.started",
+            tenant_id=tenant_id,
+            partition_key=run_id,
+            data={"flowId": flow_id, "flowVersion": "1.0.0"},
+            subject={"runId": run_id, "sessionId": session_id},
+        )
+        return _PreparedRun(
+            session_record=session_record,
+            run_id=run_id,
+            run_type=run_type,
+            flow_id=flow_id,
+        )
+
     def handle_message(
         self, session_id: str, message: str, *, tenant_id: str = DEFAULT_TENANT_ID
     ) -> OrchestratorRun:
@@ -444,44 +539,78 @@ class OrchestratorService:
         Raises:
             KeyError: If ``session_id`` does not exist for ``tenant_id``.
         """
-        session_record = self._store.get_session(session_id, tenant_id=tenant_id)
-        if session_record is None:
-            raise KeyError(f"Unknown session_id: {session_id}")
-
-        run_type = self._infer_run_type(goal=session_record["goal"], message=message)
-        run_id = str(uuid4())
-        self._acquire_run_lease(tenant_id=tenant_id, run_id=run_id)
+        prepared = self._prepare_run(session_id, message, tenant_id=tenant_id)
         try:
-            self._store.create_run(
-                run_id=run_id,
-                session_id=session_id,
-                status=RunStatus.RUNNING,
-                run_type=run_type,
-                current_state="starting",
-                trigger_message=message,
-                results=[],
-                steps=[],
-                tenant_id=tenant_id,
-            )
-            flow_id = f"orchestrator.{run_type}"
             with trace_run(
-                run_id=run_id,
+                run_id=prepared.run_id,
                 tenant_id=tenant_id,
-                flow_id=flow_id,
+                flow_id=prepared.flow_id,
             ) as run_trace:
                 result = self._execute_message_run(
-                    session_record=session_record,
+                    session_record=prepared.session_record,
                     session_id=session_id,
                     message=message,
-                    run_id=run_id,
-                    run_type=run_type,
-                    flow_id=flow_id,
+                    run_id=prepared.run_id,
+                    run_type=prepared.run_type,
+                    flow_id=prepared.flow_id,
                     tenant_id=tenant_id,
                 )
                 run_trace.finish(status="completed")
                 return result
         finally:
-            self._quota_service.release_run_lease(run_id)
+            self._quota_service.release_run_lease(prepared.run_id)
+
+    def begin_message(
+        self, session_id: str, message: str, *, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> OrchestratorRun:
+        """Start a new message's agent graph in the background and return immediately (E43-S6).
+
+        Unlike :meth:`handle_message`, this returns as soon as the run is
+        admitted and its row persisted -- before the (potentially
+        multi-minute, multi-agent) graph runs -- so the caller has a
+        ``run_id`` to open a live ``run.timeline.*``/``execution.action.*``
+        event-stream subscription against while the run is still in
+        progress, instead of only after it has already finished. The graph
+        itself, and every event it emits mid-run, are unchanged; only when
+        the caller learns the run_id changes.
+
+        Args:
+            session_id: Identifier of the session to continue.
+            message: User message to process.
+            tenant_id: Tenant the session must belong to.
+
+        Returns:
+            An :class:`OrchestratorRun` reflecting the just-created,
+            still-``running`` state (empty ``history``/``results``/
+            ``steps``) -- poll :meth:`get_run`/``GET /v2/turns/{id}`` for
+            the real, completed result.
+
+        Raises:
+            KeyError: If ``session_id`` does not exist for ``tenant_id``.
+            QuotaExceededError: If the tenant is at its concurrent-run limit.
+        """
+        prepared = self._prepare_run(session_id, message, tenant_id=tenant_id)
+        get_queue().enqueue(
+            _MESSAGE_RUN_JOB_TYPE,
+            {
+                "session_id": session_id,
+                "message": message,
+                "run_id": prepared.run_id,
+                "run_type": prepared.run_type.value,
+                "flow_id": prepared.flow_id,
+                "tenant_id": tenant_id,
+            },
+        )
+        return OrchestratorRun(
+            run_id=prepared.run_id,
+            session_id=session_id,
+            status=RunStatus.RUNNING,
+            run_type=prepared.run_type,
+            current_state="starting",
+            history=[],
+            results=[],
+            steps=[],
+        )
 
     def _execute_message_run(
         self,
@@ -493,6 +622,7 @@ class OrchestratorService:
         run_type: RunType,
         flow_id: str,
         tenant_id: str,
+        finalize: bool = True,
     ) -> OrchestratorRun:
         """Execute and durably persist one already-created orchestration run.
 
@@ -504,17 +634,21 @@ class OrchestratorService:
             run_type: Explicit workflow category selected for the message.
             flow_id: Stable observability flow identifier.
             tenant_id: Tenant this run belongs to.
+            finalize: Whether to persist this run's row as ``RunStatus.COMPLETED``
+                and emit ``flow.run.completed`` (E43-S8). Callers that chain
+                real task dispatch onto the same run_id afterward (E43-S8's
+                auto-execute) pass ``False`` -- persisting ``COMPLETED`` here
+                only to immediately reopen it would leave a real, if narrow,
+                race window where a poller can observe a premature
+                "completed" status and stop watching before the chained
+                dispatch (which can take much longer) ever starts.
 
         Returns:
-            The completed orchestration run after all persistence succeeds.
+            The orchestration run reflecting this conversation's real
+            results/steps -- already durably persisted as ``COMPLETED``
+            when ``finalize`` is true; otherwise the caller is responsible
+            for persisting the run's real final state.
         """
-        emit_event(
-            "flow.run.started",
-            tenant_id=tenant_id,
-            partition_key=run_id,
-            data={"flowId": flow_id, "flowVersion": "1.0.0"},
-            subject={"runId": run_id, "sessionId": session_id},
-        )
         history = [
             HistoryItem(role=record["role"], content=record["content"])
             for record in self._store.list_messages(session_id, tenant_id=tenant_id)
@@ -533,6 +667,7 @@ class OrchestratorService:
             "steps": [],
             "current_state": "starting",
             "run_id": run_id,
+            "tenant_id": tenant_id,
         }
         final_state = self._graph.invoke(initial_state)
         final_context = final_state["context"]
@@ -551,28 +686,29 @@ class OrchestratorService:
             self._clone_artifacts(final_context.artifacts),
             tenant_id=tenant_id,
         )
-        self._store.update_run(
-            run_id=run_id,
-            status=RunStatus.COMPLETED,
-            current_state=current_state,
-            results=[
-                {
-                    "agent": result.agent,
-                    "content": result.content,
-                    "metadata": dict(result.metadata),
-                }
-                for result in results
-            ],
-            steps=[step.to_dict() for step in steps],
-            tenant_id=tenant_id,
-        )
-        emit_event(
-            "flow.run.completed",
-            tenant_id=tenant_id,
-            partition_key=run_id,
-            data={"status": "completed", "costUsd": 0.0, "tokens": 0},
-            subject={"runId": run_id, "sessionId": session_id},
-        )
+        if finalize:
+            self._store.update_run(
+                run_id=run_id,
+                status=RunStatus.COMPLETED,
+                current_state=current_state,
+                results=[
+                    {
+                        "agent": result.agent,
+                        "content": result.content,
+                        "metadata": dict(result.metadata),
+                    }
+                    for result in results
+                ],
+                steps=[step.to_dict() for step in steps],
+                tenant_id=tenant_id,
+            )
+            emit_event(
+                "flow.run.completed",
+                tenant_id=tenant_id,
+                partition_key=run_id,
+                data={"status": "completed", "costUsd": 0.0, "tokens": 0},
+                subject={"runId": run_id, "sessionId": session_id},
+            )
         return OrchestratorRun(
             run_id=run_id,
             session_id=session_id,
@@ -1655,15 +1791,63 @@ class OrchestratorService:
                     completed_at=completed_at,
                 )
             )
+            self._emit_agent_timeline_event(
+                run_id=state["run_id"],
+                tenant_id=state.get("tenant_id", DEFAULT_TENANT_ID),
+                agent_name=agent_name,
+                output=agent_result.content,
+            )
             return {
                 "context": next_context,
                 "results": next_results,
                 "steps": next_steps,
                 "current_state": "completed",
                 "run_id": state["run_id"],
+                "tenant_id": state.get("tenant_id", DEFAULT_TENANT_ID),
             }
 
         return node
+
+    def _emit_agent_timeline_event(
+        self, *, run_id: str, tenant_id: str, agent_name: str, output: str
+    ) -> None:
+        """Emit a live ``run.timeline.*`` event for one completed chat-graph agent (E43-S6).
+
+        Reuses the exact mapping/event-type/schema :meth:`_process_tasks`
+        already emits for the "Run plan" pipeline
+        (:func:`backend.api.timeline_roles.timeline_event_type_for_agent_role`,
+        :class:`~backend.events.catalog.RunTimelineStepData`) so
+        ``RunTimelinePanel``'s existing live subscription -- previously fed
+        by nothing during a Chat turn, since only task dispatch emitted
+        these -- now shows real per-agent progress as the turn runs, not
+        only the final message once everything has already finished.
+        Only the roles the timeline maps (planner/navigator/analyzer/coder/
+        validator) emit; architect/devops/responder are intentionally left
+        off the four-stage timeline, matching the existing mapping.
+
+        Args:
+            run_id: The run this agent step belongs to.
+            tenant_id: Tenant the run belongs to.
+            agent_name: The agent role that just completed (e.g. ``"navigator"``).
+            output: The agent's real text output for this step.
+        """
+        from backend.api.timeline_roles import timeline_event_type_for_agent_role  # noqa: PLC0415
+
+        timeline_event_type = timeline_event_type_for_agent_role(agent_name)
+        if timeline_event_type is None:
+            return
+        emit_event(
+            timeline_event_type,
+            tenant_id=tenant_id,
+            partition_key=run_id,
+            data={
+                "stepKey": agent_name,
+                "actorRole": agent_name,
+                "status": "completed",
+                "output": output[:_TIMELINE_OUTPUT_CHAR_CAP],
+            },
+            subject={"runId": run_id},
+        )
 
     def _clone_artifacts(
         self, artifacts: Mapping[str, Mapping[str, Any]]
@@ -1712,3 +1896,151 @@ class OrchestratorService:
             .isoformat()
             .replace("+00:00", "Z")
         )
+
+
+def build_default_orchestrator() -> "OrchestratorService":
+    """Build an :class:`OrchestratorService` bound to the current runtime config.
+
+    The one construction every ``/v2`` request-scoped caller and the E43-S6
+    background job handler below both need -- a fresh instance (matching the
+    "constructed fresh per request/job, state lives in the shared durable
+    store" convention already used throughout ``/v2`` routers) pointed at
+    whatever project root the runtime config currently resolves to.
+
+    Returns:
+        A new :class:`OrchestratorService`.
+    """
+    config_service = get_runtime_config_service()
+    runtime_config = config_service.apply_to_environment()
+    return OrchestratorService(
+        config=OrchestratorConfig(), project_root=Path(runtime_config.repository.project_root)
+    )
+
+
+_MESSAGE_RUN_JOB_TYPE = "orchestrator.message_run"
+"""Job type for :meth:`OrchestratorService.begin_message`'s background graph run (E43-S6)."""
+
+
+@register_handler(_MESSAGE_RUN_JOB_TYPE)
+def _run_message_job(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Run one message's agent graph in the background and persist its outcome.
+
+    Registered in the same module as :meth:`OrchestratorService.begin_message`,
+    which is the only thing that enqueues this job type -- guarantees this
+    handler is registered before anything can try to enqueue it, the same
+    pattern :mod:`backend.repository.indexing` already uses for its own job
+    type.
+
+    On success, persists the same ``RunStatus.COMPLETED`` row
+    :meth:`OrchestratorService._execute_message_run` always has -- unless
+    ``Settings().autodev_chat_auto_execute`` is on and the conversation
+    derived at least one executable task (E43-S8), in which case this
+    continues, on the *same* run_id/run row, straight into the same
+    task-dispatch path "Run plan" uses (:meth:`_process_tasks` +
+    :meth:`_finalize_plan_run`) before persisting the real final status --
+    so real command/file-write output keeps streaming on the same live
+    subscription the conversation was already using, with no second click
+    and no new run_id for the frontend to hand off to. On any exception,
+    persists ``RunStatus.FAILED`` with the error recorded as a synthetic
+    result entry instead of leaving the row stuck at ``running`` forever
+    (the failure mode :meth:`OrchestratorService.handle_message` has always
+    had, silent because it previously always had an HTTP caller to surface
+    a 500 to instead).
+
+    Args:
+        payload: ``session_id``, ``message``, ``run_id``, ``run_type``
+            (a :class:`RunType` value string), ``flow_id``, ``tenant_id`` --
+            exactly what :meth:`OrchestratorService.begin_message` enqueues.
+
+    Returns:
+        ``{"run_id": ...}``, for the job queue's own status record; the
+        durably persisted run row is the result callers actually care about.
+    """
+    orchestrator = build_default_orchestrator()
+    run_id = payload["run_id"]
+    tenant_id = payload["tenant_id"]
+    session_id = payload["session_id"]
+    flow_id = payload["flow_id"]
+    try:
+        with trace_run(run_id=run_id, tenant_id=tenant_id, flow_id=flow_id) as run_trace:
+            session_record = orchestrator._store.get_session(session_id, tenant_id=tenant_id)
+            if session_record is None:
+                raise KeyError(f"Unknown session_id: {session_id}")
+            auto_execute = get_settings().autodev_chat_auto_execute
+            chat_run = orchestrator._execute_message_run(
+                session_record=session_record,
+                session_id=session_id,
+                message=payload["message"],
+                run_id=run_id,
+                run_type=RunType(payload["run_type"]),
+                flow_id=flow_id,
+                tenant_id=tenant_id,
+                finalize=not auto_execute,
+            )
+            if auto_execute:
+                execution_plan = orchestrator.build_execution_plan(session_id, tenant_id=tenant_id)
+                if execution_plan.tasks:
+                    results = list(chat_run.results)
+                    steps = list(chat_run.steps)
+                    history = [
+                        HistoryItem(role=record["role"], content=record["content"])
+                        for record in orchestrator._store.list_messages(session_id, tenant_id=tenant_id)
+                    ]
+                    current_state, paused = orchestrator._process_tasks(
+                        tasks=execution_plan.tasks,
+                        run_id=run_id,
+                        tenant_id=tenant_id,
+                        mode=ExecutionMode.AUTO,
+                        results=results,
+                        steps=steps,
+                        history=history,
+                        total_count=len(execution_plan.tasks),
+                        start_index=1,
+                    )
+                    orchestrator._finalize_plan_run(
+                        session_id=session_id,
+                        run_id=run_id,
+                        tenant_id=tenant_id,
+                        results=results,
+                        steps=steps,
+                        history=history,
+                        current_state=current_state,
+                        paused=paused,
+                        total_tasks=len(execution_plan.tasks),
+                    )
+                else:
+                    # Auto-execute is on but this turn derived no executable
+                    # tasks (e.g. a question, not a change request) --
+                    # _execute_message_run was called with finalize=False and
+                    # so never persisted its own completion; do it here.
+                    orchestrator._store.update_run(
+                        run_id=run_id,
+                        status=RunStatus.COMPLETED,
+                        current_state=chat_run.current_state,
+                        results=[
+                            {"agent": result.agent, "content": result.content, "metadata": dict(result.metadata)}
+                            for result in chat_run.results
+                        ],
+                        steps=[step.to_dict() for step in chat_run.steps],
+                        tenant_id=tenant_id,
+                    )
+                    emit_event(
+                        "flow.run.completed",
+                        tenant_id=tenant_id,
+                        partition_key=run_id,
+                        data={"status": "completed", "costUsd": 0.0, "tokens": 0},
+                        subject={"runId": run_id, "sessionId": session_id},
+                    )
+            run_trace.finish(status="completed")
+    except Exception as exc:  # noqa: BLE001 - any agent/graph failure must still resolve the run
+        orchestrator._store.update_run(
+            run_id=run_id,
+            status=RunStatus.FAILED,
+            current_state="failed",
+            results=[{"agent": "system", "content": str(exc), "metadata": {"error": True}}],
+            steps=[],
+            tenant_id=tenant_id,
+        )
+    finally:
+        orchestrator._quota_service.release_run_lease(run_id)
+    return {"run_id": run_id}

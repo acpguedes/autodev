@@ -192,6 +192,40 @@ def test_validation_runner_rejects_non_validation_actions() -> None:
         runner.run(action)
 
 
+def test_validation_runner_executes_agent_declared_cd_prefixed_command(tmp_path: Path) -> None:
+    """E43-S1-T4: an agent-declared `cd <dir> && <cmd>` validation command
+    (the exact shape ``executor.derive_actions`` builds from a validator's
+    structured ``commands`` output) now runs the real command for real,
+    instead of unconditionally failing on `cd` not being allowlisted."""
+    workspace = tmp_path / "generated-project"
+    workspace.mkdir()
+    sandbox_runner = SandboxRunner(
+        allowed_commands=["python", "python3"],
+        policy=SandboxPolicy(
+            enabled=True,
+            allow_local=True,
+            docker_network="none",
+            project_root=tmp_path,
+            timeout_seconds=10,
+        ),
+    )
+    runner = ValidationRunner(sandbox_runner=sandbox_runner)
+    action = ExecutionAction(
+        action_id="validation-command-1-validate-1",
+        type=ExecutionActionType.RUN_VALIDATION,
+        task_id="validation-command-1",
+        step_key="validation-command-1",
+        command="cd generated-project && python -c print(1)".split(),
+        cwd=".",
+    )
+
+    with patch("shutil.which", return_value=None):
+        result = runner.run(action)
+
+    assert result.status == "succeeded"
+    assert result.exit_code == 0
+
+
 def test_patch_runner_rejects_non_file_or_patch_actions(tmp_path: Path) -> None:
     runner = PatchRunner(project_root=tmp_path)
     action = ExecutionAction(

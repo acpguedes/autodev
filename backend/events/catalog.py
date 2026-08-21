@@ -263,28 +263,59 @@ class QuotaExceededData(BaseModel):
 
 
 class ExecutionActionStartedData(BaseModel):
-    """Payload of ``execution.action.started`` (E14-S1, RFC-009)."""
+    """Payload of ``execution.action.started`` (E14-S1, RFC-009).
+
+    ``command``/``path`` (E43-S2) let a transcript renderer show the real
+    command line or write target before its result is known -- optional and
+    ``None`` for action types that carry neither. ``stepLabel`` (E43-S3) is
+    the originating task's plain-language title, e.g. "Creating main.py",
+    for a step-level annotation above the transcript line -- ``None`` falls
+    back to the bare ``taskId``.
+    """
 
     actionId: str
     taskId: str
     type: str
+    command: list[str] | None = None
+    path: str | None = None
+    stepLabel: str | None = None
 
 
 class ExecutionActionCompletedData(BaseModel):
-    """Payload of ``execution.action.completed`` (E14-S1, RFC-009)."""
+    """Payload of ``execution.action.completed`` (E14-S1, RFC-009).
+
+    ``command``/``path``/``stdout``/``stderr`` (E43-S2) let a transcript
+    renderer show the real command and its real output, not just the
+    action's id and exit code. ``stepLabel`` (E43-S3) as
+    :class:`ExecutionActionStartedData`.
+    """
 
     actionId: str
     taskId: str
     status: str
     exitCode: int
+    command: list[str] | None = None
+    path: str | None = None
+    stdout: str = ""
+    stderr: str = ""
+    stepLabel: str | None = None
 
 
 class ExecutionActionFailedData(BaseModel):
-    """Payload of ``execution.action.failed`` (E14-S1, RFC-009)."""
+    """Payload of ``execution.action.failed`` (E14-S1, RFC-009).
+
+    ``command``/``path``/``stdout``/``stderr``/``stepLabel`` (E43-S2/S3), as
+    :class:`ExecutionActionCompletedData`.
+    """
 
     actionId: str
     taskId: str
     error: str
+    command: list[str] | None = None
+    path: str | None = None
+    stdout: str = ""
+    stderr: str = ""
+    stepLabel: str | None = None
 
 
 class ExecutionPolicyDecisionData(BaseModel):

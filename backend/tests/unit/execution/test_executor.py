@@ -46,6 +46,10 @@ class _FakeRunner:
             started_at=now,
             completed_at=now,
             error="boom" if status == "failed" else None,
+            stdout="scripted stdout" if status != "failed" else "",
+            stderr="scripted stderr" if status == "failed" else "",
+            command=list(action.command) if action.command else None,
+            path=action.path,
         )
 
 
@@ -122,6 +126,39 @@ def test_implementation_task_with_files_dispatches_one_create_file_action_per_fi
     assert runner.dispatched[0].path == "backend/payments/charge.py"
     assert runner.dispatched[0].content == "def charge(): ...\n"
     assert runner.dispatched[1].path == "backend/payments/__init__.py"
+
+
+def test_implementation_task_step_label_is_a_plain_language_creating_line() -> None:
+    """E43-S3: a file-write action is labeled "Creating <file>", not the raw task id."""
+    runner = _FakeRunner(outcomes={}, dispatched=[])
+    executor = TaskExecutor(runner)
+    task = ExecutionTask(
+        task_id="coding-file-1",
+        title="Write backend/payments/charge.py",
+        description="Write real file content to backend/payments/charge.py",
+        source_agent="coder",
+        category="implementation",
+        files=[{"path": "backend/payments/charge.py", "content": "def charge(): ...\n"}],
+    )
+
+    executor.execute(task, run_id="run-5", tenant_id="acme")
+
+    assert runner.dispatched[0].step_label == "Creating charge.py"
+
+    envelopes = get_event_bus().replay("run-5")
+    started = next(e for e in envelopes if e.type == "execution.action.started")
+    assert started.data["stepLabel"] == "Creating charge.py"
+
+
+def test_validation_task_step_label_is_the_task_title() -> None:
+    """E43-S3: a validation/operations action falls back to the task's own title."""
+    runner = _FakeRunner(outcomes={}, dispatched=[])
+    executor = TaskExecutor(runner)
+    task = _task("validation-1", "validation", "Run pytest for backend modules")
+
+    executor.execute(task, run_id="run-6", tenant_id="acme")
+
+    assert runner.dispatched[0].step_label == "Title for validation-1"
 
 
 def test_validation_task_with_structured_commands_ignores_keyword_sniffing() -> None:
@@ -271,3 +308,27 @@ def test_a_succeeded_action_emits_started_and_completed_events() -> None:
     envelopes = get_event_bus().replay("run-2")
     types = [envelope.type for envelope in envelopes]
     assert types == ["execution.action.started", "execution.action.completed"]
+
+
+def test_completed_and_failed_events_carry_the_real_command_and_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    """E43-S2: a transcript renderer needs the real command/output on the
+    wire, not just the action id and exit code."""
+    executor = TaskExecutor(_FakeRunner(outcomes={}, dispatched=[]))
+    task = _task("validation-1", "validation", "Run pytest for backend modules")
+
+    executor.execute(task, run_id="run-3", tenant_id="acme")
+
+    envelopes = get_event_bus().replay("run-3")
+    completed = next(e for e in envelopes if e.type == "execution.action.completed")
+    assert completed.data["command"] == ["pytest"]
+    assert completed.data["stdout"] == "scripted stdout"
+
+    failing_executor = TaskExecutor(_FakeRunner(outcomes={"validation-2-validate": "failed"}, dispatched=[]))
+    failing_task = _task("validation-2", "validation", "Run pytest for backend modules")
+
+    failing_executor.execute(failing_task, run_id="run-4", tenant_id="acme")
+
+    envelopes = get_event_bus().replay("run-4")
+    failed = next(e for e in envelopes if e.type == "execution.action.failed")
+    assert failed.data["command"] == ["pytest"]
+    assert failed.data["stderr"] == "scripted stderr"

@@ -4,7 +4,7 @@ import { useParams } from "next/navigation";
 import * as React from "react";
 
 import RunEventStream from "../../../components/RunEventStream";
-import { useShellHeader } from "@/components/shell/ShellProvider";
+import { useShell, useShellHeader } from "@/components/shell/ShellProvider";
 import { Badge } from "@/components/ui/badge";
 import {
   Breadcrumb,
@@ -105,6 +105,15 @@ export default function SessionDetailPage() {
     title: "Session detail",
     subtitle: "Runs, traces, live event stream, and conversation history.",
   });
+
+  const { setActiveSessionId } = useShell();
+
+  // Viewing a session's detail page makes it the app-wide active session
+  // (E43-S5), so navigating to Plans/Execution/Patches/Files afterward
+  // reflects it too, not just the session most recently opened in Chat.
+  React.useEffect(() => {
+    setActiveSessionId(sessionId);
+  }, [sessionId, setActiveSessionId]);
 
   const [session, setSession] = React.useState<SessionV2 | null>(null);
   const [runs, setRuns] = React.useState<RunV2[] | null>(null);

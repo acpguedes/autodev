@@ -786,3 +786,61 @@ export function parseSseBuffer(buffer: string): { frames: SseFrame[]; rest: stri
   }
   return { frames, rest };
 }
+
+// ---------------------------------------------------------------------------
+// Repository file tree browser (/v2/repository, E43-S4)
+// ---------------------------------------------------------------------------
+
+/** One immediate child of a browsed directory. */
+export type FileTreeEntryV2 = {
+  name: string;
+  path: string;
+  type: "file" | "directory";
+  size: number | null;
+};
+
+/** Response body of `GET /v2/repository/tree`. */
+export type FileTreeV2 = {
+  schemaVersion: string;
+  path: string;
+  entries: FileTreeEntryV2[];
+};
+
+/** Response body of `GET /v2/repository/file`. */
+export type FileContentV2 = {
+  schemaVersion: string;
+  path: string;
+  content: string;
+  size: number;
+  truncated: boolean;
+  binary: boolean;
+};
+
+/**
+ * List the immediate children of a directory inside the project root.
+ *
+ * @param path - Directory to list, relative to the project root; omit (or
+ *   pass `""`) for the root itself.
+ * @returns The directory's immediate children.
+ * @throws Error when the request fails (including a 400 traversal rejection
+ *   or a 404 for a nonexistent/non-directory path).
+ */
+export async function getRepositoryTreeV2(path = ""): Promise<FileTreeV2> {
+  const params = new URLSearchParams(path ? { path } : {});
+  const query = params.toString();
+  return requestJson<FileTreeV2>(`v2/repository/tree${query ? `?${query}` : ""}`);
+}
+
+/**
+ * Read one file's content by path, relative to the project root.
+ *
+ * @param path - File to read, relative to the project root.
+ * @returns The file's content (`binary: true` and empty `content` for
+ *   non-UTF-8 files).
+ * @throws Error when the request fails (including a 400 traversal rejection
+ *   or a 404 for a nonexistent/non-file path).
+ */
+export async function getRepositoryFileV2(path: string): Promise<FileContentV2> {
+  const params = new URLSearchParams({ path });
+  return requestJson<FileContentV2>(`v2/repository/file?${params.toString()}`);
+}

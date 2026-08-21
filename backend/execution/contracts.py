@@ -48,6 +48,10 @@ class ExecutionAction:
         patch: Pre-built patch to apply, for ``apply_patch``.
         command: Command to execute, for ``run_command``/``run_validation``.
         cwd: Working directory for ``command``, relative to the project root.
+        step_label: The originating task's plain-language title (E43-S3),
+            e.g. "Implement Main Application File" -- carried alongside the
+            technical ``task_id`` so a transcript renderer can show "Creating
+            main.py" instead of a bare id like ``coding-file-1``.
     """
 
     action_id: str
@@ -59,6 +63,7 @@ class ExecutionAction:
     patch: Patch | None = None
     command: list[str] | None = None
     cwd: str = "."
+    step_label: str | None = None
 
 
 @dataclass(slots=True)
@@ -83,6 +88,12 @@ class ExecutionResult:
             "profileHash"}`` when the action was dispatched through a
             bound environment, or ``{}`` when none was bound (e.g. direct
             E14 construction without E32 wiring -- fully backward compatible).
+        command: The real command that was run, for ``run_command``/
+            ``run_validation`` actions (E43-S2) -- lets a transcript
+            renderer show the actual ``$ pytest -q`` line instead of only
+            the task's plain-language description.
+        path: The file target that was written, for ``create_file``/
+            ``edit_file``/``apply_patch`` actions (E43-S2).
     """
 
     action_id: str
@@ -98,6 +109,8 @@ class ExecutionResult:
     artifacts: list[str] = field(default_factory=list)
     error: str | None = None
     environment: dict[str, Any] = field(default_factory=dict)
+    command: list[str] | None = None
+    path: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Render this result as a plain, JSON-safe dict."""
@@ -115,6 +128,8 @@ class ExecutionResult:
             "artifacts": list(self.artifacts),
             "error": self.error,
             "environment": dict(self.environment),
+            "command": list(self.command) if self.command is not None else None,
+            "path": self.path,
         }
 
 

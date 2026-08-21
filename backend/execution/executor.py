@@ -26,6 +26,34 @@ if TYPE_CHECKING:
     from backend.orchestrator.service import ExecutionTask
 
 
+_ACTION_OUTPUT_CHAR_CAP = 4000
+"""Max length of stdout/stderr carried on one ``execution.action.*`` event (E43-S2).
+
+Bounds a single SSE event's payload regardless of how much a command
+captured; the tail is kept since that is usually a failure's relevant
+output.
+"""
+
+
+def _capped_tail(text: str) -> str:
+    """Tail-truncate *text* to :data:`_ACTION_OUTPUT_CHAR_CAP`."""
+    return text[-_ACTION_OUTPUT_CHAR_CAP:] if len(text) > _ACTION_OUTPUT_CHAR_CAP else text
+
+
+def _file_name(path: str) -> str:
+    """Return the final path segment, for a plain-language "Creating <file>" label (E43-S3)."""
+    return path.rsplit("/", 1)[-1] or path
+
+
+def _action_path(action: ExecutionAction) -> str | None:
+    """Return the file target an action wrote, for transcript rendering (E43-S2)."""
+    if action.path is not None:
+        return action.path
+    if action.patch is not None:
+        return action.patch.path
+    return None
+
+
 def _timestamp() -> str:
     """Return the current UTC time in ISO-8601 form."""
     return datetime.now(timezone.utc).isoformat()
@@ -151,6 +179,9 @@ class TaskExecutor:
                             "actionId": action.action_id,
                             "taskId": action.task_id,
                             "error": result.error or "",
+                            "command": list(action.command) if action.command else None,
+                            "path": _action_path(action),
+                            "stepLabel": action.step_label,
                         },
                         subject={"runId": run_id, "taskId": action.task_id},
                     )
@@ -159,7 +190,14 @@ class TaskExecutor:
                 "execution.action.started",
                 tenant_id=tenant_id,
                 partition_key=run_id,
-                data={"actionId": action.action_id, "taskId": action.task_id, "type": action.type.value},
+                data={
+                    "actionId": action.action_id,
+                    "taskId": action.task_id,
+                    "type": action.type.value,
+                    "command": list(action.command) if action.command else None,
+                    "path": _action_path(action),
+                    "stepLabel": action.step_label,
+                },
                 subject={"runId": run_id, "taskId": action.task_id},
             )
             result = self._runner.run(action)
@@ -174,6 +212,11 @@ class TaskExecutor:
                         "actionId": action.action_id,
                         "taskId": action.task_id,
                         "error": result.error or "",
+                        "command": list(result.command) if result.command else None,
+                        "path": result.path,
+                        "stdout": _capped_tail(result.stdout),
+                        "stderr": _capped_tail(result.stderr),
+                        "stepLabel": action.step_label,
                     },
                     subject={"runId": run_id, "taskId": action.task_id},
                 )
@@ -187,6 +230,11 @@ class TaskExecutor:
                         "taskId": action.task_id,
                         "status": result.status,
                         "exitCode": result.exit_code if result.exit_code is not None else -1,
+                        "command": list(result.command) if result.command else None,
+                        "path": result.path,
+                        "stdout": _capped_tail(result.stdout),
+                        "stderr": _capped_tail(result.stderr),
+                        "stepLabel": action.step_label,
                     },
                     subject={"runId": run_id, "taskId": action.task_id},
                 )
@@ -227,7 +275,14 @@ class TaskExecutor:
                 "execution.action.failed",
                 tenant_id=tenant_id,
                 partition_key=run_id,
-                data={"actionId": action.action_id, "taskId": action.task_id, "error": reason},
+                data={
+                    "actionId": action.action_id,
+                    "taskId": action.task_id,
+                    "error": reason,
+                    "command": list(action.command) if action.command else None,
+                    "path": _action_path(action),
+                    "stepLabel": action.step_label,
+                },
                 subject={"runId": run_id, "taskId": action.task_id},
             )
         return TaskExecutionOutcome(status="failed", results=results)
@@ -264,6 +319,7 @@ class TaskExecutor:
                         step_key=task.task_id,
                         command=command.split(),
                         cwd=".",
+                        step_label=task.title or None,
                     )
                     for index, command in enumerate(task.commands, start=1)
                 ]
@@ -278,6 +334,7 @@ class TaskExecutor:
                     step_key=task.task_id,
                     command=command,
                     cwd=".",
+                    step_label=task.title or None,
                 )
             ]
         if task.category == "operations":
@@ -290,6 +347,7 @@ class TaskExecutor:
                         step_key=task.task_id,
                         command=command.split(),
                         cwd=".",
+                        step_label=task.title or None,
                     )
                     for index, command in enumerate(task.commands, start=1)
                 ]
@@ -304,6 +362,7 @@ class TaskExecutor:
                         step_key=task.task_id,
                         path=file_entry["path"],
                         content=file_entry["content"],
+                        step_label=f"Creating {_file_name(file_entry['path'])}",
                     )
                     for index, file_entry in enumerate(task.files, start=1)
                 ]
@@ -317,6 +376,7 @@ class TaskExecutor:
                     step_key=task.task_id,
                     path=note_path,
                     content=content,
+                    step_label=task.title or None,
                 )
             ]
         return []

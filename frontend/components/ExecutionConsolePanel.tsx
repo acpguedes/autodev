@@ -2,6 +2,7 @@
 
 import { Badge } from "@/components/ui/badge";
 import { useTranslations } from "@/lib/i18n";
+import { transcriptLineFromActionResult } from "@/lib/transcript";
 
 import type { RunResponse } from "../lib/api";
 
@@ -13,42 +14,95 @@ type ExecutionConsolePanelProps = {
 type ConsoleEntry = {
   id: string;
   labelKey: "executionConsole.runTypePlanExecution" | "executionConsole.runTypeAgent";
+  /** Plain-language step annotation (E43-S3), e.g. "Creating main.py". */
+  stepLabel: string;
   command: string;
   output: string;
   status: string;
 };
 
+/** One raw `ExecutionResult.to_dict()` entry, as carried in `result.metadata.actions[]`. */
+type ActionResultRecord = {
+  action_id: string;
+  status: string;
+  command?: string[] | null;
+  path?: string | null;
+  stdout?: string;
+  stderr?: string;
+  error?: string | null;
+  diff?: string;
+};
+
+function actionRecords(value: unknown): ActionResultRecord[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(
+    (entry): entry is ActionResultRecord =>
+      typeof entry === "object" && entry !== null && typeof (entry as { action_id?: unknown }).action_id === "string"
+  );
+}
+
+/**
+ * Build one transcript entry per real action (E43-S2) -- a genuine
+ * `$ pytest -q` / `$ write main.py` command line with that action's real
+ * stdout/stderr/error, not the task's static pre-execution description
+ * echoed back as if it were the output.
+ *
+ * Falls back to the task title/description only for a task that has not
+ * dispatched any actions yet (e.g. planning/analysis steps E43 doesn't
+ * derive actions for).
+ */
 function buildConsoleEntries(runs: RunResponse[]): ConsoleEntry[] {
   return runs.flatMap((run) =>
-    run.results.map((result, index) => {
+    run.results.flatMap((result, index) => {
       const taskTitle =
         typeof result.metadata?.title === "string" ? result.metadata.title : result.content;
-      const taskDescription =
-        typeof result.metadata?.description === "string"
-          ? result.metadata.description
-          : result.content;
       const category =
         typeof result.metadata?.category === "string" ? result.metadata.category : result.agent;
       const sourceAgent =
         typeof result.metadata?.source_agent === "string"
           ? result.metadata.source_agent
           : result.agent;
-      const status =
+      const taskStatus =
         typeof result.metadata?.status === "string" ? result.metadata.status : run.status;
+      const labelKey =
+        run.run_type === "plan_execution"
+          ? ("executionConsole.runTypePlanExecution" as const)
+          : ("executionConsole.runTypeAgent" as const);
 
-      return {
-        id: `${run.run_id}-${index}`,
-        labelKey:
-          run.run_type === "plan_execution"
-            ? ("executionConsole.runTypePlanExecution" as const)
-            : ("executionConsole.runTypeAgent" as const),
-        command:
-          run.run_type === "plan_execution"
-            ? `${category}: ${taskTitle}`
-            : `${sourceAgent} -> ${taskTitle}`,
-        output: taskDescription,
-        status,
-      };
+      const actions = actionRecords(result.metadata?.actions);
+      if (actions.length === 0) {
+        const taskDescription =
+          typeof result.metadata?.description === "string"
+            ? result.metadata.description
+            : result.content;
+        return [
+          {
+            id: `${run.run_id}-${index}`,
+            labelKey,
+            stepLabel: taskTitle,
+            command:
+              run.run_type === "plan_execution"
+                ? `${category}: ${taskTitle}`
+                : `${sourceAgent} -> ${taskTitle}`,
+            output: taskDescription,
+            status: taskStatus,
+          },
+        ];
+      }
+
+      return actions.map((action) => {
+        const line = transcriptLineFromActionResult(action, taskTitle);
+        return {
+          id: `${run.run_id}-${index}-${action.action_id}`,
+          labelKey,
+          stepLabel: line.stepLabel,
+          command: line.command,
+          output: line.output,
+          status: action.status,
+        };
+      });
     })
   );
 }
@@ -101,6 +155,7 @@ export function ExecutionConsolePanel({ runs, isBusy }: ExecutionConsolePanelPro
                 </span>
                 <Badge variant="secondary">{entry.status}</Badge>
               </div>
+              <p className="text-sm font-semibold text-ds-fg">{entry.stepLabel}</p>
               <code className="font-mono text-[13px] text-ds-fg-2">{entry.command}</code>
               <pre className="overflow-x-auto whitespace-pre-wrap rounded-ds-sm bg-ds-bg-4 p-3 font-mono text-xs text-ds-fg-2">
                 {entry.output}

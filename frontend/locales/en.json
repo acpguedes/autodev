@@ -20,6 +20,7 @@
     "sending": "Sending...",
     "currentPlan": "Current plan",
     "initialPlanMessage": "Initial plan created for the goal: {{goal}}",
+    "awaitingApproval": "This turn's auto-execution paused for a decision — resolve it in Execution.",
     "message": {
       "showMore": "Show more",
       "showLess": "Show less"
@@ -154,6 +155,10 @@
       "resume": "Could not resume the run."
     }
   },
+  "files": {
+    "pageTitle": "Files",
+    "pageSubtitle": "Browse the generated project's file tree and read any file in the browser."
+  },
   "shell": {
     "nav": {
       "groupWorkspace": "Workspace",
@@ -163,6 +168,7 @@
         "plans": "Plans",
         "patches": "Patches",
         "execution": "Execution",
+        "files": "Files",
         "flows": "Flows",
         "sessions": "Sessions",
         "config": "Config",

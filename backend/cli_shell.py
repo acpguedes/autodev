@@ -7,9 +7,10 @@ v2 platform reference §2.13). Enforced by a static-analysis contract test:
 ``backend/tests/unit/cli/test_cli_shell_api_only.py``.
 
 Flow: prompt for a goal -> ``POST /v2/sessions`` -> ``POST
-.../turns`` (drives the agent pipeline that derives the execution plan) ->
-``POST .../execution-plan/execute?mode=<mode>`` -> condensed per-task
-summary. If
+.../turns`` (starts the agent pipeline that derives the execution plan;
+returns immediately, so poll ``GET /v2/turns/{id}`` -- see
+``ShellSession.wait_for_turn``, E43-S6 -- until it finishes) -> ``POST
+.../execution-plan/execute?mode=<mode>`` -> condensed per-task summary. If
 the run comes back ``awaiting_approval`` (E14-S3), the pending decision is
 shown inline and the operator's answer resolves it via ``POST
 /v2/execution/decisions/{id}/resolve``, then the run is continued via
@@ -30,12 +31,15 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 from typing import Any, Sequence, TextIO
 
 import httpx
 
 _DEFAULT_BASE_URL = "http://127.0.0.1:8000"
 _MODES = ("auto", "approval", "hybrid")
+_TURN_POLL_TIMEOUT_S = 300.0
+_TURN_POLL_INTERVAL_S = 0.5
 
 
 def build_shell_parser() -> argparse.ArgumentParser:
@@ -84,14 +88,49 @@ class ShellSession:
         return str(response.json()["session_id"])
 
     def create_turn(self, session_id: str, message: str) -> dict[str, Any]:
-        """Post a message, driving the session's agent pipeline (planner/analyzer/.../validator).
+        """Post a message, starting the session's agent pipeline (planner/analyzer/.../validator).
 
-        Required before :meth:`execute`: the execution plan is derived from
-        artifacts this pipeline produces, not from session creation alone.
+        Returns immediately (E43-S6): the pipeline runs in the background, so
+        the returned turn's ``status`` is ``"running"`` with empty
+        ``results``/``steps``. Callers that need the pipeline's real output
+        (e.g. :meth:`execute`, whose plan is derived from artifacts this
+        pipeline produces, not from session creation alone) must
+        :meth:`wait_for_turn` first.
         """
         response = self._client.post(f"/v2/sessions/{session_id}/turns", json={"message": message})
         response.raise_for_status()
         return dict(response.json())
+
+    def get_turn(self, turn_id: str) -> dict[str, Any]:
+        """Fetch a turn's current state by id."""
+        response = self._client.get(f"/v2/turns/{turn_id}")
+        response.raise_for_status()
+        return dict(response.json())
+
+    def wait_for_turn(
+        self,
+        turn_id: str,
+        *,
+        timeout_s: float = _TURN_POLL_TIMEOUT_S,
+        poll_interval_s: float = _TURN_POLL_INTERVAL_S,
+    ) -> dict[str, Any]:
+        """Poll a turn until its background agent run finishes (E43-S6).
+
+        Args:
+            turn_id: Turn (run) id returned by :meth:`create_turn`.
+            timeout_s: Give up and return the last-seen state after this long.
+            poll_interval_s: Delay between polls.
+
+        Returns:
+            The turn once ``status`` is no longer ``"running"`` (or the
+            last-seen state, if ``timeout_s`` elapses first).
+        """
+        deadline = time.monotonic() + timeout_s
+        turn = self.get_turn(turn_id)
+        while turn["status"] == "running" and time.monotonic() < deadline:
+            time.sleep(poll_interval_s)
+            turn = self.get_turn(turn_id)
+        return turn
 
     def execute(self, session_id: str) -> dict[str, Any]:
         """Execute the session's derived plan under the active mode."""
@@ -177,7 +216,8 @@ def run_goal(session: ShellSession, goal: str, *, out: TextIO = sys.stdout, prom
     """
     session_id = session.create_session(goal)
     print(f"session: {session_id}", file=out)
-    session.create_turn(session_id, goal)
+    turn = session.create_turn(session_id, goal)
+    session.wait_for_turn(turn["turnId"])
     run = session.execute(session_id)
     _print_run_summary(run, out=out)
     while run["status"] == "awaiting_approval":

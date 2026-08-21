@@ -20,6 +20,7 @@
     "sending": "Enviando...",
     "currentPlan": "Plano atual",
     "initialPlanMessage": "Plano inicial criado para o objetivo: {{goal}}",
+    "awaitingApproval": "A execução automática deste turno pausou aguardando uma decisão — resolva em Execução.",
     "message": {
       "showMore": "Mostrar mais",
       "showLess": "Mostrar menos"
@@ -154,6 +155,10 @@
       "resume": "Não foi possível retomar a execução."
     }
   },
+  "files": {
+    "pageTitle": "Arquivos",
+    "pageSubtitle": "Navegue pela árvore de arquivos do projeto gerado e leia qualquer arquivo no navegador."
+  },
   "shell": {
     "nav": {
       "groupWorkspace": "Espaço de trabalho",
@@ -163,6 +168,7 @@
         "plans": "Planos",
         "patches": "Patches",
         "execution": "Execução",
+        "files": "Arquivos",
         "flows": "Fluxos",
         "sessions": "Sessões",
         "config": "Configuração",

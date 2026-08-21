@@ -53,6 +53,44 @@ def test_handle_message_returns_agent_responses(orchestrator_service: Orchestrat
     assert all(entry.content for entry in result.history)
 
 
+def test_handle_message_emits_live_timeline_events_per_agent(
+    orchestrator_service: OrchestratorService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """E43-S6: a Chat turn's agent graph now emits ``run.timeline.*`` events
+    as each mapped agent completes, not just the final aggregate response --
+    previously only the "Run plan" task-dispatch pipeline emitted these, so
+    the Execution panel's live subscription had nothing to show for the
+    entire duration of a Chat turn, regardless of how long it took."""
+    session = orchestrator_service.create_plan("Ship MVP")
+    emitted: list[tuple[str, dict[str, Any]]] = []
+
+    def capture_event(event_type: str, *, data: dict[str, Any], **_: Any) -> None:
+        emitted.append((event_type, data))
+
+    monkeypatch.setattr("backend.orchestrator.service.emit_event", capture_event)
+
+    result = orchestrator_service.handle_message(session.session_id, "Start execution")
+
+    assert result.status == "completed"
+    timeline_events = [(event_type, data) for event_type, data in emitted if event_type.startswith("run.timeline.")]
+    # Only the roles the four-stage timeline maps -- architect/devops/
+    # responder are intentionally unmapped, matching the "Run plan" pipeline.
+    assert [data["stepKey"] for _, data in timeline_events] == ["navigator", "analyzer", "coder", "validator"]
+    assert [event_type for event_type, _ in timeline_events] == [
+        "run.timeline.analysis",
+        "run.timeline.analysis",
+        "run.timeline.patch",
+        "run.timeline.validation",
+    ]
+    for event_type, data in timeline_events:
+        assert data["actorRole"] == data["stepKey"]
+        assert data["status"] == "completed"
+        # Real agent output, not an empty/placeholder string.
+        assert data["output"]
+        matching_result = next(r for r in result.results if r.agent == data["stepKey"])
+        assert data["output"] == matching_result.content
+
+
 @pytest.mark.parametrize(
     ("failing_method", "failure_message"),
     [
@@ -86,7 +124,15 @@ def test_handle_message_completes_only_after_session_persistence(
 
     persisted_run = orchestrator_service.list_runs(session.session_id)[0]
     assert persisted_run.status == "running"
-    assert emitted_events == ["flow.run.started"]
+    # The agent graph itself completes successfully (the injected failure is
+    # in post-graph persistence) -- flow.run.started plus one run.timeline.*
+    # per mapped agent role (E43-S6: navigator/analyzer/coder/validator;
+    # planner/architect/devops/responder aren't part of the four-stage
+    # timeline). No completion-status event exists to suppress beyond the
+    # run row itself staying "running", asserted above.
+    assert emitted_events[0] == "flow.run.started"
+    assert all(event.startswith("run.timeline.") for event in emitted_events[1:])
+    assert len(emitted_events) == 5
 
 
 def test_history_persists_across_service_instances(
