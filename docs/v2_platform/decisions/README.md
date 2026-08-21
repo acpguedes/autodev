@@ -68,6 +68,10 @@ neither.
 | ADR-021 | Real Task Executor Contracts and Runner Boundary | Accepted | E14 | 2026-08-17 |
 | RFC-010 | Execution Policy Contract | Accepted | E14-S2 | 2026-08-17 |
 | ADR-022 | Execution Policy Engine | Accepted | E14 | 2026-08-17 |
+| ADR-023 | Execution Failure Classification Taxonomy | Accepted | E46 | 2026-08-21 |
+| ADR-024 | pgvector Runtime Image and Extension Provisioning | Proposed | E48 | 2026-08-21 |
+| ADR-025 | SQL Persistence Boundary and Dialect Abstraction Scope | Proposed | E49 | 2026-08-21 |
+| ADR-026 | SQLite to PostgreSQL Migration and Cutover | Proposed | E58 | 2026-08-21 |
 
 > Update this table whenever an ADR or RFC is added or changes status. This index,
 > together with `docs/v2_platform/progress.md`, is the fastest way to see which

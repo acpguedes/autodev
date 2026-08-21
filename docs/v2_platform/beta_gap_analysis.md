@@ -57,6 +57,11 @@
 | G6 | Negative paths (denial, budget, violation, revocation) outside the Beta acceptance definition | §18.9 criterion 1 (happy path only) | E35-S2 | Medium |
 | G7 | Material architectural decisions with no ADR (isolation, secret store, install) | `decisions/` ends at ADR-012 | ADR-013/014/015 (Proposed, pending) + E35-S3 | High |
 | G8 | Beta incident runbooks (isolation violation, leak, failed upgrade) missing | E11 runbook set (`phases/e11_...md`) | E35-S3-T3 | Low |
+| G9 | Four domain stores raise `ValueError` on the PostgreSQL URL the `prod` profile mandates — quotas, secrets, execution policy, and environments cannot be constructed in production | `backend/config/settings.py:332-336` vs `quotas/store.py:49`, `secret_store/store.py:48`, `execution/policy.py:206`, `environments/store.py:38` | E49 + E51-E54 | High |
+| G10 | `StepApprovalStore` silently writes `./autodev_plan_step_state.db` on a PostgreSQL URL — invisible to other replicas and to every backup manifest | `backend/plans/step_state.py:132`, absent from `backend/persistence/backup.py` | E50-S3 + E55 | High |
+| G11 | 13 domain tables are created outside `MigrationRunner`, so none is in `schema_version`, none has a `down` path, and none has RLS | `quotas/store.py:78-118`, `secret_store/store.py:91`, `execution/policy.py:235-283`, `environments/store.py:126-155`, `plans/step_state.py:159`; zero matches in `migrations/postgres_versions.py` | E50 | High |
+| G12 | The shipped `prod` Compose stack cannot run its own migrations — `CREATE EXTENSION vector` against stock `postgres:16-alpine` | `migrations/postgres_versions.py:253` vs `infrastructure/docker-compose.yml:116` | E48 | High |
+| G13 | No PostgreSQL in CI — every PostgreSQL path is asserted against a monkeypatched `psycopg`, which is why G9-G12 stayed invisible | no `services:` block in `.github/workflows/`; `tests/unit/persistence/test_postgres_store.py:73-92` | E56 + E57 | High |
 
 ## 3. Files changed/created
 
@@ -190,6 +195,18 @@ without rewriting the historical record above.
 | G6 | Negative paths outside the Beta acceptance definition | **Resolved** | `docs/v2_platform/beta_acceptance_flow.md` (E35-S2) |
 | G7 | Architectural decisions with no ADR | **Resolved** | ADR-013/014/015 all **Accepted** (see updated Section 7, E35-S3) |
 | G8 | Beta incident runbooks missing | **Resolved** | `docs/v2_platform/runbooks/e35_*.md` (E35-S3) |
+| G9 | Four stores refuse the PostgreSQL URL `prod` mandates | **Open** | New 2026-08-21. Owned by E49 + E51-E54 |
+| G10 | `plan_step_state` silently diverts to a stray SQLite file | **Open** | New 2026-08-21. Owned by E50-S3 + E55 |
+| G11 | 13 tables outside `MigrationRunner`, unversioned and without RLS | **Open** | New 2026-08-21. Owned by E50 |
+| G12 | Shipped `prod` Compose stack cannot run its own migrations | **Open** | New 2026-08-21. Owned by E48 |
+| G13 | No PostgreSQL in CI; PostgreSQL asserted against fakes | **Open** | New 2026-08-21. Owned by E56 + E57 |
+
+G1-G8 closed the E35 audit cycle on 2026-08-19 and remain closed. **G9-G13
+are a second, later audit cycle**, opened 2026-08-21 by reading the `prod`
+code path directly rather than the tracker, and recorded here rather than
+rewriting the record above. They are tracked by the E48-E60 program
+(`postgres_production_completeness.md`) and map to new gate criteria 13-15
+in Section 11.
 
 ## 11. Gate Evidence Map (§18.9 v2.0-beta) — E35-S1-T2
 
@@ -212,10 +229,17 @@ found — it is a named gap, not presumed resolved.
 | 10 | Isolated execution fail-closed by default, audited decision (E32) | **Met** | `backend/environments/` (`EnvironmentBackend`, `UnavailableBackend`), `environment.instance.*`/`environment.access.*` event catalog, `docs/environments/beta_isolation.md`, ADR-013 Accepted |
 | 11 | No secret in cleartext; audited leak fixture (E33) | **Met** | `backend/secret_store/redaction.py`, `secret.leak.suspected` event, `docs/security/secrets.md`, ADR-014 Accepted |
 | 12 | Clean-environment install verified; upgrade preserves data (E34) | **Met** | `scripts/verify_clean_install.sh`, `backend/ops/version.py`, `MigrationRunner.run_pending` (`SchemaVersionMismatchError`), `docs/execution/cli-install.md`, `docs/execution/upgrade.md`, ADR-015 Accepted |
+| 13 | `prod` boots from empty on PostgreSQL 16 + pgvector and serves a real vector query | **Open** | `backend/persistence/migrations/postgres_versions.py:253` runs `CREATE EXTENSION IF NOT EXISTS vector`; `infrastructure/docker-compose.yml:116` ships stock `postgres:16-alpine`, which does not bundle it — PG migration 4 cannot succeed on the shipped stack. No recorded from-empty `prod` bring-up. Added 2026-08-21 (E48). |
+| 14 | SQLite and PostgreSQL pass the same functional contract | **Open** | 13 tables have no PostgreSQL migration (zero matches in `postgres_versions.py`) and 5 stores refuse or divert on a PostgreSQL URL (G9, G10). No contract suite compares backends; `backend/sdk/testing.py:30` pins SQLite via the `DurableStore = SQLiteStore` alias (`persistence/database.py:23`). Added 2026-08-21 (E49-E56). |
+| 15 | Every pull request runs a real `prod`-profile E2E | **Open** | No `services:` block in any workflow under `.github/workflows/`; `backend/tests/unit/persistence/test_postgres_store.py:73-92` monkeypatches `sys.modules["psycopg"]`. Mocked connections are not PostgreSQL evidence. Added 2026-08-21 (E57). |
 
-**Honest summary**: 7 of 12 criteria **Met** (4, 7, 8, 9, 10, 11, 12), 2
-**Partial** (1 and 5 — real but incomplete evidence), 3 **Open** (2, 3,
-and 6 — no verification evidence, only tooling/documentation to verify).
+**Honest summary**: 7 of 15 criteria **Met** (4, 7, 8, 9, 10, 11, 12), 2
+**Partial** (1 and 5 — real but incomplete evidence), 6 **Open** (2, 3, 6,
+13, 14, 15 — no verification evidence, only tooling/documentation to
+verify). Criteria 13-15 were added 2026-08-21 by the E48-E60 PostgreSQL
+Production Completeness program
+(`postgres_production_completeness.md`); they correspond to gaps G9-G13
+above and are named against verified file:line evidence, not presumed.
 This is not the "complete" gate — it is
 the **measurable** gate: each
 remaining gap is named with its exact cause, not hidden behind

@@ -46,7 +46,7 @@ selected explicitly:
 
 ```env
 AUTODEV_PROFILE=prod
-DATABASE_URL=postgresql://autodev:autodev@postgres:5432/autodev
+DATABASE_URL=postgresql://autodev:<set outside git>@postgres:5432/autodev
 AUTODEV_JOB_BACKEND=redis
 AUTODEV_REDIS_URL=redis://redis:6379/0
 STORAGE_BACKEND=s3
@@ -60,6 +60,26 @@ Run the production-like local stack with:
 ```bash
 docker compose -f infrastructure/docker-compose.yml --profile prod up --build backend-prod
 ```
+
+> **PostgreSQL must be pgvector-capable (noted 2026-08-21).** The PostgreSQL
+> migration set runs `CREATE EXTENSION IF NOT EXISTS vector`
+> (`backend/persistence/migrations/postgres_versions.py:253`), which stock
+> `postgres:16-alpine` — the image the `prod` Compose profile currently uses
+> (`infrastructure/docker-compose.yml:116`) — cannot satisfy. On a managed
+> provider, an operator must install the extension before first boot, since
+> the application role often cannot create it. Tracked by E48 and ADR-024
+> (`docs/v2_platform/postgres_production_completeness.md`).
+>
+> **Known `prod` limitation (verified 2026-08-21).** Quotas, secrets,
+> execution policy, and execution environments cannot currently be
+> constructed under `AUTODEV_PROFILE=prod`: their stores raise `ValueError`
+> on a `postgresql://` URL (`backend/quotas/store.py:49`,
+> `backend/secret_store/store.py:48`, `backend/execution/policy.py:206`,
+> `backend/environments/store.py:38`), and plan step state silently falls
+> back to `./autodev_plan_step_state.db`
+> (`backend/plans/step_state.py:132`). Closing this is the subject of epics
+> E48-E60. Connection-pool and statement-timeout settings do not exist yet
+> and are introduced by E60.
 
 `autodev config validate --profile prod` uses the same settings validation as
 startup. Missing Redis/MinIO settings, `AUTODEV_JOB_BACKEND` values other than
