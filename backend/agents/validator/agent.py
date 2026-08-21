@@ -27,7 +27,8 @@ class ValidatorAgent(LangChainAgent):
                     "Current user request: {user_request}\n"
                     "Recent discussion:\n{history}\n"
                     "Artifacts:\n{artifacts}\n"
-                    "List concrete validation steps.",
+                    "List concrete validation steps, then list the exact shell "
+                    "commands (e.g. test runner invocations) needed to verify them.",
                 ),
             ]
         )

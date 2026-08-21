@@ -110,6 +110,7 @@ class DevOpsOutput(BaseModel):
 
     deliverables: Dict[str, str] = Field(default_factory=dict)
     operational_checks: List[str] = Field(default_factory=list)
+    commands: List[str] = Field(default_factory=list)
 
 
 class ValidatorOutput(BaseModel):
@@ -117,6 +118,7 @@ class ValidatorOutput(BaseModel):
 
     validation_steps: List[str] = Field(default_factory=list)
     success_criteria: List[str] = Field(default_factory=list)
+    commands: List[str] = Field(default_factory=list)
 
 
 class ResponderOutput(BaseModel):
