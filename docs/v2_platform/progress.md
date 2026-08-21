@@ -422,8 +422,9 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 | E41 | Real Code Generation & Agent-Directed Execution | Beta | Done | 5/5 | E2, E14, E16-S3 | [phases/e41_real_code_generation_execution.md](phases/e41_real_code_generation_execution.md) |
 | E42 | Execution Visibility & Chat/Command UX | Beta | Done | 6/6 | E41, E9, E11, E15-E18 | [phases/e42_execution_visibility_chat_ux.md](phases/e42_execution_visibility_chat_ux.md) |
+| E43 | Execution Transparency: Terminal Transcript, File Browser & Session Stickiness | Beta | Not started | 0/5 | E42, E41-S3, E41-S4, E41-S5 | [phases/e43_execution_transparency_file_browser.md](phases/e43_execution_transparency_file_browser.md) |
 
-Total: **106/189 stories complete** across 42 epics (E19 is a proposed
+Total: **106/194 stories complete** across 43 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -598,6 +599,36 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-08-21** — **Planning-only: added E43 — Execution Transparency:
+  Terminal Transcript, File Browser & Session Stickiness (Beta-hardening,
+  5 planned stories)**. Found by re-testing the now-Done E42 in the actual
+  product UI: E42-S1's event stream is genuinely real (confirmed live SSE
+  events for a Chat-triggered run), but E42-S5 rendered it as raw JSON
+  payloads instead of a readable command/output view — the story's DoD
+  ("live command output") was satisfied by "live events," not by anything
+  a user would recognize as terminal output. A second, more severe defect
+  was confirmed from a full run transcript, not just inferred: tasks 1-36
+  (planning/analysis/architecture/implementation/operations) all
+  `Completed`, then **every one** of tasks 37-46 — the entire validation
+  phase, 10/10 tasks, each a different command — `Failed`, all with
+  "Command 'cd' is not in the allowed list." The sandbox allowlist
+  (`pytest`/`ruff`/`npm`/`python`/`python3`) checks only a command's first
+  token; agent-declared commands naturally arrive as `cd <dir> && <real
+  command>`, so validation currently **cannot pass at all, for any goal**,
+  regardless of generated-code correctness — this is also why E41-S5's
+  self-verification retry loop was observed failing
+  (`outcome: "failed_after_retry"`) even though the generated code itself
+  imports and runs cleanly. Given the severity, this got its own story
+  (**E43-S1**, ahead of the rendering work) rather than a footnote on the
+  transcript-rendering story. User-specified requirements captured
+  verbatim for the rest: the panel should look like a real terminal
+  (command + real stdout/stderr), show which command wrote which file,
+  carry plain-language step labels ("Creating main.py"), plus two new
+  asks — a project file-tree browser with in-app file reading, and every
+  page defaulting to the most recently selected session (E42-S3 only
+  fixed Plans/Execution; this generalizes it app-wide). Same pattern as
+  E32-E35/E41/E42: extends the Beta wave before sign-off. See
+  `phases/e43_execution_transparency_file_browser.md`. No stories started.
 - **2026-08-21** — **E42 — Execution Visibility & Chat/Command UX is
   complete (6/6)**, on `epic/e42-execution-visibility-chat-ux`. **E42-S1**
   root-caused the 404 precisely: `stream_run_events` gated
