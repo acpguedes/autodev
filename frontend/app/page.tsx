@@ -201,6 +201,10 @@ function ExecutionControlCenter() {
 
     const userMessage: Message = { author: "You", content: pendingMessage };
     setMessages((current) => [...current, userMessage]);
+    // Clear the composer immediately, like any chat UI -- the submitted
+    // text now lives only in the message list above, not lingering in the
+    // input for the whole (potentially long, multi-agent) turn.
+    setPendingMessage("");
 
     try {
       // E16-S1 turns contract: the turn id doubles as the run id, which
@@ -212,7 +216,6 @@ function ExecutionControlCenter() {
     } catch {
       setError(t("chat.errors.sendMessage"));
     } finally {
-      setPendingMessage("");
       setIsLoading(false);
     }
   }
