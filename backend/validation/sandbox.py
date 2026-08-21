@@ -14,11 +14,14 @@ Optional command allowlist
 --------------------------
 Instantiate ``SandboxRunner`` with an explicit *allowed_commands* list to
 restrict which executables are permitted. The check is against the first
-element of ``ValidationJob.command``.
+element of ``ValidationJob.command`` -- after stripping a leading
+``cd <dir> && ...``/``cd <dir>; ...`` prefix, if present, onto ``cwd``
+(E43-S1).
 """
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import shutil
 import subprocess
@@ -44,6 +47,11 @@ _DOCKER_IMAGE = "python:3.11-slim"
 
 # Timeout is mapped onto the shell/`timeout(1)` convention for a killed process.
 _TIMEOUT_RETURNCODE = 124
+
+# Chain separators a `cd <dir> && <cmd>` / `cd <dir>; <cmd>` prefix may use,
+# either as their own token or attached to the directory token (both are
+# produced by upstream naive whitespace tokenization -- see _strip_cd_prefix).
+_CD_CHAIN_SEPARATORS = ("&&", ";")
 
 
 @dataclass(frozen=True)
@@ -165,6 +173,8 @@ class SandboxRunner:
                 skipped=True,
             )
 
+        job = self._strip_cd_prefix(job)
+
         if self._allowed:
             exe = job.command[0].rsplit("/", 1)[-1] if job.command else ""
             if exe not in self._allowed:
@@ -215,6 +225,50 @@ class SandboxRunner:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _strip_cd_prefix(self, job: ValidationJob) -> ValidationJob:
+        """Fold a leading ``cd <dir> && <cmd>`` / ``cd <dir>; <cmd>`` prefix into *job*.
+
+        Agent-declared commands (E41-S4 structured output) naturally arrive
+        this way instead of using ``job.cwd`` directly, and are tokenized
+        upstream with plain whitespace splitting rather than shell-aware
+        parsing -- so the chain separator may be its own token
+        (``["cd", "dir", "&&", "pytest"]``) or glued onto the directory
+        (``["cd", "dir;", "pytest"]``). Defense in depth: the sandbox already
+        accepts an explicit working directory (E43-S1-T1), so this only
+        handles the compound form that still slips through, folding it into
+        the same ``cwd``/``command`` shape the runner already guards -- it
+        does not loosen the workspace-containment or allowlist checks that
+        follow.
+
+        Args:
+            job: The job as declared by the caller.
+
+        Returns:
+            *job* unchanged if no ``cd`` prefix is present; otherwise a copy
+            with ``cwd`` set to the ``cd`` target and ``command`` set to the
+            real command that follows it.
+        """
+        command = job.command
+        if len(command) < 2 or command[0] != "cd":
+            return job
+
+        cd_path = command[1]
+        rest = command[2:]
+        for sep in _CD_CHAIN_SEPARATORS:
+            if cd_path.endswith(sep):
+                cd_path = cd_path[: -len(sep)]
+                real_command = rest
+                break
+        else:
+            if rest and rest[0] in _CD_CHAIN_SEPARATORS:
+                real_command = rest[1:]
+            else:
+                return job
+
+        if not cd_path or not real_command:
+            return job
+        return dataclasses.replace(job, command=list(real_command), cwd=cd_path)
 
     def _resolve_workspace(self, cwd: str) -> Path:
         """Resolve and guard a job's working directory against the policy root.

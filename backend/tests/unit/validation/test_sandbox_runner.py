@@ -338,6 +338,84 @@ def test_custom_allowlist_accepted(tmp_path: Path) -> None:
     assert result.skipped is False
 
 
+# ---------------------------------------------------------------------------
+# E43-S1: `cd <dir> && <command>` agent-declared commands
+# ---------------------------------------------------------------------------
+
+
+def test_cd_prefixed_command_runs_real_command_in_target_dir(tmp_path: Path) -> None:
+    """A `cd <dir> && pytest`-style command runs pytest inside <dir>, not `cd`."""
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    with patch("shutil.which", return_value=None):
+        runner = SandboxRunner(
+            allowed_commands=["python", "python3"],
+            policy=_policy(tmp_path, allow_local=True),
+        )
+        result = runner.run(
+            _job(["cd", "workspace", "&&", "python", "-c", "import os; print(os.getcwd())"])
+        )
+
+    assert result.backend == "local"
+    assert result.skipped is False
+    assert result.stdout.strip() == str(workspace.resolve())
+
+
+def test_cd_semicolon_prefixed_command_is_also_stripped(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+
+    with patch("shutil.which", return_value=None):
+        runner = SandboxRunner(
+            allowed_commands=["python"],
+            policy=_policy(tmp_path, allow_local=True),
+        )
+        result = runner.run(_job(["cd", "workspace;", "python", "-c", "print(1)"]))
+
+    assert result.backend == "local"
+    assert result.skipped is False
+
+
+def test_cd_prefix_target_outside_project_root_is_blocked(tmp_path: Path) -> None:
+    project_root = tmp_path / "project"
+    project_root.mkdir()
+    (tmp_path / "outside").mkdir()
+
+    with patch("subprocess.run") as mock_run:
+        runner = SandboxRunner(policy=_policy(project_root))
+        result = runner.run(_job(["cd", "../outside", "&&", "python", "-c", "print(1)"]))
+
+    assert result.skipped is True
+    assert result.backend == "blocked"
+    mock_run.assert_not_called()
+
+
+def test_cd_prefix_still_enforces_allowlist_on_real_command(tmp_path: Path) -> None:
+    with patch("subprocess.run") as mock_run:
+        runner = SandboxRunner(allowed_commands=["pytest"], policy=_policy(tmp_path))
+        result = runner.run(_job(["cd", ".", "&&", "rm", "-rf", "/"]))
+
+    assert result.skipped is True
+    assert result.backend == "blocked"
+    assert "rm" in result.stderr
+    mock_run.assert_not_called()
+
+
+def test_bare_cd_with_no_trailing_command_is_still_blocked(tmp_path: Path) -> None:
+    """A lone `cd <dir>` (no `&& <cmd>`) has no real command to run, so it is
+    left alone and rejected by the ordinary allowlist check -- not silently
+    treated as an empty success."""
+    with patch("subprocess.run") as mock_run:
+        runner = SandboxRunner(allowed_commands=["pytest"], policy=_policy(tmp_path))
+        result = runner.run(_job(["cd", "somewhere"]))
+
+    assert result.skipped is True
+    assert result.backend == "blocked"
+    assert "cd" in result.stderr
+    mock_run.assert_not_called()
+
+
 def test_fails_closed_without_docker_by_default(tmp_path: Path) -> None:
     """With the sandbox enabled but no Docker and no explicit local opt-in,
     the runner must refuse to execute on the host."""
