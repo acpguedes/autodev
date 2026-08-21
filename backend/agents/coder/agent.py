@@ -27,7 +27,10 @@ class CoderAgent(LangChainAgent):
                     "Current user request: {user_request}\n"
                     "Recent plan:\n{plan}\n"
                     "Available artifacts:\n{artifacts}\n"
-                    "List concrete coding tasks grouped by component.",
+                    "List concrete coding tasks grouped by component. Then, for the "
+                    "highest-priority tasks, propose actual, runnable file content "
+                    "(complete file contents, not a diff or a description) for each "
+                    "file that needs to be created or changed to accomplish the goal.",
                 ),
             ]
         )
