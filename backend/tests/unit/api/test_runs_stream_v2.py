@@ -32,11 +32,19 @@ from backend.api.routers.runs_stream_v2 import (
 )
 from backend.api.v2_common import SCHEMA_VERSION_V2
 from backend.auth.contracts import AuthMethod, PrincipalV2, Role
+from backend.config.runtime import reset_runtime_config_cache
+from backend.config.settings import reset_settings_cache
 from backend.events.bus import EventBus, InMemoryEventBus
 from backend.events.catalog import make_envelope
-from backend.events.runtime import get_event_bus, reset_event_bus_for_tests
+from backend.events.runtime import (
+    get_event_bus,
+    get_event_store,
+    reset_event_bus_for_tests,
+    reset_event_store_for_tests,
+)
 from backend.flows.engine import FlowEngine
 from backend.flows.handlers import CallableRegistry, build_default_handlers
+from backend.persistence.database import reset_store_cache
 from backend.persistence.sqlite_adapter import SQLiteStore
 
 
@@ -104,27 +112,27 @@ class _DisconnectingRequest:
 
 
 @dataclass
-class _FakeRun:
-    """Minimal stand-in for :class:`~backend.flows.state.FlowRunRecord`."""
+class _FakeProjection:
+    """Minimal stand-in for :class:`~backend.events.records.EventProjection`."""
 
     tenant_id: str
 
 
-class _FakeRunStore:
-    """Minimal stand-in for :class:`~backend.flows.state.FlowRunStore`."""
+class _FakeEventStore:
+    """Minimal stand-in for :class:`~backend.events.store.EventStore`.
 
-    def __init__(self, runs: dict[str, _FakeRun]) -> None:
-        """Store the fixed run-id to run mapping."""
-        self._runs = runs
+    ``stream_run_events`` only ever touches ``event_store.get_projection(run_id)``
+    for its existence/tenant check (E42-S1), so a real event store (and its
+    database) is unnecessary for handler-level tests.
+    """
 
-    def get_run(self, run_id: str, *, tenant_id: str | None = None) -> _FakeRun | None:
-        """Look up a run by id, or ``None`` if unknown or owned by another tenant."""
-        run = self._runs.get(run_id)
-        if run is None:
-            return None
-        if tenant_id is not None and run.tenant_id != tenant_id:
-            return None
-        return run
+    def __init__(self, projections: dict[str, _FakeProjection]) -> None:
+        """Store the fixed run-id to projection mapping."""
+        self._projections = projections
+
+    def get_projection(self, run_id: str) -> _FakeProjection | None:
+        """Look up a run's projection by id, or ``None`` if unknown."""
+        return self._projections.get(run_id)
 
 
 def _principal(tenant_id: str) -> PrincipalV2:
@@ -136,19 +144,6 @@ def _principal(tenant_id: str) -> PrincipalV2:
         scopes=frozenset(),
         auth_method=AuthMethod.OIDC,
     )
-
-
-class _FakeEngine:
-    """Minimal stand-in for :class:`~backend.flows.engine.FlowEngine`.
-
-    ``stream_run_events`` only ever touches ``engine.runs.get_run(run_id)``,
-    so a real engine (and its database) is unnecessary for handler-level
-    tests.
-    """
-
-    def __init__(self, runs: dict[str, _FakeRun]) -> None:
-        """Wrap the fixed run-id to run mapping in a fake run store."""
-        self.runs = _FakeRunStore(runs)
 
 
 async def _collect(agen: AsyncIterator[str], count: int) -> list[str]:
@@ -335,7 +330,7 @@ class TestStreamRunEventsHandler:
         """An unknown run id is rejected with a 404 before any streaming starts."""
 
         async def run() -> HTTPException:
-            engine = _FakeEngine({})
+            event_store = _FakeEventStore({})
             bus = InMemoryEventBus()
             with pytest.raises(HTTPException) as excinfo:
                 await stream_run_events(
@@ -345,7 +340,7 @@ class TestStreamRunEventsHandler:
                     types=None,
                     tenant_id=None,
                     last_event_id=None,
-                    engine=engine,  # type: ignore[arg-type]
+                    event_store=event_store,  # type: ignore[arg-type]
                     bus=bus,
                     principal=_principal("default"),
                 )
@@ -362,7 +357,7 @@ class TestStreamRunEventsHandler:
         """
 
         async def run() -> HTTPException:
-            engine = _FakeEngine({"run-1": _FakeRun(tenant_id="tenant-a")})
+            event_store = _FakeEventStore({"run-1": _FakeProjection(tenant_id="tenant-a")})
             bus = InMemoryEventBus()
             with pytest.raises(HTTPException) as excinfo:
                 await stream_run_events(
@@ -372,7 +367,7 @@ class TestStreamRunEventsHandler:
                     types=None,
                     tenant_id=None,
                     last_event_id=None,
-                    engine=engine,  # type: ignore[arg-type]
+                    event_store=event_store,  # type: ignore[arg-type]
                     bus=bus,
                     principal=_principal("tenant-b"),
                 )
@@ -389,7 +384,7 @@ class TestStreamRunEventsHandler:
         """
 
         async def run() -> HTTPException:
-            engine = _FakeEngine({"run-1": _FakeRun(tenant_id="tenant-a")})
+            event_store = _FakeEventStore({"run-1": _FakeProjection(tenant_id="tenant-a")})
             bus = InMemoryEventBus()
             with pytest.raises(HTTPException) as excinfo:
                 await stream_run_events(
@@ -399,7 +394,7 @@ class TestStreamRunEventsHandler:
                     types=None,
                     tenant_id="tenant-b",
                     last_event_id=None,
-                    engine=engine,  # type: ignore[arg-type]
+                    event_store=event_store,  # type: ignore[arg-type]
                     bus=bus,
                     principal=_principal("tenant-a"),
                 )
@@ -412,7 +407,7 @@ class TestStreamRunEventsHandler:
         """An uncataloged ``?types=`` entry is rejected with a 400."""
 
         async def run() -> HTTPException:
-            engine = _FakeEngine({"run-1": _FakeRun(tenant_id="default")})
+            event_store = _FakeEventStore({"run-1": _FakeProjection(tenant_id="default")})
             bus = InMemoryEventBus()
             with pytest.raises(HTTPException) as excinfo:
                 await stream_run_events(
@@ -422,7 +417,7 @@ class TestStreamRunEventsHandler:
                     types="not.a.type",
                     tenant_id=None,
                     last_event_id=None,
-                    engine=engine,  # type: ignore[arg-type]
+                    event_store=event_store,  # type: ignore[arg-type]
                     bus=bus,
                     principal=_principal("default"),
                 )
@@ -435,7 +430,7 @@ class TestStreamRunEventsHandler:
         """A valid request returns an SSE ``StreamingResponse`` over the backlog."""
 
         async def run() -> list[str]:
-            engine = _FakeEngine({"run-1": _FakeRun(tenant_id="default")})
+            event_store = _FakeEventStore({"run-1": _FakeProjection(tenant_id="default")})
             bus = InMemoryEventBus()
             _publish(bus, "run-1", "flow.run.started")
 
@@ -446,7 +441,7 @@ class TestStreamRunEventsHandler:
                 types=None,
                 tenant_id="default",
                 last_event_id=None,
-                engine=engine,  # type: ignore[arg-type]
+                event_store=event_store,  # type: ignore[arg-type]
                 bus=bus,
                 principal=_principal("default"),
             )
@@ -462,7 +457,7 @@ class TestStreamRunEventsHandler:
         """``Last-Event-ID`` takes priority over ``?cursor=`` when both are sent."""
 
         async def run() -> list[str]:
-            engine = _FakeEngine({"run-1": _FakeRun(tenant_id="default")})
+            event_store = _FakeEventStore({"run-1": _FakeProjection(tenant_id="default")})
             bus = InMemoryEventBus()
             for type_ in ("flow.run.started", "run.step.started", "flow.run.completed"):
                 _publish(bus, "run-1", type_)
@@ -474,7 +469,7 @@ class TestStreamRunEventsHandler:
                 types=None,
                 tenant_id=None,
                 last_event_id="1",
-                engine=engine,  # type: ignore[arg-type]
+                event_store=event_store,  # type: ignore[arg-type]
                 bus=bus,
                 principal=_principal("default"),
             )
@@ -537,3 +532,80 @@ class TestFlowRunEmitsCatalogEventSequence:
             assert all(envelope.partitionKey == run.run_id for envelope in published)
         finally:
             reset_event_bus_for_tests()
+
+
+class TestChatTriggeredRunResolvesOnStream:
+    """A Chat-triggered run's ``run_id`` resolves on the SSE endpoint (E42-S1-T3).
+
+    Regression test for the root cause: ``stream_run_events`` used to check
+    only the Flow Engine's own run store, so every Orchestrator/Chat run
+    404d here even though its events were already on the bus. Drives a real
+    turn through the actual ``/v2`` HTTP surface (mirroring
+    ``test_chat_timeline_v2.py``'s fixture), then calls
+    ``stream_run_events`` directly on the resulting ``turnId`` — bypassing
+    HTTP for the GET only because ``TestClient`` cannot exercise the
+    live-tail generator (see module docstring) — and asserts it resolves
+    instead of raising a 404.
+    """
+
+    def test_turn_created_via_http_resolves_on_stream(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'v2-chat-stream.db'}")
+        monkeypatch.setenv("LLM_PROVIDER", "stub")
+        monkeypatch.setenv("AUTODEV_CONFIG_PATH", str(tmp_path / "isolated.config.json"))
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.setattr("dotenv.load_dotenv", lambda *args, **kwargs: False)
+        reset_runtime_config_cache()
+        reset_settings_cache()
+        reset_store_cache()
+        reset_event_bus_for_tests()
+        reset_event_store_for_tests()
+        from backend.llm.factory import get_chat_model
+
+        get_chat_model.cache_clear()
+        from fastapi.testclient import TestClient
+
+        from backend.api.main import app
+
+        try:
+            with TestClient(app) as client:
+                session = client.post("/v2/sessions", json={"goal": "Ship the E42-S1 fix"})
+                assert session.status_code == 201, session.text
+                session_id = session.json()["session_id"]
+
+                turn = client.post(
+                    f"/v2/sessions/{session_id}/turns", json={"message": "Please proceed"}
+                )
+                assert turn.status_code == 201, turn.text
+                run_id = turn.json()["turnId"]
+
+            async def run() -> Any:
+                return await stream_run_events(
+                    request=_FakeRequest(),  # type: ignore[arg-type]
+                    run_id=run_id,
+                    cursor=None,
+                    types=None,
+                    tenant_id=None,
+                    last_event_id=None,
+                    event_store=get_event_store(),
+                    bus=get_event_bus(),
+                    principal=_principal("default"),
+                )
+
+            response = asyncio.run(run())
+            assert response.media_type == "text/event-stream"
+
+            async def collect() -> list[str]:
+                return await _collect(response.body_iterator, 2)  # type: ignore[arg-type]
+
+            frames = asyncio.run(collect())
+            assert any("event: flow.run.started" in frame for frame in frames)
+        finally:
+            app.dependency_overrides.clear()
+            reset_store_cache()
+            reset_runtime_config_cache()
+            reset_settings_cache()
+            reset_event_bus_for_tests()
+            reset_event_store_for_tests()
+            get_chat_model.cache_clear()
