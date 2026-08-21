@@ -3,6 +3,11 @@
 All notable changes to AutoDev Architect are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); dates are `YYYY-MM-DD`.
 
+## [Unreleased]
+
+Nothing yet. Changes land here after the `v2.0-beta` cut and are promoted into a
+version section when the next release is tagged.
+
 ## [v2.0-beta] — 2026-08-20 — v2 platform, Beta wave
 
 **Pre-release.** All Beta-wave epics are complete (22 epics, 95/178 stories across the
