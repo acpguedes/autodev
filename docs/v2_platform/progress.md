@@ -421,8 +421,9 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 | E41 | Real Code Generation & Agent-Directed Execution | Beta | Done | 5/5 | E2, E14, E16-S3 | [phases/e41_real_code_generation_execution.md](phases/e41_real_code_generation_execution.md) |
+| E42 | Execution Visibility & Chat/Command UX | Beta | Not started | 0/6 | E41, E9, E11, E15-E18 | [phases/e42_execution_visibility_chat_ux.md](phases/e42_execution_visibility_chat_ux.md) |
 
-Total: **100/183 stories complete** across 41 epics (E19 is a proposed
+Total: **100/189 stories complete** across 42 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -597,6 +598,24 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-08-21** — **Planning-only: added E42 — Execution Visibility &
+  Chat/Command UX (Beta-hardening, 6 planned stories)**. Found by running
+  the now-fixed E41 pipeline through the actual product UI (backend +
+  frontend) against a real OpenAI key: a "Build a simple payment API" goal
+  run via Chat's Run plan button correctly wrote a complete, working
+  project (verified: all 4 generated tests pass) — but the UI meant to show
+  that happening has real defects. Three root-caused: (1)
+  `GET /v2/runs/{run_id}/events/stream` 404s for every Chat-triggered run
+  because it resolves `run_id` against the Flow Engine's run store, not the
+  Orchestrator's — the two execution paths were never unified under one
+  event stream; (2) `GET /v2/execution/policy/dynamic` 403s under the local
+  zero-config `Role.OWNER` principal — a real scope gap, not a routing
+  issue; (3) the Plans page never defaults to the active session, requiring
+  manual session-ID entry. Plus three UX asks: real chat-bubble layout with
+  collapsible turns, a live command stdout/stderr panel, and more usable
+  space in the flow editor canvas. Same pattern as E32-E35 and E41: extends
+  the Beta wave before sign-off. See
+  `phases/e42_execution_visibility_chat_ux.md`. No stories started.
 - **2026-08-21** — **E41 — Real Code Generation & Agent-Directed Execution
   is complete (5/5)**, on `epic/e41-real-code-generation-execution`
   (branched from `main` after PR #113 merged its own planning-only docs
