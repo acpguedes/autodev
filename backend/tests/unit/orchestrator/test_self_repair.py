@@ -155,7 +155,7 @@ def test_self_repair_repairs_and_revalidation_passes(tmp_path: Path, monkeypatch
     orchestrator = _build_orchestrator(tmp_path)
     coder = _FakeRepairCoderAgent(files=[{"path": target_path, "content": repaired_content}])
     orchestrator._agents["coder"] = coder
-    orchestrator._task_executor = _ScriptedRevalidationExecutor(
+    orchestrator._task_executor = _ScriptedRevalidationExecutor(  # type: ignore[assignment]
         orchestrator._task_executor, revalidation_succeeds=True
     )
 
@@ -188,7 +188,7 @@ def test_self_repair_reports_failed_after_retry_when_revalidation_still_fails(
         files=[{"path": target_path, "content": "def charge():\n    return False  # still broken\n"}]
     )
     orchestrator._agents["coder"] = coder
-    orchestrator._task_executor = _ScriptedRevalidationExecutor(
+    orchestrator._task_executor = _ScriptedRevalidationExecutor(  # type: ignore[assignment]
         orchestrator._task_executor, revalidation_succeeds=False
     )
 
@@ -332,7 +332,9 @@ def test_execute_plan_end_to_end_repairs_a_failing_task_and_surfaces_the_outcome
         files=[{"path": target_path, "content": repaired_content}]
     )
     orchestrator._agents["validator"] = _FakeValidatorAgent()
-    orchestrator._task_executor = _FailThenSucceedValidationExecutor(orchestrator._task_executor)
+    orchestrator._task_executor = _FailThenSucceedValidationExecutor(  # type: ignore[assignment]
+        orchestrator._task_executor
+    )
 
     session = orchestrator.create_plan("Criar plano executável por tarefas")
     orchestrator.handle_message(

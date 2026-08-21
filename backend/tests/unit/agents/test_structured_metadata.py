@@ -60,7 +60,9 @@ class _FakeChatModel(BaseChatModel):
     ) -> ChatResult:
         return ChatResult(generations=[ChatGeneration(message=AIMessage(content=self.text))])
 
-    def with_structured_output(self, schema: Any, **kwargs: Any) -> _FakeStructuredRunnable:
+    def with_structured_output(  # type: ignore[override]
+        self, schema: Any, **kwargs: Any
+    ) -> _FakeStructuredRunnable:
         return _FakeStructuredRunnable(self.structured_instance, error=self.structured_error)
 
 
@@ -81,8 +83,8 @@ def test_planner_run_uses_real_structured_output_not_fallback() -> None:
 
 
 def test_coder_run_uses_real_structured_output_not_fallback() -> None:
-    real_output = CoderOutput(
-        coding_tasks=[{"component": "backend/payments", "task": "Add charge endpoint"}]
+    real_output = CoderOutput.model_validate(
+        {"coding_tasks": [{"component": "backend/payments", "task": "Add charge endpoint"}]}
     )
     model = _FakeChatModel(structured_instance=real_output)
     agent = CoderAgent(model=model)
