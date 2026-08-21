@@ -422,9 +422,9 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 | E41 | Real Code Generation & Agent-Directed Execution | Beta | Done | 5/5 | E2, E14, E16-S3 | [phases/e41_real_code_generation_execution.md](phases/e41_real_code_generation_execution.md) |
 | E42 | Execution Visibility & Chat/Command UX | Beta | Done | 6/6 | E41, E9, E11, E15-E18 | [phases/e42_execution_visibility_chat_ux.md](phases/e42_execution_visibility_chat_ux.md) |
-| E43 | Execution Transparency: Terminal Transcript, File Browser & Session Stickiness | Beta | Not started | 0/5 | E42, E41-S3, E41-S4, E41-S5 | [phases/e43_execution_transparency_file_browser.md](phases/e43_execution_transparency_file_browser.md) |
+| E43 | Execution Transparency: Terminal Transcript, File Browser & Session Stickiness | Beta | Done | 5/5 | E42, E41-S3, E41-S4, E41-S5 | [phases/e43_execution_transparency_file_browser.md](phases/e43_execution_transparency_file_browser.md) |
 
-Total: **106/194 stories complete** across 43 epics (E19 is a proposed
+Total: **111/194 stories complete** across 43 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -599,6 +599,42 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-08-21** — **E43 — Execution Transparency: Terminal Transcript,
+  File Browser & Session Stickiness is complete (5/5)**, on
+  `epic/e43-execution-transparency-file-browser`. **E43-S1** root-caused
+  the sandbox `cd` failure precisely: `executor.derive_actions` tokenizes
+  an agent-declared `"cd <dir> && <cmd>"` string with plain `.split()`, so
+  `SandboxRunner` saw `command[0] == "cd"` and rejected it before the real
+  command was ever inspected; the runner now folds a leading `cd`-prefix
+  into `cwd`/`command` before the allowlist/workspace checks run, reusing
+  `apply_patch`'s containment guard. **E43-S2** found the "Chat Execution
+  panel" the epic doc describes is `ExecutionConsolePanel.tsx`, whose
+  `output` field was the task's static pre-execution `description` —
+  never the real result — because `ExecutionResult` never carried the
+  command/path that actually ran; extended `ExecutionResult` and the
+  `execution.action.*` event schema with `command`/`path`/`stdout`/
+  `stderr` (a deliberate, backward-compatible event-payload extension per
+  the epic's own contract note, not a new backend surface) and built one
+  shared `frontend/lib/transcript.ts` formatter both the Live-stream tab
+  and the Chat panel now render through. **E43-S3** added a `step_label`
+  to `ExecutionAction` ("Creating `<file>`" for writes, the task's own
+  title for commands), threaded through the same events. **E43-S4** added
+  `GET /v2/repository/tree`/`file` (new `repository:read` scope) plus a
+  lazily-expanding file-tree panel and read-only viewer at a new `/files`
+  route — confirmed the platform has one project root per deployment, not
+  one per session, so there is no session-scoped tree to look up.
+  **E43-S5** fixed Patches (previously defaulted to the first session in
+  the list) and made visiting a session's detail page set the app-wide
+  active session too, generalizing E42-S3 beyond Plans/Execution.
+  Automated regression tests added per story; full backend and frontend
+  unit suites pass. **Not performed:** the DoD's full live Chat → Run plan
+  rehearsal and interactive browser click-through (no headless Chrome
+  available in the execution environment) — S4's endpoints were confirmed
+  live via `curl` against a throwaway backend instead. Given E42-S5's own
+  claimed completion turned out not to match what shipped, a real manual
+  pass in the product UI is recommended before treating this epic as
+  unconditionally signed off. See
+  `phases/e43_execution_transparency_file_browser.md`.
 - **2026-08-21** — **Planning-only: added E43 — Execution Transparency:
   Terminal Transcript, File Browser & Session Stickiness (Beta-hardening,
   5 planned stories)**. Found by re-testing the now-Done E42 in the actual

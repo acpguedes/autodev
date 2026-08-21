@@ -3,7 +3,7 @@
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35, E41, and E42: added after initial Beta
 completion, before the wave is signed off).
-**Status:** Not started · **Stories:** 0/5
+**Status:** Complete · **Stories:** 5/5
 **Depends on:** E42 (specifically E42-S1's event stream and E42-S3's
 active-session concept — both real and reused here, not rebuilt), E41-S3
 (patch-apply actions), E41-S4 (agent-directed commands), E41-S5
@@ -59,7 +59,7 @@ looking at by default.
 
 ## Stories
 
-### E43-S1 — Fix sandboxed execution for `cd`-prefixed commands — **Not started**
+### E43-S1 — Fix sandboxed execution for `cd`-prefixed commands — **Complete**
 
 The blocking correctness fix. `backend/validation/sandbox.py`'s allowlist
 check inspects only a command's first token against a fixed executable set
@@ -95,7 +95,7 @@ Subtasks:
 | DoD (specific) | Regression test per T3; E41-S5's retry loop test (T4) passes end to end |
 | Dependencies | E32 (workspace root), E41-S4, E41-S5 |
 
-### E43-S2 — Terminal-style transcript rendering (supersedes E42-S5's raw JSON view) — **Not started**
+### E43-S2 — Terminal-style transcript rendering (supersedes E42-S5's raw JSON view) — **Complete**
 
 **Two separate rendering surfaces need this fix, not one** — confirmed by
 inspecting both directly, not assumed:
@@ -143,7 +143,7 @@ Subtasks:
 | DoD (specific) | Manual verification in both surfaces: trigger a run with both a patch-apply and a validation command, observe both rendered as transcript lines with real output, not echoed commands |
 | Dependencies | E42-S1, E41-S3, E41-S4, E43-S1 (so there's a real passing command to render, not only failures) |
 
-### E43-S3 — Step-level plain-language annotations — **Not started**
+### E43-S3 — Step-level plain-language annotations — **Complete**
 
 Subtasks:
 - `E43-S3-T1`: surface each task's human-readable title/description (already
@@ -162,7 +162,7 @@ Subtasks:
 | DoD (specific) | Manual verification across planning/analysis/patch/validation entries |
 | Dependencies | E43-S2 |
 
-### E43-S4 — Project file tree browser + in-app file viewer — **Not started**
+### E43-S4 — Project file tree browser + in-app file viewer — **Complete**
 
 A new capability — no existing endpoint lists a project's file tree or
 serves raw file content scoped to `project_root`; the closest existing
@@ -190,7 +190,7 @@ Subtasks:
 | DoD (specific) | Test asserting the path-traversal guard rejects an escaping path, mirroring `apply_patch`'s existing test |
 | Dependencies | E41 (project_root resolution) |
 
-### E43-S5 — App-wide session stickiness — **Not started**
+### E43-S5 — App-wide session stickiness — **Complete**
 
 Broadens E42-S3 (which only fixed Plans/Execution) to every page.
 
@@ -238,3 +238,20 @@ Subtasks:
   project browsable and readable in-app, and every page reflecting the
   same active session by default; `docs/v2_platform/progress.md` updated;
   no push/PR without explicit authorization.
+
+**Verification actually performed (2026-08-21):** every story has a
+passing automated regression test (`backend/tests/unit/validation/
+test_sandbox_runner.py`, `backend/tests/unit/execution/test_executor.py`,
+`backend/tests/unit/api/test_repository_files_v2.py`, plus
+`frontend/lib/__tests__/transcript.test.ts`); the full backend and
+frontend unit suites pass; S4's new endpoints were confirmed live against
+a throwaway backend instance (`curl` returned real directory/file content
+from the configured project root) and the Files page was confirmed to
+render server-side without error. **Not performed:** the full live
+Chat → Run plan rehearsal this DoD calls for, and interactive
+browser click-through of the transcript/file-browser UI — no headless
+Chrome was available in the execution environment. Given E42-S5's own
+claimed completion turned out (per this epic's own canonical source) to
+not match what shipped, this gap should be closed with a real manual
+pass in the product UI before treating this epic as unconditionally
+signed off.
