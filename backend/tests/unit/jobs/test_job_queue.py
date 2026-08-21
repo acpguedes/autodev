@@ -95,6 +95,42 @@ def test_inprocess_initial_status_is_pending_or_running_or_done() -> None:
     assert rec["status"] in {"pending", "running", "done", "error"}
 
 
+def test_inprocess_stats_counters_track_enqueue_run_and_completion() -> None:
+    """Pending/running counters move correctly across enqueue -> run -> complete."""
+    queue = InProcessJobQueue(max_workers=1)
+
+    job_id = queue.enqueue("echo", {"msg": "counters"})
+    rec = _poll(queue, job_id)
+
+    assert rec["status"] == "done"
+    assert queue.stats() == QueueSnapshot(0, 0, 1, 0)
+
+
+def test_inprocess_evicts_completed_record_past_retention_window() -> None:
+    """A completed record older than the retention window is evicted on the next enqueue."""
+    queue = InProcessJobQueue(max_workers=1, retention_seconds=0)
+
+    first_id = queue.enqueue("echo", {"msg": "first"})
+    _poll(queue, first_id)
+
+    second_id = queue.enqueue("echo", {"msg": "second"})
+    _poll(queue, second_id)
+
+    assert queue.get(first_id)["status"] == "error"
+    assert queue.get(second_id)["status"] == "done"
+
+
+def test_inprocess_negative_retention_disables_eviction() -> None:
+    """A negative retention setting keeps completed records around indefinitely."""
+    queue = InProcessJobQueue(max_workers=1, retention_seconds=-1)
+
+    job_id = queue.enqueue("echo", {"msg": "kept"})
+    _poll(queue, job_id)
+    queue.enqueue("echo", {"msg": "trigger-sweep-check"})
+
+    assert queue.get(job_id)["status"] == "done"
+
+
 def test_inprocess_enqueue_rolls_back_when_executor_rejects_submission() -> None:
     """A rejected executor submission leaves no pending record or carrier."""
     queue = InProcessJobQueue(max_workers=1)
@@ -115,6 +151,7 @@ class _FakeRedisQueueClient:
         """Initialize empty in-memory hashes and lists."""
         self.hashes: dict[str, dict[str, str]] = {}
         self.queues: dict[str, list[str]] = {}
+        self.expiries: dict[str, int] = {}
 
     def ping(self) -> bool:
         """Report the fake connection as always reachable."""
@@ -165,6 +202,11 @@ class _FakeRedisQueueClient:
             if values:
                 return key, values.pop(0)
         return None
+
+    def expire(self, key: str, seconds: int) -> bool:
+        """Record the TTL a caller requested for *key*."""
+        self.expiries[key] = seconds
+        return key in self.hashes
 
 
 def test_redis_queue_persists_pending_job_and_runs_registered_handler() -> None:

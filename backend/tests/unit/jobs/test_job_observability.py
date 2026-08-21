@@ -36,6 +36,7 @@ class _FakeRedisQueueClient:
         """Initialize empty hashes and lists guarded by one lock."""
         self.hashes: dict[str, dict[str, str]] = {}
         self.queues: dict[str, list[str]] = {}
+        self.expiries: dict[str, int] = {}
         self._lock = threading.Lock()
 
     def ping(self) -> bool:
@@ -81,6 +82,21 @@ class _FakeRedisQueueClient:
         """Return the current length of an in-memory list."""
         with self._lock:
             return len(self.queues.setdefault(key, []))
+
+    def blpop(self, keys: list[str], timeout: float = 0) -> tuple[str, str] | None:
+        """Pop and return ``(key, value)`` from the first non-empty list, or ``None``."""
+        with self._lock:
+            for key in keys:
+                values = self.queues.setdefault(key, [])
+                if values:
+                    return key, values.pop(0)
+        return None
+
+    def expire(self, key: str, seconds: int) -> bool:
+        """Record the TTL a caller requested for *key*."""
+        with self._lock:
+            self.expiries[key] = seconds
+            return key in self.hashes
 
 
 def _wait_for_stats(

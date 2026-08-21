@@ -132,6 +132,7 @@ class Settings(BaseSettings):
     # --- Redis / jobs / locks ---
     autodev_job_backend: Literal["inprocess", "redis"] = "inprocess"
     autodev_redis_url: str = ""
+    autodev_job_retention_seconds: int = Field(default=3600, ge=-1)
 
     # --- event bus (E9-S2-T2) ---
     autodev_event_bus: Literal["inmemory", "redis"] = "inmemory"
