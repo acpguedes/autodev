@@ -422,9 +422,9 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
 | E41 | Real Code Generation & Agent-Directed Execution | Beta | Done | 5/5 | E2, E14, E16-S3 | [phases/e41_real_code_generation_execution.md](phases/e41_real_code_generation_execution.md) |
 | E42 | Execution Visibility & Chat/Command UX | Beta | Done | 6/6 | E41, E9, E11, E15-E18 | [phases/e42_execution_visibility_chat_ux.md](phases/e42_execution_visibility_chat_ux.md) |
-| E43 | Execution Transparency: Terminal Transcript, File Browser & Session Stickiness | Beta | Done | 5/5 | E42, E41-S3, E41-S4, E41-S5 | [phases/e43_execution_transparency_file_browser.md](phases/e43_execution_transparency_file_browser.md) |
+| E43 | Execution Transparency: Terminal Transcript, File Browser & Session Stickiness | Beta | Done | 6/6 | E42, E41-S3, E41-S4, E41-S5 | [phases/e43_execution_transparency_file_browser.md](phases/e43_execution_transparency_file_browser.md) |
 
-Total: **111/194 stories complete** across 43 epics (E19 is a proposed
+Total: **112/195 stories complete** across 43 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -599,6 +599,33 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-08-21** — **E43-S6 added and completed: asynchronous turn
+  creation.** Found via the user's own manual verification of E43-S1..S5 in
+  the actual product UI: sending a Chat message showed "Sending..."
+  indefinitely, the composer never cleared, and the Execution panel showed
+  nothing until navigating away (to Sessions) and back forced a fresh
+  re-fetch. Root cause: `POST /v2/sessions/{id}/turns` ran the entire
+  7-agent pipeline synchronously in one HTTP request
+  (`OrchestratorService.handle_message` → `self._graph.invoke(...)`), so
+  the frontend never had a `run_id` early enough to open its live event
+  stream against — not a gap in E43-S2/S3's rendering, which is correct.
+  Added `OrchestratorService.begin_message`: admits the run synchronously
+  (lease, initial `RunStatus.RUNNING` row, the `flow.run.started` event
+  that creates the run's `EventStore` projection) then runs the graph in a
+  background job via the existing `backend.jobs.queue` infrastructure
+  (reused as-is, same "handler registered in the enqueuing module" pattern
+  `backend/repository/indexing.py` already established) — no new
+  subsystem. Added `RunStatus.FAILED` (previously a graph exception left
+  the run stuck at `running` forever, silent once there's no HTTP caller
+  left to surface a 500 to). `handle_message` itself, and its three other
+  callers (CLI, frozen v1 `/chat`, `orchestration.py`), are unchanged.
+  Also fixed, discovered while testing: `backend/cli_shell.py`'s
+  `run_goal` assumed synchronous turn completion the same way and started
+  400ing (executing a plan before the now-backgrounded pipeline had
+  produced any artifacts) — added `ShellSession.wait_for_turn`. See
+  `phases/e43_execution_transparency_file_browser.md`'s E43-S6 for full
+  detail; automated coverage in
+  `backend/tests/unit/orchestrator/test_begin_message.py`.
 - **2026-08-21** — **E43 — Execution Transparency: Terminal Transcript,
   File Browser & Session Stickiness is complete (5/5)**, on
   `epic/e43-execution-transparency-file-browser`. **E43-S1** root-caused

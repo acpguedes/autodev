@@ -17,7 +17,6 @@ loop for the "flows" resource.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -26,17 +25,16 @@ from pydantic import BaseModel, Field
 from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
 from backend.api.v2_common import SCHEMA_VERSION_V2, PageMetaV2, PaginationParams, paginate, v2_error
-from backend.config.runtime import get_runtime_config_service
 from backend.execution.modes import ExecutionMode
 from backend.execution.policy import PolicyMissingError
 from backend.quotas.contracts import QuotaExceededError
 from backend.orchestrator.service import (
     ExecutionPlan,
-    OrchestratorConfig,
     OrchestratorRun,
     OrchestratorService,
     RunSummary,
     SessionSummary,
+    build_default_orchestrator,
 )
 
 router = APIRouter(prefix="/v2/sessions", dependencies=[Depends(require_v2_principal)])
@@ -53,13 +51,14 @@ def get_orchestrator_v2() -> OrchestratorService:
     auto-discovery convention). Session/run state is unaffected by this
     choice: it lives in the shared durable store
     (:func:`backend.persistence.get_store`), not on the service instance.
+    Delegates to :func:`~backend.orchestrator.service.build_default_orchestrator`
+    (E43-S6), the same construction the background message-run job handler
+    uses, so both stay in sync.
 
     Returns:
         A new :class:`OrchestratorService`.
     """
-    config_service = get_runtime_config_service()
-    runtime_config = config_service.apply_to_environment()
-    return OrchestratorService(config=OrchestratorConfig(), project_root=Path(runtime_config.repository.project_root))
+    return build_default_orchestrator()
 
 
 class HistoryItemV2(BaseModel):

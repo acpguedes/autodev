@@ -180,11 +180,17 @@ def create_turn_v2(
     orchestrator: OrchestratorService = Depends(get_orchestrator_v2),
     principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> TurnV2:
-    """Create a turn: post a user message and drive the session's agent pipeline.
+    """Create a turn: post a user message and start the session's agent pipeline.
 
-    Replaces the legacy ``POST /chat`` contract
-    (``backend/api/main.py::ChatRequest``); calls the same
-    :meth:`OrchestratorService.handle_message` the legacy handler calls.
+    Calls :meth:`OrchestratorService.begin_message` (E43-S6), not
+    :meth:`~OrchestratorService.handle_message` (the legacy ``POST /chat``
+    contract in ``backend/api/main.py::ChatRequest`` still calls the latter,
+    unchanged) -- returns as soon as the run is admitted and persisted,
+    before the (potentially multi-minute, multi-agent) graph runs, so the
+    caller has a ``run_id`` to open a live event-stream subscription against
+    while it is still in progress. Poll ``GET /v2/turns/{turnId}`` for the
+    real, completed ``history``/``results``/``steps`` once ``status`` is no
+    longer ``"running"``.
 
     Args:
         session_id: Identifier of the session this turn belongs to.
@@ -203,7 +209,7 @@ def create_turn_v2(
             quota (ADR-019).
     """
     try:
-        run = orchestrator.handle_message(session_id, request.message, tenant_id=principal.tenant_id)
+        run = orchestrator.begin_message(session_id, request.message, tenant_id=principal.tenant_id)
     except KeyError as exc:
         v2_error(404, str(exc))
     except QuotaExceededError as exc:
