@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
-from backend.api.v2_common import SCHEMA_VERSION_V2, PageMetaV2, PaginationParams, paginate, v2_error
+from backend.api.v2_common import SCHEMA_VERSION_V2, PageMetaV2, PaginationParams, v2_error
 from backend.execution.modes import ExecutionMode
 from backend.execution.policy import PolicyMissingError
 from backend.quotas.contracts import QuotaExceededError
@@ -105,7 +105,13 @@ class SessionCreateRequestV2(BaseModel):
 
 
 class SessionV2(BaseModel):
-    """A session, as returned by create/list/get."""
+    """A session, as returned by create/list/get.
+
+    ``history`` is populated by ``GET /v2/sessions/{id}``. It is empty in
+    ``GET /v2/sessions`` listings, which report ``message_count`` and
+    ``last_activity`` instead of replaying every session's conversation
+    (E44-S3) — fetch the session itself to read its history.
+    """
 
     schemaVersion: str = SCHEMA_VERSION_V2
     session_id: str
@@ -113,6 +119,8 @@ class SessionV2(BaseModel):
     plan: list[str]
     status: str
     history: list[HistoryItemV2] = Field(default_factory=list)
+    message_count: int = 0
+    last_activity: str | None = None
 
 
 class SessionListV2(BaseModel):
@@ -179,6 +187,8 @@ def _to_session_v2(summary: SessionSummary) -> SessionV2:
         plan=list(summary.plan),
         status=summary.status,
         history=[HistoryItemV2(role=item.role, content=item.content) for item in summary.history],
+        message_count=summary.message_count,
+        last_activity=summary.last_activity,
     )
 
 
@@ -300,10 +310,15 @@ def list_sessions_v2(
         principal: Authenticated caller; scopes the listing to its tenant.
 
     Returns:
-        A paginated collection of sessions.
+        A paginated collection of sessions. Each item's ``history`` is empty
+        by design (E44-S3): listings report ``message_count`` and
+        ``last_activity``; ``GET /v2/sessions/{id}`` returns the
+        conversation itself.
     """
-    all_sessions = orchestrator.list_sessions(tenant_id=principal.tenant_id)
-    page, page_meta = paginate(all_sessions, pagination)
+    page, total = orchestrator.list_sessions_page(
+        limit=pagination.limit, offset=pagination.offset, tenant_id=principal.tenant_id
+    )
+    page_meta = PageMetaV2(limit=pagination.limit, offset=pagination.offset, total=total)
     return SessionListV2(items=[_to_session_v2(summary) for summary in page], page=page_meta)
 
 
@@ -360,10 +375,15 @@ def list_session_runs_v2(
             tenant.
     """
     try:
-        all_runs = orchestrator.list_runs(session_id, tenant_id=principal.tenant_id)
+        page, total = orchestrator.list_runs_page(
+            session_id,
+            limit=pagination.limit,
+            offset=pagination.offset,
+            tenant_id=principal.tenant_id,
+        )
     except KeyError as exc:
         v2_error(404, str(exc))
-    page, page_meta = paginate(all_runs, pagination)
+    page_meta = PageMetaV2(limit=pagination.limit, offset=pagination.offset, total=total)
     return RunListV2(items=[_to_run_v2(summary) for summary in page], page=page_meta)
 
 

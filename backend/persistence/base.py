@@ -30,6 +30,14 @@ class SessionRepository(Protocol):
 
     def list_sessions(self, tenant_id: str = DEFAULT_TENANT_ID) -> list[dict[str, Any]]: ...
 
+    def list_sessions_page(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        tenant_id: str = DEFAULT_TENANT_ID,
+    ) -> tuple[list[dict[str, Any]], int]: ...
+
     def update_session_artifacts(
         self,
         session_id: str,
@@ -72,6 +80,15 @@ class RunRepository(Protocol):
     def get_run(
         self, run_id: str, tenant_id: str = DEFAULT_TENANT_ID
     ) -> dict[str, Any] | None: ...
+
+    def list_runs_page(
+        self,
+        session_id: str,
+        *,
+        limit: int,
+        offset: int,
+        tenant_id: str = DEFAULT_TENANT_ID,
+    ) -> tuple[list[dict[str, Any]], int]: ...
 
     def list_run_steps(
         self, run_id: str, tenant_id: str = DEFAULT_TENANT_ID

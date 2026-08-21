@@ -144,6 +144,87 @@ class PostgresStore:
             for row in rows
         ]
 
+    def list_sessions_page(
+        self,
+        *,
+        limit: int,
+        offset: int,
+        tenant_id: str = DEFAULT_TENANT_ID,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Return one page of sessions plus the tenant's total session count (E44-S3).
+
+        Paginates in SQL (``LIMIT``/``OFFSET``) rather than loading every row
+        and slicing in the API layer, and derives each session's activity
+        summary from one aggregate over the page's sessions instead of
+        replaying every session's message history.
+
+        Args:
+            limit: Maximum number of sessions to return.
+            offset: Number of sessions to skip, in listing order.
+            tenant_id: Tenant to scope the listing to.
+
+        Returns:
+            A ``(page, total)`` pair. Each page record has the same shape
+            :meth:`get_session` returns, plus ``message_count`` and
+            ``last_activity`` (``None`` when the session has no messages).
+        """
+        with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
+            total = int(conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0])
+            rows = conn.execute(
+                """
+                SELECT id, goal, plan_json, artifacts_json, created_at, updated_at
+                FROM sessions ORDER BY created_at DESC LIMIT %s OFFSET %s
+                """,
+                (limit, offset),
+            ).fetchall()
+            activity = self._fetch_message_activity(conn, [row[0] for row in rows])
+        page: list[dict[str, Any]] = []
+        for row in rows:
+            count, last_activity = activity.get(row[0], (0, None))
+            page.append(
+                {
+                    "id": row[0],
+                    "goal": row[1],
+                    "plan": _loads(row[2]),
+                    "artifacts": _loads(row[3]),
+                    "created_at": str(row[4]),
+                    "updated_at": str(row[5]),
+                    "message_count": count,
+                    "last_activity": last_activity,
+                }
+            )
+        return page, total
+
+    @staticmethod
+    def _fetch_message_activity(
+        conn: Any, session_ids: list[str]
+    ) -> dict[str, tuple[int, str | None]]:
+        """Aggregate message count and last activity for *session_ids* in one query.
+
+        RLS on ``messages`` already restricts the aggregate to the connection's
+        tenant, so no explicit tenant predicate is repeated here.
+
+        Args:
+            conn: An open, already tenant-scoped connection to reuse; no new
+                connection is opened.
+            session_ids: Sessions to summarize.
+
+        Returns:
+            A mapping of session id to ``(message_count, last_activity)``.
+            Sessions with no messages are absent from the mapping.
+        """
+        if not session_ids:
+            return {}
+        rows = conn.execute(
+            """
+            SELECT session_id, COUNT(*), MAX(created_at)
+            FROM messages WHERE session_id = ANY(%s) GROUP BY session_id
+            """,
+            (list(session_ids),),
+        ).fetchall()
+        return {row[0]: (int(row[1]), None if row[2] is None else str(row[2])) for row in rows}
+
     def update_session_artifacts(
         self, session_id: str, artifacts: dict[str, Any], tenant_id: str = DEFAULT_TENANT_ID
     ) -> None:
@@ -220,6 +301,47 @@ class PostgresStore:
             ).fetchall()
             steps_by_run = self._fetch_steps_for_runs(conn, [row[0] for row in rows])
         return [self._decode_run(row, steps_by_run.get(row[0], [])) for row in rows]
+
+    def list_runs_page(
+        self,
+        session_id: str,
+        *,
+        limit: int,
+        offset: int,
+        tenant_id: str = DEFAULT_TENANT_ID,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Return one page of a session's runs plus its total run count (E44-S3).
+
+        Ordering matches :meth:`list_runs` exactly; only the windowing moves
+        from the API layer into SQL.
+
+        Args:
+            session_id: Session whose runs should be listed.
+            limit: Maximum number of runs to return.
+            offset: Number of runs to skip, in listing order.
+            tenant_id: Tenant to scope the listing to.
+
+        Returns:
+            A ``(page, total)`` pair, each page record shaped exactly as
+            :meth:`list_runs` returns.
+        """
+        with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
+            total = int(
+                conn.execute(
+                    "SELECT COUNT(*) FROM runs WHERE session_id = %s", (session_id,)
+                ).fetchone()[0]
+            )
+            rows = conn.execute(
+                """
+                SELECT id, session_id, status, run_type, current_state, trigger_message,
+                       results_json, created_at, completed_at
+                FROM runs WHERE session_id = %s ORDER BY created_at DESC LIMIT %s OFFSET %s
+                """,
+                (session_id, limit, offset),
+            ).fetchall()
+            steps_by_run = self._fetch_steps_for_runs(conn, [row[0] for row in rows])
+        return [self._decode_run(row, steps_by_run.get(row[0], [])) for row in rows], total
 
     def get_run(self, run_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> dict[str, Any] | None:
         """Fetch a single run by its primary key, visible to *tenant_id* (E44-S1).

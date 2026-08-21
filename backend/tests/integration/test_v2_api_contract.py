@@ -87,6 +87,22 @@ class TestSessionsV2:
         assert response.status_code == 200
         assert len(response.json()["items"]) == 1
 
+    def test_list_sessions_reports_activity_instead_of_embedding_history(
+        self, client: TestClient
+    ) -> None:
+        """Listings carry message_count/last_activity, not the conversation (E44-S3)."""
+        created = _create_session(client)
+
+        listed = client.get("/v2/sessions", params={"limit": 20, "offset": 0}).json()
+        item = next(i for i in listed["items"] if i["session_id"] == created["session_id"])
+        detail = client.get(f"/v2/sessions/{created['session_id']}").json()
+
+        # The listing never embeds the conversation; the detail endpoint still
+        # does, and the listing's counter agrees with it.
+        assert item["history"] == []
+        assert item["message_count"] == len(detail["history"])
+        assert (item["last_activity"] is None) == (not detail["history"])
+
     def test_get_session_happy_path(self, client: TestClient) -> None:
         created = _create_session(client)
         response = client.get(f"/v2/sessions/{created['session_id']}")

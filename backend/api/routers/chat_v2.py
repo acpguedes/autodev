@@ -31,7 +31,7 @@ from pydantic import BaseModel, Field
 from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
 from backend.api.routers.sessions_v2 import AgentExecutionV2, HistoryItemV2, RunStepV2, get_orchestrator_v2
-from backend.api.v2_common import SCHEMA_VERSION_V2, PageMetaV2, PaginationParams, paginate, v2_error
+from backend.api.v2_common import SCHEMA_VERSION_V2, PageMetaV2, PaginationParams, v2_error
 from backend.orchestrator.service import OrchestratorRun, OrchestratorService, RunSummary
 from backend.quotas.contracts import QuotaExceededError
 
@@ -270,10 +270,15 @@ def list_session_turns_v2(
             caller's tenant.
     """
     try:
-        all_runs = orchestrator.list_runs(session_id, tenant_id=principal.tenant_id)
+        page, total = orchestrator.list_runs_page(
+            session_id,
+            limit=pagination.limit,
+            offset=pagination.offset,
+            tenant_id=principal.tenant_id,
+        )
     except KeyError as exc:
         v2_error(404, str(exc))
-    page, page_meta = paginate(all_runs, pagination)
+    page_meta = PageMetaV2(limit=pagination.limit, offset=pagination.offset, total=total)
     return TurnListV2(items=[_to_turn_v2_from_run_summary(summary) for summary in page], page=page_meta)
 
 
