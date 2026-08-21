@@ -21,6 +21,12 @@ observability.
 > tracker of epic/story status, wave-exit evidence, and what is genuinely still open.
 > That file — not this one — is the place to check "where are we on the platform?"
 >
+> **Versioning.** Releases after the current pre-release follow
+> [`docs/v2_platform/versioning.md`](v2_platform/versioning.md): `MAJOR.MINOR.PATCH`,
+> where `MAJOR` marks a generation with no in-place-upgrade promise (as `v1` → `v2`
+> already was), and `MINOR` follows an even-stable/odd-development parity convention
+> (`2.0.x`/`2.2.x` stable, `2.1.x` development).
+>
 > **Beta is not fully signed off.** Of the 12 v2.0-beta exit criteria, 9 are met or
 > partially met and 3 remain honestly open: the hybrid-retrieval p95/recall benchmark
 > has never been run against a live environment, run-streaming start latency has no
