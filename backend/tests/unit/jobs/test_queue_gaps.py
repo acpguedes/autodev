@@ -37,6 +37,7 @@ class _FakeRedisQueueClient:
         """Initialize storage and optional deterministic write failures."""
         self.hashes: dict[str, dict[str, str]] = {}
         self.queues: dict[str, list[str]] = {}
+        self.expiries: dict[str, int] = {}
         self.fail_rpush = fail_rpush
         self.fail_delete = fail_delete
 
@@ -86,6 +87,19 @@ class _FakeRedisQueueClient:
     def llen(self, key: str) -> int:
         """Return the current length of an in-memory list."""
         return len(self.queues.setdefault(key, []))
+
+    def blpop(self, keys: list[str], timeout: float = 0) -> tuple[str, str] | None:
+        """Pop and return ``(key, value)`` from the first non-empty list, or ``None``."""
+        for key in keys:
+            values = self.queues.setdefault(key, [])
+            if values:
+                return key, values.pop(0)
+        return None
+
+    def expire(self, key: str, seconds: int) -> bool:
+        """Record the TTL a caller requested for *key*."""
+        self.expiries[key] = seconds
+        return key in self.hashes
 
 
 @pytest.fixture(autouse=True)
@@ -195,6 +209,28 @@ def test_redis_enqueue_scrubs_hash_when_primary_cleanup_fails() -> None:
 
     assert client.hashes == {}
     assert queue.stats().pending == 0
+
+
+def test_redis_queue_sets_ttl_on_completed_job_hash() -> None:
+    """A completed job's Redis hash gets an ``EXPIRE`` matching the retention setting."""
+    client = _FakeRedisQueueClient()
+    queue = RedisJobQueue(client=client, start_worker=False, job_retention_seconds=42)
+
+    job_id = queue.enqueue("echo", {"msg": "ttl"})
+    queue.run_pending_once()
+
+    assert client.expiries[f"autodev:jobs:{job_id}"] == 42
+
+
+def test_redis_queue_negative_retention_disables_ttl() -> None:
+    """A negative retention setting never calls ``EXPIRE``."""
+    client = _FakeRedisQueueClient()
+    queue = RedisJobQueue(client=client, start_worker=False, job_retention_seconds=-1)
+
+    queue.enqueue("echo", {"msg": "no-ttl"})
+    queue.run_pending_once()
+
+    assert client.expiries == {}
 
 
 # ---------------------------------------------------------------------------
