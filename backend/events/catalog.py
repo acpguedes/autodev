@@ -263,28 +263,52 @@ class QuotaExceededData(BaseModel):
 
 
 class ExecutionActionStartedData(BaseModel):
-    """Payload of ``execution.action.started`` (E14-S1, RFC-009)."""
+    """Payload of ``execution.action.started`` (E14-S1, RFC-009).
+
+    ``command``/``path`` (E43-S2) let a transcript renderer show the real
+    command line or write target before its result is known -- optional and
+    ``None`` for action types that carry neither.
+    """
 
     actionId: str
     taskId: str
     type: str
+    command: list[str] | None = None
+    path: str | None = None
 
 
 class ExecutionActionCompletedData(BaseModel):
-    """Payload of ``execution.action.completed`` (E14-S1, RFC-009)."""
+    """Payload of ``execution.action.completed`` (E14-S1, RFC-009).
+
+    ``command``/``path``/``stdout``/``stderr`` (E43-S2) let a transcript
+    renderer show the real command and its real output, not just the
+    action's id and exit code.
+    """
 
     actionId: str
     taskId: str
     status: str
     exitCode: int
+    command: list[str] | None = None
+    path: str | None = None
+    stdout: str = ""
+    stderr: str = ""
 
 
 class ExecutionActionFailedData(BaseModel):
-    """Payload of ``execution.action.failed`` (E14-S1, RFC-009)."""
+    """Payload of ``execution.action.failed`` (E14-S1, RFC-009).
+
+    ``command``/``path``/``stdout``/``stderr`` (E43-S2), as
+    :class:`ExecutionActionCompletedData`.
+    """
 
     actionId: str
     taskId: str
     error: str
+    command: list[str] | None = None
+    path: str | None = None
+    stdout: str = ""
+    stderr: str = ""
 
 
 class ExecutionPolicyDecisionData(BaseModel):

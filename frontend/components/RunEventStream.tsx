@@ -5,6 +5,7 @@ import * as React from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { parseSseBuffer, runEventsStreamUrl, type SseFrame } from "@/lib/api_v2";
+import { transcriptLineFromActionEvent, type ExecutionActionEventData } from "@/lib/transcript";
 
 /** Maximum number of events retained in the visible stream log. */
 const MAX_EVENTS = 200;
@@ -45,6 +46,7 @@ export function RunEventStream({ runId, tenantId }: RunEventStreamProps) {
   const [status, setStatus] = React.useState<StreamStatus>("idle");
   const [events, setEvents] = React.useState<StreamEvent[]>([]);
   const [streaming, setStreaming] = React.useState(false);
+  const [showRaw, setShowRaw] = React.useState(false);
   const abortRef = React.useRef<AbortController | null>(null);
   const counterRef = React.useRef(0);
 
@@ -144,6 +146,14 @@ export function RunEventStream({ runId, tenantId }: RunEventStreamProps) {
         >
           Clear
         </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          onClick={() => setShowRaw((current) => !current)}
+        >
+          {showRaw ? "Show transcript" : "Show raw events"}
+        </Button>
         <Badge variant={statusVariant} aria-live="polite">
           {STATUS_LABEL[status]}
         </Badge>
@@ -158,25 +168,69 @@ export function RunEventStream({ runId, tenantId }: RunEventStreamProps) {
       ) : (
         <ol aria-label="Run events" className="max-h-96 space-y-2 overflow-auto">
           {events.map((item) => (
-            <li key={item.key} className="rounded-md border p-2 text-sm">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline">{item.event ?? "message"}</Badge>
-                <span className="text-xs text-muted-foreground">{item.receivedAt}</span>
-                {item.id ? (
-                  <span className="text-xs text-muted-foreground">cursor {item.id}</span>
-                ) : null}
-              </div>
-              {item.data ? (
-                <pre className="mt-1 overflow-auto whitespace-pre-wrap break-all text-xs text-muted-foreground">
-                  {item.data}
-                </pre>
-              ) : null}
-            </li>
+            <TranscriptOrRawEntry key={item.key} item={item} showRaw={showRaw} />
           ))}
         </ol>
       )}
     </div>
   );
+}
+
+const TONE_CLASS: Record<"pending" | "success" | "error", string> = {
+  pending: "text-muted-foreground",
+  success: "text-foreground",
+  error: "text-destructive",
+};
+
+/**
+ * Render one received frame as a terminal-style transcript line when it is a
+ * recognized `execution.action.*` event, or the raw event badge/JSON
+ * otherwise (E43-S2-T4). `showRaw` forces the raw view for every event, for
+ * debugging.
+ */
+function TranscriptOrRawEntry({ item, showRaw }: { item: StreamEvent; showRaw: boolean }) {
+  const line = !showRaw && item.event ? parseActionLine(item.event, item.data) : null;
+
+  if (line) {
+    return (
+      <li className="rounded-md border p-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <code className={`font-mono text-xs ${TONE_CLASS[line.tone]}`}>{line.command}</code>
+          <span className="text-xs text-muted-foreground">{item.receivedAt}</span>
+        </div>
+        {line.output ? (
+          <pre className="mt-1 overflow-auto whitespace-pre-wrap break-all text-xs text-muted-foreground">
+            {line.output}
+          </pre>
+        ) : null}
+      </li>
+    );
+  }
+
+  return (
+    <li className="rounded-md border p-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant="outline">{item.event ?? "message"}</Badge>
+        <span className="text-xs text-muted-foreground">{item.receivedAt}</span>
+        {item.id ? <span className="text-xs text-muted-foreground">cursor {item.id}</span> : null}
+      </div>
+      {item.data ? (
+        <pre className="mt-1 overflow-auto whitespace-pre-wrap break-all text-xs text-muted-foreground">
+          {item.data}
+        </pre>
+      ) : null}
+    </li>
+  );
+}
+
+function parseActionLine(eventType: string, rawData: string) {
+  let data: ExecutionActionEventData;
+  try {
+    data = JSON.parse(rawData) as ExecutionActionEventData;
+  } catch {
+    return null;
+  }
+  return transcriptLineFromActionEvent(eventType, data);
 }
 
 export default RunEventStream;
