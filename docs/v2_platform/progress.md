@@ -284,6 +284,13 @@ only). See the [Beta wave exit gate](#v20-beta--full-platform-in-controlled-prod
 below and `beta_gap_analysis.md` §11 for the evidence map. Closing those three
 is GA-wave work.
 
+**E41 — Real Code Generation & Agent-Directed Execution is now complete
+(5/5, 2026-08-21)**, closing the gap this pre-release itself surfaced: a
+goal now produces real files on disk and real agent-declared commands run
+in the E32 sandbox, with one bounded self-repair retry on test failure —
+see the changelog entry below and
+[phases/e41_real_code_generation_execution.md](phases/e41_real_code_generation_execution.md).
+
 **Next:** E13 — Marketplace & GA (0/4, not started). Beyond GA, the planned
 v2.1 (E20-E25), v2.2 (E26-E31) and v2.3 (E36-E40) waves are specified but not
 started.
@@ -413,9 +420,9 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E38 | SOTA Evidence Matrix & Capability Benchmark | v2.3 | Not started | 0/4 | E12, E20-E23, E27, E28 | [phases/e38_sota_evidence_benchmark.md](phases/e38_sota_evidence_benchmark.md) |
 | E39 | Product Modes, Agentic Security & Minimum FinOps | v2.3 | Not started | 0/5 | E11, E14, E23, E27, E30, E32, E33 | [phases/e39_product_security_finops_modes.md](phases/e39_product_security_finops_modes.md) |
 | E40 | Architecture Fitness Functions & Local-First Degradation | v2.3 | Not started | 0/4 | E1-E14, E20-E23, E26-E30, E32-E35 | [phases/e40_architecture_fitness_local_first.md](phases/e40_architecture_fitness_local_first.md) |
-| E41 | Real Code Generation & Agent-Directed Execution | Beta | Not started | 0/5 | E2, E14, E16-S3 | [phases/e41_real_code_generation_execution.md](phases/e41_real_code_generation_execution.md) |
+| E41 | Real Code Generation & Agent-Directed Execution | Beta | Done | 5/5 | E2, E14, E16-S3 | [phases/e41_real_code_generation_execution.md](phases/e41_real_code_generation_execution.md) |
 
-Total: **95/183 stories complete** across 41 epics (E19 is a proposed
+Total: **100/183 stories complete** across 41 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -545,7 +552,15 @@ duplicate its evidence citations here.
 - [~] The real plan -> code -> apply patch -> validate in sandbox -> evaluate flow runs
       with RBAC, fail-closed budgets, and end-to-end traces — every component
       individually evidenced; no single composed rehearsal until
-      `docs/v2_platform/beta_acceptance_flow.md` (E35-S2).
+      `docs/v2_platform/beta_acceptance_flow.md` (E35-S2). **E41 (2026-08-21)**
+      closed a gap this criterion's own composed steps depended on: "code" and
+      "apply patch" now carry a real LLM-generated file, not simulated/fallback
+      content — `backend/tests/unit/orchestrator/test_execution_plan.py` and
+      `test_self_repair.py` assert real bytes land on disk through the E0 patch
+      engine and that a failing validation command triggers one bounded repair.
+      Still `[~]`, not `[x]`: the "no single composed rehearsal" gap E35-S2
+      named is unchanged by E41 — this only makes the steps it would compose
+      real rather than fake.
 - [~] UI is WCAG 2.2 AA on key screens; flow editor round-trips — round-trip
       met; WCAG is component-level (Storybook-axe) only, no consolidated
       per-screen audit.
@@ -582,6 +597,43 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-08-21** — **E41 — Real Code Generation & Agent-Directed Execution
+  is complete (5/5)**, on `epic/e41-real-code-generation-execution`
+  (branched from `main` after PR #113 merged its own planning-only docs
+  commit). Closes the gap this epic itself found: **E41-S1** fixed one bug
+  confirmed in 11 `LangChainAgent` subclasses (`build_metadata()` always
+  discarding a successful LLM call's real output for `fallback_result()`'s
+  hardcoded metadata) in one place (`backend/agents/base.py`) — binds the
+  model directly to `metadata_model()` via LangChain's
+  `with_structured_output()`, falling back to best-effort text parsing only
+  when the provider doesn't support it. **E41-S2** gave `CoderOutput` an
+  additive `files: list[{path, content}]` field (bounded to 20 files / 64KB
+  each), with `CoderAgent`'s prompt now asking for real, runnable content.
+  **E41-S3** wired `TaskExecutor.derive_actions` to turn coder-provided
+  files into `create_file` actions dispatched through the same
+  `backend.patches.engine` functions the Patches API already uses — no new
+  action type or root-resolution/approval-gating code needed, both already
+  existed generically from E14/E32. **E41-S4** gave DevOps/Validator
+  agents an additive `commands: list[str]` field; the executor now prefers
+  agent-declared commands over keyword-sniffing free text for both
+  `operations` (previously derived nothing) and `validation` categories,
+  keeping the keyword heuristic as the unchanged stub-provider fallback.
+  **E41-S5** closed the loop: `_process_tasks` runs one bounded coder
+  repair — scoped to the files the batch already wrote, fed the failing
+  command's captured output — when a structured validation command fails,
+  re-validates once more, and surfaces the three-way outcome
+  (`first_try_pass`/`repaired_then_pass`/`failed_after_retry`) in both the
+  task's `AgentExecution.metadata` and a new durable event,
+  `execution.verification.outcome` (catalog 51 -> 52). A pending
+  human-approval decision on the repair write is treated as a failed
+  repair rather than a second nested pause — a documented scope boundary,
+  not a silent gap. `make check`: backend 1890 passed/2 skipped, 91.83%
+  coverage, ruff+mypy clean; frontend lint/typecheck/vitest (178 tests)
+  clean. `next build` did not complete — blocked by a pre-existing,
+  root-owned `frontend/.next/` directory from before this epic's work
+  (unrelated to any file this epic touched); `check-compose` did not run
+  as a result. Not merged to `main`; no push/PR without explicit
+  authorization.
 - **2026-08-21** — **Planning-only: added E41 — Real Code Generation &
   Agent-Directed Execution (Beta-hardening, 5 planned stories)**. Found by
   directly running the platform end to end against a real OpenAI key on a

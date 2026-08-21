@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import Dict, List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+#: Maximum number of files a single Coder agent call may propose (E41-S2-T3):
+#: bounds generation scope so one call can't attempt an unbounded rewrite.
+CODER_MAX_FILES = 20
+
+#: Maximum content size (bytes, UTF-8) per proposed file (E41-S2-T3).
+CODER_MAX_FILE_BYTES = 64_000
 
 
 class PlannerOutput(BaseModel):
@@ -64,12 +71,38 @@ class CodingTask(BaseModel):
     task: str
 
 
+class CoderFile(BaseModel):
+    """One real, runnable file proposed by the coder for patch application."""
+
+    path: str
+    content: str
+
+
 class CoderOutput(BaseModel):
     """Code-oriented work breakdown for patch generation."""
 
     coding_tasks: List[CodingTask] = Field(default_factory=list)
+    files: List[CoderFile] = Field(default_factory=list)
     test_updates: List[str] = Field(default_factory=list)
     touched_components: List[str] = Field(default_factory=list)
+
+    @field_validator("files")
+    @classmethod
+    def _bound_generation_scope(cls, value: List[CoderFile]) -> List[CoderFile]:
+        """Cap file count/size so a single coder call can't attempt an unbounded rewrite."""
+
+        if len(value) > CODER_MAX_FILES:
+            raise ValueError(
+                f"coder proposed {len(value)} files, exceeding the Beta cap of {CODER_MAX_FILES}"
+            )
+        for item in value:
+            size = len(item.content.encode("utf-8"))
+            if size > CODER_MAX_FILE_BYTES:
+                raise ValueError(
+                    f"file {item.path!r} is {size} bytes, exceeding the Beta cap of "
+                    f"{CODER_MAX_FILE_BYTES} bytes"
+                )
+        return value
 
 
 class DevOpsOutput(BaseModel):
@@ -77,6 +110,7 @@ class DevOpsOutput(BaseModel):
 
     deliverables: Dict[str, str] = Field(default_factory=dict)
     operational_checks: List[str] = Field(default_factory=list)
+    commands: List[str] = Field(default_factory=list)
 
 
 class ValidatorOutput(BaseModel):
@@ -84,6 +118,7 @@ class ValidatorOutput(BaseModel):
 
     validation_steps: List[str] = Field(default_factory=list)
     success_criteria: List[str] = Field(default_factory=list)
+    commands: List[str] = Field(default_factory=list)
 
 
 class ResponderOutput(BaseModel):
@@ -113,6 +148,7 @@ __all__ = [
     "AnalyzerOutput",
     "ArchitectOutput",
     "ArchitectSection",
+    "CoderFile",
     "CoderOutput",
     "CodingTask",
     "DevOpsOutput",

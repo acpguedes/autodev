@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -111,9 +112,24 @@ class LangChainAgent(ABC):
         fallback: AgentResult,
         generated_text: str,
     ) -> Mapping[str, Any]:
-        """Derive metadata for the agent execution."""
+        """Derive metadata when structured-output binding is unavailable.
 
-        return fallback.metadata
+        Last-resort path invoked only when :meth:`_invoke_structured_metadata`
+        could not bind the model directly to ``metadata_model()`` (provider
+        doesn't support it, or the bound call failed) — best-effort JSON
+        parsing of the real LLM response, falling back to
+        ``fallback.metadata`` only if that also fails.
+        """
+
+        if self.metadata_model() is None:
+            return fallback.metadata
+        try:
+            parsed = json.loads(generated_text)
+        except (TypeError, ValueError):
+            return fallback.metadata
+        if not isinstance(parsed, dict):
+            return fallback.metadata
+        return parsed
 
     def metadata_model(self) -> Type[BaseModel] | None:
         """Return the Pydantic model used to validate metadata, when defined."""
@@ -151,9 +167,43 @@ class LangChainAgent(ABC):
             return fallback
 
         content = self._extract_content(response)
-        metadata = self.build_metadata(context, fallback, content)
+        metadata = self._invoke_structured_metadata(prompt_value)
+        if metadata is None:
+            metadata = self.build_metadata(context, fallback, content)
         validated_metadata = self._safe_validate_metadata(metadata, fallback.metadata)
         return AgentResult(content=content, metadata=validated_metadata)
+
+    def _invoke_structured_metadata(self, prompt_value: Any) -> Mapping[str, Any] | None:
+        """Bind the model directly to ``metadata_model()`` and invoke it.
+
+        Prefers LangChain's structured-output binding over free-text
+        prompting plus manual parsing (E41-S1): a successful real LLM call's
+        structured output is what should be persisted, not a hardcoded
+        fallback. Returns ``None`` when there's no model to structure
+        against, or when the provider doesn't support structured output /
+        the bound call fails — the caller falls through to
+        :meth:`build_metadata` in that case.
+        """
+
+        model = self.metadata_model()
+        if model is None:
+            return None
+        try:
+            structured = self._model.with_structured_output(model).invoke(
+                prompt_value.to_messages()
+            )
+        except Exception as exc:  # pragma: no cover - provider without structured-output support
+            _logger.info(
+                "agent=%s structured-output binding unavailable, falling back: %s",
+                self.name,
+                exc,
+            )
+            return None
+        if isinstance(structured, BaseModel):
+            return structured.model_dump()
+        if isinstance(structured, Mapping):
+            return dict(structured)
+        return None
 
     def _safe_validate_metadata(
         self,

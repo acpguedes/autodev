@@ -61,14 +61,6 @@ class RefactorAgent(LangChainAgent):
             },
         )
 
-    def build_metadata(
-        self,
-        context: AgentContext,
-        fallback: AgentResult,
-        generated_text: str,
-    ) -> dict:
-        return dict(fallback.metadata)
-
 
 __all__ = ["RefactorAgent"]
 
