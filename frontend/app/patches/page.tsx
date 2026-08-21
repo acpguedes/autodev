@@ -12,7 +12,7 @@ import {
   PatchSegmentedViewer,
   type PatchViewerMode,
 } from "@/components/patches/PatchSegmentedViewer";
-import { useShellHeader } from "@/components/shell/ShellProvider";
+import { useShell, useShellHeader } from "@/components/shell/ShellProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -41,9 +41,22 @@ export default function PatchesPage() {
     subtitle: "Unified diff in dry-run · nothing is written without approval.",
   });
 
+  const { activeSessionId } = useShell();
   const [sessions, setSessions] = React.useState<SessionV2[] | null>(null);
   const [sessionsError, setSessionsError] = React.useState<string | null>(null);
   const [sessionId, setSessionId] = React.useState<string | null>(null);
+
+  // Default to the session active in Chat (E43-S5, broadening E42-S3 to this
+  // page too) instead of always picking the first session in the list;
+  // manual selection via the picker below still overrides it.
+  React.useEffect(() => {
+    if (activeSessionId && !sessionId) {
+      setSessionId(activeSessionId);
+    }
+    // Runs once per active-session change; `sessionId` changes on every
+    // manual selection and must not re-trigger this default.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId]);
 
   const [files, setFiles] = React.useState<ChangedFileV2[] | null>(null);
   const [filesError, setFilesError] = React.useState<string | null>(null);
