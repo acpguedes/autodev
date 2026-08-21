@@ -144,6 +144,7 @@ class ExecutionTask:
     category: str
     status: str = "pending"
     files: List[Dict[str, str]] = field(default_factory=list)
+    commands: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Render this execution task as a plain dict."""
@@ -155,6 +156,7 @@ class ExecutionTask:
             "category": self.category,
             "status": self.status,
             "files": list(self.files),
+            "commands": list(self.commands),
         }
 
 
@@ -1336,6 +1338,18 @@ class OrchestratorService:
                 )
             )
 
+        for index, command in enumerate(devops.get("commands", []), start=1):
+            tasks.append(
+                ExecutionTask(
+                    task_id=f"devops-command-{index}",
+                    title=f"Run {command}",
+                    description=f"Run agent-declared command: {command}",
+                    source_agent="devops",
+                    category="operations",
+                    commands=[command],
+                )
+            )
+
         for index, step in enumerate(validator.get("validation_steps", []), start=1):
             tasks.append(
                 ExecutionTask(
@@ -1344,6 +1358,18 @@ class OrchestratorService:
                     description=step,
                     source_agent="validator",
                     category="validation",
+                )
+            )
+
+        for index, command in enumerate(validator.get("commands", []), start=1):
+            tasks.append(
+                ExecutionTask(
+                    task_id=f"validation-command-{index}",
+                    title=f"Run {command}",
+                    description=f"Run agent-declared command: {command}",
+                    source_agent="validator",
+                    category="validation",
+                    commands=[command],
                 )
             )
 
