@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from backend.agents.base import AgentContext, AgentResult
 from backend.api.main import app, get_orchestrator
+from backend.events.runtime import get_event_bus, reset_event_bus_for_tests
 from backend.execution.modes import ExecutionMode
 from backend.orchestrator.service import OrchestratorService, RunStatus
 from backend.persistence import DurableStore
@@ -126,6 +127,41 @@ def test_execute_plan_writes_real_coder_provided_file_content(
     assert written.exists()
     assert written.read_text() == file_content
     assert all(step.status == "completed" for step in run.steps)
+
+
+def test_execute_plan_publishes_timeline_events_with_captured_output(tmp_path: Path) -> None:
+    """E42-S5: executing a plan publishes ``run.timeline.*`` events carrying
+    real captured output for every task whose ``source_agent`` maps to a
+    timeline stage -- the gap that made both the Chat timeline panel and any
+    live-command view (E42-S1) show only two bookend events, never per-task
+    progress or output, no matter how the run event stream itself is fixed.
+    """
+    reset_event_bus_for_tests()
+    try:
+        orchestrator = _build_orchestrator(tmp_path)
+        session = orchestrator.create_plan("Criar plano executável por tarefas")
+        orchestrator.handle_message(
+            session.session_id, "produza análise e checklist de implementação"
+        )
+
+        run = orchestrator.execute_plan(session.session_id)
+
+        published = get_event_bus().replay(run.run_id)
+        timeline_events = [e for e in published if e.type.startswith("run.timeline.")]
+        assert timeline_events, "expected at least one run.timeline.* event"
+        # A validation task's command is always part of the stub plan
+        # (asserted by test_orchestrator_builds_execution_plan_from_analysis_
+        # artifacts above) and always has a mapped role, so at least one
+        # event's output must be non-empty captured command output.
+        assert any(event.data.get("output") for event in timeline_events)
+        for event in timeline_events:
+            assert event.data["stepKey"]
+            assert event.data["actorRole"]
+            assert event.data["status"] in ("completed", "failed")
+            assert event.partitionKey == run.run_id
+            assert event.tenantId
+    finally:
+        reset_event_bus_for_tests()
 
 
 def test_execute_plan_in_approval_mode_pauses_before_writing_coder_files(

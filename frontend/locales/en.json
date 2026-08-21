@@ -20,6 +20,10 @@
     "sending": "Sending...",
     "currentPlan": "Current plan",
     "initialPlanMessage": "Initial plan created for the goal: {{goal}}",
+    "message": {
+      "showMore": "Show more",
+      "showLess": "Show less"
+    },
     "timeline": {
       "planning": "Planning",
       "analysis": "Analysis",
@@ -94,7 +98,7 @@
     "executeApproved": "Execute approved plan",
     "executingApproved": "Executing...",
     "needsApproval": "Approve at least one step to execute",
-    "empty": "Enter a session id to load its plan.",
+    "empty": "Start a session in Chat, or enter a session id to load its plan.",
     "emptySteps": "No steps in this plan yet. Add one to get started.",
     "errors": {
       "loadPlan": "Could not load the plan for that session.",
@@ -132,7 +136,7 @@
       "revoke": "Revoke"
     },
     "log": {
-      "noRun": "Enter a run id above to watch its execution log.",
+      "noRun": "Start a session in Chat, or enter a run id above to watch its execution log.",
       "empty": "No execution events yet.",
       "status": {
         "idle": "Idle.",

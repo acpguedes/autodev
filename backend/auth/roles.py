@@ -35,6 +35,7 @@ _ROLE_TIER_ADDITIONS: tuple[tuple[Role, frozenset[str]], ...] = (
                 "plugin:read",
                 "config:read_redacted",
                 "quota:read",
+                "policy:read",
                 "secret:use",
             }
         ),
@@ -70,6 +71,7 @@ _ROLE_TIER_ADDITIONS: tuple[tuple[Role, frozenset[str]], ...] = (
                 "config:write_safe",
                 "config:admin",
                 "quota:admin",
+                "policy:admin",
                 "secret:manage",
                 "audit:read",
                 "service_credential:admin",

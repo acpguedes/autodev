@@ -9,6 +9,16 @@ per-step event log already exposed (non-streaming) by
 
 Design notes:
 
+* **Run existence/ownership check is engine-agnostic (E42-S1).** Both the
+  Flow Engine and the Orchestrator already publish onto the same
+  :class:`~backend.events.bus.EventBus` via
+  :func:`backend.events.runtime.emit_event`; the durable
+  :class:`~backend.events.store.EventStore` projection
+  (:meth:`~backend.events.store.EventStore.get_projection`) is therefore a
+  single, unified existence/tenant check that works for a run started by
+  either system, rather than querying the Flow Engine's own
+  ``flow_runs`` table (which never learns about Orchestrator-started runs).
+
 * **Resume by cursor (E9-S2-T2).** A client reconnecting sends either the
   standard SSE ``Last-Event-ID`` header or a ``?cursor=`` query parameter
   (the header wins when both are present); the stream then replays only
@@ -52,8 +62,8 @@ from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
 from backend.api.v2_common import SCHEMA_VERSION_V2, v2_error
 from backend.events.bus import EventBus, WILDCARD
 from backend.events.catalog import EVENT_CATALOG, EventEnvelope
-from backend.events.runtime import get_event_bus
-from backend.flows.engine import FlowEngine
+from backend.events.runtime import get_event_bus, get_event_store
+from backend.events.store import EventStore
 
 logger = logging.getLogger(__name__)
 
@@ -70,18 +80,17 @@ connection is noticed promptly rather than only at the next heartbeat.
 """
 
 
-def get_flow_engine_v2() -> FlowEngine:
-    """Build a fresh :class:`FlowEngine` for run lookups.
+def get_runs_stream_event_store() -> EventStore:
+    """Zero-argument dependency wrapper over :func:`get_event_store`.
 
-    Constructed fresh per request, matching the ``get_flow_engine`` /
-    ``get_orchestrator_v2`` convention used by every other ``/v2`` router —
-    routers never import app-wide singletons from ``backend.api.main`` (see
-    ``backend/api/routers/__init__.py``'s auto-discovery convention).
+    Mirrors :func:`get_runs_stream_bus` — used to check a run's
+    existence/tenant ownership from the durable, engine-agnostic event
+    projection rather than either engine's own run store (E42-S1).
 
     Returns:
-        A new :class:`FlowEngine`.
+        The process-wide :class:`~backend.events.store.EventStore` singleton.
     """
-    return FlowEngine()
+    return get_event_store()
 
 
 def get_runs_stream_bus() -> EventBus:
@@ -198,7 +207,7 @@ async def stream_run_events(
     types: str | None = Query(default=None, description="Comma-separated event type allow-list."),
     tenant_id: str | None = Query(default=None, alias="tenantId", description="Redundant consistency check; must equal the caller's own tenant."),
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
-    engine: FlowEngine = Depends(get_flow_engine_v2),
+    event_store: EventStore = Depends(get_runs_stream_event_store),
     bus: EventBus = Depends(get_runs_stream_bus),
     principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> StreamingResponse:
@@ -218,7 +227,8 @@ async def stream_run_events(
             ``principal.tenant_id`` when supplied — it never selects or
             widens the enforced tenant.
         last_event_id: Standard SSE resume header; wins over ``?cursor=``.
-        engine: Flow engine dependency, used only for its run store.
+        event_store: Durable event store dependency, used only for its
+            per-run projection (existence/tenant check, E42-S1).
         bus: Event bus dependency to replay from and subscribe to.
         principal: Authenticated caller; its tenant is the only source of
             scope for the referenced run.
@@ -234,8 +244,8 @@ async def stream_run_events(
     """
     if tenant_id is not None and tenant_id != principal.tenant_id:
         v2_error(404, f"unknown run {run_id!r}")
-    run = engine.runs.get_run(run_id, tenant_id=principal.tenant_id)
-    if run is None:
+    projection = event_store.get_projection(run_id)
+    if projection is None or projection.tenant_id != principal.tenant_id:
         v2_error(404, f"unknown run {run_id!r}")
 
     parsed_types = _parse_types(types)

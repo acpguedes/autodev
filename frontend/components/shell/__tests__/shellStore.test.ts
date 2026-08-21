@@ -53,8 +53,26 @@ describe("sanitizeShellState", () => {
 
   it("keeps valid fields and clamps the width", () => {
     expect(
-      sanitizeShellState({ panelOpen: true, panelWidth: 5000, activeNav: "plans" })
-    ).toEqual({ panelOpen: true, panelWidth: MAX_PANEL_WIDTH, activeNav: "plans" });
+      sanitizeShellState({
+        panelOpen: true,
+        panelWidth: 5000,
+        activeNav: "plans",
+        activeSessionId: "session-1",
+        activeRunId: "run-1",
+      })
+    ).toEqual({
+      panelOpen: true,
+      panelWidth: MAX_PANEL_WIDTH,
+      activeNav: "plans",
+      activeSessionId: "session-1",
+      activeRunId: "run-1",
+    });
+  });
+
+  it("discards malformed activeSessionId/activeRunId fields", () => {
+    expect(sanitizeShellState({ activeSessionId: 42, activeRunId: "" })).toEqual(
+      DEFAULT_SHELL_STATE
+    );
   });
 });
 
@@ -79,15 +97,23 @@ describe("createShellStore", () => {
     store.togglePanel();
     store.setPanelWidth(480);
     store.setActiveNav("sessions");
-    expect(listener).toHaveBeenCalledTimes(4);
+    store.setActiveSessionId("session-1");
+    store.setActiveRunId("run-1");
+    expect(listener).toHaveBeenCalledTimes(6);
 
     const snapshot = store.getSnapshot();
-    expect(snapshot).toEqual({ panelOpen: false, panelWidth: 480, activeNav: "sessions" });
+    expect(snapshot).toEqual({
+      panelOpen: false,
+      panelWidth: 480,
+      activeNav: "sessions",
+      activeSessionId: "session-1",
+      activeRunId: "run-1",
+    });
     expect(store.getSnapshot()).toBe(snapshot);
 
     unsubscribe();
     store.setPanelOpen(true);
-    expect(listener).toHaveBeenCalledTimes(4);
+    expect(listener).toHaveBeenCalledTimes(6);
   });
 
   it("persists to storage and rehydrates across store instances (survives navigation)", () => {
@@ -97,6 +123,8 @@ describe("createShellStore", () => {
     first.setPanelOpen(true);
     first.setPanelWidth(520);
     first.setActiveNav("patches");
+    first.setActiveSessionId("session-1");
+    first.setActiveRunId("run-1");
     expect(storage.raw.has(SHELL_STORAGE_KEY)).toBe(true);
 
     // A later store instance (as a fresh page/navigation would create) reads
@@ -106,6 +134,8 @@ describe("createShellStore", () => {
       panelOpen: true,
       panelWidth: 520,
       activeNav: "patches",
+      activeSessionId: "session-1",
+      activeRunId: "run-1",
     });
   });
 

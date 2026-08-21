@@ -64,7 +64,18 @@ function ExecutionControlCenter() {
   const [activeTurn, setActiveTurn] = useState<TurnV2 | null>(null);
   const [providerStatus, setProviderStatus] = useState<ProviderStatusV2 | null>(null);
   const [providerLoading, setProviderLoading] = useState(true);
-  const { setPanelOpen } = useShell();
+  const { setPanelOpen, setActiveSessionId, setActiveRunId } = useShell();
+
+  // Publish the active session/run to the shell store (E42-S3) so the
+  // Plans/Execution pages can default to them instead of requiring a
+  // pasted id. A turn's id doubles as its run id (see `handleSubmit`).
+  useEffect(() => {
+    setActiveSessionId(sessionId);
+  }, [sessionId, setActiveSessionId]);
+
+  useEffect(() => {
+    setActiveRunId(activeTurn?.turnId ?? null);
+  }, [activeTurn, setActiveRunId]);
 
   useEffect(() => {
     // The provider chip is independent of session bootstrap: a provider
@@ -262,7 +273,7 @@ function ExecutionControlCenter() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-8">
+    <div className="flex h-full flex-col gap-6 overflow-y-auto p-8">
       <section className="flex flex-col gap-5 rounded-lg border border-ds-line bg-ds-bg-2 p-6 shadow-ds-sm">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-1">

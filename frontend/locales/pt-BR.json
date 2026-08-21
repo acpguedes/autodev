@@ -20,6 +20,10 @@
     "sending": "Enviando...",
     "currentPlan": "Plano atual",
     "initialPlanMessage": "Plano inicial criado para o objetivo: {{goal}}",
+    "message": {
+      "showMore": "Mostrar mais",
+      "showLess": "Mostrar menos"
+    },
     "timeline": {
       "planning": "Planejamento",
       "analysis": "Análise",
@@ -94,7 +98,7 @@
     "executeApproved": "Executar plano aprovado",
     "executingApproved": "Executando...",
     "needsApproval": "Aprove ao menos uma etapa para executar",
-    "empty": "Informe um id de sessão para carregar o plano.",
+    "empty": "Inicie uma sessão no Chat ou informe um id de sessão para carregar o plano.",
     "emptySteps": "Ainda não há etapas neste plano. Adicione uma para começar.",
     "errors": {
       "loadPlan": "Não foi possível carregar o plano dessa sessão.",
@@ -132,7 +136,7 @@
       "revoke": "Revogar"
     },
     "log": {
-      "noRun": "Informe um id de execução acima para acompanhar o log.",
+      "noRun": "Inicie uma sessão no Chat ou informe um id de execução acima para acompanhar o log.",
       "empty": "Nenhum evento de execução ainda.",
       "status": {
         "idle": "Ocioso.",
