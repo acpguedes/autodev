@@ -260,7 +260,7 @@ class PostgresStore:
                 """,
                 (run_id, session_id, status, run_type, current_state, trigger_message, _json(results), tenant_id),
             )
-            self._replace_run_steps(conn, run_id, steps)
+            self._persist_run_steps(conn, run_id, steps)
             conn.commit()
 
     def update_run(
@@ -284,7 +284,7 @@ class PostgresStore:
                 """,
                 (status, current_state, _json(results), run_id),
             )
-            self._replace_run_steps(conn, run_id, steps)
+            self._persist_run_steps(conn, run_id, steps)
             conn.commit()
 
     def list_runs(self, session_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> list[dict[str, Any]]:
@@ -433,7 +433,7 @@ class PostgresStore:
             FROM run_steps rs
             JOIN runs r ON r.id = rs.run_id
             WHERE rs.run_id = ANY(%s)
-            ORDER BY rs.id ASC
+            ORDER BY rs.run_id, rs.position ASC, rs.id ASC
             """,
             (list(run_ids),),
         ).fetchall()
@@ -470,7 +470,7 @@ class PostgresStore:
                 FROM run_steps rs
                 JOIN runs r ON r.id = rs.run_id
                 WHERE rs.run_id = %s
-                ORDER BY rs.id ASC
+                ORDER BY rs.position ASC, rs.id ASC
                 """,
                 (run_id,),
             ).fetchall()
@@ -740,25 +740,52 @@ class PostgresStore:
             for row in rows
         ]
 
-    def _replace_run_steps(self, conn: Any, run_id: str, steps: list[dict[str, Any]]) -> None:
-        """Delete and re-insert all step rows for a run.
+    @staticmethod
+    def _persist_run_steps(conn: Any, run_id: str, steps: list[dict[str, Any]]) -> None:
+        """Persist a run's ordered step list incrementally (E44-S5).
 
-        Inserts go through a single ``executemany`` (E44-S2), matching what
-        the SQLite adapter already did — one round trip for the whole step
-        list instead of one per row.
+        Upserts each step onto its ``(run_id, position)`` key in one batched
+        statement (E44-S2) and suppresses the ``DO UPDATE`` when nothing about
+        the row changed, so a checkpoint that adds the Nth step writes one row
+        rather than deleting and re-inserting all N. Trailing rows beyond the
+        current list length are trimmed, which is what makes a shortened list
+        (e.g. a resumed run dropping its ``awaiting_approval`` placeholder)
+        converge.
+
+        Args:
+            conn: An open, already tenant-scoped connection inside the
+                caller's transaction.
+            run_id: Run whose steps are being persisted.
+            steps: The run's full ordered step list.
         """
-        conn.execute("DELETE FROM run_steps WHERE run_id = %s", (run_id,))
+        conn.execute(
+            "DELETE FROM run_steps WHERE run_id = %s AND position >= %s", (run_id, len(steps))
+        )
         if not steps:
             return
         with conn.cursor() as cur:
             cur.executemany(
                 """
-                INSERT INTO run_steps (run_id, step_key, agent, status, started_at, completed_at, attempt)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO run_steps
+                    (run_id, position, step_key, agent, status, started_at, completed_at, attempt)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (run_id, position) DO UPDATE SET
+                    step_key = EXCLUDED.step_key,
+                    agent = EXCLUDED.agent,
+                    status = EXCLUDED.status,
+                    started_at = EXCLUDED.started_at,
+                    completed_at = EXCLUDED.completed_at,
+                    attempt = EXCLUDED.attempt
+                WHERE (run_steps.step_key, run_steps.agent, run_steps.status, run_steps.started_at,
+                       run_steps.completed_at, run_steps.attempt)
+                      IS DISTINCT FROM
+                      (EXCLUDED.step_key, EXCLUDED.agent, EXCLUDED.status, EXCLUDED.started_at,
+                       EXCLUDED.completed_at, EXCLUDED.attempt)
                 """,
                 [
                     (
                         run_id,
+                        position,
                         step["step_key"],
                         step["agent"],
                         step["status"],
@@ -766,9 +793,33 @@ class PostgresStore:
                         step["completed_at"],
                         step.get("attempt", 1),
                     )
-                    for step in steps
+                    for position, step in enumerate(steps)
                 ],
             )
+
+    def replace_run_steps_for_import(
+        self, run_id: str, steps: list[dict[str, Any]], tenant_id: str = DEFAULT_TENANT_ID
+    ) -> None:
+        """Discard a run's stored steps and write *steps* in their place (E44-S5).
+
+        The full-replace path, kept for import and recovery flows that restore
+        a run's steps wholesale. Normal execution checkpoints go through
+        :meth:`update_run`, which persists incrementally.
+
+        Args:
+            run_id: Run whose steps are being replaced.
+            steps: The complete ordered step list to store.
+            tenant_id: Tenant the run must belong to; RLS on ``runs`` makes a
+                run outside its scope a no-op.
+        """
+        with self.connect() as conn:
+            set_postgres_tenant(conn, tenant_id)
+            owned = conn.execute("SELECT 1 FROM runs WHERE id = %s", (run_id,)).fetchone()
+            if owned is None:
+                return
+            conn.execute("DELETE FROM run_steps WHERE run_id = %s", (run_id,))
+            self._persist_run_steps(conn, run_id, steps)
+            conn.commit()
 
 
 class PostgresPlanStore:

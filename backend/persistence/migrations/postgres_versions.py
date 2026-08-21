@@ -427,6 +427,46 @@ def _pg_m6_down_unique_message_sequence(conn: Any) -> None:
     conn.execute("DROP INDEX IF EXISTS idx_messages_tenant_session_sequence")
 
 
+def _pg_m7_run_step_position(conn: Any) -> None:
+    """Give ``run_steps`` a stable ``position`` key and a unique index on it (E44-S5).
+
+    Postgres counterpart of
+    :func:`backend.persistence.migrations.versions._m11_run_step_position`:
+    ``position`` (the step's index in the run's ordered step list) is the
+    upsert key a checkpoint targets, so persisting the Nth step writes one row
+    instead of re-inserting all N. Existing rows are backfilled from their
+    insertion order.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute("ALTER TABLE run_steps ADD COLUMN IF NOT EXISTS position INTEGER NOT NULL DEFAULT 0")
+    conn.execute(
+        """
+        UPDATE run_steps SET position = ranked.rank - 1
+        FROM (
+            SELECT id, ROW_NUMBER() OVER (PARTITION BY run_id ORDER BY id) AS rank
+            FROM run_steps
+        ) AS ranked
+        WHERE run_steps.id = ranked.id AND run_steps.position = 0
+        """
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_run_steps_run_position "
+        "ON run_steps (run_id, position)"
+    )
+
+
+def _pg_m7_down_run_step_position(conn: Any) -> None:
+    """Revert :func:`_pg_m7_run_step_position`, dropping the index and column.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute("DROP INDEX IF EXISTS idx_run_steps_run_position")
+    conn.execute("ALTER TABLE run_steps DROP COLUMN IF EXISTS position")
+
+
 POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
     _pg_m1_create_core_tables,
     Migration(
@@ -458,6 +498,11 @@ POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_pg_m6_unique_message_sequence,
         down=_pg_m6_down_unique_message_sequence,
         name="unique_message_sequence",
+    ),
+    Migration(
+        up=_pg_m7_run_step_position,
+        down=_pg_m7_down_run_step_position,
+        name="run_step_position",
     ),
 ]
 

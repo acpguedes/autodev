@@ -349,6 +349,48 @@ def _m10_down_unique_message_sequence(conn: sqlite3.Connection) -> None:
     conn.execute("DROP INDEX IF EXISTS idx_messages_tenant_session_sequence")
 
 
+def _m11_run_step_position(conn: sqlite3.Connection) -> None:
+    """Give ``run_steps`` a stable ``position`` key and a unique index on it (E44-S5).
+
+    Steps used to be persisted by deleting every row for a run and
+    re-inserting the whole list on each checkpoint — O(N^2) writes over a run.
+    ``position`` (the step's index in the run's ordered step list) is the
+    upsert key that lets a checkpoint write only the row that actually
+    changed. Existing rows are backfilled from their insertion order, which is
+    exactly the order the old full-replace path wrote them in.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(run_steps)").fetchall()}
+    if "position" not in existing:
+        conn.execute("ALTER TABLE run_steps ADD COLUMN position INTEGER NOT NULL DEFAULT 0")
+        conn.execute(
+            """
+            UPDATE run_steps SET position = (
+                SELECT COUNT(*) FROM run_steps AS earlier
+                WHERE earlier.run_id = run_steps.run_id AND earlier.id < run_steps.id
+            )
+            """
+        )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_run_steps_run_position "
+        "ON run_steps (run_id, position)"
+    )
+
+
+def _m11_down_run_step_position(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m11_run_step_position`, dropping the index and column.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    conn.execute("DROP INDEX IF EXISTS idx_run_steps_run_position")
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(run_steps)").fetchall()}
+    if "position" in existing:
+        conn.execute("ALTER TABLE run_steps DROP COLUMN position")
+
+
 STORE_MIGRATIONS: list[MigrationEntry] = [
     _m1_create_core_tables,
     _m2_runs_add_run_type,
@@ -375,6 +417,11 @@ STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_m10_unique_message_sequence,
         down=_m10_down_unique_message_sequence,
         name="unique_message_sequence",
+    ),
+    Migration(
+        up=_m11_run_step_position,
+        down=_m11_down_run_step_position,
+        name="run_step_position",
     ),
 ]
 

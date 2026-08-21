@@ -94,6 +94,12 @@ class RunRepository(Protocol):
         self, run_id: str, tenant_id: str = DEFAULT_TENANT_ID
     ) -> list[dict[str, Any]]: ...
 
+    def replace_run_steps_for_import(
+        self, run_id: str, steps: list[dict[str, Any]], tenant_id: str = DEFAULT_TENANT_ID
+    ) -> None:
+        """Full-replace path for import/recovery; execution uses ``update_run`` (E44-S5)."""
+        ...
+
 
 @runtime_checkable
 class MessageRepository(Protocol):
