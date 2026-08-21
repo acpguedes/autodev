@@ -367,7 +367,7 @@ class _DispatchRecord(NamedTuple):
     entries, while still rendering every task in its original dispatch order.
     """
 
-    index: int
+    display_index: int
     task: ExecutionTask
     started_at: str
     completed_at: str
@@ -1260,10 +1260,6 @@ class OrchestratorService:
         Returns:
             ``(current_state, paused)``.
         """
-        from backend.api.timeline_roles import (  # noqa: PLC0415
-            timeline_event_type_for_agent_role,
-        )
-
         current_state = steps[-1].step_key if steps else "starting"
         if not tasks:
             return current_state, False
@@ -1347,7 +1343,7 @@ class OrchestratorService:
                 action_results.extend(outcome.results)
                 dispatch_records.append(
                     _DispatchRecord(
-                        index=index,
+                        display_index=index,
                         task=task,
                         started_at=started_at,
                         completed_at=completed_at,

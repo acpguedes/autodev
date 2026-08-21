@@ -188,7 +188,7 @@ class TaskExecutor:
                             "command": list(action.command) if action.command else None,
                             "path": _action_path(action),
                             "stepLabel": action.step_label,
-                            "failureKind": result.failure_kind.value,
+                            "failureKind": ExecutionFailureKind.POLICY_DENIED.value,
                         },
                         subject={"runId": run_id, "taskId": action.task_id},
                     )
