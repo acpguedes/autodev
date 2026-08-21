@@ -97,11 +97,30 @@ Subtasks:
 
 ### E43-S2 — Terminal-style transcript rendering (supersedes E42-S5's raw JSON view) — **Not started**
 
+**Two separate rendering surfaces need this fix, not one** — confirmed by
+inspecting both directly, not assumed:
+
+1. **Sessions → session detail → Live stream tab** renders each SSE event
+   as its raw JSON payload verbatim. This is the surface E42-S5 was
+   supposed to fix and didn't.
+2. **Chat's own "Execution" side panel** is *already* semi-structured —
+   each entry has a `code` label (e.g. `validation: Run cd ... &&
+   test -f main.py ...`) and a `pre` block beneath it, not raw JSON. But
+   it still doesn't solve the actual problem: for every failed validation
+   entry observed, the `pre` block just repeats "Run agent-declared
+   command: cd ...&&..." — the same text as the label — never the real
+   failure reason (`Command 'cd' is not in the allowed list.`) or any real
+   stdout/stderr. There is no observed evidence this panel ever renders a
+   *successful* command's real output; it may only ever echo the command
+   itself today.
+
 Subtasks:
 - `E43-S2-T1`: a transcript renderer that consumes the same
   `run.timeline.*`/`execution.*` SSE events E42-S1 already streams and
   turns each into one terminal-style line — a synthetic command prompt plus
   real output — rather than displaying the event's JSON payload directly.
+  Applies to **both** surfaces above, as one shared renderer, not two
+  independent implementations that can drift again.
 - `E43-S2-T2`: patch-apply actions (E41-S3) render as a write command (e.g.
   a `$ write main.py` style line) followed by a concise summary of what
   changed (not necessarily the full diff inline — link/expand to it), so
@@ -109,17 +128,19 @@ Subtasks:
   requiring the user to parse a `PatchResult.message` string out of JSON.
 - `E43-S2-T3`: real validation/devops commands (E41-S4, now actually able to
   pass per E43-S1) render as an actual `$ pytest` (etc.) line with real
-  stdout/stderr streamed beneath it as it arrives, not only a final status.
-- `E43-S2-T4`: replace the current raw-JSON side panel content with this
-  renderer; the raw-event view may remain available behind an explicit
-  "view raw event" toggle for debugging, but is not the default.
+  stdout/stderr streamed beneath it as it arrives — not only a final
+  status, and not the command text echoed back as if it were the output.
+- `E43-S2-T4`: replace the raw-JSON Live-stream tab content, and the
+  command-echoing Chat Execution panel content, with this same shared
+  renderer; a "view raw event" toggle may remain available for debugging,
+  but is not the default in either surface.
 
 | Criterion | Detail |
 | --- | --- |
-| Functional | Every patch-apply and command action in a run appears as a readable terminal-style line with its real output, in chronological order, with no JSON visible by default |
-| Non-functional | No new backend surface — this is a rendering layer over E42-S1's existing stream |
+| Functional | Every patch-apply and command action in a run appears as a readable terminal-style line with its real output, in chronological order, with no JSON and no command-echoed-as-output visible by default, **in both the session Live stream tab and Chat's Execution panel** |
+| Non-functional | No new backend surface — this is a rendering layer over E42-S1's existing stream, shared by both surfaces |
 | DoR (specific) | E42-S1 landed (confirmed working) |
-| DoD (specific) | Manual verification: trigger a run with both a patch-apply and a validation command, observe both rendered as transcript lines |
+| DoD (specific) | Manual verification in both surfaces: trigger a run with both a patch-apply and a validation command, observe both rendered as transcript lines with real output, not echoed commands |
 | Dependencies | E42-S1, E41-S3, E41-S4, E43-S1 (so there's a real passing command to render, not only failures) |
 
 ### E43-S3 — Step-level plain-language annotations — **Not started**
