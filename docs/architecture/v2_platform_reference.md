@@ -1,6 +1,6 @@
 # AutoDev Architect — Platform Reference Document v2.0
 
-> **Status:** Architecture proposal (Draft) · **Document version:** `2.0.0-draft.1` · **Language:** pt-BR
+> **Status:** Architecture proposal (Draft) · **Document version:** `2.0.0-draft.1` · **Language:** en (translated from pt-BR at the v2.0-beta documentation rebuild, 2026-08-20)
 > **Scope:** complete design of version 2.0 — an open-source, self-hostable AI software engineering platform, **highly customizable and expandable** (plugins, new agents, flow configuration, reasoning, agent routing/selection/evaluation, skills, and excellent UI/UX).
 
 This document is the **single reference** that guides the design and delivery of v2.0.
