@@ -67,7 +67,7 @@ def test_handle_message_emits_live_timeline_events_per_agent(
     def capture_event(event_type: str, *, data: dict[str, Any], **_: Any) -> None:
         emitted.append((event_type, data))
 
-    monkeypatch.setattr("backend.orchestrator.service.emit_event", capture_event)
+    monkeypatch.setattr("backend.orchestrator.service.events.emit_event", capture_event)
 
     result = orchestrator_service.handle_message(session.session_id, "Start execution")
 
@@ -116,7 +116,7 @@ def test_handle_message_completes_only_after_session_persistence(
         """Inject one deterministic durable session-write failure."""
         raise RuntimeError(failure_message)
 
-    monkeypatch.setattr("backend.orchestrator.service.emit_event", capture_event)
+    monkeypatch.setattr("backend.orchestrator.service.events.emit_event", capture_event)
     monkeypatch.setattr(orchestrator_service._store, failing_method, fail_persistence)
 
     with pytest.raises(RuntimeError, match=failure_message):
