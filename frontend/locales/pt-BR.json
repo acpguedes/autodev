@@ -20,6 +20,10 @@
     "sending": "Enviando...",
     "currentPlan": "Plano atual",
     "initialPlanMessage": "Plano inicial criado para o objetivo: {{goal}}",
+    "message": {
+      "showMore": "Mostrar mais",
+      "showLess": "Mostrar menos"
+    },
     "timeline": {
       "planning": "Planejamento",
       "analysis": "Análise",

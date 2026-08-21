@@ -273,7 +273,7 @@ function ExecutionControlCenter() {
   }
 
   return (
-    <div className="flex flex-col gap-6 p-8">
+    <div className="flex h-full flex-col gap-6 overflow-y-auto p-8">
       <section className="flex flex-col gap-5 rounded-lg border border-ds-line bg-ds-bg-2 p-6 shadow-ds-sm">
         <header className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-1">
