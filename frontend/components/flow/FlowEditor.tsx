@@ -419,7 +419,7 @@ export function FlowEditor({ initialYaml }: FlowEditorProps) {
           />
         </div>
 
-        <div className="min-h-[420px]">
+        <div className="min-h-[420px] lg:min-h-0">
           {manifest ? (
             <FlowCanvas
               manifest={manifest}
