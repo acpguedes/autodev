@@ -24,7 +24,11 @@ Design notes:
   (the header wins when both are present); the stream then replays only
   events strictly after that cursor via
   :meth:`~backend.events.bus.EventBus.replay_from`, never re-delivering an
-  event the client already has.
+  event the client already has. Each call is offloaded via
+  :func:`asyncio.to_thread` (E45-S4) since the Redis backend's
+  ``replay_from`` issues a synchronous ``XRANGE``, and no async Redis client
+  exists anywhere in this codebase yet — offloading is the smallest safe
+  fix that keeps the event loop responsive without introducing one.
 * **Live tail without polling storms.** The handler subscribes to
   :data:`~backend.events.bus.WILDCARD` purely as a wake-up signal — the
   subscriber callback only flips an :class:`asyncio.Event`, marshaled onto
@@ -182,7 +186,8 @@ async def _stream_events(
         while True:
             if await request.is_disconnected():
                 return
-            for next_cursor, envelope in bus.replay_from(run_id, cursor):
+            batch = await asyncio.to_thread(bus.replay_from, run_id, cursor)
+            for next_cursor, envelope in batch:
                 cursor = next_cursor
                 idle_elapsed = 0.0
                 if types is None or envelope.type in types:
