@@ -48,6 +48,10 @@ class ExecutionAction:
         patch: Pre-built patch to apply, for ``apply_patch``.
         command: Command to execute, for ``run_command``/``run_validation``.
         cwd: Working directory for ``command``, relative to the project root.
+        step_label: The originating task's plain-language title (E43-S3),
+            e.g. "Implement Main Application File" -- carried alongside the
+            technical ``task_id`` so a transcript renderer can show "Creating
+            main.py" instead of a bare id like ``coding-file-1``.
     """
 
     action_id: str
@@ -59,6 +63,7 @@ class ExecutionAction:
     patch: Patch | None = None
     command: list[str] | None = None
     cwd: str = "."
+    step_label: str | None = None
 
 
 @dataclass(slots=True)

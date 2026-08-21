@@ -128,6 +128,39 @@ def test_implementation_task_with_files_dispatches_one_create_file_action_per_fi
     assert runner.dispatched[1].path == "backend/payments/__init__.py"
 
 
+def test_implementation_task_step_label_is_a_plain_language_creating_line() -> None:
+    """E43-S3: a file-write action is labeled "Creating <file>", not the raw task id."""
+    runner = _FakeRunner(outcomes={}, dispatched=[])
+    executor = TaskExecutor(runner)
+    task = ExecutionTask(
+        task_id="coding-file-1",
+        title="Write backend/payments/charge.py",
+        description="Write real file content to backend/payments/charge.py",
+        source_agent="coder",
+        category="implementation",
+        files=[{"path": "backend/payments/charge.py", "content": "def charge(): ...\n"}],
+    )
+
+    executor.execute(task, run_id="run-5", tenant_id="acme")
+
+    assert runner.dispatched[0].step_label == "Creating charge.py"
+
+    envelopes = get_event_bus().replay("run-5")
+    started = next(e for e in envelopes if e.type == "execution.action.started")
+    assert started.data["stepLabel"] == "Creating charge.py"
+
+
+def test_validation_task_step_label_is_the_task_title() -> None:
+    """E43-S3: a validation/operations action falls back to the task's own title."""
+    runner = _FakeRunner(outcomes={}, dispatched=[])
+    executor = TaskExecutor(runner)
+    task = _task("validation-1", "validation", "Run pytest for backend modules")
+
+    executor.execute(task, run_id="run-6", tenant_id="acme")
+
+    assert runner.dispatched[0].step_label == "Title for validation-1"
+
+
 def test_validation_task_with_structured_commands_ignores_keyword_sniffing() -> None:
     """E41-S4: a command absent from free text but present in `commands` still runs."""
     runner = _FakeRunner(outcomes={}, dispatched=[])

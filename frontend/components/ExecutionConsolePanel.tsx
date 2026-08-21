@@ -14,6 +14,8 @@ type ExecutionConsolePanelProps = {
 type ConsoleEntry = {
   id: string;
   labelKey: "executionConsole.runTypePlanExecution" | "executionConsole.runTypeAgent";
+  /** Plain-language step annotation (E43-S3), e.g. "Creating main.py". */
+  stepLabel: string;
   command: string;
   output: string;
   status: string;
@@ -79,6 +81,7 @@ function buildConsoleEntries(runs: RunResponse[]): ConsoleEntry[] {
           {
             id: `${run.run_id}-${index}`,
             labelKey,
+            stepLabel: taskTitle,
             command:
               run.run_type === "plan_execution"
                 ? `${category}: ${taskTitle}`
@@ -90,10 +93,11 @@ function buildConsoleEntries(runs: RunResponse[]): ConsoleEntry[] {
       }
 
       return actions.map((action) => {
-        const line = transcriptLineFromActionResult(action);
+        const line = transcriptLineFromActionResult(action, taskTitle);
         return {
           id: `${run.run_id}-${index}-${action.action_id}`,
           labelKey,
+          stepLabel: line.stepLabel,
           command: line.command,
           output: line.output,
           status: action.status,
@@ -151,6 +155,7 @@ export function ExecutionConsolePanel({ runs, isBusy }: ExecutionConsolePanelPro
                 </span>
                 <Badge variant="secondary">{entry.status}</Badge>
               </div>
+              <p className="text-sm font-semibold text-ds-fg">{entry.stepLabel}</p>
               <code className="font-mono text-[13px] text-ds-fg-2">{entry.command}</code>
               <pre className="overflow-x-auto whitespace-pre-wrap rounded-ds-sm bg-ds-bg-4 p-3 font-mono text-xs text-ds-fg-2">
                 {entry.output}
