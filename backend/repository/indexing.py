@@ -13,6 +13,7 @@ needs (:func:`enqueue_file_changed` registers the job type that drives it).
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -25,6 +26,11 @@ from backend.repository.chunking import Chunk, chunk_source
 #: Source file extensions walked by :func:`index`. Scoped to Python for
 #: E7-S1 (see ``backend/repository/providers/treesitter_provider.py``).
 _INDEXED_EXTENSIONS = {".py"}
+
+#: Files reindexed per connection/transaction (E45-S5) — bounds how long a
+#: single transaction stays open while still batching far more than one
+#: statement per file.
+_REINDEX_BATCH_SIZE = 200
 
 _IGNORED_DIRECTORIES = {
     ".git",
@@ -85,22 +91,28 @@ def reindex(
         not count.
     """
     active_store = store if store is not None else get_store()
+    param = _param_style(active_store)
     root = (repo_root or Path.cwd()).resolve()
+    path_list = list(paths)
     written = 0
     with trace_indexing("reindex", tenant_id=tenant_id) as measurements:
-        for raw_path in paths:
-            measurements.file_count += 1
-            candidate = Path(raw_path)
-            absolute = candidate if candidate.is_absolute() else (root / candidate)
-            relative = _relative_path(absolute, root)
-            if not absolute.is_file():
-                measurements.chunks_deleted += _delete_chunks_for_file(
-                    active_store, relative, tenant_id
-                )
-                continue
-            code = absolute.read_text(encoding="utf-8", errors="replace")
-            chunks = chunk_source(relative, code, "python")
-            written += _persist_chunks(active_store, relative, chunks, tenant_id)
+        for batch_start in range(0, len(path_list), _REINDEX_BATCH_SIZE):
+            batch = path_list[batch_start : batch_start + _REINDEX_BATCH_SIZE]
+            with active_store.connect() as conn:
+                for raw_path in batch:
+                    measurements.file_count += 1
+                    candidate = Path(raw_path)
+                    absolute = candidate if candidate.is_absolute() else (root / candidate)
+                    relative = _relative_path(absolute, root)
+                    if not absolute.is_file():
+                        measurements.chunks_deleted += _delete_chunks_for_file(
+                            conn, param, relative, tenant_id
+                        )
+                        continue
+                    code = absolute.read_text(encoding="utf-8", errors="replace")
+                    chunks = chunk_source(relative, code, "python")
+                    written += _persist_chunks(conn, param, relative, chunks, tenant_id)
+                conn.commit()
         measurements.chunks_written = written
     return written
 
@@ -162,14 +174,19 @@ def _param_style(store: Any) -> str:
     return "%s" if url.startswith(("postgresql://", "postgres://")) else "?"
 
 
-def _persist_chunks(store: Any, file_path: str, chunks: list[Chunk], tenant_id: str) -> int:
-    """Upsert *chunks* for *file_path*, skipping any whose content hash is unchanged.
+def _persist_chunks(conn: Any, param: str, file_path: str, chunks: list[Chunk], tenant_id: str) -> int:
+    """Upsert *chunks* for *file_path* on an already-open connection.
 
-    Also deletes any previously stored chunk for *file_path* that no longer
-    corresponds to a chunk in *chunks* (e.g. a removed function).
+    Skips any chunk whose content hash is unchanged, and deletes any
+    previously stored chunk for *file_path* that no longer corresponds to a
+    chunk in *chunks* (e.g. a removed function). Upserts and deletes are each
+    issued as a single ``executemany`` batch (E45-S5) rather than one
+    statement per chunk; the caller owns the transaction (commits the batch
+    of files this call is part of).
 
     Args:
-        store: Durable store whose ``.connect()`` yields a raw DB connection.
+        conn: Open connection from the caller's batch (not committed here).
+        param: SQL placeholder style for *conn* (see :func:`_param_style`).
         file_path: Stored (relative) path the chunks belong to.
         chunks: Freshly computed chunks for *file_path*.
         tenant_id: Tenant to scope persisted rows to.
@@ -177,70 +194,64 @@ def _persist_chunks(store: Any, file_path: str, chunks: list[Chunk], tenant_id: 
     Returns:
         Number of rows inserted or updated (unchanged rows do not count).
     """
-    param = _param_style(store)
-    written = 0
-    with store.connect() as conn:
-        existing = {
-            (row[0], row[1]): row[2]
-            for row in conn.execute(
-                f"SELECT symbol, start_line, content_hash FROM code_chunks "
-                f"WHERE tenant_id = {param} AND file_path = {param}",
-                (tenant_id, file_path),
-            ).fetchall()
-        }
-        desired_keys: set[tuple[str, int]] = set()
-        for chunk in chunks:
-            key = (chunk.symbol, chunk.start_line)
-            desired_keys.add(key)
-            if existing.get(key) == chunk.content_hash:
-                continue
-            _upsert_chunk(conn, param, tenant_id, file_path, chunk)
-            written += 1
-        for symbol, start_line in set(existing) - desired_keys:
-            conn.execute(
-                f"DELETE FROM code_chunks WHERE tenant_id = {param} AND file_path = {param} "
-                f"AND symbol = {param} AND start_line = {param}",
-                (tenant_id, file_path, symbol, start_line),
-            )
-        conn.commit()
-    return written
+    existing = {
+        (row[0], row[1]): row[2]
+        for row in conn.execute(
+            f"SELECT symbol, start_line, content_hash FROM code_chunks "
+            f"WHERE tenant_id = {param} AND file_path = {param}",
+            (tenant_id, file_path),
+        ).fetchall()
+    }
+    desired_keys: set[tuple[str, int]] = set()
+    to_upsert: list[Chunk] = []
+    for chunk in chunks:
+        key = (chunk.symbol, chunk.start_line)
+        desired_keys.add(key)
+        if existing.get(key) != chunk.content_hash:
+            to_upsert.append(chunk)
+
+    if to_upsert:
+        conn.cursor().executemany(
+            f"""
+            INSERT INTO code_chunks
+                (tenant_id, file_path, symbol, start_line, end_line, content_hash, content)
+            VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param})
+            ON CONFLICT(tenant_id, file_path, symbol, start_line) DO UPDATE SET
+                end_line = excluded.end_line,
+                content_hash = excluded.content_hash,
+                content = excluded.content,
+                indexed_at = CURRENT_TIMESTAMP
+            """,
+            [
+                (
+                    tenant_id,
+                    file_path,
+                    chunk.symbol,
+                    chunk.start_line,
+                    chunk.end_line,
+                    chunk.content_hash,
+                    chunk.content,
+                )
+                for chunk in to_upsert
+            ],
+        )
+
+    stale_keys = set(existing) - desired_keys
+    if stale_keys:
+        conn.cursor().executemany(
+            f"DELETE FROM code_chunks WHERE tenant_id = {param} AND file_path = {param} "
+            f"AND symbol = {param} AND start_line = {param}",
+            [(tenant_id, file_path, symbol, start_line) for symbol, start_line in stale_keys],
+        )
+    return len(to_upsert)
 
 
-def _upsert_chunk(conn: Any, param: str, tenant_id: str, file_path: str, chunk: Chunk) -> None:
-    """Insert or update one chunk row, keyed by ``(tenant_id, file_path, symbol, start_line)``.
-
-    Persists ``chunk.content`` (the chunk's exact source text) alongside its
-    metadata so hybrid retrieval (E7-S3) can search and return it without
-    re-reading the source file.
-    """
-    conn.execute(
-        f"""
-        INSERT INTO code_chunks
-            (tenant_id, file_path, symbol, start_line, end_line, content_hash, content)
-        VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param})
-        ON CONFLICT(tenant_id, file_path, symbol, start_line) DO UPDATE SET
-            end_line = excluded.end_line,
-            content_hash = excluded.content_hash,
-            content = excluded.content,
-            indexed_at = CURRENT_TIMESTAMP
-        """,
-        (
-            tenant_id,
-            file_path,
-            chunk.symbol,
-            chunk.start_line,
-            chunk.end_line,
-            chunk.content_hash,
-            chunk.content,
-        ),
-    )
-
-
-def _delete_chunks_for_file(store: Any, file_path: str, tenant_id: str) -> int:
+def _delete_chunks_for_file(conn: Any, param: str, file_path: str, tenant_id: str) -> int:
     """Remove all persisted chunks for a file that no longer exists on disk.
 
     Args:
-        store: Durable store holding the ``code_chunks`` table.
+        conn: Open connection from the caller's batch (not committed here).
+        param: SQL placeholder style for *conn* (see :func:`_param_style`).
         file_path: Repository-relative path whose chunks are removed.
         tenant_id: Tenant the chunks are scoped to.
 
@@ -248,26 +259,29 @@ def _delete_chunks_for_file(store: Any, file_path: str, tenant_id: str) -> int:
         Number of chunk rows deleted, or ``0`` when the driver does not report
         a row count.
     """
-    param = _param_style(store)
-    with store.connect() as conn:
-        cursor = conn.execute(
-            f"DELETE FROM code_chunks WHERE tenant_id = {param} AND file_path = {param}",
-            (tenant_id, file_path),
-        )
-        conn.commit()
+    cursor = conn.execute(
+        f"DELETE FROM code_chunks WHERE tenant_id = {param} AND file_path = {param}",
+        (tenant_id, file_path),
+    )
     rowcount = getattr(cursor, "rowcount", 0)
     return rowcount if isinstance(rowcount, int) and rowcount > 0 else 0
 
 
 def _iter_source_files(root: Path) -> Iterable[Path]:
-    """Yield every indexable source file under *root*, skipping ignored directories."""
-    for path in sorted(root.rglob("*")):
-        if (
-            path.is_file()
-            and path.suffix in _INDEXED_EXTENSIONS
-            and not any(part in _IGNORED_DIRECTORIES for part in path.parts)
-        ):
-            yield path
+    """Stream every indexable source file under *root*, pruning ignored directories.
+
+    Uses ``os.walk`` with in-place ``dirnames`` pruning (E45-S5) so an
+    ignored directory (``.venv``, ``node_modules``, ...) is never descended
+    into at all — unlike ``sorted(root.rglob("*"))``, which materializes and
+    sorts the full recursive listing (including ignored subtrees) before
+    filtering.
+    """
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(d for d in dirnames if d not in _IGNORED_DIRECTORIES)
+        for filename in sorted(filenames):
+            path = Path(dirpath) / filename
+            if path.suffix in _INDEXED_EXTENSIONS:
+                yield path
 
 
 def _relative_path(path: Path, root: Path) -> str:
