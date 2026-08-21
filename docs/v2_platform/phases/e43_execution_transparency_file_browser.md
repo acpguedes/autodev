@@ -3,7 +3,7 @@
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35, E41, and E42: added after initial Beta
 completion, before the wave is signed off).
-**Status:** Complete · **Stories:** 7/7 (E43-S6/S7 added post-completion, found via the user's own manual verification of E43-S1..S5)
+**Status:** Complete · **Stories:** 8/8 (E43-S6/S7/S8 added post-completion, found via the user's own manual verification of E43-S1..S5)
 **Depends on:** E42 (specifically E42-S1's event stream and E42-S3's
 active-session concept — both real and reused here, not rebuilt), E41-S3
 (patch-apply actions), E41-S4 (agent-directed commands), E41-S5
@@ -296,6 +296,54 @@ Subtasks:
 | DoR (specific) | E43-S6 landed (a `run_id` must exist early for this to be observable) |
 | DoD (specific) | `test_handle_message_emits_live_timeline_events_per_agent` (order, mapping, real output content); updated `test_handle_message_completes_only_after_session_persistence` for the new event count; full backend suite green |
 | Dependencies | E43-S6 |
+
+### E43-S8 — Chat auto-executes its derived plan, live, in the same run — **Complete**
+
+The user's real ask, confirmed directly after testing E43-S6/S7: a Chat
+message only ever drove the *conversational* agent pipeline (navigator/
+analyzer/architect/coder/devops/validator/responder) — it never wrote
+files or ran commands. That only happened via a second, still-fully-manual
+step: clicking "Run plan" (`execute_plan`). With this story, once a Chat
+turn's conversation derives an execution plan, real execution (file
+writes, validation commands) starts automatically, on the *same* run_id,
+gated behind a new settings flag; "Run plan" is unchanged and stays
+available as a manual trigger/retry regardless of the flag.
+
+Subtasks:
+- `E43-S8-T1`: `backend/config/settings.py` gains
+  `autodev_chat_auto_execute: bool = False` (env `AUTODEV_CHAT_AUTO_EXECUTE`),
+  following the existing `autodev_enable_sandbox`/`autodev_enable_patch_apply`
+  fail-closed convention.
+- `E43-S8-T2`: `_execute_message_run` gains a `finalize: bool = True`
+  parameter. When `False`, it skips its own `RunStatus.COMPLETED`
+  persistence and `flow.run.completed` event — letting a caller chain more
+  work onto the same run_id without ever exposing a premature "completed"
+  status to a concurrent poller (the root cause of an intermittent race
+  found while stress-testing this story: a "reopen the run as RUNNING"
+  follow-up call still left a narrow window where a poller could observe
+  and stop on the premature completion).
+- `E43-S8-T3`: `_run_message_job` (the background job `begin_message`
+  enqueues) reads the flag once; if on, it calls `_execute_message_run(...,
+  finalize=False)`, then `build_execution_plan` + (if any tasks were
+  derived) the same `_process_tasks`/`_finalize_plan_run` calls "Run plan"
+  already uses — appending to the same `results`/`steps`/run row rather
+  than starting a second run. If the flag is on but no tasks were derived
+  (e.g. a question, not a change request), the job persists the chat-only
+  completion itself, since `finalize=False` skipped it.
+- `E43-S8-T4`: no new frontend plumbing — `getTurnV2` polling and
+  `RunTimelinePanel`'s live subscription already key on the same `run_id`,
+  so they transparently observe the longer, chained run. The one new
+  terminal status this can produce (`awaiting_approval`, when the appended
+  execution phase pauses for a decision) was already handled by
+  `page.tsx`'s poll loop from S6.
+
+| Criterion | Detail |
+| --- | --- |
+| Functional | With the flag on, sending a Chat message that derives executable tasks writes real files / runs real validation automatically, on the same run, without a second "Run plan" click; with the flag off (default), behavior is identical to S6/S7 |
+| Non-functional | "Run plan" stays fully manual and unchanged either way; fail-closed default |
+| DoR (specific) | E43-S6 (async run_id) and E43-S7 (live per-agent events) landed |
+| DoD (specific) | `test_auto_execute_flag_off_leaves_chat_only_behavior_unchanged`, `test_auto_execute_flag_on_chains_real_execution_onto_the_same_run` (both in `test_begin_message.py`, the latter stress-tested for the finalize-timing race); full backend orchestrator/api/cli/observability suites green; frontend typecheck + full `vitest run` green |
+| Dependencies | E43-S6, E43-S7 |
 
 ## Contracts & decisions
 

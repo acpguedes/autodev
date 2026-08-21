@@ -20,6 +20,7 @@
     "sending": "Enviando...",
     "currentPlan": "Plano atual",
     "initialPlanMessage": "Plano inicial criado para o objetivo: {{goal}}",
+    "awaitingApproval": "A execução automática deste turno pausou aguardando uma decisão — resolva em Execução.",
     "message": {
       "showMore": "Mostrar mais",
       "showLess": "Mostrar menos"

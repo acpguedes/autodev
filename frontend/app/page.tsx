@@ -254,6 +254,11 @@ function ExecutionControlCenter() {
       setMessages(mapHistoryToMessages(turn.history));
       if (turn.status === "failed") {
         setError(t("chat.errors.sendMessage"));
+      } else if (turn.status === "awaiting_approval") {
+        // E43-S8: auto-executed tasks can still pause on a policy-gated
+        // decision, same as a manual "Run plan" click would -- not a
+        // failure, just needs the operator's input elsewhere.
+        setError(t("chat.awaitingApproval"));
       }
       await refreshSessionState(sessionId);
     } catch {
