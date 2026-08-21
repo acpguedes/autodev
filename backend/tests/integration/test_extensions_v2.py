@@ -194,6 +194,22 @@ class TestEnableDisableDelegation:
         assert enable_response.json()["item"]["enabled"] is True
         assert agent_registry.resolve("acme/agent-coder", "*").deprecated is False
 
+    def test_agent_toggle_invalidates_agent_catalog_cache(
+        self, seeded_client: dict[str, object], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """E47-S1: enabling/disabling an agent must invalidate the ``/agents`` catalog cache."""
+        from backend.api.routers import extensions_v2
+
+        client: TestClient = seeded_client["client"]  # type: ignore[assignment]
+        calls = {"count": 0}
+        monkeypatch.setattr(
+            extensions_v2, "reset_agent_catalog_cache", lambda: calls.__setitem__("count", calls["count"] + 1)
+        )
+
+        response = client.post("/v2/extensions/agent/acme%2Fagent-coder/disable")
+        assert response.status_code == 200
+        assert calls["count"] == 1
+
     def test_agent_disable_unknown_returns_standard_error_envelope(self, seeded_client: dict[str, object]) -> None:
         client: TestClient = seeded_client["client"]  # type: ignore[assignment]
         response = client.post("/v2/extensions/agent/acme%2Fno-such-agent/disable")

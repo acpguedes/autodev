@@ -28,6 +28,7 @@ whether a JSON schema is available for its structured output.
 from __future__ import annotations
 
 import logging
+import threading
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException
@@ -118,8 +119,9 @@ def _build_agent_map() -> Dict[str, Dict[str, Any]]:
 
     Combines the 8 default agents (from ``backend.agents``) with any
     additional agents discovered from the registry.  Errors during import or
-    instantiation are caught and logged; those agents appear with
-    ``has_metadata_contract=False``.
+    instantiation are caught and logged once here (this only runs on cache
+    build/rebuild, not per request); those agents appear with
+    ``has_metadata_contract=False`` and ``instance=None``.
     """
     result: Dict[str, Dict[str, Any]] = {}
 
@@ -155,7 +157,7 @@ def _build_agent_map() -> Dict[str, Dict[str, Any]]:
                 except TypeError:
                     instance = None
             except Exception:
-                logger.debug("Could not instantiate default agent %r", name)
+                logger.warning("Could not instantiate default agent %r", name, exc_info=True)
 
         has_contract = name in AGENT_METADATA_MODELS
         if instance is not None:
@@ -179,7 +181,7 @@ def _build_agent_map() -> Dict[str, Dict[str, Any]]:
             import importlib as _il  # noqa: PLC0415
             _il.import_module(_mod_path)
         except Exception:
-            logger.debug("Could not import specialized agent module %r", _mod_path)
+            logger.warning("Could not import specialized agent module %r", _mod_path, exc_info=True)
 
     try:
         from backend.agents.registry import discover_agents  # noqa: PLC0415
@@ -204,9 +206,47 @@ def _build_agent_map() -> Dict[str, Dict[str, Any]]:
                     "has_contract": has_contract,
                 }
     except Exception:
-        logger.debug("Could not discover registry agents", exc_info=True)
+        logger.warning("Could not discover registry agents", exc_info=True)
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Catalog cache
+#
+# ``_build_agent_map`` performs imports, instantiation, and
+# ``metadata_model()`` introspection for every known agent — expensive work
+# that has no reason to repeat on every ``GET /agents`` request. The catalog
+# is built once (lazily, on first use) and cached; ``reset_agent_catalog_cache``
+# invalidates it so the next access rebuilds from scratch. Extension
+# enable/disable actions that can affect this catalog call the reset so the
+# change is reflected without a process restart.
+# ---------------------------------------------------------------------------
+
+_catalog_lock = threading.Lock()
+_catalog_cache: Optional[Dict[str, Dict[str, Any]]] = None
+
+
+def get_agent_catalog() -> Dict[str, Dict[str, Any]]:
+    """Return the cached agent catalog, building it on first use."""
+    global _catalog_cache
+    if _catalog_cache is None:
+        with _catalog_lock:
+            if _catalog_cache is None:
+                _catalog_cache = _build_agent_map()
+    return _catalog_cache
+
+
+def reset_agent_catalog_cache() -> None:
+    """Drop the cached catalog so the next access rebuilds it.
+
+    Called after actions that can change catalog membership or availability
+    (e.g. an agent enable/disable toggle) so ``GET /agents`` reflects the
+    change without requiring a process restart.
+    """
+    global _catalog_cache
+    with _catalog_lock:
+        _catalog_cache = None
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +258,7 @@ def _build_agent_map() -> Dict[str, Dict[str, Any]]:
 @router.get("/agents", response_model=List[AgentSummary])
 def list_agents() -> List[AgentSummary]:
     """Return all known agents (defaults + registry-discovered)."""
-    agent_map = _build_agent_map()
+    agent_map = get_agent_catalog()
     return [
         AgentSummary(
             name=name,
@@ -233,7 +273,7 @@ def list_agents() -> List[AgentSummary]:
 @router.get("/agents/{name}", response_model=AgentDetail)
 def describe_agent(name: str) -> AgentDetail:
     """Return details for one agent; 404 if the name is unknown."""
-    agent_map = _build_agent_map()
+    agent_map = get_agent_catalog()
     if name not in agent_map:
         raise HTTPException(status_code=404, detail=f"Agent {name!r} not found.")
 
