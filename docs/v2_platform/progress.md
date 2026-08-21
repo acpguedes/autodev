@@ -267,9 +267,34 @@ order.
    (`templates/dod_checklist.md`) requires (green contract tests, docs updated,
    observability verified, etc.).
 
-## Current wave: Alpha (in progress)
+## Wave status: Alpha and Beta complete — GA (E13) is next
 
-The first three Alpha epics are complete. **E0** delivered the foundations
+**Current wave: GA.** Both the v2.0-alpha and v2.0-beta waves have exited and
+**`v2.0-beta` is published as a GitHub pre-release** (2026-08-20, targeting
+`main`). 22 epics are Done — E0-E12, E14-E18 and the Beta hardening set
+E32 (isolated execution), E33 (secrets & credential governance), E34
+(packaging & global install) and E35 (readiness gates & evidence).
+
+It is a **pre-release, not a signed-off wave**: three of the twelve Beta exit
+criteria remain open because they need a live environment the wave did not own
+— the hybrid-retrieval p95/recall benchmark, a numeric run-streaming start
+latency assertion, and staging backup/restore RPO/RTO validation. Two more are
+partial (no single composed end-to-end rehearsal; WCAG is component-level
+only). See the [Beta wave exit gate](#v20-beta--full-platform-in-controlled-production)
+below and `beta_gap_analysis.md` §11 for the evidence map. Closing those three
+is GA-wave work.
+
+**Next:** E13 — Marketplace & GA (0/4, not started). Beyond GA, the planned
+v2.1 (E20-E25), v2.2 (E26-E31) and v2.3 (E36-E40) waves are specified but not
+started.
+
+### Accumulated per-epic record
+
+What follows is the running narrative of what each epic delivered, appended as
+the epics landed. It is history, not a statement of the current wave — use the
+[Epic status](#epic-status) table below for authoritative per-epic state.
+
+**E0** delivered the foundations
 (containerized backend runtime, typed declarative settings, PostgreSQL state
 store, OpenTelemetry traces + Prometheus counters, the security baseline, and
 Redis queue/cache/locks + local/MinIO artifact stores). **E1** delivered the
