@@ -13,6 +13,7 @@ role onto one of those registered event types.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Generator
 from pathlib import Path
 
@@ -83,31 +84,72 @@ def _create_session(client: TestClient, goal: str = "Ship the v2 turn contract")
 
 
 def _create_turn(client: TestClient, session_id: str, message: str = "Please proceed") -> dict:
-    """Helper: POST /v2/sessions/{id}/turns and return the parsed response body."""
+    """Helper: POST /v2/sessions/{id}/turns and return the parsed response body.
+
+    E43-S6: this now returns immediately with ``status: "running"`` -- the
+    agent graph runs in a background job. Use :func:`_poll_turn_until_terminal`
+    to wait for the real, completed result.
+    """
     response = client.post(f"/v2/sessions/{session_id}/turns", json={"message": message})
     assert response.status_code == 201, response.text
     return response.json()
+
+
+def _poll_turn_until_terminal(client: TestClient, turn_id: str, *, timeout_s: float = 5.0) -> dict:
+    """Poll ``GET /v2/turns/{turn_id}`` until its background run finishes (E43-S6).
+
+    Args:
+        client: Test client to poll with.
+        turn_id: Turn (run) id to poll.
+        timeout_s: Max time to wait before giving up.
+
+    Returns:
+        The turn body once ``status`` is no longer ``"running"``.
+    """
+    deadline = time.monotonic() + timeout_s
+    body: dict = {}
+    while time.monotonic() < deadline:
+        response = client.get(f"/v2/turns/{turn_id}")
+        assert response.status_code == 200, response.text
+        body = response.json()
+        if body["status"] != "running":
+            return body
+        time.sleep(0.05)
+    return body
 
 
 class TestCreateTurnV2:
     """``POST /v2/sessions/{sessionId}/turns``."""
 
     def test_create_turn_happy_path(self, client: TestClient) -> None:
+        """E43-S6: the turn is created and returned immediately, before the
+        agent graph has run -- status "running", empty results/steps -- so
+        the caller has a turnId to open a live event stream against right
+        away instead of only after the (potentially long) run finishes."""
         session = _create_session(client)
         turn = _create_turn(client, session["session_id"], message="Add a health check endpoint")
         assert turn["schemaVersion"] == "2.0"
         assert turn["sessionId"] == session["session_id"]
         assert turn["message"] == "Add a health check endpoint"
         assert turn["turnId"]
-        assert turn["status"]
+        assert turn["status"] == "running"
         assert turn["runType"]
-        assert isinstance(turn["history"], list)
-        # The stub agent pipeline runs the full default agent order for every
-        # turn, so a real turn always produces at least one result and step.
-        # Asserting non-empty (not just list-typed) catches a conversion bug
-        # that silently drops ``results``/``steps`` in ``_to_turn_v2_from_run``.
-        assert len(turn["results"]) > 0
-        assert len(turn["steps"]) > 0
+        assert turn["history"] == []
+        assert turn["results"] == []
+        assert turn["steps"] == []
+
+    def test_create_turn_eventually_completes_with_real_results(self, client: TestClient) -> None:
+        """E43-S6: polling the turn until its background run finishes still
+        shows the stub agent pipeline's real, non-empty results/steps --
+        catches a conversion bug that would silently drop them just as the
+        old synchronous-response assertion did."""
+        session = _create_session(client)
+        turn = _create_turn(client, session["session_id"], message="Add a health check endpoint")
+        completed = _poll_turn_until_terminal(client, turn["turnId"])
+        assert completed["status"] == "completed"
+        assert isinstance(completed["history"], list)
+        assert len(completed["results"]) > 0
+        assert len(completed["steps"]) > 0
 
     def test_create_turn_unknown_session_returns_standard_error_envelope(self, client: TestClient) -> None:
         response = client.post("/v2/sessions/no-such-session/turns", json={"message": "hello"})
@@ -158,13 +200,12 @@ class TestGetTurnV2:
     def test_get_turn_happy_path(self, client: TestClient) -> None:
         session = _create_session(client)
         created = _create_turn(client, session["session_id"], message="Investigate the failing test")
-        response = client.get(f"/v2/turns/{created['turnId']}")
-        assert response.status_code == 200
-        body = response.json()
+        body = _poll_turn_until_terminal(client, created["turnId"])
         assert body["schemaVersion"] == "2.0"
         assert body["turnId"] == created["turnId"]
         assert body["sessionId"] == session["session_id"]
         assert body["message"] == "Investigate the failing test"
+        assert body["status"] == "completed"
         assert len(body["results"]) > 0
         assert len(body["steps"]) > 0
 

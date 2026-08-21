@@ -3,7 +3,7 @@
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35, E41, and E42: added after initial Beta
 completion, before the wave is signed off).
-**Status:** Complete · **Stories:** 5/5
+**Status:** Complete · **Stories:** 6/6 (E43-S6 added post-completion, found via the user's own manual verification of E43-S1..S5)
 **Depends on:** E42 (specifically E42-S1's event stream and E42-S3's
 active-session concept — both real and reused here, not rebuilt), E41-S3
 (patch-apply actions), E41-S4 (agent-directed commands), E41-S5
@@ -210,6 +210,59 @@ Subtasks:
 | DoR (specific) | E42-S3 landed (this generalizes it) |
 | DoD (specific) | Manual verification: select a session, visit every page, confirm consistency |
 | Dependencies | E42-S3 |
+
+### E43-S6 — Asynchronous turn creation (live execution visibility while a turn runs) — **Complete**
+
+Found via the user's own manual verification of E43-S1..S5 in the actual
+product UI (2026-08-21): sending a Chat message showed "Sending..."
+indefinitely, the composer never cleared, and the Execution panel showed
+nothing until navigating away (to Sessions) and back forced a fresh
+re-fetch — by which point the turn had actually finished. Root cause:
+`POST /v2/sessions/{id}/turns` ran the *entire* 7-agent pipeline
+synchronously inside one HTTP request (`OrchestratorService.handle_message`
+→ `self._graph.invoke(...)`), so the frontend had no `run_id` to open its
+live `run.timeline.*`/`execution.action.*` subscription against until the
+response arrived — by which point there was nothing left to stream. Not a
+gap in E43-S2/S3's rendering (confirmed correct); the run_id itself never
+reached the browser early enough to be useful.
+
+Subtasks:
+- `E43-S6-T1`: `OrchestratorService.begin_message` — admits the run
+  (session lookup, run-type inference, concurrency-lease acquisition, the
+  initial `RunStatus.RUNNING` row, and the `flow.run.started` event that
+  creates the run's `EventStore` projection) synchronously, then runs the
+  agent graph in a background job via the existing `backend.jobs.queue`
+  infrastructure (reused as-is; not a new subsystem) and returns
+  immediately. `handle_message` itself is unchanged — the CLI, the frozen
+  v1 `/chat`, and `backend/api/routers/orchestration.py` all still call it
+  and still block synchronously, by design.
+- `E43-S6-T2`: `POST /v2/sessions/{id}/turns` (`chat_v2.py`) calls
+  `begin_message` instead. `GET /v2/turns/{id}` (unchanged) becomes the
+  poll target for the real, completed result.
+- `E43-S6-T3`: added `RunStatus.FAILED` — previously a graph exception left
+  the run row stuck at `running` forever (no `except` around the graph
+  invoke; always had an HTTP caller to surface a 500 to instead). The
+  background job now catches, persists `FAILED` with the error recorded,
+  and releases the lease either way.
+- `E43-S6-T4`: `frontend/app/page.tsx`'s `handleSubmit` sets the active
+  turn immediately (unblocking the Execution panel's live subscription),
+  polls `GET /v2/turns/{id}` to completion, and clears the composer on
+  submit rather than on completion.
+- `E43-S6-T5`: discovered while testing — `backend/cli_shell.py`'s
+  `run_goal` also assumed synchronous turn completion (calling
+  `execute()` immediately after `create_turn()`, deriving the execution
+  plan from artifacts the now-backgrounded pipeline hadn't produced yet,
+  400ing). Added `ShellSession.wait_for_turn` (poll `GET /v2/turns/{id}`,
+  API-only, no `backend.*` imports per this module's own contract) and
+  call it between `create_turn`/`execute`.
+
+| Criterion | Detail |
+| --- | --- |
+| Functional | Sending a Chat message shows the Execution panel populate live (via the already-existing `run.timeline.*` stream) while the turn is still running, not only after it finishes; the composer clears on submit; a failed turn surfaces as `failed`, not stuck at `running` forever |
+| Non-functional | No change to `handle_message`'s three other callers (CLI, legacy v1 `/chat`, `orchestration.py`); no new backend subsystem — reuses the existing `backend.jobs.queue` async job infrastructure and its established "handler registered in the same module that enqueues it" pattern (`backend/repository/indexing.py`'s precedent) |
+| DoR (specific) | E43-S2 landed (a `run_id` is only useful early if the transcript renderer already does the right thing once given one) |
+| DoD (specific) | Automated: `backend/tests/unit/orchestrator/test_begin_message.py` (immediate-return shape, synchronous KeyError/QuotaExceededError, real end-to-end completion via the actual background job, and a failed-job path releasing the lease); updated `test_chat_timeline_v2.py`/`test_cli_shell_api_only.py` for the new async contract; full backend + frontend suites green. Not performed: interactive browser click-through (no headless Chrome in this environment) |
+| Dependencies | E43-S2, E43-S3 |
 
 ## Contracts & decisions
 

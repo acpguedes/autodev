@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import ExecutionConsolePanel from "../components/ExecutionConsolePanel";
 import MessageList, { type Message } from "../components/MessageList";
@@ -14,6 +14,7 @@ import {
   type TurnV2,
   createTurnV2,
   getProviderStatusV2,
+  getTurnV2,
   listSessionTurnsV2,
 } from "@/lib/api_v2";
 import { useTranslations } from "@/lib/i18n";
@@ -32,6 +33,13 @@ import {
 
 const textareaClass =
   "min-h-[110px] w-full resize-y rounded-ds-md border border-ds-line bg-ds-bg-2 px-3 py-2 text-sm text-ds-fg shadow-sm transition-colors placeholder:text-ds-fg-3 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ds-accent";
+
+/** Milliseconds between polls of an in-progress turn (E43-S6). */
+const TURN_POLL_INTERVAL_MS = 1500;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 export default function Page() {
   // `useSearchParams` opts the subtree into client-side rendering, so it must
@@ -65,6 +73,17 @@ function ExecutionControlCenter() {
   const [providerStatus, setProviderStatus] = useState<ProviderStatusV2 | null>(null);
   const [providerLoading, setProviderLoading] = useState(true);
   const { setPanelOpen, setActiveSessionId, setActiveRunId } = useShell();
+
+  // Guards the turn-completion poll (E43-S6) against setting state after the
+  // page unmounts mid-poll (e.g. the operator navigates away while a turn is
+  // still running).
+  const isMountedRef = useRef(true);
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // Publish the active session/run to the shell store (E42-S3) so the
   // Plans/Execution pages can default to them instead of requiring a
@@ -209,14 +228,42 @@ function ExecutionControlCenter() {
     try {
       // E16-S1 turns contract: the turn id doubles as the run id, which
       // feeds the execution timeline's SSE subscription (E17-S1-T3).
-      const turn = await createTurnV2(sessionId, pendingMessage);
+      // E43-S6: the turn returns immediately (status "running", agent
+      // pipeline still working in the background) -- set it as the active
+      // turn right away so the Execution panel's live event subscription
+      // opens now, not only once the whole (potentially long, multi-agent)
+      // turn has already finished.
+      let turn = await createTurnV2(sessionId, pendingMessage);
+      if (!isMountedRef.current) {
+        return;
+      }
+      setActiveTurn(turn);
+
+      while (turn.status === "running") {
+        await sleep(TURN_POLL_INTERVAL_MS);
+        if (!isMountedRef.current) {
+          return;
+        }
+        turn = await getTurnV2(turn.turnId);
+      }
+      if (!isMountedRef.current) {
+        return;
+      }
+
       setActiveTurn(turn);
       setMessages(mapHistoryToMessages(turn.history));
+      if (turn.status === "failed") {
+        setError(t("chat.errors.sendMessage"));
+      }
       await refreshSessionState(sessionId);
     } catch {
-      setError(t("chat.errors.sendMessage"));
+      if (isMountedRef.current) {
+        setError(t("chat.errors.sendMessage"));
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }
 
