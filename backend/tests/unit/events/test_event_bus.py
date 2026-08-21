@@ -110,6 +110,41 @@ def test_failing_subscriber_does_not_block_delivery() -> None:
     assert received == [event_id]
 
 
+def test_in_memory_bus_unsubscribe_stops_delivery() -> None:
+    """The callable returned by ``subscribe`` removes that subscription."""
+    bus = InMemoryEventBus()
+    received: list[str] = []
+    unsubscribe = bus.subscribe(WILDCARD, lambda e: received.append(e.eventId))
+
+    bus.publish(_envelope())
+    unsubscribe()
+    bus.publish(_envelope())
+
+    assert len(received) == 1
+
+
+def test_in_memory_bus_unsubscribe_is_idempotent() -> None:
+    """Calling the unsubscribe callable more than once is a no-op, not an error."""
+    bus = InMemoryEventBus()
+    unsubscribe = bus.subscribe(WILDCARD, lambda _e: None)
+
+    unsubscribe()
+    unsubscribe()
+
+
+def test_in_memory_bus_unsubscribe_only_removes_its_own_subscription() -> None:
+    """Unsubscribing one callback leaves other subscribers to the same type intact."""
+    bus = InMemoryEventBus()
+    received: list[str] = []
+    unsubscribe_first = bus.subscribe(WILDCARD, lambda e: received.append(f"first:{e.eventId}"))
+    bus.subscribe(WILDCARD, lambda e: received.append(f"second:{e.eventId}"))
+
+    unsubscribe_first()
+    event_id = bus.publish(_envelope())
+
+    assert received == [f"second:{event_id}"]
+
+
 def test_redis_bus_persists_to_partition_stream_and_replays() -> None:
     """The Redis bus appends the JSON envelope per partition and replays it intact."""
     client = _FakeRedisStreamClient()
@@ -124,6 +159,20 @@ def test_redis_bus_persists_to_partition_stream_and_replays() -> None:
     assert list(client.streams) == ["autodev:events:run_1"]
     replayed = bus.replay("run_1")
     assert [e.model_dump() for e in replayed] == [envelope.model_dump()]
+
+
+def test_redis_bus_unsubscribe_stops_local_dispatch() -> None:
+    """The callable returned by ``subscribe`` removes the in-process dispatch subscription."""
+    client = _FakeRedisStreamClient()
+    bus = RedisEventBus(client=client)
+    received: list[str] = []
+    unsubscribe = bus.subscribe(WILDCARD, lambda e: received.append(e.eventId))
+
+    bus.publish(_envelope())
+    unsubscribe()
+    bus.publish(_envelope())
+
+    assert len(received) == 1
 
 
 def test_redis_bus_requires_client_or_url() -> None:

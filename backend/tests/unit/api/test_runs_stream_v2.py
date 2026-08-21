@@ -15,6 +15,7 @@ for consistency with the rest of this module.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -34,7 +35,7 @@ from backend.api.v2_common import SCHEMA_VERSION_V2
 from backend.auth.contracts import AuthMethod, PrincipalV2, Role
 from backend.config.runtime import reset_runtime_config_cache
 from backend.config.settings import reset_settings_cache
-from backend.events.bus import EventBus, InMemoryEventBus
+from backend.events.bus import WILDCARD, EventBus, InMemoryEventBus
 from backend.events.catalog import make_envelope
 from backend.events.runtime import (
     get_event_bus,
@@ -321,6 +322,48 @@ class TestStreamEventsGenerator:
 
         assert len(frames) == 1
         assert "event: flow.run.started" in frames[0]
+
+
+    def test_unsubscribes_on_disconnect(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Disconnect leaves zero subscribers registered on the bus (E45-S3)."""
+        monkeypatch.setattr(runs_stream_v2, "DISCONNECT_POLL_INTERVAL_SEC", 0.01)
+
+        async def run() -> int:
+            bus = InMemoryEventBus()
+            run_id = "run-1"
+            _publish(bus, run_id, "flow.run.started")
+            request = _DisconnectingRequest(connected_polls=1)
+            agen = _stream_events(request, bus, run_id, None, None)  # type: ignore[arg-type]
+            async for _frame in agen:
+                pass
+            return len(bus._registry._subscribers[WILDCARD])  # noqa: SLF001
+
+        remaining = asyncio.run(run())
+
+        assert remaining == 0
+
+    def test_unsubscribes_when_generator_is_cancelled(self) -> None:
+        """A cancelled generator (client abort mid-wait) also unsubscribes cleanly."""
+
+        async def run() -> int:
+            bus = InMemoryEventBus()
+            run_id = "run-1"
+            agen = _stream_events(_FakeRequest(), bus, run_id, None, None)  # type: ignore[arg-type]
+            task = asyncio.ensure_future(agen.__anext__())
+            await asyncio.sleep(0.01)
+            task.cancel()
+            # The generator's own `except CancelledError: return` swallows the
+            # cancellation and completes normally (StopAsyncIteration from
+            # __anext__), rather than the task ending in "cancelled" state —
+            # its `finally: unsubscribe()` still runs either way.
+            with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
+                await task
+            await agen.aclose()
+            return len(bus._registry._subscribers[WILDCARD])  # noqa: SLF001
+
+        remaining = asyncio.run(run())
+
+        assert remaining == 0
 
 
 class TestStreamRunEventsHandler:

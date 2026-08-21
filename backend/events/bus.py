@@ -42,6 +42,10 @@ def _stream_key(partition_key: str) -> str:
     return f"autodev:events:{partition_key}"
 
 
+Unsubscribe = Callable[[], None]
+"""Cancellation token returned by :meth:`EventBus.subscribe` (E45-S3)."""
+
+
 class EventBus(Protocol):
     """Publish/subscribe contract shared by every bus backend."""
 
@@ -49,8 +53,14 @@ class EventBus(Protocol):
         """Persist and fan out an envelope; returns its ``eventId``."""
         ...
 
-    def subscribe(self, type_: str, subscriber: Subscriber) -> None:
-        """Register a callback for a type (or :data:`WILDCARD`)."""
+    def subscribe(self, type_: str, subscriber: Subscriber) -> Unsubscribe:
+        """Register a callback for a type (or :data:`WILDCARD`).
+
+        Returns:
+            A zero-argument callable that removes this subscription;
+            idempotent (calling it more than once is a no-op after the
+            first call).
+        """
         ...
 
     def replay(self, partition_key: str) -> list[EventEnvelope]:
@@ -71,14 +81,25 @@ class _SubscriberRegistry:
         """Initialize an empty type-to-subscribers index."""
         self._subscribers: dict[str, list[Subscriber]] = defaultdict(list)
 
-    def subscribe(self, type_: str, subscriber: Subscriber) -> None:
+    def subscribe(self, type_: str, subscriber: Subscriber) -> Unsubscribe:
         """Register a callback for an event type.
 
         Args:
             type_: Catalog event type, or :data:`WILDCARD` for all types.
             subscriber: Callback receiving each matching envelope.
+
+        Returns:
+            An idempotent callable that removes this subscription.
         """
         self._subscribers[type_].append(subscriber)
+
+        def _unsubscribe() -> None:
+            try:
+                self._subscribers[type_].remove(subscriber)
+            except ValueError:
+                pass
+
+        return _unsubscribe
 
     def dispatch(self, envelope: EventEnvelope) -> None:
         """Invoke matching subscribers, isolating individual failures.
@@ -114,9 +135,9 @@ class InMemoryEventBus:
         self._registry.dispatch(envelope)
         return envelope.eventId
 
-    def subscribe(self, type_: str, subscriber: Subscriber) -> None:
+    def subscribe(self, type_: str, subscriber: Subscriber) -> Unsubscribe:
         """Register a callback for a type (or :data:`WILDCARD`)."""
-        self._registry.subscribe(type_, subscriber)
+        return self._registry.subscribe(type_, subscriber)
 
     def replay(self, partition_key: str) -> list[EventEnvelope]:
         """Return the partition's envelopes in publish order.
@@ -192,9 +213,9 @@ class RedisEventBus:
         self._registry.dispatch(envelope)
         return envelope.eventId
 
-    def subscribe(self, type_: str, subscriber: Subscriber) -> None:
+    def subscribe(self, type_: str, subscriber: Subscriber) -> Unsubscribe:
         """Register a callback for a type (or :data:`WILDCARD`)."""
-        self._registry.subscribe(type_, subscriber)
+        return self._registry.subscribe(type_, subscriber)
 
     def replay(self, partition_key: str) -> list[EventEnvelope]:
         """Read back a partition's stream, oldest first.
@@ -255,4 +276,11 @@ def _decode_entry(fields: dict[Any, Any]) -> EventEnvelope:
     return EventEnvelope.model_validate(json.loads(raw))
 
 
-__all__ = ["EventBus", "InMemoryEventBus", "RedisEventBus", "Subscriber", "WILDCARD"]
+__all__ = [
+    "EventBus",
+    "InMemoryEventBus",
+    "RedisEventBus",
+    "Subscriber",
+    "Unsubscribe",
+    "WILDCARD",
+]
