@@ -44,10 +44,11 @@ def isolated_runtime_config(
 
     :class:`~backend.config.runtime.RuntimeConfigService` resolves its config
     path from ``AUTODEV_CONFIG_PATH``, falling back to
-    ``Path.cwd()/autodev.config.json``. Since the suite runs from the repository
-    root, an unisolated test reads the developer's own ``autodev.config.json`` —
-    which may hold a real provider, base URL and API key. That file is
-    gitignored, so the exposure is per-machine and invisible in CI.
+    ``<AUTODEV_PROJECT_ROOT or cwd>/autodev.config.json``. Since the suite runs
+    from the repository root, an unisolated test reads the developer's own
+    ``autodev.config.json`` — which may hold a real provider, base URL and API
+    key. That file is gitignored, so the exposure is per-machine and invisible
+    in CI.
 
     This became load-bearing when :class:`~backend.flows.handlers.AgentNodeHandler`
     started composing a gateway-carrying runtime by default: without this

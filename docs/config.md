@@ -125,8 +125,8 @@ expire.
 | `OPENAI_BASE_URL` | empty | Compatible gateway URL. |
 | `OPENAI_TEMPERATURE` | `0.2` | LLM temperature. |
 | `OPENAI_VERIFY_SSL` | `true` | TLS verification for OpenAI-compatible traffic. |
-| `AUTODEV_PROJECT_ROOT` | empty | Active repository/workspace root. |
-| `AUTODEV_CONFIG_PATH` | empty | Runtime UI config document path. |
+| `AUTODEV_PROJECT_ROOT` | empty | Active repository/workspace root. Also used as the default directory for `autodev.config.json` when `AUTODEV_CONFIG_PATH` is unset — the config is resolved relative to the project the service points to, not the process's launch directory. |
+| `AUTODEV_CONFIG_PATH` | empty | Explicit `autodev.config.json` path, overriding the `AUTODEV_PROJECT_ROOT`-relative default. |
 | `AUTODEV_CORS_ORIGINS` | local Next.js origins | Comma-separated CORS allowlist. |
 | `AUTODEV_API_TOKEN` | empty | Legacy local/single-tenant compatibility PAT, mapped to `admin`. Never satisfies production readiness (ADR-018). |
 | `AUTODEV_OIDC_ISSUER` | empty | Expected JWT `iss` claim; part of the OIDC/JWKS settings required for production readiness. |

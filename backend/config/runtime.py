@@ -67,7 +67,7 @@ class RuntimeConfigService:
     """Load, persist, and apply runtime configuration."""
 
     def __init__(self, config_path: Path | None = None, default_project_root: Path | None = None) -> None:
-        self._default_project_root = (default_project_root or Path.cwd()).resolve()
+        self._default_project_root = (default_project_root or self._env_or_cwd_project_root()).resolve()
         self._config_path = (config_path or self._resolve_config_path()).resolve()
 
     @property
@@ -134,7 +134,7 @@ class RuntimeConfigService:
             env_file_example="\n".join(env_lines),
             notes=[
                 "A UI grava a configuração em um arquivo JSON local para manter estado fora do prompt.",
-                "Se preferir, copie os exemplos para .env antes de iniciar os serviços.",
+                "autodev.config.json é a fonte de configuração do AutoDev (LLM e project root); .env não precisa duplicar esses valores — o exemplo abaixo é só para inspeção/depuração.",
                 "O diretório configurado passa a ser usado pelo endpoint de contexto de repositório e pelo Navigator agent.",
                 "LLM_PROVIDER=stub preserva um caminho totalmente local e determinístico quando não houver chave de API.",
                 "LLM_PROVIDER=ollama habilita um caminho local first-class usando a API compatível com OpenAI do Ollama.",
@@ -158,11 +158,25 @@ class RuntimeConfigService:
 
         return active_config
 
+    @staticmethod
+    def _env_or_cwd_project_root() -> Path:
+        """Resolve the default project root: ``AUTODEV_PROJECT_ROOT`` if set, else the launch cwd."""
+        configured = os.getenv("AUTODEV_PROJECT_ROOT", "").strip()
+        return Path(configured) if configured else Path.cwd()
+
     def _resolve_config_path(self) -> Path:
+        """Resolve the ``autodev.config.json`` path.
+
+        ``AUTODEV_CONFIG_PATH`` wins when set. Otherwise the file is looked
+        up under the project the service is pointed at
+        (``self._default_project_root``, itself derived from
+        ``AUTODEV_PROJECT_ROOT``) rather than the directory the process
+        happened to be launched from.
+        """
         configured = os.getenv("AUTODEV_CONFIG_PATH", "").strip()
         if configured:
             return Path(configured)
-        return Path.cwd() / DEFAULT_CONFIG_FILE_NAME
+        return self._default_project_root / DEFAULT_CONFIG_FILE_NAME
 
     def _default_config(self) -> RuntimeConfig:
         return self._normalize(
