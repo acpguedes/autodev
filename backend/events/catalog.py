@@ -305,7 +305,10 @@ class ExecutionActionFailedData(BaseModel):
     """Payload of ``execution.action.failed`` (E14-S1, RFC-009).
 
     ``command``/``path``/``stdout``/``stderr``/``stepLabel`` (E43-S2/S3), as
-    :class:`ExecutionActionCompletedData`.
+    :class:`ExecutionActionCompletedData`. ``failureKind`` (E46-S1,
+    ADR-023) is the typed reason this action failed -- one of
+    ``ExecutionFailureKind``'s values, or ``None`` when the producer has
+    not classified it (pre-E46 events, additive/optional).
     """
 
     actionId: str
@@ -316,6 +319,7 @@ class ExecutionActionFailedData(BaseModel):
     stdout: str = ""
     stderr: str = ""
     stepLabel: str | None = None
+    failureKind: str | None = None
 
 
 class ExecutionPolicyDecisionData(BaseModel):

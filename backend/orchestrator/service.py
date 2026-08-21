@@ -41,7 +41,12 @@ from backend.config.settings import get_settings
 from backend.environments.contracts import EnvironmentBackendError, EnvironmentHandle
 from backend.environments.manager import EnvironmentCapacityExceededError, EnvironmentManager
 from backend.events.runtime import emit_event
-from backend.execution.contracts import ExecutionAction, ExecutionActionType, ExecutionResult
+from backend.execution.contracts import (
+    ExecutionAction,
+    ExecutionActionType,
+    ExecutionFailureKind,
+    ExecutionResult,
+)
 from backend.execution.decisions import DecisionService
 from backend.execution.executor import TaskExecutionOutcome, TaskExecutor
 from backend.execution.modes import ExecutionMode
@@ -1413,7 +1418,11 @@ class OrchestratorService:
         if environment_denied_reason is not None and actions:
             return (
                 self._task_executor.deny_all(
-                    actions, run_id=run_id, tenant_id=tenant_id, reason=environment_denied_reason
+                    actions,
+                    run_id=run_id,
+                    tenant_id=tenant_id,
+                    reason=environment_denied_reason,
+                    failure_kind=ExecutionFailureKind.ENVIRONMENT_UNAVAILABLE,
                 ),
                 None,
             )

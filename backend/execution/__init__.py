@@ -10,7 +10,12 @@ simulated loop that used to live in
 
 from __future__ import annotations
 
-from backend.execution.contracts import ExecutionAction, ExecutionActionType, ExecutionResult
+from backend.execution.contracts import (
+    ExecutionAction,
+    ExecutionActionType,
+    ExecutionFailureKind,
+    ExecutionResult,
+)
 from backend.execution.executor import TaskExecutionOutcome, TaskExecutor
 from backend.execution.policy import (
     ACTION_TYPE_TO_POLICY_CATEGORY,
@@ -36,6 +41,7 @@ from backend.execution.runner import (
 __all__ = [
     "ExecutionAction",
     "ExecutionActionType",
+    "ExecutionFailureKind",
     "ExecutionResult",
     "TaskExecutionOutcome",
     "TaskExecutor",

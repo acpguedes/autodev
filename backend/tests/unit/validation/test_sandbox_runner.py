@@ -144,6 +144,19 @@ def test_enabled_local_nonzero_returncode(tmp_path: Path) -> None:
 
     assert result.returncode == 7
     assert result.backend == "local"
+    assert result.failure_kind == "code_failure"
+
+
+def test_enabled_local_success_carries_no_failure_kind(tmp_path: Path) -> None:
+    with patch("shutil.which", return_value=None):
+        runner = SandboxRunner(
+            allowed_commands=["python", "python3"],
+            policy=_policy(tmp_path, allow_local=True),
+        )
+        result = runner.run(_job(["python", "-c", "print(1)"]))
+
+    assert result.returncode == 0
+    assert result.failure_kind is None
 
 
 def test_local_execution_uses_guarded_workspace(tmp_path: Path) -> None:
@@ -194,6 +207,26 @@ def test_enabled_docker_routes_to_docker_backend(tmp_path: Path) -> None:
     call_args = mock_run.call_args[0][0]
     assert call_args[0] == "docker"
     assert "run" in call_args
+    assert result.failure_kind is None
+
+
+def test_enabled_docker_nonzero_exit_is_classified_as_code_failure(tmp_path: Path) -> None:
+    fake_completed = MagicMock()
+    fake_completed.returncode = 1
+    fake_completed.stdout = ""
+    fake_completed.stderr = "AssertionError\n"
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/docker"),
+        patch("subprocess.run", return_value=fake_completed),
+    ):
+        runner = SandboxRunner(
+            allowed_commands=["pytest"], policy=_policy(tmp_path)
+        )
+        result = runner.run(_job(["pytest"]))
+
+    assert result.returncode == 1
+    assert result.failure_kind == "code_failure"
 
 
 def test_docker_command_mounts_only_guarded_workspace(tmp_path: Path) -> None:
@@ -290,6 +323,7 @@ def test_docker_timeout_returns_124_with_sanitized_message(tmp_path: Path) -> No
     assert result.backend == "docker"
     assert "--secret" not in result.stderr
     assert "5s" in result.stderr
+    assert result.failure_kind == "timeout"
 
 
 # ---------------------------------------------------------------------------
@@ -308,6 +342,7 @@ def test_cwd_outside_project_root_is_blocked_without_spawning(tmp_path: Path) ->
 
     assert result.skipped is True
     assert result.backend == "blocked"
+    assert result.failure_kind == "policy_denied"
     mock_run.assert_not_called()
 
 
@@ -323,6 +358,7 @@ def test_command_not_in_allowlist_is_blocked(tmp_path: Path) -> None:
 
     assert result.skipped is True
     assert result.backend == "blocked"
+    assert result.failure_kind == "command_not_allowed"
     mock_run.assert_not_called()
 
 
@@ -428,4 +464,5 @@ def test_fails_closed_without_docker_by_default(tmp_path: Path) -> None:
 
     assert result.skipped is True
     assert result.backend == "unavailable"
+    assert result.failure_kind == "environment_unavailable"
     mock_run.assert_not_called()

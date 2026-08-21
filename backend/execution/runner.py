@@ -26,7 +26,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Protocol
 
-from backend.execution.contracts import ExecutionAction, ExecutionActionType, ExecutionResult
+from backend.execution.contracts import (
+    ExecutionAction,
+    ExecutionActionType,
+    ExecutionFailureKind,
+    ExecutionResult,
+)
 from backend.patches.engine import apply_patch, generate_patch
 from backend.patches.models import Patch
 from backend.validation.models import ValidationJob
@@ -90,6 +95,15 @@ def _run_via_sandbox(
     )
     validation_result = sandbox_runner.run(job)
     succeeded = validation_result.returncode == 0
+    if succeeded:
+        failure_kind = None
+    elif validation_result.failure_kind:
+        failure_kind = ExecutionFailureKind(validation_result.failure_kind)
+    else:
+        # Process exit codes default to code_failure (ADR-023): an
+        # unclassified failure from any ValidationResult producer is still
+        # a safe, repair-eligible default rather than silently dropped.
+        failure_kind = ExecutionFailureKind.CODE_FAILURE
     return ExecutionResult(
         action_id=action.action_id,
         task_id=action.task_id,
@@ -102,6 +116,7 @@ def _run_via_sandbox(
         exit_code=validation_result.returncode,
         error=None if succeeded else validation_result.stderr,
         command=list(action.command) if action.command else None,
+        failure_kind=failure_kind,
     )
 
 
@@ -353,6 +368,7 @@ class CompositeActionRunner:
                     started_at=now,
                     completed_at=now,
                     error=f"environment policy denied: {denial.reason}",
+                    failure_kind=ExecutionFailureKind.POLICY_DENIED,
                 )
                 result.environment = self._environment_metadata()
                 return result
