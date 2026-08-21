@@ -28,6 +28,7 @@ _ROLE_TIER_ADDITIONS: tuple[tuple[Role, frozenset[str]], ...] = (
                 "auth:self",
                 "session:read",
                 "run:read",
+                "repository:read",
                 "flow:read",
                 "agent:read",
                 "skill:read",

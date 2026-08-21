@@ -154,6 +154,10 @@
       "resume": "Não foi possível retomar a execução."
     }
   },
+  "files": {
+    "pageTitle": "Arquivos",
+    "pageSubtitle": "Navegue pela árvore de arquivos do projeto gerado e leia qualquer arquivo no navegador."
+  },
   "shell": {
     "nav": {
       "groupWorkspace": "Espaço de trabalho",
@@ -163,6 +167,7 @@
         "plans": "Planos",
         "patches": "Patches",
         "execution": "Execução",
+        "files": "Arquivos",
         "flows": "Fluxos",
         "sessions": "Sessões",
         "config": "Configuração",
