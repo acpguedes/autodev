@@ -101,6 +101,7 @@ def _run_via_sandbox(
         stderr=validation_result.stderr,
         exit_code=validation_result.returncode,
         error=None if succeeded else validation_result.stderr,
+        command=list(action.command) if action.command else None,
     )
 
 
@@ -180,6 +181,7 @@ class PatchRunner:
             stdout=result.message,
             diff=patch.diff,
             artifacts=[result.path] if result.applied else [],
+            path=action.path or patch.path,
         )
 
 

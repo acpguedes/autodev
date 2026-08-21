@@ -83,6 +83,12 @@ class ExecutionResult:
             "profileHash"}`` when the action was dispatched through a
             bound environment, or ``{}`` when none was bound (e.g. direct
             E14 construction without E32 wiring -- fully backward compatible).
+        command: The real command that was run, for ``run_command``/
+            ``run_validation`` actions (E43-S2) -- lets a transcript
+            renderer show the actual ``$ pytest -q`` line instead of only
+            the task's plain-language description.
+        path: The file target that was written, for ``create_file``/
+            ``edit_file``/``apply_patch`` actions (E43-S2).
     """
 
     action_id: str
@@ -98,6 +104,8 @@ class ExecutionResult:
     artifacts: list[str] = field(default_factory=list)
     error: str | None = None
     environment: dict[str, Any] = field(default_factory=dict)
+    command: list[str] | None = None
+    path: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Render this result as a plain, JSON-safe dict."""
@@ -115,6 +123,8 @@ class ExecutionResult:
             "artifacts": list(self.artifacts),
             "error": self.error,
             "environment": dict(self.environment),
+            "command": list(self.command) if self.command is not None else None,
+            "path": self.path,
         }
 
 
