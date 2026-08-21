@@ -322,6 +322,33 @@ def _m9_down_remove_content_column_from_code_chunks(conn: sqlite3.Connection) ->
         conn.execute("ALTER TABLE code_chunks DROP COLUMN content")
 
 
+def _m10_unique_message_sequence(conn: sqlite3.Connection) -> None:
+    """Add a unique index on ``messages (tenant_id, session_id, sequence)`` (E44-S4).
+
+    Sequence numbers are now allocated as ``MAX(sequence) + 1`` inside the
+    append transaction rather than derived from a full re-read of the
+    conversation. This index is what makes that safe: two concurrent appends
+    that read the same maximum collide on insert and fail closed instead of
+    silently writing duplicate sequence numbers.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_tenant_session_sequence "
+        "ON messages (tenant_id, session_id, sequence)"
+    )
+
+
+def _m10_down_unique_message_sequence(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m10_unique_message_sequence` by dropping the index.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    conn.execute("DROP INDEX IF EXISTS idx_messages_tenant_session_sequence")
+
+
 STORE_MIGRATIONS: list[MigrationEntry] = [
     _m1_create_core_tables,
     _m2_runs_add_run_type,
@@ -343,6 +370,11 @@ STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_m9_add_content_column_to_code_chunks,
         down=_m9_down_remove_content_column_from_code_chunks,
         name="add_content_column_to_code_chunks",
+    ),
+    Migration(
+        up=_m10_unique_message_sequence,
+        down=_m10_down_unique_message_sequence,
+        name="unique_message_sequence",
     ),
 ]
 

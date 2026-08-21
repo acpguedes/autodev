@@ -4,8 +4,8 @@ Covers ``PostgresStore`` and ``PostgresPlanStore``'s CRUD methods using a
 scripted fake ``psycopg`` module: a single shared :class:`ScriptedConnection`
 (psycopg.connect always returns the same instance, mirroring how the code
 under test opens a fresh "connection" per method call while nested calls
-like ``list_runs`` -> ``list_run_steps`` and ``append_messages`` ->
-``list_messages`` must still observe results in call order) with FIFO
+like ``list_runs`` -> its batched step query must still observe results in
+call order) with FIFO
 ``fetchone``/``fetchall`` queues so exact row values can be scripted per
 test.
 
@@ -338,52 +338,58 @@ def test_list_messages_maps_rows(store: PostgresStore, scripted_conn: ScriptedCo
     ]
 
 
-def test_append_messages_no_op_when_nothing_new(
+def test_append_messages_no_op_when_tail_is_empty(
     store: PostgresStore, scripted_conn: ScriptedConnection
 ) -> None:
-    """append_messages short-circuits (no connection/insert) when history has no new items."""
-    scripted_conn.fetchall_queue.append(
-        [
-            ("m1", "s1", "r1", 0, "user", "hi", "2024-01-01"),
-            ("m2", "s1", "r1", 1, "assistant", "hello", "2024-01-01"),
-        ]
-    )
-    before_commits = scripted_conn.commits
+    """append_messages short-circuits (no connection/statement) on an empty tail."""
+    before = len(scripted_conn.executed)
 
-    store.append_messages("s1", "r1", [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}])
+    store.append_messages("s1", "r1", [])
 
-    # list_messages() still runs its SELECT to check existing history, but no
-    # INSERT/commit happens since there is nothing new to append.
-    assert scripted_conn.commits == before_commits
-    assert not any("INSERT INTO messages" in sql for sql, _ in scripted_conn.executed)
+    assert len(scripted_conn.executed) == before
     assert not scripted_conn.executed_many
 
 
-def test_append_messages_inserts_only_new_items_with_continued_sequence(
+def test_append_messages_allocates_sequences_after_the_stored_maximum(
     store: PostgresStore, scripted_conn: ScriptedConnection
 ) -> None:
-    """append_messages inserts only the tail of history beyond what already exists."""
-    scripted_conn.fetchall_queue.append([("m1", "s1", "r1", 0, "user", "hi", "2024-01-01")])
+    """The tail is numbered from MAX(sequence) + 1, read in one row (E44-S4)."""
+    scripted_conn.fetchone_queue.append((0,))  # highest stored sequence
 
     store.append_messages(
         "s1",
         "r1",
         [
-            {"role": "user", "content": "hi"},
             {"role": "assistant", "content": "second"},
             {"role": "user", "content": "third"},
         ],
     )
 
+    max_sql, max_params = [
+        (sql, params) for sql, params in scripted_conn.executed if "MAX(sequence)" in sql
+    ][0]
+    assert max_params == ("s1",)
+    assert "FROM messages" in max_sql
     # E44-S2: the tail is inserted in one batched statement, not one per row.
     batched = [(sql, rows) for sql, rows in scripted_conn.executed_many if "INSERT INTO messages" in sql]
     assert len(batched) == 1
-    rows = batched[0][1]
-    assert rows == [
+    assert batched[0][1] == [
         ("s1", "r1", 1, "assistant", "second", "default"),
         ("s1", "r1", 2, "user", "third", "default"),
     ]
     assert scripted_conn.commits == 1
+
+
+def test_append_messages_starts_at_zero_for_an_empty_session(
+    store: PostgresStore, scripted_conn: ScriptedConnection
+) -> None:
+    """A session with no messages yet starts its sequence at 0."""
+    scripted_conn.fetchone_queue.append((None,))
+
+    store.append_messages("s1", "r1", [{"role": "user", "content": "hi"}])
+
+    batched = [rows for sql, rows in scripted_conn.executed_many if "INSERT INTO messages" in sql][0]
+    assert batched == [("s1", "r1", 0, "user", "hi", "default")]
 
 
 # ---------------------------------------------------------------------------

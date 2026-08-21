@@ -400,6 +400,33 @@ def revert_tenant_id_and_rls_from_plan_tables(conn: Any) -> None:
         conn.execute(f"ALTER TABLE {table} DROP COLUMN IF EXISTS tenant_id")
 
 
+def _pg_m6_unique_message_sequence(conn: Any) -> None:
+    """Add a unique index on ``messages (tenant_id, session_id, sequence)`` (E44-S4).
+
+    Postgres counterpart of
+    :func:`backend.persistence.migrations.versions._m10_unique_message_sequence`:
+    sequence numbers are allocated as ``MAX(sequence) + 1`` inside the append
+    transaction, and this index makes two concurrent appends that read the
+    same maximum fail closed instead of writing duplicates.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_tenant_session_sequence "
+        "ON messages (tenant_id, session_id, sequence)"
+    )
+
+
+def _pg_m6_down_unique_message_sequence(conn: Any) -> None:
+    """Revert :func:`_pg_m6_unique_message_sequence` by dropping the index.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute("DROP INDEX IF EXISTS idx_messages_tenant_session_sequence")
+
+
 POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
     _pg_m1_create_core_tables,
     Migration(
@@ -426,6 +453,11 @@ POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
         up=add_tenant_id_and_rls_to_plan_tables,
         down=revert_tenant_id_and_rls_from_plan_tables,
         name="add_tenant_id_and_rls_to_plan_tables",
+    ),
+    Migration(
+        up=_pg_m6_unique_message_sequence,
+        down=_pg_m6_down_unique_message_sequence,
+        name="unique_message_sequence",
     ),
 ]
 
