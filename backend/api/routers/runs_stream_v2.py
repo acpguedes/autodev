@@ -33,8 +33,9 @@ Design notes:
   The authoritative ``(cursor, envelope)`` pairs actually sent to the client
   always come from a follow-up :meth:`~backend.events.bus.EventBus.replay_from`
   call, so a missed or coalesced wake-up never drops an event. The
-  in-process bus backends have no ``unsubscribe``; a long-lived subscriber
-  per connection is an accepted, documented limitation of this iteration.
+  generator unsubscribes in a ``finally`` block (E45-S3) covering both
+  client disconnect and ``CancelledError``, so a closed connection frees
+  its subscriber instead of leaking into the bus registry.
 * **Tenant scoping (E9-S2-T3, tightened E11-S3/ADR-019).** The authenticated
   ``PrincipalV2.tenant_id`` is the only source of the enforced tenant —
   never the run's own record and never a caller-supplied value. A stream
@@ -173,7 +174,7 @@ async def _stream_events(
     def _on_event(_envelope: EventEnvelope) -> None:
         loop.call_soon_threadsafe(wake.set)
 
-    bus.subscribe(WILDCARD, _on_event)
+    unsubscribe = bus.subscribe(WILDCARD, _on_event)
 
     cursor = start_cursor
     idle_elapsed = 0.0
@@ -196,6 +197,8 @@ async def _stream_events(
                     yield ": ping\n\n"
     except asyncio.CancelledError:  # pragma: no cover - depends on server-side disconnect timing
         return
+    finally:
+        unsubscribe()
 
 
 @requires_scope("run:read")
