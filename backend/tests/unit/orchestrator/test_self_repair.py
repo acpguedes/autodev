@@ -19,7 +19,7 @@ import pytest
 
 from backend.agents.base import AgentContext, AgentResult
 from backend.events.runtime import get_event_bus, reset_event_bus_for_tests
-from backend.execution.contracts import ExecutionResult
+from backend.execution.contracts import ExecutionFailureKind, ExecutionResult
 from backend.execution.executor import TaskExecutionOutcome
 from backend.execution.modes import ExecutionMode
 from backend.orchestrator.service import ExecutionTask, OrchestratorService
@@ -247,6 +247,119 @@ def test_self_repair_with_no_prior_file_artifacts_is_reported_failed_without_ret
 
     assert self_check == "failed_after_retry"
     assert coder.call_count == 0
+
+
+def _classified_failure_outcome(
+    task: ExecutionTask, failure_kind: ExecutionFailureKind
+) -> TaskExecutionOutcome:
+    now = _timestamp()
+    return TaskExecutionOutcome(
+        status="failed",
+        results=[
+            ExecutionResult(
+                action_id=f"{task.task_id}-validate-1",
+                task_id=task.task_id,
+                step_key=task.task_id,
+                status="failed",
+                started_at=now,
+                completed_at=now,
+                stderr="Command 'cd' is not in the allowed list.",
+                error="Command 'cd' is not in the allowed list.",
+                failure_kind=failure_kind,
+            )
+        ],
+    )
+
+
+def test_self_repair_skips_a_non_repairable_failure_without_calling_coder(tmp_path: Path) -> None:
+    """E46-S2: a policy/environment failure never reaches the Coder."""
+    orchestrator = _build_orchestrator(tmp_path)
+    coder = _FakeRepairCoderAgent(files=[])
+    orchestrator._agents["coder"] = coder
+    task = _validation_task()
+
+    outcome, self_check = orchestrator._maybe_self_repair(
+        task=task,
+        validation_outcome=_classified_failure_outcome(task, ExecutionFailureKind.COMMAND_NOT_ALLOWED),
+        batch_results=[_prior_write_result("backend/payments/charge.py")],
+        run_id="run-1",
+        tenant_id="acme",
+        mode=ExecutionMode.AUTO,
+    )
+
+    assert self_check == "skipped_non_repairable"
+    assert outcome.status == "failed"
+    assert coder.call_count == 0
+
+    envelopes = get_event_bus().replay("run-1")
+    skipped = [e for e in envelopes if e.type == "execution.repair.skipped"]
+    assert len(skipped) == 1
+    assert skipped[0].data["taskId"] == task.task_id
+    assert skipped[0].data["failureKind"] == "command_not_allowed"
+
+
+def test_self_repair_still_repairs_a_classified_code_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """E46-S2: a genuine, classified code_failure still repairs exactly as E41-S5 defined."""
+    monkeypatch.setenv("AUTODEV_ENABLE_PATCH_APPLY", "1")
+    target_path = "backend/payments/charge.py"
+    (tmp_path / target_path).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / target_path).write_text("def charge():\n    return False\n")
+
+    orchestrator = _build_orchestrator(tmp_path)
+    coder = _FakeRepairCoderAgent(files=[{"path": target_path, "content": "def charge():\n    return True\n"}])
+    orchestrator._agents["coder"] = coder
+    orchestrator._task_executor = _ScriptedRevalidationExecutor(  # type: ignore[assignment]
+        orchestrator._task_executor, revalidation_succeeds=True
+    )
+
+    task = _validation_task()
+    outcome, self_check = orchestrator._maybe_self_repair(
+        task=task,
+        validation_outcome=_classified_failure_outcome(task, ExecutionFailureKind.CODE_FAILURE),
+        batch_results=[_prior_write_result(target_path)],
+        run_id="run-1",
+        tenant_id="acme",
+        mode=ExecutionMode.AUTO,
+    )
+
+    assert self_check == "repaired_then_pass"
+    assert coder.call_count == 1
+    envelopes = get_event_bus().replay("run-1")
+    assert not [e for e in envelopes if e.type == "execution.repair.skipped"]
+
+
+def test_self_repair_fails_open_for_unclassified_legacy_results(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """E46-S2-T3: a result with no failure_kind keeps today's reflex behavior."""
+    monkeypatch.setenv("AUTODEV_ENABLE_PATCH_APPLY", "1")
+    target_path = "backend/payments/charge.py"
+    (tmp_path / target_path).parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / target_path).write_text("def charge():\n    return False\n")
+
+    orchestrator = _build_orchestrator(tmp_path)
+    coder = _FakeRepairCoderAgent(
+        files=[{"path": target_path, "content": "def charge():\n    return False  # still broken\n"}]
+    )
+    orchestrator._agents["coder"] = coder
+    orchestrator._task_executor = _ScriptedRevalidationExecutor(  # type: ignore[assignment]
+        orchestrator._task_executor, revalidation_succeeds=False
+    )
+    task = _validation_task()
+
+    outcome, self_check = orchestrator._maybe_self_repair(
+        task=task,
+        validation_outcome=_first_attempt_outcome(task),  # failure_kind=None
+        batch_results=[_prior_write_result(target_path)],
+        run_id="run-1",
+        tenant_id="acme",
+        mode=ExecutionMode.AUTO,
+    )
+
+    assert self_check == "failed_after_retry"
+    assert coder.call_count == 1, "unclassified results fail the gate open, not skip repair"
 
 
 class _FailThenSucceedValidationExecutor:

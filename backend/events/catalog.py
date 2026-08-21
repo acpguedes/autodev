@@ -331,16 +331,31 @@ class ExecutionPolicyDecisionData(BaseModel):
 
 
 class ExecutionSelfVerificationOutcomeData(BaseModel):
-    """Payload of ``execution.verification.outcome`` (E41-S5).
+    """Payload of ``execution.verification.outcome`` (E41-S5, E46-S2).
 
     Records whether a validation task passed on the first try, was
-    repaired by one bounded coder retry, or failed after that retry —
-    so the Beta gate can assert on "generated code that works" rather
-    than a claim.
+    repaired by one bounded coder retry, failed after that retry, or was
+    never attempted because the failure was not repairable by a code
+    change (E46-S2) — so the Beta gate can assert on "generated code that
+    works" rather than a claim.
     """
 
     taskId: str
-    outcome: str  # "first_try_pass" | "repaired_then_pass" | "failed_after_retry"
+    outcome: str  # "first_try_pass" | "repaired_then_pass" | "failed_after_retry" | "skipped_non_repairable"
+
+
+class ExecutionRepairSkippedData(BaseModel):
+    """Payload of ``execution.repair.skipped`` (E46-S2, ADR-023).
+
+    Emitted instead of a repair attempt when every failed result in the
+    batch is classified and none is repairable by a code change (e.g. a
+    sandbox policy rejection or an unavailable environment) — so the
+    timeline shows *why* no repair ran instead of silence.
+    """
+
+    taskId: str
+    failureKind: str
+    reason: str
 
 
 class EnvironmentInstanceProvisionedData(BaseModel):
@@ -464,6 +479,12 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
         "Task Executor",
         "runId",
         ExecutionSelfVerificationOutcomeData,
+    ),
+    EventDefinition(
+        "execution.repair.skipped",
+        "Task Executor",
+        "runId",
+        ExecutionRepairSkippedData,
     ),
     EventDefinition(
         "environment.instance.provisioned",

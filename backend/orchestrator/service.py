@@ -1494,14 +1494,48 @@ class OrchestratorService:
         repair rather than a second nested pause, since a bounded
         best-effort retry should never silently apply an unapproved write.
 
+        Gated on failure classification (E46-S2, ADR-023): when every
+        failed result in *validation_outcome* is classified and none is
+        :attr:`~backend.execution.contracts.ExecutionResult.repairable_by_code_change`
+        (e.g. a sandbox policy rejection, a disallowed command, an
+        unavailable environment), no Coder call or re-execution happens at
+        all — repair is a governed decision, not a reflex. A result with no
+        ``failure_kind`` (produced before E46-S1, or by a producer that has
+        not been updated to classify yet) fails the gate open to today's
+        behavior, so rollout never silently stops repairing a genuine code
+        failure just because one producer hasn't been updated.
+
         Returns:
             ``(outcome, self_check)`` — ``outcome`` is what the caller
             should record for *task* (unchanged when no repair was
             attempted); ``self_check`` is one of ``"first_try_pass"``,
-            ``"repaired_then_pass"``, or ``"failed_after_retry"``.
+            ``"repaired_then_pass"``, ``"failed_after_retry"``, or
+            ``"skipped_non_repairable"``.
         """
         if validation_outcome.status == "completed":
             return validation_outcome, "first_try_pass"
+
+        failed_results = [result for result in validation_outcome.results if result.status == "failed"]
+        has_unclassified_failure = any(result.failure_kind is None for result in failed_results)
+        if failed_results and not has_unclassified_failure and not any(
+            result.repairable_by_code_change for result in failed_results
+        ):
+            skip_kind = failed_results[0].failure_kind
+            assert skip_kind is not None  # guaranteed by has_unclassified_failure above
+            emit_event(
+                "execution.repair.skipped",
+                tenant_id=tenant_id,
+                partition_key=run_id,
+                data={
+                    "taskId": task.task_id,
+                    "failureKind": skip_kind.value,
+                    "reason": (
+                        f"failure kind {skip_kind.value!r} is not repairable by a code change"
+                    ),
+                },
+                subject={"runId": run_id, "taskId": task.task_id},
+            )
+            return validation_outcome, "skipped_non_repairable"
 
         written_paths = sorted({path for result in batch_results for path in result.artifacts})
         if not written_paths or self._project_root is None:
