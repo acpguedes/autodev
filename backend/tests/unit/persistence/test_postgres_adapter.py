@@ -224,10 +224,10 @@ def test_update_session_artifacts_issues_update(
 # ---------------------------------------------------------------------------
 
 
-def test_create_run_inserts_run_and_replaces_steps(
+def test_create_run_inserts_run_and_persists_steps(
     store: PostgresStore, scripted_conn: ScriptedConnection
 ) -> None:
-    """create_run inserts the run row, deletes existing steps, and re-inserts each."""
+    """create_run inserts the run row, trims surplus steps, and upserts the list."""
     store.create_run(
         run_id="r1",
         session_id="s1",
@@ -243,21 +243,26 @@ def test_create_run_inserts_run_and_replaces_steps(
     )
     sqls = [sql for sql, _ in scripted_conn.executed]
     assert any("INSERT INTO runs" in sql for sql in sqls)
-    assert any("DELETE FROM run_steps" in sql for sql in sqls)
-    # E44-S2: all steps go in one batched statement, not one per row.
+    # E44-S5: only steps past the end of the new list are deleted, not all of them.
+    trim = [(sql, params) for sql, params in scripted_conn.executed if "DELETE FROM run_steps" in sql][0]
+    assert "position >= %s" in trim[0]
+    assert trim[1] == ("r1", 2)
+    # E44-S2/S5: all steps go in one batched upsert keyed on (run_id, position).
     batched = [(sql, rows) for sql, rows in scripted_conn.executed_many if "INSERT INTO run_steps" in sql]
     assert len(batched) == 1
+    assert "ON CONFLICT (run_id, position) DO UPDATE" in batched[0][0]
+    assert "IS DISTINCT FROM" in batched[0][0]
     rows = batched[0][1]
-    assert rows[0] == ("r1", "k1", "a1", "done", "t0", "t1", 2)
+    assert rows[0] == ("r1", 0, "k1", "a1", "done", "t0", "t1", 2)
     # Second step omits "attempt"; defaults to 1.
-    assert rows[1] == ("r1", "k2", "a2", "pending", "t2", None, 1)
+    assert rows[1] == ("r1", 1, "k2", "a2", "pending", "t2", None, 1)
     assert scripted_conn.commits == 1
 
 
-def test_update_run_issues_update_and_replaces_steps(
+def test_update_run_issues_update_and_persists_steps(
     store: PostgresStore, scripted_conn: ScriptedConnection
 ) -> None:
-    """update_run issues an UPDATE and re-runs the delete/insert step replacement."""
+    """update_run issues an UPDATE and re-runs the incremental step persistence."""
     store.update_run(
         run_id="r1",
         status="completed",

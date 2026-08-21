@@ -248,7 +248,7 @@ class SQLiteStore:
                     tenant_id,
                 ),
             )
-            self._replace_run_steps(conn, run_id, steps)
+            self._persist_run_steps(conn, run_id, steps)
             conn.commit()
 
     def update_run(
@@ -269,7 +269,7 @@ class SQLiteStore:
                 f"completed_at = CURRENT_TIMESTAMP WHERE id = ? {clause}",
                 (status, current_state, json.dumps(results), run_id, *params),
             )
-            self._replace_run_steps(conn, run_id, steps)
+            self._persist_run_steps(conn, run_id, steps)
             conn.commit()
 
     def list_runs(
@@ -366,7 +366,7 @@ class SQLiteStore:
             rows = conn.execute(
                 "SELECT rs.step_key, rs.agent, rs.status, rs.started_at, rs.completed_at, rs.attempt "
                 "FROM run_steps rs JOIN runs r ON rs.run_id = r.id "
-                "WHERE rs.run_id = ? AND r.tenant_id = ? ORDER BY rs.id ASC",
+                "WHERE rs.run_id = ? AND r.tenant_id = ? ORDER BY rs.position ASC, rs.id ASC",
                 (run_id, tenant_id),
             ).fetchall()
         return [dict(row) for row in rows]
@@ -696,7 +696,7 @@ class SQLiteStore:
         placeholders = ", ".join("?" for _ in run_ids)
         rows = conn.execute(
             "SELECT run_id, step_key, agent, status, started_at, completed_at, attempt "
-            f"FROM run_steps WHERE run_id IN ({placeholders}) ORDER BY id ASC",
+            f"FROM run_steps WHERE run_id IN ({placeholders}) ORDER BY position ASC, id ASC",
             tuple(run_ids),
         ).fetchall()
         grouped: dict[str, list[dict[str, Any]]] = {}
@@ -705,27 +705,79 @@ class SQLiteStore:
             grouped.setdefault(record.pop("run_id"), []).append(record)
         return grouped
 
-    def _replace_run_steps(
-        self, conn: sqlite3.Connection, run_id: str, steps: list[dict[str, Any]]
+    @staticmethod
+    def _persist_run_steps(
+        conn: sqlite3.Connection, run_id: str, steps: list[dict[str, Any]]
     ) -> None:
-        conn.execute("DELETE FROM run_steps WHERE run_id = ?", (run_id,))
-        if steps:
-            conn.executemany(
-                "INSERT INTO run_steps (run_id, step_key, agent, status, started_at, completed_at, attempt) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                [
-                    (
-                        run_id,
-                        s["step_key"],
-                        s["agent"],
-                        s["status"],
-                        s["started_at"],
-                        s["completed_at"],
-                        s.get("attempt", 1),
-                    )
-                    for s in steps
-                ],
-            )
+        """Persist a run's ordered step list incrementally (E44-S5).
+
+        Upserts each step onto its ``(run_id, position)`` key and skips the
+        ``DO UPDATE`` when nothing about the row changed, so a checkpoint that
+        adds the Nth step writes one row rather than deleting and re-inserting
+        all N. Trailing rows beyond the current list length are trimmed, which
+        is what makes a shortened list (e.g. a resumed run dropping its
+        ``awaiting_approval`` placeholder) converge.
+
+        Args:
+            conn: An open connection inside the caller's transaction.
+            run_id: Run whose steps are being persisted.
+            steps: The run's full ordered step list.
+        """
+        conn.execute(
+            "DELETE FROM run_steps WHERE run_id = ? AND position >= ?", (run_id, len(steps))
+        )
+        if not steps:
+            return
+        conn.executemany(
+            "INSERT INTO run_steps "
+            "(run_id, position, step_key, agent, status, started_at, completed_at, attempt) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(run_id, position) DO UPDATE SET "
+            "step_key = excluded.step_key, agent = excluded.agent, status = excluded.status, "
+            "started_at = excluded.started_at, completed_at = excluded.completed_at, "
+            "attempt = excluded.attempt "
+            "WHERE step_key IS NOT excluded.step_key OR agent IS NOT excluded.agent "
+            "OR status IS NOT excluded.status OR started_at IS NOT excluded.started_at "
+            "OR completed_at IS NOT excluded.completed_at OR attempt IS NOT excluded.attempt",
+            [
+                (
+                    run_id,
+                    position,
+                    step["step_key"],
+                    step["agent"],
+                    step["status"],
+                    step["started_at"],
+                    step["completed_at"],
+                    step.get("attempt", 1),
+                )
+                for position, step in enumerate(steps)
+            ],
+        )
+
+    def replace_run_steps_for_import(
+        self, run_id: str, steps: list[dict[str, Any]], tenant_id: str = DEFAULT_TENANT_ID
+    ) -> None:
+        """Discard a run's stored steps and write *steps* in their place (E44-S5).
+
+        The full-replace path, kept for import and recovery flows that restore
+        a run's steps wholesale. Normal execution checkpoints go through
+        :meth:`update_run`, which persists incrementally.
+
+        Args:
+            run_id: Run whose steps are being replaced.
+            steps: The complete ordered step list to store.
+            tenant_id: Tenant the run must belong to.
+        """
+        clause, params = sqlite_tenant_clause(tenant_id)
+        with self.connect() as conn:
+            owned = conn.execute(
+                f"SELECT 1 FROM runs WHERE id = ? {clause}", (run_id, *params)
+            ).fetchone()
+            if owned is None:
+                return
+            conn.execute("DELETE FROM run_steps WHERE run_id = ?", (run_id,))
+            self._persist_run_steps(conn, run_id, steps)
+            conn.commit()
 
 
 class SQLitePlanStore:
