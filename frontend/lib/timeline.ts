@@ -215,6 +215,25 @@ export function parseRunTimelineStepData(raw: string): RunTimelineStepData | nul
 }
 
 /**
+ * Append one event's output onto a stage's accumulated scrollback (E42-S5-T3).
+ *
+ * A run can drive more than one task through the same stage (e.g. two
+ * "coder" tasks both land on "patch"); accumulating instead of overwriting
+ * keeps every task's captured output reviewable for the run's lifetime,
+ * not just the most recent task's.
+ *
+ * @param existing - The stage's current accumulated output.
+ * @param addition - The new event's output text; empty is a no-op.
+ * @returns The combined scrollback, blank-line separated.
+ */
+function appendStageOutput(existing: string, addition: string): string {
+  if (!addition) {
+    return existing;
+  }
+  return existing ? `${existing}\n\n${addition}` : addition;
+}
+
+/**
  * Apply one decoded timeline event to the current stage states.
  *
  * @param states - Current stage states (not mutated).
@@ -238,7 +257,7 @@ export function applyTimelineEvent(
           ...state,
           status: normalizeStageStatus(data.status),
           actorRole: data.actorRole,
-          output: data.output,
+          output: appendStageOutput(state.output, data.output),
         }
       : state
   );
