@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 try:
@@ -143,8 +143,9 @@ class ExecutionTask:
     source_agent: str
     category: str
     status: str = "pending"
+    files: List[Dict[str, str]] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, str]:
+    def to_dict(self) -> Dict[str, Any]:
         """Render this execution task as a plain dict."""
         return {
             "task_id": self.task_id,
@@ -153,6 +154,7 @@ class ExecutionTask:
             "source_agent": self.source_agent,
             "category": self.category,
             "status": self.status,
+            "files": list(self.files),
         }
 
 
@@ -1306,6 +1308,20 @@ class OrchestratorService:
                     description=task,
                     source_agent="coder",
                     category="implementation",
+                )
+            )
+
+        for index, item in enumerate(coder.get("files", []), start=1):
+            path = item.get("path", "")
+            content = item.get("content", "")
+            tasks.append(
+                ExecutionTask(
+                    task_id=f"coding-file-{index}",
+                    title=f"Write {path}",
+                    description=f"Write real file content to {path}",
+                    source_agent="coder",
+                    category="implementation",
+                    files=[{"path": path, "content": content}],
                 )
             )
 
