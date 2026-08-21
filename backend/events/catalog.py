@@ -295,6 +295,19 @@ class ExecutionPolicyDecisionData(BaseModel):
     reason: str
 
 
+class ExecutionSelfVerificationOutcomeData(BaseModel):
+    """Payload of ``execution.verification.outcome`` (E41-S5).
+
+    Records whether a validation task passed on the first try, was
+    repaired by one bounded coder retry, or failed after that retry —
+    so the Beta gate can assert on "generated code that works" rather
+    than a claim.
+    """
+
+    taskId: str
+    outcome: str  # "first_try_pass" | "repaired_then_pass" | "failed_after_retry"
+
+
 class EnvironmentInstanceProvisionedData(BaseModel):
     """Payload of ``environment.instance.provisioned`` (E32-S3/S4)."""
 
@@ -411,6 +424,12 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition("execution.action.failed", "Task Executor", "runId", ExecutionActionFailedData),
     EventDefinition("execution.policy.allowed", "Policy Engine", "runId", ExecutionPolicyDecisionData),
     EventDefinition("execution.policy.denied", "Policy Engine", "runId", ExecutionPolicyDecisionData),
+    EventDefinition(
+        "execution.verification.outcome",
+        "Task Executor",
+        "runId",
+        ExecutionSelfVerificationOutcomeData,
+    ),
     EventDefinition(
         "environment.instance.provisioned",
         "Environment Manager",
