@@ -3,7 +3,7 @@
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35: added after initial Beta completion,
 before the wave is signed off).
-**Status:** Not started · **Stories:** 0/5
+**Status:** Done · **Stories:** 5/5 (2026-08-21)
 **Depends on:** E2 (Agent Framework), E14 (Real Task Execution & Governed
 Autonomy), E16-S3 (Patches API/engine)
 **Enables:** the v2.0-beta gate actually meaning "the platform can turn a
@@ -53,7 +53,7 @@ and with a self-check step that catches an obviously broken first attempt.
 
 ## Stories
 
-### E41-S1 — Structured agent output actually reaches metadata — **Not started**
+### E41-S1 — Structured agent output actually reaches metadata — **Done**
 
 Fix the discovered `build_metadata()` gap across `LangChainAgent` and its
 subclasses so a successful real LLM call's `generated_text` is what ends up
@@ -83,7 +83,7 @@ Subtasks:
 | DoD (specific) | Contract test per affected agent asserting real-vs-fallback metadata divergence is observable |
 | Dependencies | E2 |
 
-### E41-S2 — Real code-generation contract for the Coder agent — **Not started**
+### E41-S2 — Real code-generation contract for the Coder agent — **Done**
 
 `CoderAgent.build_prompt()` today only asks for "concrete coding tasks
 grouped by component" (free text). Give it (or a new, dedicated agent role)
@@ -109,7 +109,7 @@ Subtasks:
 | DoD (specific) | Contract test asserting file entries parse and validate against the new model |
 | Dependencies | E41-S1 |
 
-### E41-S3 — Patch-engine wiring in the executor — **Not started**
+### E41-S3 — Patch-engine wiring in the executor — **Done**
 
 Give `backend/execution/executor.py` a real code-generation action path: a
 new `ExecutionActionType` (e.g. `apply_patch`) derived from tasks that now
@@ -142,7 +142,7 @@ Subtasks:
 | DoD (specific) | End-to-end test: goal → real files on disk in a scratch workspace, asserted by content, not just by call count |
 | Dependencies | E41-S2, E14-S3, E32 (workspace resolution) |
 
-### E41-S4 — Agent-directed command execution — **Not started**
+### E41-S4 — Agent-directed command execution — **Done**
 
 Command execution already exists (`_extract_validation_command` +
 `ActionRunner` + the E32 isolated environment) but fires only when a known
@@ -170,7 +170,7 @@ Subtasks:
 | DoD (specific) | Test asserting a command absent from any task's free text but present in structured `commands` still executes |
 | Dependencies | E41-S1, E32 |
 
-### E41-S5 — Self-verification loop (generate → test → repair) — **Not started**
+### E41-S5 — Self-verification loop (generate → test → repair) — **Done**
 
 Once real files can be written and real commands run (E41-S2/S3/S4), close
 the loop: after applying generated files, run the goal's own generated
@@ -219,3 +219,44 @@ Subtasks:
   transcript; `docs/v2_platform/progress.md` and the v2.0-beta gate (§18.9)
   updated to reference this epic's evidence; no push/PR without explicit
   authorization.
+
+## Evidence & scope notes (2026-08-21, epic complete 5/5)
+
+- **S1:** `backend/agents/base.py` binds `metadata_model()` directly via
+  `with_structured_output()`; the four duplicated broken overrides
+  (planner/docs/security/refactor) were deleted rather than fixed
+  individually. `backend/tests/unit/agents/test_structured_metadata.py`.
+- **S2:** `CoderOutput.files` (`backend/agents/contracts.py`), bounded by
+  `CODER_MAX_FILES`/`CODER_MAX_FILE_BYTES`.
+  `backend/tests/unit/agents/test_coder_output_files.py`.
+- **S3:** implemented via `CREATE_FILE`, not a new `APPLY_PATCH`-specific
+  derivation — `PatchRunner._run_file_action` already reads the on-disk
+  original and calls `generate_patch`/`apply_patch`, and
+  `TaskExecutor.derive_actions` has no filesystem access to pre-build a
+  `Patch` diff itself. Root resolution and approval-mode gating needed no
+  new code, confirmed by reading rather than assumed:
+  `backend/tests/unit/orchestrator/test_execution_plan.py` (writes real
+  content; approval mode pauses before touching disk).
+- **S4:** `DevOpsOutput.commands`/`ValidatorOutput.commands`; executor
+  prefers them over keyword-sniffing for both `operations` (previously
+  derived nothing) and `validation`. `backend/tests/unit/execution/test_executor.py`.
+- **S5:** `OrchestratorService._maybe_self_repair`; new event
+  `execution.verification.outcome` (catalog 51 -> 52, dot-segment name
+  chosen over `self_verification` to satisfy the catalog's
+  `[a-z]+(\.[a-z]+){1,2}` name pattern). Scope boundary: a pending
+  human-approval decision on the repair write is treated as
+  `failed_after_retry` rather than a second nested pause — a bounded,
+  best-effort retry should never silently apply an unapproved write, and
+  threading a second pause/resume cycle through `_process_tasks` was
+  judged more risk than the story's DoD required.
+  `backend/tests/unit/orchestrator/test_self_repair.py` drives
+  `_maybe_self_repair` directly (real patch-engine write, scripted
+  revalidation dispatch) plus one full `execute_plan()` end-to-end test;
+  real command-sandbox execution (Docker/`AUTODEV_ENABLE_SANDBOX`) was not
+  exercised because it would make pass/fail environment-dependent rather
+  than a deterministic unit test.
+- **`make check`:** backend 1890 passed / 2 skipped, 91.83% coverage,
+  ruff+mypy clean; frontend lint/typecheck/vitest (178 tests) clean.
+  `next build` did not complete — blocked by a pre-existing, root-owned
+  `frontend/.next/` directory predating this epic's work, unrelated to any
+  file this epic touched; `check-compose` did not run as a result.
