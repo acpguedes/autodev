@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import threading
-import time
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
@@ -204,7 +203,7 @@ class RedisJobQueue(AbstractJobQueue):
         client: Any | None = None,
         url: str | None = None,
         start_worker: bool = True,
-        poll_interval: float = 0.1,
+        blpop_timeout: float = 5.0,
     ) -> None:
         """Initialize the queue, connecting to Redis and optionally starting a worker.
 
@@ -213,7 +212,10 @@ class RedisJobQueue(AbstractJobQueue):
             url: Redis connection URL, used when ``client`` is omitted; falls
                 back to ``AUTODEV_REDIS_URL``.
             start_worker: Whether to start a background thread processing jobs.
-            poll_interval: Seconds to sleep between empty queue polls.
+            blpop_timeout: Bounded ``BLPOP`` timeout in seconds; the worker
+                blocks for at most this long per empty-queue wait, so
+                :meth:`close` never waits longer than this to observe the
+                stop signal.
 
         Raises:
             RuntimeError: If the ``redis`` package is not installed, or if no
@@ -230,13 +232,31 @@ class RedisJobQueue(AbstractJobQueue):
             client = _redis.from_url(redis_url)
         self._client = client
         self._client.ping()
-        self._poll_interval = poll_interval
+        self._blpop_timeout = blpop_timeout
         self._worker_enabled = start_worker
         self._busy_workers = 0
         self._busy_lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._worker_thread: threading.Thread | None = None
         if start_worker:
-            thread = threading.Thread(target=self._worker_loop, daemon=True)
-            thread.start()
+            self._worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+            self._worker_thread.start()
+
+    def close(self, *, timeout: float | None = None) -> None:
+        """Signal the worker thread to stop and wait for it to exit.
+
+        Safe to call when no worker was started (a no-op). Idempotent.
+
+        Args:
+            timeout: Maximum seconds to wait for the worker thread to exit;
+                defaults to :attr:`_blpop_timeout` plus a small margin, which
+                bounds the wait since the worker checks the stop signal at
+                most once per ``BLPOP`` timeout.
+        """
+        self._stop_event.set()
+        if self._worker_thread is None:
+            return
+        self._worker_thread.join(timeout=timeout if timeout is not None else self._blpop_timeout + 1.0)
 
     def enqueue(self, job_type: str, payload: dict) -> str:
         """Submit a job by writing its record to Redis and queuing its id.
@@ -332,11 +352,24 @@ class RedisJobQueue(AbstractJobQueue):
         return True
 
     def _worker_loop(self) -> None:
-        """Continuously run pending jobs, sleeping between empty polls."""
-        while True:
-            ran_job = self.run_pending_once()
-            if not ran_job:
-                time.sleep(self._poll_interval)
+        """Block on ``BLPOP`` for pending jobs until :meth:`close` signals stop.
+
+        Each iteration blocks for at most :attr:`_blpop_timeout` seconds, so
+        idle Redis ops are ~0 (one blocked call at a time) and the stop
+        signal is observed within one timeout window.
+        """
+        while not self._stop_event.is_set():
+            try:
+                popped = self._client.blpop([self._pending_key], timeout=self._blpop_timeout)
+            except Exception:
+                if self._stop_event.is_set():
+                    return
+                raise
+            if popped is None:
+                continue
+            _key, raw_job_id = popped
+            job_id = _decode_value(raw_job_id)
+            self._run_redis_job(job_id)
 
     def _run_redis_job(self, job_id: str) -> None:
         """Execute a job's handler and persist its outcome back to Redis.

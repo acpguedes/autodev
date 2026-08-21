@@ -45,7 +45,7 @@ from backend.config import (
 )
 from backend.config.settings import get_settings
 from backend.coordination import get_cache, get_lock_manager
-from backend.jobs.queue import get_queue
+from backend.jobs.queue import AbstractJobQueue, get_queue
 from backend.llm.composition import reset_model_composition_cache
 from backend.llm.factory import get_chat_model
 from backend.observability.backup_metrics import register_backup_observables
@@ -232,6 +232,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         status_store=BackupStatusStore(Path(settings.autodev_backup_status_path)),
     )
     register_quota_observables(meter=get_meter("backend.quotas"), quota_service=QuotaService())
+    queue: AbstractJobQueue | None = None
     try:
         if settings.autodev_profile == "prod":
             get_cache(settings)
@@ -248,6 +249,10 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         )
         yield
     finally:
+        if queue is not None:
+            close = getattr(queue, "close", None)
+            if callable(close):
+                close()
         shutdown_observability()
 
 
