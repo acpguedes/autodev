@@ -404,14 +404,16 @@ class PostgresStore:
         with self.connect() as conn:
             set_postgres_tenant(conn, tenant_id)
             with conn.cursor() as cur:
-                for offset, item in enumerate(new_messages, start=start):
-                    cur.execute(
-                        """
-                        INSERT INTO messages (session_id, run_id, sequence, role, content, tenant_id)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                        """,
-                        (session_id, run_id, offset, item["role"], item["content"], tenant_id),
-                    )
+                cur.executemany(
+                    """
+                    INSERT INTO messages (session_id, run_id, sequence, role, content, tenant_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    [
+                        (session_id, run_id, offset, item["role"], item["content"], tenant_id)
+                        for offset, item in enumerate(new_messages, start=start)
+                    ],
+                )
             conn.commit()
 
     def create_eval_result(
@@ -596,15 +598,22 @@ class PostgresStore:
         ]
 
     def _replace_run_steps(self, conn: Any, run_id: str, steps: list[dict[str, Any]]) -> None:
-        """Delete and re-insert all step rows for a run."""
+        """Delete and re-insert all step rows for a run.
+
+        Inserts go through a single ``executemany`` (E44-S2), matching what
+        the SQLite adapter already did — one round trip for the whole step
+        list instead of one per row.
+        """
         conn.execute("DELETE FROM run_steps WHERE run_id = %s", (run_id,))
+        if not steps:
+            return
         with conn.cursor() as cur:
-            for step in steps:
-                cur.execute(
-                    """
-                    INSERT INTO run_steps (run_id, step_key, agent, status, started_at, completed_at, attempt)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """,
+            cur.executemany(
+                """
+                INSERT INTO run_steps (run_id, step_key, agent, status, started_at, completed_at, attempt)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                [
                     (
                         run_id,
                         step["step_key"],
@@ -613,8 +622,10 @@ class PostgresStore:
                         step["started_at"],
                         step["completed_at"],
                         step.get("attempt", 1),
-                    ),
-                )
+                    )
+                    for step in steps
+                ],
+            )
 
 
 class PostgresPlanStore:

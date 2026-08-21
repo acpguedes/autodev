@@ -52,6 +52,16 @@ class ScriptedCursor:
         self.conn.executed.append((sql, params))
         return self
 
+    def executemany(self, sql: str, params_seq: Any) -> "ScriptedCursor":
+        """Record one batched statement and its full parameter sequence.
+
+        Recorded as a *single* entry (unlike a per-row loop of
+        :meth:`execute`), so tests can assert that batched writes cost one
+        round trip — the E44-S2 contract.
+        """
+        self.conn.executed_many.append((sql, list(params_seq)))
+        return self
+
     def fetchone(self) -> Any:
         """Pop and return the next scripted single-row result, or ``None``."""
         if self.conn.fetchone_queue:
@@ -76,8 +86,9 @@ class ScriptedConnection:
     """
 
     def __init__(self) -> None:
-        """Initialize empty executed-statement log and fetch queues."""
+        """Initialize empty executed-statement logs and fetch queues."""
         self.executed: list[tuple[str, Any]] = []
+        self.executed_many: list[tuple[str, list[Any]]] = []
         self.commits = 0
         self.fetchone_queue: list[Any] = []
         self.fetchall_queue: list[list[Any]] = []
@@ -233,11 +244,13 @@ def test_create_run_inserts_run_and_replaces_steps(
     sqls = [sql for sql, _ in scripted_conn.executed]
     assert any("INSERT INTO runs" in sql for sql in sqls)
     assert any("DELETE FROM run_steps" in sql for sql in sqls)
-    insert_step_calls = [(sql, params) for sql, params in scripted_conn.executed if "INSERT INTO run_steps" in sql]
-    assert len(insert_step_calls) == 2
-    assert insert_step_calls[0][1] == ("r1", "k1", "a1", "done", "t0", "t1", 2)
+    # E44-S2: all steps go in one batched statement, not one per row.
+    batched = [(sql, rows) for sql, rows in scripted_conn.executed_many if "INSERT INTO run_steps" in sql]
+    assert len(batched) == 1
+    rows = batched[0][1]
+    assert rows[0] == ("r1", "k1", "a1", "done", "t0", "t1", 2)
     # Second step omits "attempt"; defaults to 1.
-    assert insert_step_calls[1][1] == ("r1", "k2", "a2", "pending", "t2", None, 1)
+    assert rows[1] == ("r1", "k2", "a2", "pending", "t2", None, 1)
     assert scripted_conn.commits == 1
 
 
@@ -256,6 +269,7 @@ def test_update_run_issues_update_and_replaces_steps(
     assert any("UPDATE runs" in sql for sql in sqls)
     assert any("DELETE FROM run_steps" in sql for sql in sqls)
     assert not any("INSERT INTO run_steps" in sql for sql in sqls)
+    assert not scripted_conn.executed_many
 
 
 def test_list_runs_maps_rows_and_nests_steps(
@@ -342,6 +356,7 @@ def test_append_messages_no_op_when_nothing_new(
     # INSERT/commit happens since there is nothing new to append.
     assert scripted_conn.commits == before_commits
     assert not any("INSERT INTO messages" in sql for sql, _ in scripted_conn.executed)
+    assert not scripted_conn.executed_many
 
 
 def test_append_messages_inserts_only_new_items_with_continued_sequence(
@@ -360,10 +375,14 @@ def test_append_messages_inserts_only_new_items_with_continued_sequence(
         ],
     )
 
-    inserts = [(sql, params) for sql, params in scripted_conn.executed if "INSERT INTO messages" in sql]
-    assert len(inserts) == 2
-    assert inserts[0][1] == ("s1", "r1", 1, "assistant", "second", "default")
-    assert inserts[1][1] == ("s1", "r1", 2, "user", "third", "default")
+    # E44-S2: the tail is inserted in one batched statement, not one per row.
+    batched = [(sql, rows) for sql, rows in scripted_conn.executed_many if "INSERT INTO messages" in sql]
+    assert len(batched) == 1
+    rows = batched[0][1]
+    assert rows == [
+        ("s1", "r1", 1, "assistant", "second", "default"),
+        ("s1", "r1", 2, "user", "third", "default"),
+    ]
     assert scripted_conn.commits == 1
 
 
