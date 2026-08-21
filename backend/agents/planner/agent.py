@@ -45,13 +45,5 @@ class PlannerAgent(LangChainAgent):
         description = "\n".join(f"- {step}" for step in steps)
         return AgentResult(content=f"Proposed plan:\n{description}", metadata={"steps": steps})
 
-    def build_metadata(
-        self,
-        context: AgentContext,
-        fallback: AgentResult,
-        generated_text: str,
-    ) -> dict[str, list[str]]:
-        return {"steps": list(fallback.metadata.get("steps", []))}
-
 
 __all__ = ["PlannerAgent"]
