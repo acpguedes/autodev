@@ -16,7 +16,7 @@ except ImportError:  # pragma: no cover - Python < 3.11 compatibility
         pass
 
 
-from typing import Any, Dict, Iterable, List, Mapping, Optional, TypedDict
+from typing import Any, Dict, Iterable, List, Mapping, NotRequired, Optional, TypedDict
 from pathlib import Path
 from uuid import uuid4
 
@@ -284,13 +284,23 @@ class OrchestratorConfig:
 
 
 class AgentGraphState(TypedDict):
-    """State propagated through the LangGraph workflow."""
+    """State propagated through the LangGraph workflow.
+
+    Attributes:
+        tenant_id: Tenant this run belongs to, used to emit live
+            ``run.timeline.*`` events per completed agent node (E43-S6).
+            Optional so the dynamic-routing graph built by
+            ``backend/orchestrator/graphs.py`` (a separate node-builder,
+            unaffected by this) and any other existing construction of this
+            state keep working unchanged.
+    """
 
     context: AgentContext
     results: List[AgentExecution]
     steps: List[RunStep]
     current_state: str
     run_id: str
+    tenant_id: NotRequired[str]
 
 
 _TIMELINE_OUTPUT_CHAR_CAP = 8000
@@ -644,6 +654,7 @@ class OrchestratorService:
             "steps": [],
             "current_state": "starting",
             "run_id": run_id,
+            "tenant_id": tenant_id,
         }
         final_state = self._graph.invoke(initial_state)
         final_context = final_state["context"]
@@ -1766,15 +1777,63 @@ class OrchestratorService:
                     completed_at=completed_at,
                 )
             )
+            self._emit_agent_timeline_event(
+                run_id=state["run_id"],
+                tenant_id=state.get("tenant_id", DEFAULT_TENANT_ID),
+                agent_name=agent_name,
+                output=agent_result.content,
+            )
             return {
                 "context": next_context,
                 "results": next_results,
                 "steps": next_steps,
                 "current_state": "completed",
                 "run_id": state["run_id"],
+                "tenant_id": state.get("tenant_id", DEFAULT_TENANT_ID),
             }
 
         return node
+
+    def _emit_agent_timeline_event(
+        self, *, run_id: str, tenant_id: str, agent_name: str, output: str
+    ) -> None:
+        """Emit a live ``run.timeline.*`` event for one completed chat-graph agent (E43-S6).
+
+        Reuses the exact mapping/event-type/schema :meth:`_process_tasks`
+        already emits for the "Run plan" pipeline
+        (:func:`backend.api.timeline_roles.timeline_event_type_for_agent_role`,
+        :class:`~backend.events.catalog.RunTimelineStepData`) so
+        ``RunTimelinePanel``'s existing live subscription -- previously fed
+        by nothing during a Chat turn, since only task dispatch emitted
+        these -- now shows real per-agent progress as the turn runs, not
+        only the final message once everything has already finished.
+        Only the roles the timeline maps (planner/navigator/analyzer/coder/
+        validator) emit; architect/devops/responder are intentionally left
+        off the four-stage timeline, matching the existing mapping.
+
+        Args:
+            run_id: The run this agent step belongs to.
+            tenant_id: Tenant the run belongs to.
+            agent_name: The agent role that just completed (e.g. ``"navigator"``).
+            output: The agent's real text output for this step.
+        """
+        from backend.api.timeline_roles import timeline_event_type_for_agent_role  # noqa: PLC0415
+
+        timeline_event_type = timeline_event_type_for_agent_role(agent_name)
+        if timeline_event_type is None:
+            return
+        emit_event(
+            timeline_event_type,
+            tenant_id=tenant_id,
+            partition_key=run_id,
+            data={
+                "stepKey": agent_name,
+                "actorRole": agent_name,
+                "status": "completed",
+                "output": output[:_TIMELINE_OUTPUT_CHAR_CAP],
+            },
+            subject={"runId": run_id},
+        )
 
     def _clone_artifacts(
         self, artifacts: Mapping[str, Mapping[str, Any]]
