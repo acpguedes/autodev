@@ -33,6 +33,19 @@ controls actually stop something rather than only existing in configuration.
    referenced by the reference project's execution profile, so it can be
    revoked in N4.
 
+> **Profile constraint (added 2026-08-21).** This rehearsal is currently
+> executable only under `AUTODEV_PROFILE=local` (SQLite). Preconditions 4, 5,
+> and 6 — quotas, the execution environment backend, and secrets — depend on
+> `QuotaStore`, `EnvironmentStore`, and `SecretStore`, each of which raises
+> `ValueError` on the `postgresql://` URL the `prod` profile requires
+> (`backend/quotas/store.py:49`, `backend/environments/store.py:38`,
+> `backend/secret_store/store.py:48` vs `backend/config/settings.py:332-336`);
+> negative path N1 additionally depends on `PolicyStore`
+> (`backend/execution/policy.py:206`). Running this flow in `prod` is gated on
+> the E48-E60 program (`postgres_production_completeness.md`), after which
+> E57-S3 executes it in CI against a real `prod` stack. Stated here rather
+> than left implicit, per the E35-S1-T3 fact-vs-recommendation discipline.
+
 ## Happy path
 
 Each step names the action, the typed expected outcome, and the durable

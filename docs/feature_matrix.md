@@ -22,12 +22,12 @@ For the full list of environment flags see `backend/` source and
 |---------|--------|-------|
 | SQLite persistence | `default` | `backend/persistence/sqlite_adapter.py`; sessions, runs, messages, run-steps, plan documents |
 | Repository pattern / Store abstraction | `default` | `backend/persistence/base.py` protocol + `get_store()` factory; landed in Unit 1 |
-| PostgreSQL persistence | `optional` | `backend/persistence/postgres_adapter.py` `PostgresStore` — sessions/runs/messages/plans with migrations (E0-S3); selected via `DATABASE_URL=postgresql://…`; requires `psycopg` |
-| Schema migrations (versioned) | `default` | `backend/persistence/migrations/`; `MigrationRunner` with `schema_version` table and ordered callables |
+| PostgreSQL persistence (State Store only) | `optional` | `backend/persistence/postgres_adapter/` `PostgresStore` — sessions/runs/messages/plans with migrations (E0-S3); selected via `DATABASE_URL=postgresql://…`; requires `psycopg`. **Partial (verified 2026-08-21):** covers the State Store only. `QuotaStore`, `SecretStore`, `PolicyStore`, and `EnvironmentStore` raise `ValueError` on a `postgresql://` URL and `StepApprovalStore` diverts to `./autodev_plan_step_state.db`, so 13 domain tables have no PostgreSQL migration — tracked by E48-E60 (`docs/v2_platform/postgres_production_completeness.md`) |
+| Schema migrations (versioned) | `default` | `backend/persistence/migrations/`; `MigrationRunner` with `schema_version` table and ordered callables. Covers the core State Store, plan, and code-chunk tables; the 13 domain tables listed in E50 are created by `CREATE TABLE IF NOT EXISTS` outside the runner and are not version-tracked |
 | Durable Event Store | `default` | `backend/events/store.py` (E8-S2): append-only `events` table ordered per partition plus transactional `event_projections` materialization; every canonical envelope published on the Event Bus persists when `AUTODEV_EVENT_STORE_ENABLED=true` (default); run reconstruction via `EventStore.reconstruct_run()`; retention/compaction via `AUTODEV_EVENT_RETENTION_DAYS` |
 | Redis-backed queue/cache/locks | `optional` | `RedisJobQueue` in `backend/jobs/queue.py` plus `backend/coordination/redis.py`; selected with `AUTODEV_JOB_BACKEND=redis`, while in-process/local fallbacks remain the default |
 | MinIO artifact storage | `optional` | `backend/artifacts/store.py` provides MinIO/S3 artifacts when `STORAGE_BACKEND=s3`; local filesystem artifacts remain the default |
-| pgvector semantic memory | `optional` | `backend/repository/embeddings/pgvector_store.py` + `backend/repository/embeddings/provider.py`; PostgreSQL + pgvector-backed embedding storage and top-k query (E7-S2/S3) |
+| pgvector semantic memory | `optional` | `backend/repository/embeddings/pgvector_store.py` + `backend/repository/embeddings/provider.py`; PostgreSQL + pgvector-backed embedding storage and top-k query (E7-S2/S3). **Requires a pgvector-capable image:** the shipped Compose `prod` profile uses stock `postgres:16-alpine` (`infrastructure/docker-compose.yml:116`), against which the `CREATE EXTENSION vector` migration (`postgres_versions.py:253`) cannot succeed — E48 |
 
 ---
 
@@ -171,7 +171,7 @@ Delivered by v2 epic E5 (Routing / Selection / Evaluation), Done 4/4. See
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Plan store (SQLite) | `default` | `backend/plans/store.py`; `plan_documents` table; approve/reject persisted |
+| Plan store | `default` | `backend/plans/store.py`; `plan_documents` table; approve/reject persisted; dual-backend via `SQLitePlanStore`/`PostgresPlanStore`. Per-step approval state is separate and **SQLite-only** (`backend/plans/step_state.py`) — E55 |
 | Plan approval API | `default` | `GET/PUT /plans/{id}`, `POST /plans/{id}/approve`, `POST /plans/{id}/reject` |
 | Approval gates blocking execution | `default` | Legacy `execute_plan()` still doesn't check plan status, but E14's governed execution pipeline gates on it: `backend/execution/executor.py` only skips the policy evaluator for an action whose id is in `pre_approved_action_ids` ("a human already explicitly approved this action"), backed by `backend/execution/policy.py` / `decisions.py` (E14-S3) |
 | Plan auto-persisted from orchestrator | `planned` | `create_plan()` (`backend/orchestrator/service.py`) still writes to the session store only, not `PlanStore`; tracked as Unit 23 |
@@ -232,7 +232,7 @@ Delivered mainly by E8-S1 (scoped tenancy), E11-S2 (RBAC), and E11-S3
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| Multi-tenant row-level isolation (PostgreSQL RLS) | `optional` | Mandatory `tenant_id` scoping on every `SessionRepository`/`RunRepository`/`MessageRepository`/`PlanRepository`/`EvalResultRepository`/`ScoreSnapshotRepository` method; `PostgresStore`/`PostgresPlanStore` additionally enforce Postgres Row-Level Security via `set_postgres_tenant()` (`backend/persistence/postgres_adapter.py`); ADR-010; requires the PostgreSQL backend |
+| Multi-tenant row-level isolation (PostgreSQL RLS) | `optional` | Mandatory `tenant_id` scoping on every `SessionRepository`/`RunRepository`/`MessageRepository`/`PlanRepository`/`EvalResultRepository`/`ScoreSnapshotRepository` method; `PostgresStore`/`PostgresPlanStore` additionally enforce Postgres Row-Level Security via `set_postgres_tenant()` (`backend/persistence/postgres_adapter.py`); ADR-010; requires the PostgreSQL backend. **Scope (verified 2026-08-21):** RLS covers the 11 core/plan/code tables only; the 13 domain tables (quotas, secrets, execution policy, environments, plan step state) have no RLS and rely on application-level `WHERE` clauses — E50-S4 |
 | Global RBAC + authentication enforcement | `default` | `backend/api/authorization.py`; every `/v2` route must declare `@public_endpoint` or `@requires_scope(...)`, enforced as a single app-level FastAPI dependency ahead of all matched routes including plugin routers (E11-S2 Task 3) |
 | Tenant quota / run budget policy | `default` | `backend/quotas/{contracts,service}.py` (`TenantQuotaPolicy`, `RunBudgetLimits`, integer micro-USD amounts); `GET/PUT /v2/quotas/*` (`backend/api/routers/quotas_v2.py`); `QuotaExceededError` enforced on `POST /chat/dynamic` and other run-creating routes (E11-S3, ADR-019) |
 

@@ -7,7 +7,15 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-21 (**E44 complete — 5/5, Beta-hardening backend
+**Last updated:** 2026-08-21 (**Planning-only: added the E48-E60 PostgreSQL
+Production Completeness program — 13 Beta-hardening epics, 46 planned
+stories**, on `main`. The `prod` profile requires PostgreSQL
+(`backend/config/settings.py:332-336`) while four domain stores raise
+`ValueError` on a PostgreSQL URL and a fifth silently writes
+`./autodev_plan_step_state.db` — quotas, secrets, execution policy, and
+execution environments cannot be constructed in production today. See
+`postgres_production_completeness.md` and the changelog entry.)
+Previous entry: 2026-08-21 (**E44 complete — 5/5, Beta-hardening backend
 efficiency**, on `epic/e44-persistence-efficiency` — Control Plane
 read/write cost no longer grows with data volume: `GET /v2/turns/{id}` is a
 2-statement primary-key lookup instead of a sessions × runs scan, session/
@@ -461,8 +469,21 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E45 | Runtime I/O Efficiency: Job Queue, Event Bus, SSE & Indexing | Beta | Done | 5/5 | E0, E8-S2, E9, E43-S6 | [phases/e45_runtime_io_efficiency.md](phases/e45_runtime_io_efficiency.md) |
 | E46 | Execution Failure Classification & Self-Repair Governance | Beta | Done | 3/3 | E14, E32, E41-S5, E43-S1 | [phases/e46_failure_classification_self_repair.md](phases/e46_failure_classification_self_repair.md) |
 | E47 | Backend Structural Consolidation | Beta | Done | 5/5 | E2, E2-S6, E8, E44, E46 | [phases/e47_backend_structural_consolidation.md](phases/e47_backend_structural_consolidation.md) |
+| E48 | PostgreSQL Runtime with pgvector | Beta | Not started | 0/4 | E0-S3, E7-S2, E34-S2 | [phases/e48_postgres_runtime_pgvector.md](phases/e48_postgres_runtime_pgvector.md) |
+| E49 | Shared SQL Persistence Infrastructure | Beta | Not started | 0/4 | E8, E47-S4 | [phases/e49_shared_sql_infrastructure.md](phases/e49_shared_sql_infrastructure.md) |
+| E50 | PostgreSQL Schema, Migrations, Tenancy & RLS | Beta | Not started | 0/4 | E48, E49, E8-S1 | [phases/e50_postgres_schema_migrations_rls.md](phases/e50_postgres_schema_migrations_rls.md) |
+| E51 | QuotaStore on PostgreSQL & Concurrency | Beta | Not started | 0/4 | E49, E50-S1, E11-S3 | [phases/e51_quotastore_postgres_concurrency.md](phases/e51_quotastore_postgres_concurrency.md) |
+| E52 | SecretStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S1, E33 | [phases/e52_secretstore_postgres.md](phases/e52_secretstore_postgres.md) |
+| E53 | PolicyStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S2, E14 | [phases/e53_policystore_postgres.md](phases/e53_policystore_postgres.md) |
+| E54 | EnvironmentStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S2, E32 | [phases/e54_environmentstore_postgres.md](phases/e54_environmentstore_postgres.md) |
+| E55 | Plan Step State on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S3, E16-S2 | [phases/e55_plan_step_state_postgres.md](phases/e55_plan_step_state_postgres.md) |
+| E56 | SQLite/PostgreSQL Contract Test Suite | Beta | Not started | 0/3 | E49, E50, E51-E55 | [phases/e56_sqlite_postgres_contract_tests.md](phases/e56_sqlite_postgres_contract_tests.md) |
+| E57 | CI & Real PostgreSQL E2E | Beta | Not started | 0/4 | E48, E56, E51-E55 | [phases/e57_ci_postgres_e2e.md](phases/e57_ci_postgres_e2e.md) |
+| E58 | SQLite → PostgreSQL Data Migration | Beta | Not started | 0/4 | E50-E55, E57 | [phases/e58_sqlite_to_postgres_migration.md](phases/e58_sqlite_to_postgres_migration.md) |
+| E59 | Backup, Restore & Disaster Recovery | Beta | Not started | 0/3 | E8-S4, E55-S3, E57-S4 | [phases/e59_backup_restore_disaster_recovery.md](phases/e59_backup_restore_disaster_recovery.md) |
+| E60 | Connection Pooling & PostgreSQL Hardening | Beta | Not started | 0/4 | E51-E55, E57, E11-S1 | [phases/e60_postgres_pooling_hardening.md](phases/e60_postgres_pooling_hardening.md) |
 
-Total: **131/214 stories complete** across 47 epics (E19 is a proposed
+Total: **131/260 stories complete** across 60 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -483,6 +504,16 @@ independent external code analyses whose claims were all re-verified
 against the current tree; 196 → 214 stories, 43 → 47 epics. See
 `phases/e44_persistence_efficiency.md` …
 `phases/e47_backend_structural_consolidation.md`.)*
+
+*(2026-08-21: +46 planned stories from the new E48-E60 **PostgreSQL
+Production Completeness** program — 214 → 260 stories, 47 → 60 epics. Found
+by reading the `prod` code path directly: `backend/config/settings.py:332-336`
+requires a PostgreSQL `DATABASE_URL`, while `QuotaStore`, `SecretStore`,
+`PolicyStore`, and `EnvironmentStore` each raise `ValueError` on exactly that
+URL and `StepApprovalStore` silently diverts to `./autodev_plan_step_state.db`
+— so four subsystems cannot be constructed at all in a valid production
+configuration. Program document:
+`docs/v2_platform/postgres_production_completeness.md`.)*
 
 \* **E8-S1 is now complete (2026-07-06)**: on top of the scoped tenancy/
 reversible-migration slice landed as an E7 prerequisite (ADR-010:
@@ -582,9 +613,11 @@ environment), **E33** (secrets & credential governance), **E34**
 (packaging & global install), **E35** (this gate itself — evidence map,
 acceptance flow, decisions/risk register, runbooks).
 
-Full 12-criterion evidence map (fact vs. recommendation, per E35-S1):
+Full evidence map (fact vs. recommendation, per E35-S1):
 `docs/v2_platform/beta_gap_analysis.md` §11 — the single source; do not
-duplicate its evidence citations here.
+duplicate its evidence citations here. Originally 12 criteria; criteria 13-15
+were added 2026-08-21 by the E48-E60 PostgreSQL Production Completeness
+program (`postgres_production_completeness.md`).
 
 - [x] Every extension point has a green contract test and quality gates block merges.
 - [x] Design language v2 + Execution Control Center app shell (E15), `/v2` API
@@ -619,11 +652,24 @@ duplicate its evidence citations here.
 - [ ] Backup/restore validated (RPO <= 5 min, RTO <= 30 min) in staging — no
       staging environment exists; validated via documented execution
       procedure only. Open (`phases/e8_persistence_data.md`).
+- [ ] The `prod` profile boots from empty on PostgreSQL 16 + pgvector and
+      serves a real vector query — `postgres_versions.py:253` runs
+      `CREATE EXTENSION IF NOT EXISTS vector` while
+      `infrastructure/docker-compose.yml:116` ships stock `postgres:16-alpine`,
+      so PG migration 4 cannot succeed on the shipped stack. Open (E48).
+- [ ] SQLite and PostgreSQL pass the same functional contract — 13 tables have
+      no PostgreSQL migration and 5 stores refuse a PostgreSQL URL. Open
+      (E49-E56).
+- [ ] Every pull request runs a real `prod`-profile E2E — no workflow in
+      `.github/workflows/` has a `services:` block; all PostgreSQL paths are
+      exercised against a monkeypatched `psycopg`. Open (E57).
 
 `[~]` = partially met (real evidence, criterion not fully satisfied). The
-three `[ ]` gaps (retrieval benchmark, streaming latency, staging restore)
-need a live environment E35 does not own; closing them is follow-up work,
-not silently declared done.
+first three `[ ]` gaps (retrieval benchmark, streaming latency, staging
+restore) need a live environment E35 does not own. The final three were added
+2026-08-21 by the E48-E60 PostgreSQL Production Completeness program
+(`postgres_production_completeness.md`) — they are named gaps against
+verified code evidence, not presumed resolved.
 
 ### v2.0-GA — "general availability"
 
@@ -643,6 +689,51 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-21** — **Planning-only: added the E48-E60 PostgreSQL Production
+  Completeness program — 13 Beta-hardening epics, 46 planned stories**, on
+  `main` (same posture as the E44-E47 planning entry below: documents only, no
+  code, schema, or migration changed, nothing pushed). Program document:
+  `docs/v2_platform/postgres_production_completeness.md`. **Origin:** reading
+  the `prod` code path directly rather than the tracker.
+  `backend/config/settings.py:332-336` requires a `postgresql://`
+  `DATABASE_URL` in the `prod` profile, while `QuotaStore`
+  (`backend/quotas/store.py:49`), `SecretStore`
+  (`backend/secret_store/store.py:48`), `PolicyStore`
+  (`backend/execution/policy.py:206`), and `EnvironmentStore`
+  (`backend/environments/store.py:38`) each raise `ValueError` on exactly that
+  URL — so quotas, secrets, execution policy, and execution environments
+  **cannot be constructed at all** in a valid production configuration, and
+  `StepApprovalStore` (`backend/plans/step_state.py:132`) silently diverts
+  plan-step approval state to `./autodev_plan_step_state.db`, a file no
+  replica shares and no backup manifest covers. Three further verified
+  defects: `postgres_versions.py:253` runs `CREATE EXTENSION IF NOT EXISTS
+  vector` against `infrastructure/docker-compose.yml:116`'s stock
+  `postgres:16-alpine`, so PG migration 4 cannot succeed on the shipped
+  stack; all 13 domain tables are created by `CREATE TABLE IF NOT EXISTS`
+  outside `MigrationRunner`, so none is in `schema_version` and none has RLS;
+  and no workflow in `.github/workflows/` has a `services:` block, so every
+  PostgreSQL path — both adapter packages, all 7 migrations, RLS, pgvector —
+  is exercised only against a monkeypatched `sys.modules["psycopg"]`. That
+  last one is the root cause: the divergence persisted because nothing ever
+  asked a store to behave identically on both backends. **Epics:** E48
+  runtime + pgvector (4), E49 shared SQL persistence contract (4), E50 schema,
+  migrations, tenancy and RLS for the 13 tables (4), E51-E55 the five store
+  ports with their own concurrency invariants (4/3/3/3/3), E56 the
+  SQLite/PostgreSQL contract suite (3), E57 real PostgreSQL in CI plus a
+  `prod` E2E (4), E58 `autodev database migrate` (4), E59 backup/restore/DR
+  (3), E60 pooling and hardening (4, sequenced last so it optimizes a system
+  that works). **New ADRs**, all `Proposed`, each decided inside its owning
+  epic: ADR-024 (pgvector runtime image and extension provisioning, E48),
+  ADR-025 (SQL persistence boundary, dialect scope, no ORM — extending
+  E47-S4's recorded stance, E49), ADR-026 (one-way SQLite → PostgreSQL
+  migration and cutover, no permanent dual-write, E58). Also backfilled the
+  missing **ADR-023** row in `decisions/README.md`, which existed on disk but
+  not in the index. **Gate impact:** three criteria added to §18.9 v2.0-beta
+  (13-15), all `[ ]` Open — Beta cannot be signed off while four subsystems
+  cannot start in `prod`. Existing decisions this program implements rather
+  than revisits: ADR-001, ADR-010, ADR-011, ADR-013, ADR-014, ADR-019,
+  ADR-022.
 
 - **2026-08-21** — **E47 — Backend Structural Consolidation complete (5/5)**,
   the last of the four Beta-hardening backend-efficiency epics, sequenced
