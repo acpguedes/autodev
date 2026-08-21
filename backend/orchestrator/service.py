@@ -275,6 +275,39 @@ class AgentGraphState(TypedDict):
     run_id: str
 
 
+_TIMELINE_OUTPUT_CHAR_CAP = 8000
+"""Max length of one ``run.timeline.*`` event's ``output`` text (E42-S5).
+
+Keeps a single event's payload bounded regardless of how much stdout/stderr
+a task's actions captured; the tail is kept since that's what a validation
+failure's relevant output usually is.
+"""
+
+
+def _build_timeline_output(results: Iterable[ExecutionResult]) -> str:
+    """Concatenate a task's captured stdout/stderr into one log excerpt.
+
+    Sourced from :attr:`~backend.execution.contracts.ExecutionResult.stdout`/
+    ``.stderr`` -- already captured per action (E41) but never surfaced live
+    before this (E42-S5): a ``run.timeline.*`` event's ``output`` field is
+    exactly the "monospace stdout/log excerpt" it was designed to carry
+    (``backend.events.catalog.RunTimelineStepData``).
+
+    Args:
+        results: Per-action results from one task's execution, in dispatch
+            order.
+
+    Returns:
+        The concatenated excerpt, tail-truncated to
+        :data:`_TIMELINE_OUTPUT_CHAR_CAP`.
+    """
+    parts = [text for result in results for text in (result.stdout, result.stderr) if text]
+    output = "\n".join(parts)
+    if len(output) > _TIMELINE_OUTPUT_CHAR_CAP:
+        output = output[-_TIMELINE_OUTPUT_CHAR_CAP:]
+    return output
+
+
 class OrchestratorService:
     """Coordinate agent execution for a durable session."""
 
@@ -952,6 +985,10 @@ class OrchestratorService:
         Returns:
             ``(current_state, paused)``.
         """
+        from backend.api.timeline_roles import (  # noqa: PLC0415
+            timeline_event_type_for_agent_role,
+        )
+
         current_state = steps[-1].step_key if steps else "starting"
         if not tasks:
             return current_state, False
@@ -1038,6 +1075,20 @@ class OrchestratorService:
                         subject={"runId": run_id, "taskId": task.task_id},
                     )
                 action_results.extend(outcome.results)
+                timeline_event_type = timeline_event_type_for_agent_role(task.source_agent)
+                if timeline_event_type is not None:
+                    emit_event(
+                        timeline_event_type,
+                        tenant_id=tenant_id,
+                        partition_key=run_id,
+                        data={
+                            "stepKey": task.task_id,
+                            "actorRole": task.source_agent,
+                            "status": outcome.status,
+                            "output": _build_timeline_output(outcome.results),
+                        },
+                        subject={"runId": run_id, "taskId": task.task_id},
+                    )
                 step_status = (
                     StepStatus.COMPLETED if outcome.status == "completed" else StepStatus.FAILED
                 )
