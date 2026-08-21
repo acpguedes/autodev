@@ -185,6 +185,7 @@ class SandboxRunner:
                     stderr=f"Command '{exe}' is not in the allowed list.",
                     backend="blocked",
                     skipped=True,
+                    failure_kind="command_not_allowed",
                 )
 
         try:
@@ -197,6 +198,7 @@ class SandboxRunner:
                 stderr=str(exc),
                 backend="blocked",
                 skipped=True,
+                failure_kind="policy_denied",
             )
 
         if shutil.which("docker"):
@@ -220,6 +222,7 @@ class SandboxRunner:
             ),
             backend="unavailable",
             skipped=True,
+            failure_kind="environment_unavailable",
         )
 
     # ------------------------------------------------------------------
@@ -350,6 +353,7 @@ class SandboxRunner:
                 stderr=f"validation timed out after {self._policy.timeout_seconds}s",
                 backend="docker",
                 skipped=False,
+                failure_kind="timeout",
             )
         return ValidationResult(
             job_id=job.job_id,
@@ -358,6 +362,7 @@ class SandboxRunner:
             stderr=completed.stderr,
             backend="docker",
             skipped=False,
+            failure_kind="code_failure" if completed.returncode != 0 else None,
         )
 
     def _run_local(self, job: ValidationJob, workspace: Path) -> ValidationResult:
@@ -380,6 +385,7 @@ class SandboxRunner:
                 stderr=f"validation timed out after {self._policy.timeout_seconds}s",
                 backend="local",
                 skipped=False,
+                failure_kind="timeout",
             )
         return ValidationResult(
             job_id=job.job_id,
@@ -388,6 +394,7 @@ class SandboxRunner:
             stderr=completed.stderr,
             backend="local",
             skipped=False,
+            failure_kind="code_failure" if completed.returncode != 0 else None,
         )
 
 

@@ -27,7 +27,16 @@ class ValidationJob:
 
 @dataclass
 class ValidationResult:
-    """Outcome of a validation run (or a skipped/disabled run)."""
+    """Outcome of a validation run (or a skipped/disabled run).
+
+    Attributes:
+        failure_kind: Typed reason this run failed (E46-S1, ADR-023), as
+            the raw string value of an
+            :class:`backend.execution.contracts.ExecutionFailureKind` --
+            kept as a plain string here (not the enum) since this module
+            sits below ``backend.execution`` and must not depend back on
+            it. ``None`` for a successful or skipped-because-disabled run.
+    """
 
     job_id: str
     returncode: int
@@ -35,6 +44,7 @@ class ValidationResult:
     stderr: str
     backend: str
     skipped: bool
+    failure_kind: str | None = None
 
 
 __all__ = ["ValidationJob", "ValidationResult"]

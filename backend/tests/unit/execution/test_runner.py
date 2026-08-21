@@ -16,7 +16,7 @@ from unittest.mock import patch
 
 import pytest
 
-from backend.execution.contracts import ExecutionAction, ExecutionActionType
+from backend.execution.contracts import ExecutionAction, ExecutionActionType, ExecutionFailureKind
 from backend.execution.runner import CommandRunner, InProcessActionRunner, PatchRunner, ValidationRunner
 from backend.patches.models import Patch
 from backend.validation.sandbox import SandboxPolicy, SandboxRunner
@@ -170,6 +170,61 @@ def test_command_runner_fails_closed_without_docker_and_without_local_opt_in(
 
     assert result.status == "failed"
     assert result.exit_code == 1
+    assert result.failure_kind is ExecutionFailureKind.ENVIRONMENT_UNAVAILABLE
+
+
+def test_run_command_success_carries_no_failure_kind(tmp_path: Path) -> None:
+    runner = InProcessActionRunner(
+        project_root=tmp_path, sandbox_runner=_sandbox(tmp_path)
+    )
+    action = ExecutionAction(
+        action_id="a1",
+        type=ExecutionActionType.RUN_COMMAND,
+        task_id="task-1",
+        step_key="task-1",
+        command=["python3", "-c", "print('hi')"],
+        cwd=".",
+    )
+
+    with patch("shutil.which", return_value=None):
+        result = runner.run(action)
+
+    assert result.status == "succeeded"
+    assert result.failure_kind is None
+
+
+def test_unclassified_validation_result_failure_defaults_to_code_failure(tmp_path: Path) -> None:
+    """E46-S1: a ValidationResult producer that omits failure_kind still
+    gets a safe, repair-eligible default (ADR-023's "process exit codes
+    default to code_failure" rule), not a silently-dropped classification.
+    """
+    from backend.validation.models import ValidationJob, ValidationResult
+
+    class _UnclassifiedSandbox:
+        def run(self, job: ValidationJob) -> ValidationResult:
+            return ValidationResult(
+                job_id=job.job_id,
+                returncode=1,
+                stdout="",
+                stderr="boom",
+                backend="local",
+                skipped=False,
+            )
+
+    runner = CommandRunner(sandbox_runner=_UnclassifiedSandbox())  # type: ignore[arg-type]
+    action = ExecutionAction(
+        action_id="a1",
+        type=ExecutionActionType.RUN_COMMAND,
+        task_id="task-1",
+        step_key="task-1",
+        command=["python3"],
+        cwd=".",
+    )
+
+    result = runner.run(action)
+
+    assert result.status == "failed"
+    assert result.failure_kind is ExecutionFailureKind.CODE_FAILURE
 
 
 def test_command_runner_rejects_non_command_actions() -> None:
@@ -337,6 +392,7 @@ def test_bind_environment_denies_a_traversal_action_without_dispatching(tmp_path
 
     assert result.status == "failed"
     assert "environment policy denied" in (result.error or "")
+    assert result.failure_kind is ExecutionFailureKind.POLICY_DENIED
     assert not (ws.parent.parent / "etc" / "passwd").exists()
 
 
