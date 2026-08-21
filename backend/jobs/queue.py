@@ -165,6 +165,23 @@ class InProcessJobQueue(AbstractJobQueue):
             running = self._running_count
         return QueueSnapshot(pending, running, self._max_workers, running)
 
+    def close(self, *, wait: bool = True) -> None:
+        """Shut down the thread pool.
+
+        Mirrors :meth:`RedisJobQueue.close`. By default (``wait=True``,
+        matching :meth:`ThreadPoolExecutor.shutdown`'s own default) this
+        blocks until every already-submitted job finishes running, so no
+        job from this queue can still be executing after this call
+        returns and touch state (e.g. a durable store swapped out by a
+        test's next fixture) that belongs to whatever comes next. Once
+        closed, this queue instance must not be reused: further
+        :meth:`enqueue` calls raise ``RuntimeError``.
+
+        Args:
+            wait: Whether to block until in-flight jobs finish.
+        """
+        self._executor.shutdown(wait=wait)
+
     def _sweep_expired_locked(self) -> None:
         """Evict completed records older than the retention window.
 
@@ -569,10 +586,23 @@ def get_queue(settings: Settings | None = None) -> AbstractJobQueue:
 
 
 def _reset_queue_singleton() -> None:
-    """Test helper — reset the singleton so tests can get a fresh queue."""
+    """Test helper — reset the singleton so tests can get a fresh queue.
+
+    Shuts down the outgoing singleton first (waiting for any in-flight job
+    to finish, when the backend supports ``close()``) before clearing the
+    reference. Without this, a job still running on the previous
+    singleton's thread pool could keep executing after this call returns,
+    resolve process-wide caches (e.g. :func:`backend.persistence.database.get_store`)
+    that a subsequent test has since repointed at its own fixture, and
+    write into state that does not belong to it.
+    """
     global _queue_singleton
     with _queue_lock:
+        outgoing = _queue_singleton
         _queue_singleton = None
+    close = getattr(outgoing, "close", None)
+    if callable(close):
+        close()
 
 
 __all__ = [

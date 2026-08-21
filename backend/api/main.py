@@ -45,7 +45,7 @@ from backend.config import (
 )
 from backend.config.settings import get_settings
 from backend.coordination import get_cache, get_lock_manager
-from backend.jobs.queue import AbstractJobQueue, get_queue
+from backend.jobs.queue import AbstractJobQueue, _reset_queue_singleton, get_queue
 from backend.llm.composition import reset_model_composition_cache
 from backend.llm.factory import get_chat_model
 from backend.observability.backup_metrics import register_backup_observables
@@ -250,9 +250,11 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         if queue is not None:
-            close = getattr(queue, "close", None)
-            if callable(close):
-                close()
+            # Shuts down (and waits for) the queue's in-flight work, then
+            # clears the process-wide singleton so the next lifespan startup
+            # (e.g. a subsequent ``TestClient(app)`` in the same test process)
+            # builds a fresh queue rather than reusing this now-closed one.
+            _reset_queue_singleton()
         shutdown_observability()
 
 
