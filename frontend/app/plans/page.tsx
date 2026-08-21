@@ -1,11 +1,11 @@
 "use client";
 
-import { FormEvent, useCallback, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { ExecuteApprovedFooter } from "@/components/plans/ExecuteApprovedFooter";
 import { StatCard } from "@/components/plans/StatCard";
 import { StepCard } from "@/components/plans/StepCard";
-import { useShellHeader } from "@/components/shell/ShellProvider";
+import { useShell, useShellHeader } from "@/components/shell/ShellProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useTranslations } from "@/lib/i18n";
@@ -48,6 +48,7 @@ export default function PlansPage() {
     subtitle: t("plans.pageSubtitle"),
   });
 
+  const { activeSessionId } = useShell();
   const [sessionIdInput, setSessionIdInput] = useState("");
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [plan, setPlan] = useState<PlanV2 | null>(null);
@@ -87,6 +88,17 @@ export default function PlansPage() {
     },
     [t],
   );
+
+  // Default to the session active in Chat (E42-S3) instead of requiring a
+  // pasted session id; manual lookup below still overrides it.
+  useEffect(() => {
+    if (activeSessionId && !sessionId) {
+      void loadPlan(activeSessionId);
+    }
+    // Runs once per active-session change; `sessionId`/`loadPlan` identity
+    // changes on every load and must not re-trigger this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeSessionId]);
 
   async function handleLookup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
