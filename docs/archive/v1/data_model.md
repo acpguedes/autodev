@@ -1,5 +1,12 @@
 # Data Model Direction
 
+> **Archived 2026-08-20 — v1 architecture.** This document describes the v1
+> linear-pipeline design, frozen at the
+> [`v1` release](https://github.com/acpguedes/autodev/releases/tag/v1).
+> Superseded by E8's multi-tenant model and migrations — see [`docs/architecture/v2_platform_reference.md`](../../architecture/v2_platform_reference.md) §13 and [`docs/ops/storage.md`](../../ops/storage.md).
+> Retained as the design audit trail; **not maintained**. See
+> [`docs/archive/v1/README.md`](README.md) for the full v1 -> v2 map.
+
 This document defines the recommended persistent model for AutoDev Architect.
 
 ---

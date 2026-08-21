@@ -3,7 +3,11 @@
 This document records the security posture of AutoDev Architect, the hardening
 applied to the control plane and execution paths, and the environment variables
 that gate sensitive behavior. It reflects a review of the backend API,
-validation sandbox, patch engine, LLM client, infrastructure, CI, and frontend.
+validation sandbox, execution/permission engine, isolated execution
+environments, secret store, quota/budget layer, patch engine, LLM client,
+infrastructure, CI, and frontend. It covers the epics landed through the
+v2.0 Beta wave (E11, E14, E32, E33; see
+[`docs/v2_platform/progress.md`](v2_platform/progress.md) for status).
 
 ## Threat model
 
@@ -168,6 +172,126 @@ Plugins (v2 Plugin Host, E1-S3) run under a **default-deny** permission model:
 
 See [`docs/plugins/permissions.md`](plugins/permissions.md) for the full model.
 
+## Execution permission & policy engine
+
+Every action `TaskExecutor` dispatches (E14-S1) is gated by
+`PolicyService.evaluate` (`backend/execution/policy.py`, RFC-010/ADR-022:
+[`docs/v2_platform/decisions/ADR-022-execution-policy-engine.md`](v2_platform/decisions/ADR-022-execution-policy-engine.md),
+E14-S2) before it reaches the runner:
+
+- Category-scoped allow/deny rules (`shell`, `fs-write`, `patch`,
+  `network`, `secrets-read`, `validation`) with a durable per-decision
+  audit trail and two events (`execution.policy.allowed`/`.denied`).
+- Resolution mirrors `QuotaService` (ADR-019): a tenant with any stored
+  rule is governed by exactly those rules; a tenant with none fails closed
+  in production and falls back to a permissive default outside
+  production, preserving the local-first default for unconfigured
+  self-hosted instances.
+- When multiple rules match, precedence is by specificity
+  (dynamic-permission-with-pattern > static-with-pattern >
+  dynamic-without-pattern > static-without-pattern) before effect, with
+  explicit `deny` winning ties within the top tier.
+- `hybrid` execution mode (E14-S3) can persist a dynamic "always allow"
+  permission via `PolicyService.grant_dynamic_permission` so an
+  operator-approved action class stops pausing for approval; REST:
+  `GET/POST /v2/execution/policy` (`policy:read`/`policy:admin`),
+  `GET/DELETE /v2/execution/policy/dynamic`.
+
+See [`docs/execution/engine.md`](execution/engine.md) and
+[`docs/execution/modes.md`](execution/modes.md) for the full execution
+model this gates.
+
+## Multi-tenant quotas and run budgets
+
+E11-S3 (ADR-019:
+[`docs/v2_platform/decisions/ADR-019-multitenant-quotas-and-run-budgets.md`](v2_platform/decisions/ADR-019-multitenant-quotas-and-run-budgets.md))
+closed real cross-tenant leaks in the Control Plane — routes that had been
+hardcoding a default tenant or trusting a client-supplied tenant selector
+(including chat turn read/write endpoints, which had not resolved the
+authenticated principal at all) now thread the E11-S2 principal's tenant
+through consistently.
+
+On top of that, a durable per-tenant quota/budget layer
+(`backend/quotas/`: policy storage, concurrency leases, storage
+reservations, monthly usage windows, request-rate buckets) is wired into:
+
+- `GET/PUT /v2/quotas/usage|policy` (`quota:read`/`quota:admin`) and
+  `autodev quotas get|set`;
+- per-tenant storage reservation on artifact writes;
+- per-credential request-rate admission in the shared `/v2` auth
+  dependency;
+- fail-closed concurrent-run admission in the Agent Runtime (a lease
+  acquired before a run record exists, always released);
+- per-run token/cost/wall-clock/step ceilings narrowed to the tenant's
+  `default_run_budget` in the Reasoning Engine, with monthly usage
+  recorded after each run.
+
+Four `autodev_quota_*` OpenTelemetry gauges back a Grafana dashboard
+(`infrastructure/observability/grafana/dashboards/quotas.json`).
+Real per-call LLM cost/token accounting in the legacy (non-`/v2`) chat
+path is out of scope for this story — see
+`docs/v2_platform/phases/e11_observability_security_multitenant.md`.
+
+## Isolated execution environments
+
+E32 (ADR-013:
+[`docs/v2_platform/decisions/ADR-013-beta-isolation-backend.md`](v2_platform/decisions/ADR-013-beta-isolation-backend.md))
+adds a backend-agnostic `EnvironmentBackend` protocol
+(`backend/environments/contracts.py`) around task execution, so the
+sandboxing substrate can be swapped without touching callers:
+
+- **Backend selection.** `HardenedContainerBackend`
+  (`backend/environments/backends.py`, built on the existing
+  `SandboxRunner`) is the Beta default. An unset or unrecognized
+  `AUTODEV_EXECUTION_ENVIRONMENT_BACKEND` resolves to the fail-closed
+  `UnavailableBackend` sentinel rather than a silent guess
+  (`backend/environments/registry.py`).
+- **Fail-closed network/filesystem policy (E32-S2,
+  `backend/environments/policy.py`).** A declared network allowlist the
+  Beta backend cannot mechanically enforce (only a binary default-deny is
+  available; no egress proxy or DNS-level allowlist yet) denies
+  provisioning outright instead of silently over- or under-granting
+  access. Filesystem access under a `workspace_only` policy is checked
+  against the resolved workspace mount; anything that resolves outside it
+  is denied.
+- **Lifecycle (E32-S3).** `EnvironmentManager`/`EnvironmentStore` provision
+  one environment per dispatch batch, enforce a per-tenant concurrency
+  ceiling (`AUTODEV_ENVIRONMENT_MAX_CONCURRENT`, default 8) and TTL-based
+  orphan reaping (`AUTODEV_ENVIRONMENT_TTL_SECONDS`, default 1800s), and
+  collect stdout/diff artifacts best-effort (a storage failure is logged
+  and skipped, never fails the run).
+- **Audit (E32-S4).** Four append-only events
+  (`environment.instance.provisioned`, `environment.access.allowed`,
+  `environment.access.denied`, `environment.instance.retired`) let an
+  auditor reconstruct a run's isolation history from durable records
+  alone.
+
+Documented scope boundary (not silently narrowed): no plugin-facing
+`execution_environment` extension point yet (E28), no per-profile
+CPU/memory/pids override beyond the existing hardened container defaults
+(E28), and workspace provisioning binds to the orchestrator's existing
+`project_root` rather than a fresh ref-pinned checkout (the platform has
+no VCS checkout/worktree mechanism yet; every action's filesystem access
+is still checked against the workspace mount regardless). See
+[`docs/environments/beta_isolation.md`](environments/beta_isolation.md)
+for the full picture, including the microVM-class backend (E28, v2.2)
+this abstraction is designed to accept unchanged.
+
+## Secrets and credential governance
+
+E33 (ADR-014:
+[`docs/v2_platform/decisions/ADR-014-secret-store-format.md`](v2_platform/decisions/ADR-014-secret-store-format.md))
+adds a scoped-reference secret store (`backend/secret_store/`) that never
+returns a raw value over the API, injects secrets into E32 execution
+environments as process environment variables without exposing them to
+model context or plan/patch artifacts, redacts every resolved value from
+persisted transcripts/diffs and emitted events, and supports
+rotation/revocation with a full `secret.*` audit trail (including a
+`secret.leak.suspected` event when an injected secret is caught in a
+task's own output). See
+[`docs/security/secrets.md`](security/secrets.md) for the full design and
+the RBAC (`secret:use`/`secret:manage`), REST, and CLI surface.
+
 ## Validation sandbox
 
 Command execution is disabled unless `AUTODEV_ENABLE_SANDBOX` is set. All
@@ -267,17 +391,23 @@ reads (E11-S4). When enabled:
   (`python:3.11-slim`, `node:20`). Consider pinning by digest.
 - **Frontend security headers**: backend headers are now set by default, but
   `next.config.mjs` still sets no frontend-specific CSP/HSTS/X-Frame headers.
-- **Plugin signing / hash verification** (E13): not implemented. The E11-S4
-  trusted in-process boundary above (ADR-020) governs whether a plugin *may
-  run*, not whether its bundled code has been tampered with.
-- **Isolated execution environments beyond Docker** (E32): execution-environment
-  profiles, backend selection, workspace lifecycle, and per-profile
-  network/filesystem allowlists are not implemented. Docker with the
-  hardened flags above remains the only execution boundary.
-- **Secret-store abstraction** (E33): secrets remain environment-variable
-  backed with redaction on exposure (this document, "Secret handling"); there
-  is no encrypted secret store, scoped secret references, injection,
-  rotation, or secret audit trail yet.
+- **Plugin signing / hash verification** (E13, GA, not yet started): not
+  implemented. The E11-S4 trusted in-process boundary above (ADR-020)
+  governs whether a plugin *may run*, not whether its bundled code has
+  been tampered with.
+- **Isolated execution environments beyond hardened containers** (E28,
+  v2.2, not yet started): the E32 abstraction ("Isolated execution
+  environments" above) is designed to accept a microVM-class backend
+  (Firecracker/Kata) unchanged, but only the hardened-container backend is
+  implemented today; that remains the strongest available execution
+  boundary. E32 also does not yet vary per-profile CPU/memory/pids beyond
+  the hardened container's existing defaults, and has no egress
+  proxy/DNS-level network allowlist (binary default-deny only).
+- **Secret backend beyond database-encrypted-at-rest** (deferred by
+  ADR-014, not E33 scope): the Beta secret store (see "Secrets and
+  credential governance" above) is envelope-encrypted in the database;
+  Postgres row-level security and an external KMS/vault backend are
+  deferred, not silently dropped — ADR-014 documents the trade-off.
 - **Fleet-wide container digest pinning and broader SAST**: remain open
   supply-chain/E12 follow-ups; E11-S4 widens the Trivy gate (vulnerabilities
   + licenses, HIGH/CRITICAL) but does not add SAST or pin every image by

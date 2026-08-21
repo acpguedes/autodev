@@ -1,6 +1,6 @@
 # E33 — Secrets & Credential Governance (Beta)
 
-**Wave:** v2.0-beta — "plataforma completa em produção controlada".
+**Wave:** v2.0-beta — "full platform in controlled production".
 **Status:** Done · **Stories:** 3/3 complete
 **Depends on:** E11 (RBAC, audit), E32 (execution environments — injection
 target), E0 (config foundations)

@@ -1,86 +1,86 @@
 # E17 — Pause Handoff (Control Center Screens)
 
-> Estado congelado do épico E17 no momento da pausa solicitada pelo usuário.
-> Todas as 6 story branches estão pushed em `origin`. Use este documento para retomar.
+> Frozen state of epic E17 at the moment of the pause requested by the user.
+> All 6 story branches are pushed to `origin`. Use this document to resume.
 
-## Estado das branches
+## Branch status
 
-| Unit | Branch | Estado | Commit |
+| Unit | Branch | Status | Commit |
 |------|--------|--------|--------|
 | S1 Chat execution view | `story/e17-s1-chat-execution-view` | ✅ done | — |
-| S2 Plans approval gates | `story/e17-s2-plans-approval-gates` | ⏸ WIP (typecheck quebrado) | `4c2a40d` |
+| S2 Plans approval gates | `story/e17-s2-plans-approval-gates` | ⏸ WIP (typecheck broken) | `4c2a40d` |
 | S3 Patches review | `story/e17-s3-patches-review` | ✅ done | `42b677a` |
-| S4 Sessions & Config | `story/e17-s4-sessions-config` | ⏸ completo (só doc-polish) | `5ddfd81` |
-| S5 Extensions hub | `story/e17-s5-extensions-hub` | ⏸ WIP (test/e2e não verificados) | `9da6c8b` |
-| S6 Flow builder | `story/e17-s6-flow-builder` | ⏸ WIP (e2e quebrado) | wip pushed |
+| S4 Sessions & Config | `story/e17-s4-sessions-config` | ⏸ complete (doc-polish only) | `5ddfd81` |
+| S5 Extensions hub | `story/e17-s5-extensions-hub` | ⏸ WIP (test/e2e not verified) | `9da6c8b` |
+| S6 Flow builder | `story/e17-s6-flow-builder` | ⏸ WIP (e2e broken) | wip pushed |
 
-## Pendências por prioridade
+## Pending items by priority
 
-### S2 — Plans approval gates (mais trabalho restante)
+### S2 — Plans approval gates (most work remaining)
 
-1. **Quebrado:** 2× `TS2322` em `lib/plans_v2.ts` (linhas 43,14 e 46,14).
-   `EDITABLE_STEP_STATES`/`REMOVABLE_STEP_STATES` são `ReadonlySet<PlanStepState>` mas
-   construídos com `new Set([...])` (inferido `Set<string>`).
-   **Fix:** `new Set<PlanStepState>([...])`. Depois re-rodar `npm run typecheck`.
-2. Rodar `npm run lint`, `npm run test`, `npm run build`, `make check-frontend` — nenhum rodado.
-3. Criar e2e spec de `/plans` em `frontend/e2e/` — mock `**/v2/plans/**` via `page.route()`,
-   seguindo o padrão de `shell-navigation.spec.ts`; cobrir load/edit/approve/reject/add/remove/execute.
-4. Screen doc (provável `frontend/docs/screens/plans.md`, convenção não finalizada) + skill `code-review` no diff completo.
-5. Commit final limpo (squash do wip) e push.
-6. ⚠️ **Verificar backend:** `plan_approval_v2.py`, `events/catalog.py`, `step_state.py`,
-   `test_plan_approval_v2.py` + 2 arquivos backend novos aparecem modificados no `git status`
-   relativo ao tip do épico — o worker afirmou não ter tocado backend neste segmento; confirmar
-   que nada está meio-terminado.
-7. Higiene menor: `handleRemove` em `page.tsx` deixa entrada `true` stale em `stepBusy` após sucesso (inofensivo).
+1. **Broken:** 2× `TS2322` in `lib/plans_v2.ts` (lines 43,14 and 46,14).
+   `EDITABLE_STEP_STATES`/`REMOVABLE_STEP_STATES` are `ReadonlySet<PlanStepState>` but
+   built with `new Set([...])` (inferred as `Set<string>`).
+   **Fix:** `new Set<PlanStepState>([...])`. Then re-run `npm run typecheck`.
+2. Run `npm run lint`, `npm run test`, `npm run build`, `make check-frontend` — none run yet.
+3. Create an e2e spec for `/plans` in `frontend/e2e/` — mock `**/v2/plans/**` via `page.route()`,
+   following the pattern of `shell-navigation.spec.ts`; cover load/edit/approve/reject/add/remove/execute.
+4. Screen doc (likely `frontend/docs/screens/plans.md`, convention not finalized) + `code-review` skill on the full diff.
+5. Clean final commit (squash the wip) and push.
+6. ⚠️ **Verify backend:** `plan_approval_v2.py`, `events/catalog.py`, `step_state.py`,
+   `test_plan_approval_v2.py` + 2 new backend files appear modified in `git status`
+   relative to the epic tip — the worker claimed not to have touched the backend in this segment; confirm
+   that nothing is half-finished.
+7. Minor hygiene: `handleRemove` in `page.tsx` leaves a stale `true` entry in `stepBusy` after success (harmless).
 
 ### S5 — Extensions hub
 
-1. Trocar 5 locators `[role="button"]` → `[data-testid="extension-card"]` em
-   `frontend/e2e/extensions-hub.spec.ts` (linhas ~159–202) — quebrados pela remoção do
-   `role="button"` do `ExtensionCard`.
-2. Re-rodar `npm run test`: 18 falhas anteriores (axe color-contrast, nested-interactive,
-   `navModel.test.ts`) foram corrigidas mas **não verificadas**. Atenção especial ao padrão
-   stretched-button novo (accessible-name) e efeitos do `pointer-events` restructuring.
-3. `make check-frontend` e `npm run e2e` — nunca rodados neste esforço.
-4. Commit/push de fixes adicionais na mesma branch.
+1. Replace 5 `[role="button"]` locators → `[data-testid="extension-card"]` in
+   `frontend/e2e/extensions-hub.spec.ts` (lines ~159–202) — broken by removal of
+   `role="button"` from `ExtensionCard`.
+2. Re-run `npm run test`: 18 previous failures (axe color-contrast, nested-interactive,
+   `navModel.test.ts`) were fixed but **not verified**. Pay special attention to the new
+   stretched-button pattern (accessible-name) and the effects of the `pointer-events` restructuring.
+3. `make check-frontend` and `npm run e2e` — never run in this effort.
+4. Commit/push additional fixes on the same branch.
 
 ### S6 — Flow builder
 
-1. Debugar os 4 specs de `frontend/e2e/flow-builder.spec.ts` (todos falham):
-   - Spec 1: `getByRole("heading", { name: "Flows library" })` não encontrado — inspecionar DOM real
-     via `frontend/test-results/flow-builder-*/error-context.md`; pode ser markup sem heading role,
-     warm-up do dev server, ou server cacheado servindo `FlowPalette.tsx` antigo (webServer reusa
-     server existente fora de CI).
-   - Specs 2–4 (botão `Coder`, `Clear`, `Save`): timeouts provavelmente em cascata do spec 1.
-2. Re-rodar `npm run e2e` até verde.
-3. Skill `code-review` + `make check-frontend` — não rodados.
-4. Screen doc (provável adição curta em `docs/v2_platform/`).
-5. Decidir se `NodeInspector.stories.tsx`/`FlowEditor.stories.tsx` são necessários.
-6. Commit final (não-wip) e push.
+1. Debug the 4 specs in `frontend/e2e/flow-builder.spec.ts` (all failing):
+   - Spec 1: `getByRole("heading", { name: "Flows library" })` not found — inspect the real DOM
+     via `frontend/test-results/flow-builder-*/error-context.md`; could be markup without a heading role,
+     dev server warm-up, or a cached server serving an old `FlowPalette.tsx` (webServer reuses an
+     existing server outside CI).
+   - Specs 2–4 (`Coder`, `Clear`, `Save` button): timeouts likely cascading from spec 1.
+2. Re-run `npm run e2e` until green.
+3. `code-review` skill + `make check-frontend` — not run.
+4. Screen doc (likely a short addition in `docs/v2_platform/`).
+5. Decide whether `NodeInspector.stories.tsx`/`FlowEditor.stories.tsx` are needed.
+6. Final commit (non-wip) and push.
 
-### S4 — Sessions & Config (quase nada)
+### S4 — Sessions & Config (almost nothing)
 
-1. Doc-polish: em `docs/v2_platform/phases/e17_control_center_screens.md`, flagar explicitamente
-   que o link reopen-as-chat `/?sessionId=<id>` do `SessionRow.tsx` **ainda não é consumido** por
-   `frontend/app/page.tsx` (arquivo do E17-S1). Gap de integração cross-unit, não bug do S4.
-2. **Ação de integração:** `app/page.tsx` precisa de `useSearchParams`/`sessionId` para o fluxo
-   funcionar end-to-end — tratar no merge do épico ou fast-follow.
-3. Verificação pré-pausa toda verde: 111/111 unit, 17/17 e2e, lint/typecheck/build limpos.
+1. Doc-polish: in `docs/v2_platform/phases/e17_control_center_screens.md`, explicitly flag
+   that the reopen-as-chat link `/?sessionId=<id>` from `SessionRow.tsx` **is not yet consumed** by
+   `frontend/app/page.tsx` (E17-S1 file). Cross-unit integration gap, not an S4 bug.
+2. **Integration action:** `app/page.tsx` needs `useSearchParams`/`sessionId` for the flow
+   to work end-to-end — handle at the epic merge or as a fast-follow.
+3. Pre-pause verification all green: 111/111 unit, 17/17 e2e, lint/typecheck/build clean.
 
-## Gotchas globais
+## Global gotchas
 
-- Playwright: `npx playwright install chromium` **sem** `--with-deps` (pede senha sudo no sandbox).
-- `frontend/test-results/` **não** está gitignorado — não commitar (S6 deixou artefatos untracked no worktree).
-- Token `--ds-fg-3`: mede 4.11:1 contra `--ds-bg-2` em dark mode (abaixo de 4.5:1 AA para body text);
-  usos foram trocados por `text-ds-fg-2` em S5/S6, mas o token em si merece auditoria de design
-  (comentário stale em `globals.css` linhas 130–133 referencia `frontend/docs/design-tokens.md` inexistente).
-- `placeholder:text-ds-fg-3` deliberadamente mantido (axe não flagra contraste de placeholder).
-- Sem `.claude/settings.json` nos worktrees → sem trailer `Co-Authored-By` (correto pela convenção do repo).
+- Playwright: `npx playwright install chromium` **without** `--with-deps` (prompts for sudo password in the sandbox).
+- `frontend/test-results/` is **not** gitignored — do not commit (S6 left untracked artifacts in the worktree).
+- Token `--ds-fg-3`: measures 4.11:1 against `--ds-bg-2` in dark mode (below the 4.5:1 AA threshold for body text);
+  usages were swapped to `text-ds-fg-2` in S5/S6, but the token itself deserves a design audit
+  (stale comment in `globals.css` lines 130–133 references a non-existent `frontend/docs/design-tokens.md`).
+- `placeholder:text-ds-fg-3` deliberately kept as-is (axe does not flag placeholder contrast).
+- No `.claude/settings.json` in the worktrees → no `Co-Authored-By` trailer (correct per repo convention).
 
-## Passos de retomada (ordem sugerida)
+## Resume steps (suggested order)
 
-1. Retomar S2 (maior pendência) → S6 → S5 → S4 (doc-polish).
-2. Integrar as 6 story branches na branch do épico (task #1 da sessão).
-3. Gate pré-PR: save session, 85% check, frontend security audit (task #2).
-4. PR do épico para `main`, merge, cleanup de branches, sync local (task #3).
-5. No merge: resolver o gap S1↔S4 (`useSearchParams` em `app/page.tsx`).
+1. Resume S2 (largest pending item) → S6 → S5 → S4 (doc-polish).
+2. Merge the 6 story branches into the epic branch (session task #1).
+3. Pre-PR gate: save session, 85% check, frontend security audit (task #2).
+4. Epic PR to `main`, merge, branch cleanup, local sync (task #3).
+5. At merge time: resolve the S1↔S4 gap (`useSearchParams` in `app/page.tsx`).

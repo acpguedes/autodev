@@ -45,7 +45,7 @@ degradation.
 
 ## How this differs from the existing `docs/roadmap.md` / `mvp_refactor_plan.md`
 
-`docs/roadmap.md` and `docs/implementation/mvp_refactor_plan.md` track **incremental,
+`docs/roadmap.md` and `docs/archive/v1/mvp_refactor_plan.md` track **incremental,
 additive** work on the current (v1) architecture — hardening the existing linear
 pipeline, filling in stubs, rebuilding the frontend on Tailwind/shadcn, etc. Several of
 those units are useful precursors to v2 epics (each `phases/E<n>_*.md` file notes the

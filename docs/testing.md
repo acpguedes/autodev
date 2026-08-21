@@ -187,6 +187,27 @@ here, but any future publish path must require
 extension point the plugin declares to be registered with a real contract)
 before accepting a submission.
 
+### Agent evals (E12-S3)
+
+`evals/reference/agent_smoke/` is a small, deterministic, versioned
+`eval.yaml` (+ `dataset.yaml`) that targets the `autodev/agent-coder` agent
+and runs fully offline — no network calls. It's the closed feedback loop's
+reference case: a red run means either the dataset drifted or the
+eval/runner/gate machinery regressed.
+
+```bash
+make eval-reference
+# raw:
+.venv/bin/python -m backend.cli eval run evals/reference/agent_smoke/eval.yaml
+```
+
+The command prints the `EvalResult` as JSON and exits non-zero when the
+spec's quality gate fails (or the run itself errors), which is what lets it
+double as a CI gate — see `.github/workflows/ci-evals.yml` in §9 below. For
+the full eval.yaml/dataset walkthrough and field reference, see
+[`docs/evals/reference.md`](evals/reference.md) and
+[`docs/evals/spec.md`](evals/spec.md).
+
 ### Backend tests (pytest)
 
 ```bash
@@ -311,7 +332,51 @@ Writes `htmlcov/` (git-ignored) — open `htmlcov/index.html` in a browser.
 
 ---
 
-## 5. Lint, format, typecheck (optional)
+## 5. Security scanning
+
+These are the local-reproducible pieces of the `security-baseline` CI job
+(§9): dependency-free secret scanning plus expiration/metadata validation
+for Trivy exceptions. Both run against the plain host `.venv` — no Docker
+required.
+
+```bash
+make security-scan
+```
+
+This runs `run_secret_scanning` (AutoDev's own dependency-free secret
+scanner, `backend/security/secrets.py`) followed by
+`validate_security_exceptions` (checks that every entry in
+[`.trivyignore.yaml`](../.trivyignore.yaml) has the required metadata and
+has not expired). Granular targets:
+
+```bash
+make run_secret_scanning           # secret scan only
+make validate_security_exceptions  # .trivyignore.yaml metadata/expiry only
+```
+
+The HIGH/CRITICAL vulnerability and license scan itself (Trivy, via
+`aquasecurity/trivy-action`) and the Docker sandbox security contract test
+(`backend/tests/integration/test_sandbox_security_contract.py`, which needs
+a real `docker pull`) are not wrapped in a `make` target — they run only in
+CI's `security-baseline` job. The contract test can still be run locally if
+Docker is available:
+
+```bash
+.venv/bin/python -m pytest backend/tests/integration/test_sandbox_security_contract.py -q -rs
+```
+
+The patch-validation gate (E12-S4) is a separate check — it exercises the
+patch engine's dry-run and path-traversal guarantees, not security scanning:
+
+```bash
+make validate-patches
+# raw:
+.venv/bin/python scripts/validate_patches.py
+```
+
+---
+
+## 6. Lint, format, typecheck (optional)
 
 Requires `make install-dev` for the backend Python tools:
 
@@ -326,7 +391,7 @@ The frontend tools (`eslint`, `tsc`) ship with `make install-frontend`, so
 
 ---
 
-## 6. Build
+## 7. Build
 
 ```bash
 make build          # production build of the Next.js frontend
@@ -338,7 +403,7 @@ The backend is a FastAPI app served from source (no compile step); run it with
 
 ---
 
-## 7. Run the servers
+## 8. Run the servers
 
 ```bash
 make run-backend    # FastAPI on http://localhost:8000 (autoreload)
@@ -360,29 +425,43 @@ make container-down    # tear it down
 
 ---
 
-## 8. Reproduce CI locally
+## 9. Reproduce CI locally
 
-Three GitHub Actions workflows gate every PR:
+Four GitHub Actions workflows (`.github/workflows/`) gate every PR — all
+trigger on both `push` to `main` and `pull_request`:
 
-- `.github/workflows/ci-backend.yml` — secret/CVE scan, then the backend
-  pytest suite with the 85% coverage gate.
-- `.github/workflows/ci-frontend.yml` — frontend lint → typecheck → unit
-  test → build.
-- `.github/workflows/ci-e2e.yml` — smoke e2e: boots the backend
+- **`ci-backend.yml`** — four independent jobs (E12-S4 Validation Gates):
+  - `lint-typecheck` — `ruff check backend tests` + `mypy backend`, pinned to
+    the same `ruff`/`mypy` versions `make install-dev` installs.
+  - `patch-validation` — the patch engine's dry-run + path-traversal guard
+    (`scripts/validate_patches.py`, local: `make validate-patches`).
+  - `security-baseline` — secret scanning, the Docker sandbox security
+    contract test, `.trivyignore.yaml` exception validation, then a Trivy
+    HIGH/CRITICAL vulnerability + license scan (see §5).
+  - `backend-tests` — the pytest suite with the 85% coverage gate, plus a
+    coverage summary published to the job's step summary.
+- **`ci-frontend.yml`** — frontend lint → typecheck → unit test → build.
+- **`ci-e2e.yml`** — smoke e2e: boots the backend
   (`uvicorn backend.api.main:app`), health-probes `/docs`, then runs the
   Playwright suite (`frontend/e2e/`) against the built Next.js app.
+- **`ci-evals.yml`** — `reference-eval-gate`: runs the reference agent eval
+  offline and fails the build if its quality gate fails (§3, "Agent evals").
+  Equivalent locally: `make eval-reference`.
 
-Reproduce the first two with:
+Reproduce `lint-typecheck` and `backend-tests` together with:
 
 ```bash
 make check          # lint + typecheck + tests + build, backend & frontend
-make check-backend  # backend slice only
+make check-backend  # backend slice only (lint + typecheck + tests)
 make check-frontend # frontend slice only
 ```
 
 > `make check` uses the backend dev tools, so run `make install-dev` first.
-> To mirror CI's backend job exactly (tests only, no lint/typecheck), run
-> `make test-backend`.
+> To mirror CI's `backend-tests` job exactly (tests only, no lint/typecheck),
+> run `make test-backend`. `make check`/`check-backend` do **not** cover
+> `patch-validation`, `security-baseline`, or `ci-evals.yml` — run
+> `make validate-patches`, `make security-scan`, and `make eval-reference`
+> separately (§5, §3) to reproduce those gates.
 
 Reproduce the e2e smoke job:
 
@@ -409,7 +488,7 @@ already have something listening on `:3000` (e.g. a sibling worktree).
 
 ---
 
-## 9. Clean up
+## 10. Clean up
 
 ```bash
 make clean       # remove build/test artifacts (tree returns to git-clean)

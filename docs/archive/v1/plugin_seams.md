@@ -1,11 +1,11 @@
 # Plugin seams (auto-discovery architecture)
 
-> **Historical (v1 seams) — 2026-07-04:** Superseded by E1's Plugin Host and
-> `plugin.yaml` manifests. For the current extension model see
-> [`docs/plugins/manifest.md`](../plugins/manifest.md),
-> [`docs/plugins/permissions.md`](../plugins/permissions.md), and
-> [`docs/plugins/registry.md`](../plugins/registry.md). The v1 seams described below
-> still exist in code but are no longer the primary extension mechanism.
+> **Archived 2026-08-20 — v1 architecture.** This document describes the v1
+> linear-pipeline design, frozen at the
+> [`v1` release](https://github.com/acpguedes/autodev/releases/tag/v1).
+> Superseded by E1's Plugin Host and `plugin.yaml` manifests — see [`docs/plugins/manifest.md`](../../plugins/manifest.md), [`docs/plugins/permissions.md`](../../plugins/permissions.md) and [`docs/plugins/registry.md`](../../plugins/registry.md).
+> Retained as the design audit trail; **not maintained**. See
+> [`docs/archive/v1/README.md`](README.md) for the full v1 -> v2 map.
 
 The platform's multi-agent, skills, plans, patches, and validation capabilities are
 added as **self-contained modules** that attach to the running app through three

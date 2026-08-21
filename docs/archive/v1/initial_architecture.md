@@ -1,6 +1,11 @@
 # AutoDev Architect – Initial Architecture Decisions
 
-> Historical note (updated 2026-07-04): this document captures the initial MVP direction. The current design authority is the v2 platform reference (`docs/architecture/v2_platform_reference.md`), with live epic-by-epic status in `docs/v2_platform/progress.md`. The earlier `docs/architecture/target_architecture.md` and `docs/implementation/implementation_strategy.md` are themselves superseded (see their status banners).
+> **Archived 2026-08-20 — v1 architecture.** This document describes the v1
+> linear-pipeline design, frozen at the
+> [`v1` release](https://github.com/acpguedes/autodev/releases/tag/v1).
+> Superseded by the v2 platform reference ([`docs/architecture/v2_platform_reference.md`](../../architecture/v2_platform_reference.md)), with live status in [`docs/v2_platform/progress.md`](../../v2_platform/progress.md).
+> Retained as the design audit trail; **not maintained**. See
+> [`docs/archive/v1/README.md`](README.md) for the full v1 -> v2 map.
 
 This document consolidates the early agreements for the AutoDev Architect platform. The goal is to give every contributor a shared mental model before iterating on features.
 

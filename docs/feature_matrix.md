@@ -27,7 +27,7 @@ For the full list of environment flags see `backend/` source and
 | Durable Event Store | `default` | `backend/events/store.py` (E8-S2): append-only `events` table ordered per partition plus transactional `event_projections` materialization; every canonical envelope published on the Event Bus persists when `AUTODEV_EVENT_STORE_ENABLED=true` (default); run reconstruction via `EventStore.reconstruct_run()`; retention/compaction via `AUTODEV_EVENT_RETENTION_DAYS` |
 | Redis-backed queue/cache/locks | `optional` | `RedisJobQueue` in `backend/jobs/queue.py` plus `backend/coordination/redis.py`; selected with `AUTODEV_JOB_BACKEND=redis`, while in-process/local fallbacks remain the default |
 | MinIO artifact storage | `optional` | `backend/artifacts/store.py` provides MinIO/S3 artifacts when `STORAGE_BACKEND=s3`; local filesystem artifacts remain the default |
-| pgvector semantic memory | `planned` | Requires PostgreSQL; tracked in roadmap release 0.3 |
+| pgvector semantic memory | `optional` | `backend/repository/embeddings/pgvector_store.py` + `backend/repository/embeddings/provider.py`; PostgreSQL + pgvector-backed embedding storage and top-k query (E7-S2/S3) |
 
 ---
 
@@ -56,7 +56,7 @@ generation is in the **Agent Framework (v2)** section further down.
 | Specialized agents (security, refactor, docs) | `default` | `backend/agents/{security,refactor,docs}/`; discoverable but not in default `agent_order` |
 | Dynamic multi-agent orchestration | `optional` | `AUTODEV_DYNAMIC_ORCH=1`; `POST /chat/dynamic`; `backend/orchestrator/routing.py` + `graphs.py` |
 | Supervisor / feedback loop | `stub` | `SupervisorPolicy` (`backend/orchestrator/routing.py`) is **superseded** by E5's policy-driven Router/Selector (`backend/routing/`) and will not be wired — it is a sequential cursor that ignores run state, with no cost policy, capability matching, or evaluation feedback. The Router/Selector that replaces it is implemented but is itself not yet wired into `POST /chat/dynamic`, so the adaptive supervisor loop (validator-failure branch-back, bounded iteration) still does not exist in any path |
-| Agent tool-use loop (read/edit/run) | `planned` | Agents are pure prompt→text; no tool bindings; tracked as Unit 25 in `mvp_refactor_plan.md` |
+| Agent tool-use loop (read/edit/run) | `default` | The v1 linear pipeline agents themselves are still pure prompt→text, but real tool bindings now exist and are wired into task execution: E2-S4's `AgentToolBroker` (`backend/agents/tools.py`) mediates permissioned tool/skill access, and E14's governed executor (`backend/execution/executor.py` + `runner.py`) maps tasks to real `create_file`/`edit_file`/`apply_patch`/`run_command`/`run_validation` actions dispatched to `PatchRunner`/`CommandRunner`/`ValidationRunner` |
 
 ---
 
@@ -90,16 +90,56 @@ manifest, registry, and runtime docs.
 
 ---
 
+## Orchestration Engine (v2 Flows)
+
+Delivered by v2 epic E3 (Orchestration Engine), Done 6/6. See
+[`docs/v2_platform/phases/e3_orchestration_engine.md`](v2_platform/phases/e3_orchestration_engine.md).
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `flow.yaml` declarative graph manifest | `default` | `backend/flows/model.py` (`FlowManifest`); node/conditional-edge schema, cycle/IO validation, versioning (E3-S1) |
+| Flow Engine execution (durable Run/Step state) | `default` | `backend/flows/engine.py` (`FlowEngine`), `backend/flows/handlers.py`, `backend/flows/graph.py`; graph executor with Run/Step persistence in the State Store and message/webhook/cron/Event Bus triggers (E3-S2); `GET/POST` routes in `backend/api/routers/flows.py` |
+| Checkpointing, retries, deterministic replay | `default` | `backend/flows/checkpoint.py` (E3-S3); guarded loops (rework paths) are a first-class graph construct, not failure-specific classification |
+| Human-in-the-loop pause/resume | `default` | `backend/flows/human.py` + `backend/flows/pause.py` (`FlowHumanService`, `FlowHumanError`) (E3-S4) |
+| Composite nodes (sub-flow, map/reduce) | `default` | `backend/flows/composite.py` (E3-S5) |
+| Visual flow editor (base) | `default` | Delivered alongside E10 via E10-S3 + `frontend/app/flows/`, `frontend/lib/flow/` (E3-S6) |
+
+---
+
+## Reasoning (v2)
+
+Delivered by v2 epic E4 (Reasoning), Done 4/4. See
+[`docs/v2_platform/phases/e4_reasoning.md`](v2_platform/phases/e4_reasoning.md).
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Reasoning strategy contract + Engine + registry | `default` | `backend/reasoning/`; five reference strategies with policy-driven selection and fallback (RFC-003/ADR-007), consumed by E11-S3 reasoning budgets (`backend/quotas/reasoning_budget.py`) |
+
+---
+
+## Routing, Selection & Evaluation (v2)
+
+Delivered by v2 epic E5 (Routing / Selection / Evaluation), Done 4/4. See
+[`docs/v2_platform/phases/e5_routing_selection_evaluation.md`](v2_platform/phases/e5_routing_selection_evaluation.md).
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Policy-driven Router/Selector | `default` | `backend/routing/{router,selector,policy,feedback}.py`; `backend/api/routers/routing.py`; capability matching, cost policy, and evaluation feedback — the successor to the v1 `SupervisorPolicy` stub above. **Not** wired into the v1 `POST /chat/dynamic` endpoint, which still routes exclusively through the LangGraph-based `orchestrator.graphs.build_graph_for_run_type` (see "Supervisor / feedback loop" above) |
+| Evaluation Service | `default` | `backend/evals/{service,runner,spec,contract,results,dataset_loader,expressions}.py`; `backend/api/routers/evals.py`; consumed by E7-S3 (retrieval eval) and E12-S3 (agent evals) |
+
+---
+
 ## Repository Intelligence
 
 | Feature | Status | Notes |
 |---------|--------|-------|
 | File inventory + ranked candidate retrieval | `default` | `GET /repository/context`; `backend/repository/intelligence.py` |
 | Lexical symbol extraction (regex) | `default` | `backend/repository/providers/lexical_provider.py`; `GET /repository/symbols` with `AUTODEV_REPO_PROVIDER` unset |
-| tree-sitter symbol extraction | `stub` | `AUTODEV_REPO_PROVIDER=treesitter`; `backend/repository/providers/treesitter_provider.py` always delegates to the lexical provider — real AST-based extraction has not been implemented yet, present or absent the `tree_sitter` package |
-| Semantic retrieval (pgvector embeddings) | `planned` | Requires PostgreSQL + pgvector; tracked in roadmap release 0.3 |
-| Full-text search (PostgreSQL FTS / ripgrep) | `planned` | Tracked in roadmap release 0.3 |
-| Repository metadata graph (symbols, edges) | `planned` | Tracked in roadmap releases 0.3 / 1.0 |
+| tree-sitter symbol extraction | `optional` | `AUTODEV_REPO_PROVIDER=treesitter`; `backend/repository/providers/treesitter_provider.py` performs real AST-based extraction for Python via the vendored `tree-sitter-python` grammar (E7-S1), degrading gracefully to the lexical provider for unregistered languages or if `tree_sitter` is absent; scoped to Python only, other languages still delegate |
+| Semantic retrieval (pgvector embeddings) | `optional` | `backend/repository/embeddings/pgvector_store.py`; PostgreSQL + pgvector query path used by the hybrid retriever below (E7-S2/S3) |
+| Hybrid retrieval (lexical + vector, Reciprocal Rank Fusion) | `optional` | `backend/repository/retrieval/retriever.py` + `backend/repository/retrieval/fusion.py`; combines PostgreSQL FTS and pgvector results via RRF with per-result score/source attribution and token-budget truncation (E7-S3-T3/T4) |
+| Full-text search (PostgreSQL FTS / ripgrep) | `optional` | `backend/repository/retrieval/lexical.py`; `to_tsvector`/`plainto_tsquery`/`ts_rank` over a GIN index (E7-S3-T1); PostgreSQL only, no ripgrep-based fallback |
+| Repository metadata graph (symbols, edges) | `planned` | No dedicated symbol/dependency graph module found under `backend/repository/`; tracked in roadmap releases 0.3 / 1.0 |
 
 ---
 
@@ -110,8 +150,8 @@ manifest, registry, and runtime docs.
 | Patch generation (unified diff) | `default` | `backend/patches/engine.py`; `POST /patches/generate`; stdlib `difflib`, no external deps |
 | Patch application (dry-run) | `default` | `apply_patch()` dry-runs by default; rejects path traversal outside root |
 | Patch application (real write) | `optional` | `AUTODEV_ENABLE_PATCH_APPLY=1`; writes files only when flag is set |
-| Patch persistence / versioning | `planned` | No patch rows stored; tracked as Unit 23/24 in `mvp_refactor_plan.md` |
-| Orchestrator→patch integration | `planned` | `execute_plan()` uses fake timestamps; does not call `apply_patch()`; tracked as Unit 24 |
+| Patch persistence / versioning | `planned` | No durable patch rows or version history. `backend/api/routers/patches_review_v2.py` (E16-S3) adds a session-scoped review queue on top of the patch engine, but its own docstring states this is an in-process, non-durable module-level registry "until a durable store is warranted by a future story"; legacy `execute_plan()` still stores no patch rows |
+| Orchestrator→patch integration | `default` | The legacy `execute_plan()` path (`backend/orchestrator/service.py`) still doesn't call `apply_patch()`, but it has been superseded by two real integrations: `backend/execution/runner.py`'s `PatchRunner` + `backend/execution/executor.py` dispatch `create_file`/`edit_file`/`apply_patch` actions through the E0 patch engine as part of E14's governed execution pipeline, and `backend/api/routers/patches_review_v2.py` applies reviewed patches via the same engine (E16-S3) |
 
 ---
 
@@ -122,8 +162,8 @@ manifest, registry, and runtime docs.
 | Validation sandbox (Docker or local subprocess) | `optional` | `AUTODEV_ENABLE_SANDBOX=1`; `backend/validation/sandbox.py`; prefers hardened Docker (`--network=none`, non-root, `--cap-drop=ALL`, `--security-opt=no-new-privileges`, CPU/memory/pids limits); fails closed without Docker unless `AUTODEV_SANDBOX_ALLOW_LOCAL=1` is also set; command allowlist enforced by basename |
 | Executable validation pipeline | `optional` | Same flag as above; returns real exit codes and captured output when enabled |
 | Validation skipped by default | `default` | Returns `skipped=true, backend="disabled"` unless flag is set |
-| Failure classification / rework loop | `planned` | Tracked as Unit 29 in `mvp_refactor_plan.md` |
-| Isolated execution environment — Beta slice (container-first, pluggable `SandboxRunner` backend) | `planned` | E32; ADR-013 (backend decision pending); `docs/v2_platform/phases/e32_isolated_execution_beta.md` |
+| Failure classification / rework loop | `planned` | Tracked as Unit 29 in `docs/archive/v1/mvp_refactor_plan.md` |
+| Isolated execution environment — Beta slice (pluggable environment abstraction) | `default` | E32 is Done (4/4 stories, 2026-08-18); `backend/environments/{contracts,manager,backends}.py` implement the provision → execute → collect evidence → teardown lifecycle behind a pluggable backend, consumed by `backend/execution/runner.py`; `docs/v2_platform/phases/e32_isolated_execution_beta.md` |
 
 ---
 
@@ -133,8 +173,8 @@ manifest, registry, and runtime docs.
 |---------|--------|-------|
 | Plan store (SQLite) | `default` | `backend/plans/store.py`; `plan_documents` table; approve/reject persisted |
 | Plan approval API | `default` | `GET/PUT /plans/{id}`, `POST /plans/{id}/approve`, `POST /plans/{id}/reject` |
-| Approval gates blocking execution | `planned` | `execute_plan()` does not check plan status before running; tracked as Unit 27 |
-| Plan auto-persisted from orchestrator | `planned` | `create_plan()` writes to session store only, not `PlanStore`; tracked as Unit 23 |
+| Approval gates blocking execution | `default` | Legacy `execute_plan()` still doesn't check plan status, but E14's governed execution pipeline gates on it: `backend/execution/executor.py` only skips the policy evaluator for an action whose id is in `pre_approved_action_ids` ("a human already explicitly approved this action"), backed by `backend/execution/policy.py` / `decisions.py` (E14-S3) |
+| Plan auto-persisted from orchestrator | `planned` | `create_plan()` (`backend/orchestrator/service.py`) still writes to the session store only, not `PlanStore`; tracked as Unit 23 |
 
 ---
 
@@ -150,8 +190,8 @@ manifest, registry, and runtime docs.
 | Configurable signal retention | `default` | `AUTODEV_OBSERVABILITY_TRACE_RETENTION`/`_METRIC_RETENTION`/`_LOG_RETENTION`, operator-set per backend |
 | Self-hosted Grafana dashboard | `default` | `make observability-up`; ten-panel `autodev-overview` dashboard provisioned automatically |
 | Emergency rollback | `default` | `OTEL_ENABLED=false` falls back to no-op providers with zero Collector dependency |
-| Structured execution / action trace | `planned` | Tracked as Unit 30 in `mvp_refactor_plan.md` |
-| Alert delivery + operational runbooks | `planned` | E11-S4 |
+| Structured execution / action trace | `default` | E14-S1 (RFC-009) emits structured `execution.action.started`/`.completed`/`.failed` and `execution.policy.allowed`/`.denied` events per action (`backend/events/catalog.py`), alongside the `autodev.run.step.*`/`autodev.decision.*` OTel spans above; both are durably persisted and replayable via the E8-S2 Event Store's `EventStore.reconstruct_run()` |
+| Alert delivery + operational runbooks | `default` | Alertmanager under the `observability` Compose profile (`infrastructure/observability/alertmanager.yml`, `prometheus-rules.yml`); five runbooks in `docs/v2_platform/runbooks/` (E11-S4, E35-S3) |
 
 ---
 
@@ -181,7 +221,31 @@ manifest, registry, and runtime docs.
 | Plugin permission isolation | `default` | Default-deny fs/net/exec/secrets model for plugins with brokered Host API access and `plugin.permission.denied` audit events (E1-S3); see [`docs/plugins/permissions.md`](plugins/permissions.md) |
 
 See [`docs/security.md`](security.md) for the full threat model and residual risks (no dependency lockfile, mutable base image tags, no frontend-specific CSP/HSTS headers in `next.config.mjs` — backend headers now ship by default).
-| Secret store & credential governance (encrypted at rest, redaction, scoped injection) | `planned` | E33; ADR-014 (format decision pending); `docs/v2_platform/phases/e33_secrets_credential_governance.md` |
+| Secret store & credential governance (encrypted at rest, redaction, scoped injection) | `default` | E33 Done (3/3 stories); `backend/secret_store/{store,crypto,redaction,service,contracts}.py` (durable tenant-scoped secret-version store, write-only ciphertext, `resolve_latest_active()` as the sole read path), `backend/security/secrets.py`, `backend/api/routers/secrets_v2.py` (E33-S1, ADR-014) |
+
+---
+
+## Multi-tenancy, RBAC & Quotas
+
+Delivered mainly by E8-S1 (scoped tenancy), E11-S2 (RBAC), and E11-S3
+(multi-tenant quotas/budgets) — all Done.
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Multi-tenant row-level isolation (PostgreSQL RLS) | `optional` | Mandatory `tenant_id` scoping on every `SessionRepository`/`RunRepository`/`MessageRepository`/`PlanRepository`/`EvalResultRepository`/`ScoreSnapshotRepository` method; `PostgresStore`/`PostgresPlanStore` additionally enforce Postgres Row-Level Security via `set_postgres_tenant()` (`backend/persistence/postgres_adapter.py`); ADR-010; requires the PostgreSQL backend |
+| Global RBAC + authentication enforcement | `default` | `backend/api/authorization.py`; every `/v2` route must declare `@public_endpoint` or `@requires_scope(...)`, enforced as a single app-level FastAPI dependency ahead of all matched routes including plugin routers (E11-S2 Task 3) |
+| Tenant quota / run budget policy | `default` | `backend/quotas/{contracts,service}.py` (`TenantQuotaPolicy`, `RunBudgetLimits`, integer micro-USD amounts); `GET/PUT /v2/quotas/*` (`backend/api/routers/quotas_v2.py`); `QuotaExceededError` enforced on `POST /chat/dynamic` and other run-creating routes (E11-S3, ADR-019) |
+
+---
+
+## MCP Interoperability
+
+Delivered by E9-S4 (part of the Done E9 — APIs, Events & MCP epic).
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| MCP server (expose platform skills as MCP tools) | `optional` | `backend/mcp/server.py` (`initialize`, `tools/list`, `tools/call`); routes every call through `SkillInvocationBroker` for permission/validation/timeout reuse; only skills allowlisted via `AUTODEV_MCP_EXPOSED_SKILLS` are exposed (empty by default) (E9-S4-T1/T3) |
+| MCP client (consume external MCP servers as agent tools) | `optional` | `backend/mcp/client.py`; JSON-RPC 2.0 without the `mcp` pip package — `McpStdioClient` (subprocess stdio) and `McpHttpClient` (optional `httpx`) transports (E9-S4-T2) |
 
 ---
 
@@ -192,6 +256,14 @@ See [`docs/security.md`](security.md) for the full threat model and residual ris
 | Skills registry + auto-discovery | `default` | `backend/skills/registry.py`; `GET /skills`, `GET /skills/{name}`, `POST /skills/{name}/invoke` |
 | Built-in skills | `default` | `summarize_diff`, `extract_symbols_lexical`, `render_checklist`; deterministic, no LLM needed |
 | Skills CLI | `default` | `autodev skills list / invoke` |
+
+### Skills v2 (E6, Done 5/5)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `skill.yaml` manifest + v2 registry | `default` | `backend/skills/manifest.py` (parse/validate, mirrors `backend/plugins/manifest.py`'s shape), `backend/skills/registry_v2.py`; example manifests at `examples/plugins/skill-apply-patch/skill.yaml`, `examples/plugins/skill-summarize-llm/skill.yaml` |
+| Least-privilege skill invocation broker | `default` | `backend/skills/invoker.py` (`SkillInvocationBroker`); permission enforcement, input/output validation, timeout budgets |
+| Skill composition | `default` | `backend/skills/composition.py` |
 
 ---
 
@@ -208,8 +280,8 @@ See [`docs/security.md`](security.md) for the full threat model and residual ris
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| SSE run stream endpoint | `planned` | `GET /sessions/{id}/runs/{run_id}/stream` tracked as Unit 6 in `mvp_refactor_plan.md` |
-| Real-time streaming UI | `planned` | Frontend console currently polls; tracked as Unit 13 |
+| SSE run stream endpoint | `default` | `GET /v2/runs/{run_id}/events/stream` (`backend/api/routers/runs_stream_v2.py`, E9-S2) with backlog, resume and heartbeat. No numeric start-latency assertion exists — an open v2.0-beta gate criterion. The v1 `GET /sessions/{id}/runs/{run_id}/stream` shape was never built. |
+| Real-time streaming UI | `default` | `frontend/components/RunEventStream.tsx`, `frontend/components/chat/useRunTimeline.ts` (E17-S1) |
 
 ---
 
@@ -218,13 +290,13 @@ See [`docs/security.md`](security.md) for the full threat model and residual ris
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Next.js 14 App Router UI | `default` | Six pages: `/` (chat), `/config`, `/agents`, `/plans`, `/skills`, `/patches` |
-| Dark-theme only (pure CSS) | `default` | `frontend/styles/globals.css` (757 lines); `ThemeProvider` forces `defaultTheme="dark"`, `enableSystem={false}`, no toggle UI |
+| Themed styling via design tokens | `default` | E15-S1 design tokens v2 + `frontend/styles/globals.css`; both light and dark themes ship. `frontend/app/layout.tsx` sets `defaultTheme="light"` with `enableSystem={false}`, switchable via the toggle row below |
 | Tailwind CSS + shadcn/ui | `default` | Unit 11 landed: `tailwind.config.ts`, `ThemeProvider.tsx` (next-themes) wraps every page, one shadcn primitive (`components/ui/button.tsx`) — **foundation/shell only**: zero pages or components import Tailwind utility classes or `Button` yet; all six pages still render via bespoke `globals.css` classNames. Adoption tracked as Units 12–18 |
-| Plan approval UI (interactive) | `planned` | Current plan page is read-only; tracked as Unit 15 |
-| Diff viewer | `planned` | Current patch view is a plain `<pre>`; tracked as Unit 14 |
+| Plan approval UI (interactive) | `default` | Step-level approval gates — `frontend/components/plans/ExecuteApprovedFooter.tsx`, `frontend/components/execution/ActionApprovalPanel.tsx` (E16-S2, E17-S2) |
+| Diff viewer | `default` | `frontend/components/patches/PatchDiffView.tsx` (E17-S3) |
 | Run history panel | `planned` | `RunHistoryPanel.tsx` exists but is never rendered; tracked as Unit 16 |
 | Observability dashboard | `planned` | Tracked as Unit 17 |
-| Light/dark toggle | `planned` | Unit 11 wired `ThemeProvider` (next-themes) but hardcoded `defaultTheme="dark"`, `enableSystem={false}`; no toggle component exists yet |
+| Light/dark toggle | `default` | `frontend/components/ThemeToggle.tsx` switches `next-themes` between light/dark, rendered in `frontend/components/shell/SidebarRail.tsx`; `frontend/app/layout.tsx` sets `defaultTheme="light"` (E15-S1) |
 
 ---
 
@@ -246,15 +318,34 @@ See [`docs/security.md`](security.md) for the full threat model and residual ris
 |---------|--------|-------|
 | Docker Compose (backend + frontend) | `default` | `infrastructure/docker-compose.yml`; boots with `LLM_PROVIDER=stub` |
 | Production-like Compose profile (Postgres + Redis + MinIO) | `optional` | `infrastructure/docker-compose.yml --profile prod` starts `backend-prod` with PostgreSQL, Redis, and MinIO wiring |
-| Kubernetes deployment | `planned` | `terraform/main.tf` is a placeholder; tracked in roadmap release 1.0 |
-| Global install & upgrade (`autodev` CLI + self-host bundle) | `planned` | E34; ADR-015 (strategy decision pending); `docs/v2_platform/phases/e34_packaging_global_install.md` |
-| Beta readiness gates & evidence bundle | `planned` | E35; `docs/v2_platform/phases/e35_beta_readiness_gates.md` |
+| Kubernetes deployment | `planned` | `infrastructure/terraform/main.tf` is a placeholder; tracked in roadmap release 1.0 |
+| Global install & upgrade (`autodev` CLI + self-host bundle) | `default` | E34 Done (3/3 stories); console-script entry point (`autodev = "backend.cli:main"` in `backend/pyproject.toml`, E14-S7/E34-S1), `autodev upgrade` backs up then migrates the state store (`backend/cli.py`, E34-S3-T1), `scripts/verify_clean_install.sh`; `docs/execution/cli-install.md` |
+| Beta readiness gates & evidence bundle | `default` | E35 Done (3/3 stories, complete 2026-08-19); expanded 12-criterion §18.9 v2.0-beta gate checklist with named evidence per criterion (`docs/v2_platform/progress.md`), `docs/v2_platform/beta_acceptance_flow.md` (E35-S2 rehearsal), open-decisions/risk registers and incident runbooks under `docs/v2_platform/runbooks/e35_*.md` (E35-S3) |
 
 ---
 
-*Last updated: 2026-07-17, adding the planned E32–E35 Beta-hardening rows
+*Last updated: 2026-08-20, reconciling every `planned`/`stub` row against the
+completed v2.0 Beta wave (E0–E12, E14–E18, E32–E35 all Done; only E13/GA and
+the v2.1+ waves remain not started). Flipped rows with citable evidence to
+`default`/`optional` (isolated execution E32, secret store E33, global
+install E34, beta readiness gates E35, alert delivery + runbooks E11-S4,
+pgvector/hybrid retrieval/FTS/tree-sitter E7, agent tool-use loop and
+orchestrator→patch/approval-gate integration via E14's governed executor,
+structured execution/action trace, SSE stream + real-time UI, plan-approval
+UI, diff viewer, light/dark toggle); left `planned` where no landed code was
+found (Anthropic provider, repository metadata graph, patch
+persistence/versioning as a durable store, failure-classification/rework
+loop, plan auto-persistence into `PlanStore`, run history panel,
+observability dashboard, infra/docs CI validation, Kubernetes deployment)
+and left the v1 Supervisor/feedback-loop `stub` row as-is (E5's
+Router/Selector remains unwired into `POST /chat/dynamic`). Added new
+sections for v2-only capabilities with no prior row: Orchestration Engine
+(v2 Flows, E3), Reasoning (v2, E4), Routing/Selection/Evaluation (v2, E5),
+Skills v2 (E6), Multi-tenancy/RBAC/Quotas (E8-S1, E11-S2/S3), and MCP
+Interoperability (E9-S4).
+Previous update 2026-07-17, adding the planned E32–E35 Beta-hardening rows
 (isolated execution, secret store, global install, readiness gates).
-Previous update 2026-07-04, adding the Plugin System (v2, E1) and Agent Framework
+Earlier update 2026-07-04, adding the Plugin System (v2, E1) and Agent Framework
 (v2, E2) sections, correcting the PostgreSQL and typed-settings rows, and adding
 the E0-S5/E1-S3 security rows. See `docs/v2_platform/progress.md` for the current
 v2 story tracker and `git log` for full history.*

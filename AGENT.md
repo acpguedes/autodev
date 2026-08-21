@@ -55,6 +55,6 @@ Use these docs as source of truth:
 2. `docs/v2_platform/progress.md` (what has actually landed)
 3. `README.md`
 4. `DESCRIPTION.md`
-5. `docs/architecture/target_architecture.md` (historical v1 target)
-6. `docs/architecture/stack_decisions.md`
+5. `docs/archive/v1/target_architecture.md` (historical v1 target)
+6. `docs/archive/v1/stack_decisions.md`
 

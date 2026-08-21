@@ -11,7 +11,7 @@ AutoDev Architect is an open source alternative for teams that want a transparen
 - **observability and reproducibility**;
 - **support for existing repositories and greenfield projects**.
 
-The **v1 architecture** (linear agent pipeline) is frozen at the published [`v1` release](https://github.com/acpguedes/autodev/releases/tag/v1). The **v2.0 platform rewrite** — a small core surrounded by typed extension points (plugins, agents, flows, reasoning, routing, skills) — is underway: the Alpha-wave epics **E0 (foundations), E1 (plugin core & SDK), and E2 (agent framework) are complete**; see [`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) for live status.
+The **v1 architecture** (linear agent pipeline) is frozen at the published [`v1` release](https://github.com/acpguedes/autodev/releases/tag/v1); its documentation is archived under [`docs/archive/v1/`](docs/archive/v1/README.md). The **v2.0 platform rewrite** — a small core surrounded by typed extension points (plugins, agents, flows, reasoning, routing, skills) — has completed its **Beta wave** ([`v2.0-beta`](https://github.com/acpguedes/autodev/releases/tag/v2.0-beta), pre-release): 22 epics and 95 stories, covering orchestration, reasoning, routing, skills, context/RAG, persistence, APIs, UI, security, real governed execution, isolated execution, secret governance, and global install. Three Beta exit criteria remain open — see [Beta status](#beta-status-and-known-gaps). GA (Marketplace, E13) is not started. [`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) is the live tracker.
 
 ---
 
@@ -51,48 +51,102 @@ This makes the project suitable for:
 
 ## Current repository status
 
-The repository holds two architecture generations: the frozen **v1 baseline**
-(the `v1` release tag) and the in-progress **v2 platform** (Alpha wave). See
-[`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) for the epic-by-epic tracker.
+The repository holds two architecture generations: the frozen **v1 baseline** (the `v1`
+release tag, documentation archived in [`docs/archive/v1/`](docs/archive/v1/README.md))
+and the **v2 platform**, whose Beta wave is complete. See
+[`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) for the epic-by-epic
+tracker and [`docs/feature_matrix.md`](docs/feature_matrix.md) for a precise
+`default / optional / stub / planned` breakdown of every feature.
 
-### v2 platform (Alpha, in progress — E0–E2 complete)
+### v2 platform — Beta wave complete
+
+**Core and extensibility**
 
 - **E0 — Foundations**: containerized backend dev/test runtime; typed declarative
   settings with local/prod profiles and fail-fast validation; PostgreSQL-backed
-  sessions/runs/messages/plans selected via `DATABASE_URL`; OpenTelemetry request and
-  run-step spans + Prometheus counters; default HTTP security headers and a CI
-  secret-scan/SCA gate; Redis queue/cache/locks and local/MinIO artifact stores.
+  sessions/runs/messages/plans selected via `DATABASE_URL`; OpenTelemetry spans +
+  Prometheus counters; HTTP security headers and a CI secret-scan/SCA gate; Redis
+  queue/cache/locks and local/MinIO artifact stores.
 - **E1 — Plugin Core & SDK**: `plugin.yaml` manifest schema + extension-point catalog;
   Plugin Host discovery and durable install/enable/disable lifecycle; default-deny
   fs/net/exec/secrets permissions with brokered Host API access; Python SDK with
-  `sdk new plugin` scaffolding and a contract-test harness; active-plugin registry
-  behind `GET /v2/plugins/active`.
+  `sdk new plugin` scaffolding and a contract-test harness.
 - **E2 — Agent Framework**: versioned `agent.yaml` manifests with typed IO; durable
-  Agent Registry with SemVer resolution and `GET /v2/agents/catalog`; Agent Runtime
-  with fail-closed token/cost/step/tool budgets and output guardrails; permissioned
-  tool/skill mediation and a provider abstraction (offline stub included);
-  `autodev/agent-coder` packaged as an installable reference agent plugin.
+  Agent Registry with SemVer resolution; Agent Runtime with fail-closed
+  token/cost/step/tool budgets and output guardrails; permissioned tool/skill mediation
+  and a provider abstraction.
+- **E6 — Skills v2**: `skill.yaml` spec, Skill Registry with versioning, least-privilege
+  invocation through the Agent Runtime, and skill composition.
+
+**Orchestration and intelligence**
+
+- **E3 — Orchestration Engine**: `flow.yaml` declarative graphs; durable Run/Step
+  execution; checkpointing, retries and deterministic replay; human-in-the-loop nodes;
+  sub-flow and map/reduce composites.
+- **E4 — Reasoning**: pluggable Reasoning Strategy extension point with ReAct,
+  Plan-and-Execute, Reflection and Debate/ToT strategies, under policies and budgets.
+- **E5 — Routing, Selection & Evaluation**: Router (intent/task classification),
+  Selector (agent/model/strategy by policy and cost), Evaluation Service, and an
+  eval → routing feedback loop.
+- **E7 — Context & RAG**: tree-sitter indexing pipeline, pgvector embeddings, hybrid
+  lexical + vector retrieval, and pluggable Context Providers.
+
+**Execution and governance**
+
+- **E14 — Real Task Execution & Governed Autonomy**: real task executor; permission and
+  policy engine; Approval/Auto/Hybrid execution modes; sandbox-backed runners; Web UX
+  for governed execution; governed interactive shell (`autodev --shell`); `autodev` CLI.
+- **E32 — Isolated Execution Environment**: execution-environment abstraction with an
+  audited backend decision; fail-closed network and filesystem policy; environment
+  lifecycle and workspace provisioning; isolation audit trail.
+- **E33 — Secrets & Credential Governance**: secret store abstraction; injection into
+  execution environments with redaction; rotation, revocation and audit.
+- **E11 — Observability, Security & Multi-tenant**: OpenTelemetry traces/metrics/logs;
+  RBAC and authentication; per-tenant quotas and run budgets; execution-security
+  hardening and incident runbooks.
+
+**Data, API, UI and quality**
+
+- **E8 — Persistence & Data**: multi-tenant model with mandatory `tenant_id` scoping and
+  PostgreSQL RLS; Event Store; MinIO Artifact Store with reference-based GC;
+  backup/restore with RPO/RTO procedures.
+- **E9 — APIs, Events & MCP**: Control Plane API `/v2`; run streaming; event catalog and
+  Event Bus; MCP interoperability.
+- **E10, E15–E18 — UI**: design system and tokens; design language v2 and the Execution
+  Control Center shell; `/v2` contract parity; Control Center screens (chat, plans with
+  step-level approval gates, patches review, sessions/config, extensions hub, flow
+  builder); API front door and a single-command run experience.
+- **E12 — Quality & Evals**: test pyramid and coverage gate; contract tests for every
+  extension point; agent evals with a closed feedback loop; CI gates that block merges.
+- **E34 / E35 — Packaging & readiness**: install strategy, self-host bootstrap, upgrade
+  path with schema-version compatibility; 12-criterion Beta evidence map, acceptance
+  flow, decision/risk registers, and incident runbooks.
+
+### Beta status and known gaps
+
+`v2.0-beta` is published as a **pre-release**. Of the twelve Beta exit criteria, seven
+are met with citable evidence, two are partial, and three are open. They are named here
+rather than rounded up; the full evidence map is
+[`docs/v2_platform/beta_gap_analysis.md`](docs/v2_platform/beta_gap_analysis.md) §11.
+
+| Gap | Status | Why |
+| --- | --- | --- |
+| Hybrid retrieval p95 < 300 ms + recall baseline | **Open** | Harness exists (`scripts/benchmark_retrieval.py`); no recorded run against a live environment. |
+| Run streaming starts < 1 s | **Open** | Functional correctness tested; no test asserts a numeric latency bound. |
+| Backup/restore RPO ≤ 5 min / RTO ≤ 30 min | **Open** | No staging environment; validated via a documented procedure only. |
+| End-to-end plan → patch → validate → evaluate | **Partial** | Every component individually evidenced; no single composed automated rehearsal. See [`beta_acceptance_flow.md`](docs/v2_platform/beta_acceptance_flow.md). |
+| WCAG 2.2 AA on key screens | **Partial** | Component-level coverage via Storybook-axe; no consolidated per-screen audit. |
+
+Closing the three open items needs a live environment; that work is GA-wave, tracked in
+[`docs/v2_platform/progress.md`](docs/v2_platform/progress.md).
 
 ### v1 baseline (frozen at the `v1` release tag)
 
-The v1 codebase provides a functional early platform slice with:
-
-- FastAPI backend orchestrator;
-- durable session, run, and message persistence via the Repository pattern (SQLite by default; PostgreSQL adapter implemented in E0 and selected via `DATABASE_URL`);
-- explicit run typing plus persisted workflow-step history for each execution;
-- agent abstraction layer with typed metadata contracts published via the API;
-- stub/fallback LLM integration (OpenAI and Ollama supported; Anthropic not yet implemented);
-- first-class local-model configuration via `ollama` using an OpenAI-compatible local endpoint;
-- structured local CLI support for config inspection, planning, run execution, and repository-context inspection;
-- Next.js frontend with six pages (chat, config, agents, plans, skills, patches) — dark-theme only, no component library yet;
-- post-analysis execution-plan generation that expands agent artifacts into ordered tasks — **note: `execute_plan()` is currently a mock that stamps tasks as completed without running real actions**;
-- plans persist in a SQLite store with approve/reject API — **note: approval does not yet gate execution**;
-- plugin-seam auto-discovery for API routers, agents, and CLI subcommands;
-- local install script, Docker Compose stack (backend + frontend only), and initial CI.
-
-See [`docs/feature_matrix.md`](docs/feature_matrix.md) for a precise `default / optional / stub / planned` breakdown of every feature.
-
-The documentation in this repository defines the path from prototype to a complete platform.
+v1 was a fixed linear agent pipeline
+(Navigator → Analyzer → Architect → Coder → DevOps → Validator → Responder) with a
+FastAPI backend, SQLite persistence, a six-page Next.js frontend, and mock plan
+execution. Its documentation is archived, with a full v1 → v2 map, in
+[`docs/archive/v1/README.md`](docs/archive/v1/README.md).
 
 ---
 
@@ -107,17 +161,17 @@ The documentation in this repository defines the path from prototype to a comple
 
 The v1 platform ships an extensible, **plugin-seam** architecture: new endpoints, agents, and
 CLI subcommands attach as self-contained modules via auto-discovery, without editing the core
-files. See [`docs/architecture/plugin_seams.md`](docs/architecture/plugin_seams.md) for the
+files. See [`docs/archive/v1/plugin_seams.md`](docs/archive/v1/plugin_seams.md) for the
 seams and the reserved-namespace table. Subsystems built on it:
 
 - **Skills** — a discover/invoke registry with deterministic built-ins; `GET /skills`,
   `POST /skills/{name}/invoke`, and `autodev skills`. See
-  [`docs/implementation/skills_subsystem.md`](docs/implementation/skills_subsystem.md).
+  [`docs/archive/v1/skills_subsystem.md`](docs/archive/v1/skills_subsystem.md).
 - **Specialized agents + registry** — `security`/`refactor`/`docs` agents that self-register;
   `GET /agents`, `autodev agents list`.
 - **Dynamic multi-agent orchestration** — run-type routing/supervisor graphs and an opt-in
   `POST /chat/dynamic` (flag `AUTODEV_DYNAMIC_ORCH=1`). See
-  [`docs/implementation/dynamic_orchestration.md`](docs/implementation/dynamic_orchestration.md).
+  [`docs/archive/v1/dynamic_orchestration.md`](docs/archive/v1/dynamic_orchestration.md).
 - **Plans with approval gates** — a persisted plan store; `GET/PUT /plans/{session_id}`,
   `POST /plans/{session_id}/approve|reject`, and `autodev plans`.
 - **Patch generation & application** — unified-diff engine, dry-run by default; `POST
@@ -166,7 +220,11 @@ are kept out of `backend/requirements.txt`. See
 
 ## Recommended target stack
 
-AutoDev Architect is intended to be fully operable with open source infrastructure.
+AutoDev Architect is intended to be fully operable with open source infrastructure. This
+section states the **target** stack, not a claim about what is wired today — most of it
+now ships, but Kubernetes deployment in particular is still `planned`
+(`infrastructure/terraform/main.tf` is a placeholder). Check
+[`docs/feature_matrix.md`](docs/feature_matrix.md) for the per-component reality.
 
 ### Application layer
 - **Backend API**: FastAPI
@@ -211,7 +269,7 @@ AutoDev Architect is intended to be fully operable with open source infrastructu
 - **Inference gateway**: vLLM or Ollama
 - **Embeddings**: local embedding models served through Ollama/vLLM or sentence-transformers services
 
-For rationale, read [`docs/architecture/stack_decisions.md`](docs/architecture/stack_decisions.md).
+For rationale, read [`docs/archive/v1/stack_decisions.md`](docs/archive/v1/stack_decisions.md).
 
 ---
 
@@ -224,20 +282,19 @@ For rationale, read [`docs/architecture/stack_decisions.md`](docs/architecture/s
 
 ### Architecture
 - [`docs/architecture/v2_platform_reference.md`](docs/architecture/v2_platform_reference.md): **v2.0 platform reference** — full design of the customizable/extensible platform (plugins, agents, flows, reasoning, routing/selection/evaluation, skills, UI/UX) with a staged roadmap governed by functional/non-functional criteria and DoR/DoD.
-- [`docs/architecture/initial_architecture.md`](docs/architecture/initial_architecture.md): original early decisions for historical context.
-- [`docs/architecture/target_architecture.md`](docs/architecture/target_architecture.md): target production architecture.
-- [`docs/architecture/stack_decisions.md`](docs/architecture/stack_decisions.md): chosen stack and technical tradeoffs.
-- [`docs/architecture/weaknesses_and_strategies.md`](docs/architecture/weaknesses_and_strategies.md): current weaknesses and remediation strategies.
+- [`docs/architecture/weaknesses_and_strategies.md`](docs/architecture/weaknesses_and_strategies.md): current weaknesses and remediation strategies, checked off per epic.
+- [`docs/archive/v1/README.md`](docs/archive/v1/README.md): **archived v1 architecture** — what v1 was and which v2 subsystem replaced each document (initial architecture, target architecture, stack decisions, plugin seams).
 
 ### Implementation
-- [`docs/implementation/implementation_strategy.md`](docs/implementation/implementation_strategy.md): detailed implementation strategy.
 - [`docs/implementation/self_hosting_oss.md`](docs/implementation/self_hosting_oss.md): OSS/self-hosted setup paths for stub, Ollama, and hybrid modes.
-- [`docs/implementation/agent_spec.md`](docs/implementation/agent_spec.md): role definitions, contracts, and expected outputs for agents.
-- [`docs/implementation/data_model.md`](docs/implementation/data_model.md): persistent data model and storage guidance.
+- [`docs/implementation/patches_and_validation.md`](docs/implementation/patches_and_validation.md): patch engine, validation sandbox, and the environment flags that gate them.
+- [`docs/v2_platform/agent_guide.md`](docs/v2_platform/agent_guide.md): how to pick up and execute an `E<n>-S<m>` story.
+- Superseded v1 implementation docs (agent spec, data model, implementation strategy, dynamic orchestration, skills subsystem, MVP refactor plan) are archived in [`docs/archive/v1/`](docs/archive/v1/README.md).
 
 ### Implementation status
 - [`docs/feature_matrix.md`](docs/feature_matrix.md): per-feature status (`default / optional / stub / planned`) covering persistence, LLM providers, agents, patches, validation, and more.
-- [`CHANGELOG.md`](CHANGELOG.md): tagged releases, starting with the `v1` release — the v1 architecture baseline cut immediately before the v2.0 platform rewrite.
+- [`CHANGELOG.md`](CHANGELOG.md): tagged releases — `v1` (architecture baseline) and `v2.0-beta` (the v2 platform Beta wave, with its known limitations).
+- [`docs/v2_platform/beta_gap_analysis.md`](docs/v2_platform/beta_gap_analysis.md): the 12-criterion Beta exit evidence map (fact vs. recommendation).
 
 ### Developer workflow
 - [`Makefile`](Makefile): install, test, lint, build, run, and clean targets.
@@ -309,24 +366,32 @@ A production-ready AutoDev Architect release should include:
 
 ## Repository goals for the next major milestone
 
-1. Replace in-memory state with PostgreSQL persistence.
-2. Add Redis-backed async execution.
-3. Expand the new workflow-state slice into a full explicit run state machine and approval model.
-4. Implement repository indexing using tree-sitter and pgvector.
-5. Generate and validate patches in isolated workspaces.
-6. Expand the UI from chat demo to execution control center.
-7. Add complete CI for backend, frontend, docs, and infra.
-8. Support open source local-model deployment modes.
+The eight goals that defined the previous milestone all shipped during the Alpha and
+Beta waves: PostgreSQL persistence, Redis-backed async execution, an explicit run state
+machine with an approval model, tree-sitter + pgvector repository indexing, patch
+generation and validation in isolated workspaces, the Execution Control Center UI, CI
+for backend/frontend/docs/infra, and local-model deployment modes.
+
+The next milestone is **GA (E13 — Marketplace & GA)**:
+
+1. Verified plugin publish/install end to end (signature + SBOM).
+2. Control Plane SLO 99.9% and read p95 < 300 ms under load.
+3. RPO ≤ 5 min / RTO ≤ 30 min proven in a real environment.
+4. Close the three open Beta exit criteria (retrieval benchmark, streaming latency, staging restore).
+5. Documented and tested v1 → v2 upgrade path.
+6. GA checklist signed off across SLOs, security, docs, backups, and evals.
 
 ---
 
 ## Development status
 
-The v2 platform rewrite is in the **Alpha wave**: epics E0–E2 (foundations, plugin
-core & SDK, agent framework) are complete; E3 (orchestration engine) is next and
-E4+ are not started. [`docs/v2_platform/progress.md`](docs/v2_platform/progress.md)
-is the authoritative tracker; [`CONTRIBUTING.md`](CONTRIBUTING.md) defines the
-branching and quality workflow for new work.
+The v2 platform rewrite has completed its **Beta wave** — 22 epics, 95 of 178 planned
+stories. `v2.0-beta` is published as a pre-release with three exit criteria still open
+(see [Beta status and known gaps](#beta-status-and-known-gaps)). The remaining waves are
+GA (E13 — Marketplace) and the planned v2.1–v2.3 epics (E20–E31, E36–E40).
+[`docs/v2_platform/progress.md`](docs/v2_platform/progress.md) is the authoritative
+tracker; [`CONTRIBUTING.md`](CONTRIBUTING.md) defines the branching and quality workflow
+for new work.
 
 ## Running the first durable stage
 

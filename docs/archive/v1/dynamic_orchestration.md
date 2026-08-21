@@ -1,5 +1,12 @@
 # Specialized agents, registry & dynamic orchestration
 
+> **Archived 2026-08-20 — v1 architecture.** This document describes the v1
+> linear-pipeline design, frozen at the
+> [`v1` release](https://github.com/acpguedes/autodev/releases/tag/v1).
+> Superseded by E3's Flow Engine and E5's Router/Selector — see [`docs/flows/spec.md`](../../flows/spec.md), [`docs/flows/engine.md`](../../flows/engine.md) and [`docs/routing/contract.md`](../../routing/contract.md).
+> Retained as the design audit trail; **not maintained**. See
+> [`docs/archive/v1/README.md`](README.md) for the full v1 -> v2 map.
+
 ## Specialized agents (`backend/agents/{security,refactor,docs}/`)
 
 Three additional agents extend the fixed core roster, each self-registering via

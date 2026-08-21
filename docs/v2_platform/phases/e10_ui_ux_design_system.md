@@ -85,7 +85,7 @@ Subtasks:
   `/plans`, `/skills`, `/patches`), but styling is pure CSS
   (`frontend/styles/globals.css`, ~695 lines), dark-theme only, with no component
   library — see `docs/feature_matrix.md` § Frontend. A Tailwind + shadcn/ui rebuild is
-  already planned as Units 11-19 in `docs/implementation/mvp_refactor_plan.md`, which
+  already planned as Units 11-19 in `docs/archive/v1/mvp_refactor_plan.md`, which
   maps closely onto E10-S1/E10-S2 (design tokens, app shell, dashboard, diff viewer,
   plan approval UI, run history, observability dashboard).
 - There is no visual flow editor and no plugin-panel extension point today; E10-S3 and

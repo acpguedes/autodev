@@ -110,3 +110,27 @@ grant (`AUTODEV_TRUSTED_IN_PROCESS_PLUGINS`), and is rejected even when
 trusted if it declares `runtime.isolation` or requests a privileged
 permission block. See
 [`docs/v2_platform/decisions/ADR-020-trusted-in-process-plugin-boundary.md`](../v2_platform/decisions/ADR-020-trusted-in-process-plugin-boundary.md).
+
+## Beta hardening additions
+
+The E0-S5 baseline above has since been extended by the v2.0 Beta wave.
+Full detail lives in [`docs/security.md`](../security.md); summary:
+
+- **Execution permission & policy engine (E14-S2, ADR-022).** Every
+  dispatched execution action is gated by `PolicyService.evaluate`
+  (`backend/execution/policy.py`) with category-scoped allow/deny rules
+  and a durable per-decision audit trail; fails closed in production for
+  a tenant with no stored policy.
+- **Multi-tenant quotas & run budgets (E11-S3, ADR-019).** A durable
+  per-tenant quota/budget layer (`backend/quotas/`) enforces concurrency
+  leases, storage reservations, monthly usage windows, and request-rate
+  limits; the Agent Runtime and Reasoning Engine both fail closed on
+  budget exhaustion.
+- **Isolated execution environments (E32, ADR-013).** A backend-agnostic
+  `EnvironmentBackend` protocol (`backend/environments/`) with a hardened
+  container as the Beta default, fail-closed network/filesystem policy
+  checks, and audited provision/access/retire events.
+- **Secrets & credential governance (E33, ADR-014).** A scoped-reference,
+  encrypted-at-rest secret store (`backend/secret_store/`) with
+  redaction-before-persistence and a full rotation/revocation/audit
+  trail. Detailed in [`docs/security/secrets.md`](secrets.md).

@@ -217,5 +217,5 @@ Subtasks:
 - [x] Beta wave §18.9 entry updated to reflect the E15 redesign scope
       (Design Language & App Shell) alongside the existing E10 entry. (Already
       present in `docs/architecture/v2_platform_reference.md` §18.9's "Entra"
-      and "Critérios de saída" rows for v2.0-beta from prior planning-only
+      and "Exit criteria" rows for v2.0-beta from prior planning-only
       commits; no further edit needed.)

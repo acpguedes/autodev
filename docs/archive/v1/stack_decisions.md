@@ -1,14 +1,11 @@
 # Stack Decisions
 
-> **Current status (2026-08-15):** This document records the *recommended target stack*. As of
-> E0, PostgreSQL (selected via `DATABASE_URL`), Redis (queue/cache/locks), and MinIO/S3 artifact
-> storage are **now wired** in the production-like Compose profile; local mode stays FastAPI +
-> SQLite + an in-process thread queue for dependency-free operation. As of E11-S1 (ADR-017), the
-> full self-hosted observability stack — OpenTelemetry Collector, Prometheus, Tempo, Loki, and
-> Grafana — is **now wired** behind the `observability` Compose profile (`make
-> observability-up|verify|down`). Still **planned, not yet wired**: LangGraph, pgvector, and
-> Kubernetes. See [`docs/feature_matrix.md`](../feature_matrix.md), [`docs/ops/storage.md`](../ops/storage.md),
-> and [`docs/ops/observability.md`](../ops/observability.md) for the accurate per-feature status.
+> **Archived 2026-08-20 — v1 architecture.** This document describes the v1
+> linear-pipeline design, frozen at the
+> [`v1` release](https://github.com/acpguedes/autodev/releases/tag/v1).
+> Superseded by [`docs/architecture/v2_platform_reference.md`](../../architecture/v2_platform_reference.md) §4, with per-feature reality in [`docs/feature_matrix.md`](../../feature_matrix.md), [`docs/ops/storage.md`](../../ops/storage.md) and [`docs/ops/observability.md`](../../ops/observability.md).
+> Retained as the design audit trail; **not maintained**. See
+> [`docs/archive/v1/README.md`](README.md) for the full v1 -> v2 map.
 
 This document records the recommended stack for AutoDev Architect and the rationale behind each choice.
 

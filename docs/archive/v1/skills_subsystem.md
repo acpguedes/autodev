@@ -1,5 +1,12 @@
 # Skills subsystem
 
+> **Archived 2026-08-20 — v1 architecture.** This document describes the v1
+> linear-pipeline design, frozen at the
+> [`v1` release](https://github.com/acpguedes/autodev/releases/tag/v1).
+> Superseded by E6's `skill.yaml` and Skill Registry — see [`docs/skills/manifest.md`](../../skills/manifest.md).
+> Retained as the design audit trail; **not maintained**. See
+> [`docs/archive/v1/README.md`](README.md) for the full v1 -> v2 map.
+
 Reusable, composable capabilities that agents (and operators) can discover and invoke.
 
 ## Core (`backend/skills/`)

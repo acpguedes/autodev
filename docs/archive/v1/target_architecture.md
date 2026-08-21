@@ -1,16 +1,11 @@
 # AutoDev Architect Target Architecture
 
-> **Current status (2026-07-04):** The storage layer (PostgreSQL, Redis, MinIO) and observability
-> layer (OpenTelemetry, Prometheus) described below are now implemented via E0 (production-like
-> Compose profile; local mode stays SQLite + in-process queue). Still not implemented: pgvector,
-> LangGraph orchestration, and tree-sitter-by-default repository intelligence. More importantly,
-> this document still describes the earlier **linear-pipeline** target; the current design is the
-> plugin/agent-framework model in
-> [`docs/architecture/v2_platform_reference.md`](v2_platform_reference.md) (see also
-> [`docs/plugins/`](../plugins/) and [`docs/agents/`](../agents/)). Fold/retire per
-> [`docs/v2_platform/documentation_rebuild.md`](../v2_platform/documentation_rebuild.md) as E3/E8
-> land. For an accurate per-feature status breakdown see
-> [`docs/feature_matrix.md`](../feature_matrix.md).
+> **Archived 2026-08-20 — v1 architecture.** This document describes the v1
+> linear-pipeline design, frozen at the
+> [`v1` release](https://github.com/acpguedes/autodev/releases/tag/v1).
+> Superseded by [`docs/architecture/v2_platform_reference.md`](../../architecture/v2_platform_reference.md) §4 (High-Level Architecture) — the plugin/agent-framework model replaced the linear pipeline described here.
+> Retained as the design audit trail; **not maintained**. See
+> [`docs/archive/v1/README.md`](README.md) for the full v1 -> v2 map.
 
 This document defines the target architecture for evolving AutoDev Architect from a prototype into a robust open source AI software engineering platform.
 
