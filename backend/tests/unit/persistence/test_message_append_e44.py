@@ -16,7 +16,7 @@ import pytest
 
 from backend.persistence.sqlite_adapter import SQLiteStore
 
-from backend.tests.unit.persistence.test_run_lookup_e44 import StatementCounter
+from backend.tests.unit.persistence.e44_helpers import StatementCounter
 
 
 @pytest.fixture

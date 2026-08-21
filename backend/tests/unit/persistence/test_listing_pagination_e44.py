@@ -16,15 +16,8 @@ import pytest
 from backend.persistence.postgres_adapter import PostgresStore
 from backend.persistence.sqlite_adapter import SQLiteStore
 
-from backend.tests.unit.persistence.test_postgres_adapter import (  # noqa: F401 - fixtures
-    ScriptedConnection,
-    scripted_conn,
-    store,
-)
-from backend.tests.unit.persistence.test_run_lookup_e44 import (
-    StatementCounter,
-    _data_statements,
-)
+from backend.tests.unit.persistence.e44_helpers import StatementCounter, data_statements
+from backend.tests.unit.persistence.test_postgres_adapter import ScriptedConnection
 
 
 @pytest.fixture
@@ -34,7 +27,7 @@ def sqlite_store(tmp_path: Path) -> SQLiteStore:
 
 
 def _seed_sessions(
-    store: SQLiteStore,
+    target: SQLiteStore,
     *,
     count: int,
     messages_each: int,
@@ -44,7 +37,7 @@ def _seed_sessions(
     """Create *count* sessions, each with *messages_each* messages.
 
     Args:
-        store: Store to seed.
+        target: Store to seed.
         count: Number of sessions to create.
         messages_each: Number of messages to append to every session.
         tenant_id: Tenant every seeded row belongs to.
@@ -53,11 +46,11 @@ def _seed_sessions(
     """
     for index in range(count):
         session_id = f"{prefix}{index:03d}"
-        store.create_session(
+        target.create_session(
             session_id=session_id, goal=f"goal {index}", plan=[], artifacts={}, tenant_id=tenant_id
         )
         if messages_each:
-            store.append_messages(
+            target.append_messages(
                 session_id,
                 f"r{index}",
                 [{"role": "user", "content": f"m{i}"} for i in range(messages_each)],
@@ -195,19 +188,19 @@ def test_sqlite_run_page_cost_is_independent_of_run_count(sqlite_store: SQLiteSt
 
 
 def test_postgres_session_page_costs_three_statements(
-    store: PostgresStore, scripted_conn: ScriptedConnection
+    pg_store: PostgresStore, pg_conn: ScriptedConnection
 ) -> None:
     """COUNT, the windowed page, and one message aggregate — nothing per session."""
-    scripted_conn.fetchone_queue.append((42,))
-    scripted_conn.fetchall_queue.append(
+    pg_conn.fetchone_queue.append((42,))
+    pg_conn.fetchall_queue.append(
         [
             (f"s{i}", f"goal {i}", "[]", "{}", "2024-01-01", "2024-01-02")
             for i in range(3)
         ]
     )
-    scripted_conn.fetchall_queue.append([("s0", 2, "2024-01-03")])
+    pg_conn.fetchall_queue.append([("s0", 2, "2024-01-03")])
 
-    page, total = store.list_sessions_page(limit=3, offset=0)
+    page, total = pg_store.list_sessions_page(limit=3, offset=0)
 
     assert total == 42
     assert [record["id"] for record in page] == ["s0", "s1", "s2"]
@@ -215,7 +208,7 @@ def test_postgres_session_page_costs_three_statements(
     assert page[0]["last_activity"] == "2024-01-03"
     assert page[1]["message_count"] == 0
     assert page[1]["last_activity"] is None
-    statements = _data_statements(scripted_conn)
+    statements = data_statements(pg_conn)
     assert len(statements) == 3, statements
     assert "COUNT(*) FROM sessions" in statements[0]
     assert "LIMIT %s OFFSET %s" in statements[1]
@@ -223,37 +216,37 @@ def test_postgres_session_page_costs_three_statements(
 
 
 def test_postgres_session_page_skips_the_aggregate_when_empty(
-    store: PostgresStore, scripted_conn: ScriptedConnection
+    pg_store: PostgresStore, pg_conn: ScriptedConnection
 ) -> None:
     """An empty page issues no message aggregate at all."""
-    scripted_conn.fetchone_queue.append((0,))
-    scripted_conn.fetchall_queue.append([])
+    pg_conn.fetchone_queue.append((0,))
+    pg_conn.fetchall_queue.append([])
 
-    page, total = store.list_sessions_page(limit=10, offset=0)
+    page, total = pg_store.list_sessions_page(limit=10, offset=0)
 
     assert (page, total) == ([], 0)
-    assert len(_data_statements(scripted_conn)) == 2
+    assert len(data_statements(pg_conn)) == 2
 
 
 def test_postgres_run_page_costs_three_statements(
-    store: PostgresStore, scripted_conn: ScriptedConnection
+    pg_store: PostgresStore, pg_conn: ScriptedConnection
 ) -> None:
     """COUNT, the windowed page, and one batched step query."""
-    scripted_conn.fetchone_queue.append((9,))
-    scripted_conn.fetchall_queue.append(
+    pg_conn.fetchone_queue.append((9,))
+    pg_conn.fetchall_queue.append(
         [
             (f"r{i}", "s1", "completed", "auto", "done", "go", "[]", "2024-01-01", "2024-01-02")
             for i in range(2)
         ]
     )
-    scripted_conn.fetchall_queue.append([("r0", "k1", "a1", "done", "t0", "t1", 1)])
+    pg_conn.fetchall_queue.append([("r0", "k1", "a1", "done", "t0", "t1", 1)])
 
-    page, total = store.list_runs_page("s1", limit=2, offset=4)
+    page, total = pg_store.list_runs_page("s1", limit=2, offset=4)
 
     assert total == 9
     assert [run["id"] for run in page] == ["r0", "r1"]
     assert page[0]["steps"] and page[1]["steps"] == []
-    statements = _data_statements(scripted_conn)
+    statements = data_statements(pg_conn)
     assert len(statements) == 3, statements
     assert "COUNT(*) FROM runs" in statements[0]
     assert "LIMIT %s OFFSET %s" in statements[1]

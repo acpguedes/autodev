@@ -8,7 +8,6 @@ entirely when unchanged, so the Nth checkpoint writes one row.
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 from typing import Any
 
@@ -17,19 +16,16 @@ import pytest
 from backend.persistence.postgres_adapter import PostgresStore
 from backend.persistence.sqlite_adapter import SQLiteStore
 
-from backend.tests.unit.persistence.test_postgres_adapter import (  # noqa: F401 - fixtures
-    ScriptedConnection,
-    scripted_conn,
-    store,
-)
+from backend.tests.unit.persistence.e44_helpers import rows_written
+from backend.tests.unit.persistence.test_postgres_adapter import ScriptedConnection
 
 
 @pytest.fixture
 def sqlite_store(tmp_path: Path) -> SQLiteStore:
     """Build a :class:`SQLiteStore` with one seeded session and run."""
-    store = SQLiteStore(database_url=f"sqlite:///{tmp_path / 'e44-s5.db'}")
-    store.create_session(session_id="s1", goal="g", plan=[], artifacts={})
-    store.create_run(
+    target = SQLiteStore(database_url=f"sqlite:///{tmp_path / 'e44-s5.db'}")
+    target.create_session(session_id="s1", goal="g", plan=[], artifacts={})
+    target.create_run(
         run_id="r1",
         session_id="s1",
         status="running",
@@ -39,7 +35,7 @@ def sqlite_store(tmp_path: Path) -> SQLiteStore:
         results=[],
         steps=[],
     )
-    return store
+    return target
 
 
 def _step(index: int, *, status: str = "completed") -> dict[str, Any]:
@@ -54,44 +50,11 @@ def _step(index: int, *, status: str = "completed") -> dict[str, Any]:
     }
 
 
-def _checkpoint(store: SQLiteStore, steps: list[dict[str, Any]]) -> None:
+def _checkpoint(target: SQLiteStore, steps: list[dict[str, Any]]) -> None:
     """Persist *steps* as the run's current step list."""
-    store.update_run(
+    target.update_run(
         run_id="r1", status="running", current_state="working", results=[], steps=list(steps)
     )
-
-
-def _rows_written(store: SQLiteStore, action: Any) -> int:
-    """Return how many rows *action* actually inserted, updated, or deleted.
-
-    ``sqlite3.Connection.total_changes`` counts real row writes, so an upsert
-    whose ``DO UPDATE`` is suppressed by its ``WHERE`` clause contributes
-    nothing — which is exactly the property under test.
-
-    Args:
-        store: The store whose connections should be measured.
-        action: A zero-argument callable performing the writes.
-
-    Returns:
-        The total number of rows written across every connection opened.
-    """
-    original = store.connect
-    written = 0
-    opened: list[sqlite3.Connection] = []
-
-    def counting_connect() -> sqlite3.Connection:
-        conn = original()
-        opened.append(conn)
-        return conn
-
-    store.connect = counting_connect  # type: ignore[method-assign]
-    try:
-        action()
-    finally:
-        store.connect = original  # type: ignore[method-assign]
-    for conn in opened:
-        written += conn.total_changes
-    return written
 
 
 def test_checkpointing_a_new_step_writes_one_row(sqlite_store: SQLiteStore) -> None:
@@ -100,7 +63,7 @@ def test_checkpointing_a_new_step_writes_one_row(sqlite_store: SQLiteStore) -> N
     _checkpoint(sqlite_store, steps)
 
     steps.append(_step(30))
-    written = _rows_written(sqlite_store, lambda: _checkpoint(sqlite_store, steps))
+    written = rows_written(sqlite_store, lambda: _checkpoint(sqlite_store, steps))
 
     # One new run_steps row; the 30 unchanged upserts and the no-op trim
     # delete write nothing. (The runs row UPDATE is counted too.)
@@ -112,7 +75,7 @@ def test_repeated_identical_checkpoints_write_no_step_rows(sqlite_store: SQLiteS
     steps = [_step(i) for i in range(10)]
     _checkpoint(sqlite_store, steps)
 
-    written = _rows_written(sqlite_store, lambda: _checkpoint(sqlite_store, steps))
+    written = rows_written(sqlite_store, lambda: _checkpoint(sqlite_store, steps))
 
     assert written == 1  # the runs row only
 
@@ -129,7 +92,7 @@ def test_total_writes_are_linear_over_a_multi_checkpoint_run(
             steps.append(_step(index))
             _checkpoint(sqlite_store, steps)
 
-    written = _rows_written(sqlite_store, run)
+    written = rows_written(sqlite_store, run)
 
     # One step row plus one runs row per checkpoint. The old delete-and-
     # reinsert path wrote sum(2N) ~ 1600 step rows for the same run.
@@ -191,10 +154,10 @@ def test_replace_for_import_ignores_other_tenants_runs(sqlite_store: SQLiteStore
 
 
 def test_postgres_checkpoint_issues_one_trim_and_one_upsert(
-    store: PostgresStore, scripted_conn: ScriptedConnection
+    pg_store: PostgresStore, pg_conn: ScriptedConnection
 ) -> None:
     """Postgres persists a checkpoint as a bounded trim plus one batched upsert."""
-    store.update_run(
+    pg_store.update_run(
         run_id="r1",
         status="running",
         current_state="working",
@@ -202,9 +165,9 @@ def test_postgres_checkpoint_issues_one_trim_and_one_upsert(
         steps=[_step(0), _step(1)],
     )
 
-    deletes = [(sql, params) for sql, params in scripted_conn.executed if "DELETE FROM run_steps" in sql]
+    deletes = [(sql, params) for sql, params in pg_conn.executed if "DELETE FROM run_steps" in sql]
     assert len(deletes) == 1
     assert deletes[0][1] == ("r1", 2)
-    batched = [(sql, rows) for sql, rows in scripted_conn.executed_many if "INSERT INTO run_steps" in sql]
+    batched = [(sql, rows) for sql, rows in pg_conn.executed_many if "INSERT INTO run_steps" in sql]
     assert len(batched) == 1
     assert [row[1] for row in batched[0][1]] == [0, 1]

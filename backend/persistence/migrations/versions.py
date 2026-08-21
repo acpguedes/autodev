@@ -364,15 +364,28 @@ def _m11_run_step_position(conn: sqlite3.Connection) -> None:
     """
     existing = {row[1] for row in conn.execute("PRAGMA table_info(run_steps)").fetchall()}
     if "position" not in existing:
-        conn.execute("ALTER TABLE run_steps ADD COLUMN position INTEGER NOT NULL DEFAULT 0")
-        conn.execute(
-            """
-            UPDATE run_steps SET position = (
-                SELECT COUNT(*) FROM run_steps AS earlier
-                WHERE earlier.run_id = run_steps.run_id AND earlier.id < run_steps.id
-            )
-            """
+        try:
+            conn.execute("ALTER TABLE run_steps ADD COLUMN position INTEGER NOT NULL DEFAULT 0")
+        except sqlite3.OperationalError as exc:  # pragma: no cover - concurrent runner
+            # SQLite has no ``ADD COLUMN IF NOT EXISTS``, and MigrationRunner
+            # takes no cross-connection lock: two stores opened concurrently
+            # can both read the pre-ALTER schema. Every other migration here
+            # is idempotent via ``IF NOT EXISTS``; this is the equivalent.
+            if "duplicate column name" not in str(exc):
+                raise
+    # Backfilled unconditionally so the loser of that race still writes the
+    # positions the winner's rolled-back statement may not have. Rows already
+    # carrying a correct non-zero position are left alone; a row correctly at
+    # 0 recomputes to 0, so re-running this is a no-op.
+    conn.execute(
+        """
+        UPDATE run_steps SET position = (
+            SELECT COUNT(*) FROM run_steps AS earlier
+            WHERE earlier.run_id = run_steps.run_id AND earlier.id < run_steps.id
         )
+        WHERE position = 0
+        """
+    )
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_run_steps_run_position "
         "ON run_steps (run_id, position)"

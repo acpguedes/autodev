@@ -9,7 +9,6 @@ surface another tenant's run.
 
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -17,62 +16,17 @@ import pytest
 from backend.persistence.postgres_adapter import PostgresStore
 from backend.persistence.sqlite_adapter import SQLiteStore
 
-from backend.tests.unit.persistence.test_postgres_adapter import (  # noqa: F401 - fixtures
-    ScriptedConnection,
-    scripted_conn,
-    store,
-)
+from backend.tests.unit.persistence.e44_helpers import StatementCounter, data_statements
+from backend.tests.unit.persistence.test_postgres_adapter import ScriptedConnection
 
 
-# ---------------------------------------------------------------------------
-# Statement counting helpers
-# ---------------------------------------------------------------------------
-
-#: Statements SQLite emits for transaction control, which are not data access
-#: and therefore excluded from the counts these tests assert on.
-_TRANSACTION_CONTROL = ("BEGIN", "COMMIT", "ROLLBACK")
-
-
-class StatementCounter:
-    """Record every data statement a :class:`SQLiteStore` executes."""
-
-    def __init__(self) -> None:
-        """Start with no recorded statements and no opened connections."""
-        self.statements: list[str] = []
-        self.connections = 0
-
-    def install(self, store: SQLiteStore) -> None:
-        """Wrap *store*'s ``connect`` so every statement it runs is recorded.
-
-        Args:
-            store: The store whose connections should be instrumented.
-        """
-        original = store.connect
-
-        def counting_connect() -> sqlite3.Connection:
-            conn = original()
-            self.connections += 1
-            conn.set_trace_callback(self._record)
-            return conn
-
-        store.connect = counting_connect  # type: ignore[method-assign]
-
-    def _record(self, statement: str) -> None:
-        """Record *statement* unless it is transaction control."""
-        if not statement.strip().upper().startswith(_TRANSACTION_CONTROL):
-            self.statements.append(statement)
-
-    def reset(self) -> None:
-        """Clear recorded statements and the connection count."""
-        self.statements.clear()
-        self.connections = 0
-
-
-def _seed(store: SQLiteStore, *, sessions: int, runs_per_session: int, tenant_id: str) -> str:
+def _seed(
+    target: SQLiteStore, *, sessions: int, runs_per_session: int, tenant_id: str
+) -> str:
     """Seed *sessions* sessions with *runs_per_session* runs each.
 
     Args:
-        store: Store to seed.
+        target: Store to seed.
         sessions: Number of sessions to create.
         runs_per_session: Number of runs to create per session.
         tenant_id: Tenant every seeded row belongs to.
@@ -83,12 +37,12 @@ def _seed(store: SQLiteStore, *, sessions: int, runs_per_session: int, tenant_id
     run_id = ""
     for s in range(sessions):
         session_id = f"{tenant_id}-s{s}"
-        store.create_session(
+        target.create_session(
             session_id=session_id, goal="g", plan=["p"], artifacts={}, tenant_id=tenant_id
         )
         for r in range(runs_per_session):
             run_id = f"{tenant_id}-s{s}-r{r}"
-            store.create_run(
+            target.create_run(
                 run_id=run_id,
                 session_id=session_id,
                 status="completed",
@@ -176,21 +130,16 @@ def test_sqlite_get_run_missing_run_skips_the_step_query(sqlite_store: SQLiteSto
 # ---------------------------------------------------------------------------
 
 
-def _data_statements(conn: ScriptedConnection) -> list[str]:
-    """Return the executed statements excluding tenant-scoping ``set_config`` calls."""
-    return [sql for sql, _ in conn.executed if "set_config" not in sql]
-
-
 def test_postgres_get_run_costs_two_statements(
-    store: PostgresStore, scripted_conn: ScriptedConnection
+    pg_store: PostgresStore, pg_conn: ScriptedConnection
 ) -> None:
     """get_run issues exactly the run lookup plus one batched step query."""
-    scripted_conn.fetchone_queue.append(
+    pg_conn.fetchone_queue.append(
         ("r1", "s1", "running", "auto", "planning", "go", "[]", "2024-01-01", "2024-01-02")
     )
-    scripted_conn.fetchall_queue.append([("r1", "k1", "a1", "done", "t0", "t1", 1)])
+    pg_conn.fetchall_queue.append([("r1", "k1", "a1", "done", "t0", "t1", 1)])
 
-    result = store.get_run("r1")
+    result = pg_store.get_run("r1")
 
     assert result is not None
     assert result["id"] == "r1"
@@ -204,54 +153,54 @@ def test_postgres_get_run_costs_two_statements(
             "attempt": 1,
         }
     ]
-    statements = _data_statements(scripted_conn)
+    statements = data_statements(pg_conn)
     assert len(statements) == 2, statements
     assert "FROM runs WHERE id = %s" in statements[0]
     assert "FROM run_steps" in statements[1]
 
 
 def test_postgres_get_run_missing_returns_none_without_step_query(
-    store: PostgresStore, scripted_conn: ScriptedConnection
+    pg_store: PostgresStore, pg_conn: ScriptedConnection
 ) -> None:
     """A missing run short-circuits before the step query runs."""
-    scripted_conn.fetchone_queue.append(None)
+    pg_conn.fetchone_queue.append(None)
 
-    assert store.get_run("missing") is None
-    assert len(_data_statements(scripted_conn)) == 1
+    assert pg_store.get_run("missing") is None
+    assert len(data_statements(pg_conn)) == 1
 
 
 def test_postgres_get_run_scopes_the_connection_to_the_tenant(
-    store: PostgresStore, scripted_conn: ScriptedConnection
+    pg_store: PostgresStore, pg_conn: ScriptedConnection
 ) -> None:
     """RLS is armed for the caller's tenant before the run is read."""
-    scripted_conn.fetchone_queue.append(None)
+    pg_conn.fetchone_queue.append(None)
 
-    store.get_run("r1", tenant_id="tenant-a")
+    pg_store.get_run("r1", tenant_id="tenant-a")
 
-    first_sql, first_params = scripted_conn.executed[0]
+    first_sql, first_params = pg_conn.executed[0]
     assert "set_config" in first_sql
     assert first_params == ("tenant-a",)
 
 
 def test_postgres_list_runs_uses_one_batched_step_query(
-    store: PostgresStore, scripted_conn: ScriptedConnection
+    pg_store: PostgresStore, pg_conn: ScriptedConnection
 ) -> None:
     """list_runs costs 2 statements for N runs, not 1 + N (E44-S1/S2)."""
-    scripted_conn.fetchall_queue.append(
+    pg_conn.fetchall_queue.append(
         [
             (f"r{i}", "s1", "running", "auto", "planning", "go", "[]", "2024-01-01", "2024-01-02")
             for i in range(5)
         ]
     )
-    scripted_conn.fetchall_queue.append(
+    pg_conn.fetchall_queue.append(
         [(f"r{i}", "k1", "a1", "done", "t0", "t1", 1) for i in range(5)]
     )
 
-    result = store.list_runs("s1")
+    result = pg_store.list_runs("s1")
 
     assert len(result) == 5
     assert all(run["steps"] for run in result)
-    assert len(_data_statements(scripted_conn)) == 2
+    assert len(data_statements(pg_conn)) == 2
 
 
 @pytest.mark.parametrize("run_count", [1, 100])

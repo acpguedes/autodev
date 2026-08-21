@@ -3,7 +3,7 @@
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35 and E41-E43: added after initial Beta
 completion, before the wave is signed off).
-**Status:** Not started · **Stories:** 0/5
+**Status:** Done · **Stories:** 5/5 (2026-08-21)
 **Depends on:** E8 (persistence adapters + migrations), E16-S1 (turn
 endpoints this epic makes O(1)), E43 (current run/step read paths)
 **Enables:** Control Plane read/write cost that stays constant as
@@ -185,3 +185,38 @@ Subtasks:
 - **DoD:** all story DoDs met; statement/connection counts asserted by
   tests, not just observed; `docs/v2_platform/progress.md` updated; no
   push/PR without explicit authorization.
+
+## Outcome (2026-08-21)
+
+All five stories landed on `epic/e44-persistence-efficiency`. Every cost
+claim in "Key result" is asserted by a regression test rather than
+observed:
+
+| Story | Delivered | Cost pinned by |
+| --- | --- | --- |
+| S1 | `RunRepository.get_run` on both adapters; `_decode_run` pure; `chat_v2._find_turn_by_id` is one call | `test_run_lookup_e44.py` — 2 statements / 1 connection at 1 and 20 sessions; cross-tenant miss |
+| S2 | Postgres `executemany` for step and message inserts; one connection per repository call | `test_run_lookup_e44.py` — `list_runs` at 2 statements for 1 and 100 runs; `test_postgres_adapter.py` — one batched statement |
+| S3 | `list_sessions_page`/`list_runs_page` on the protocols and both adapters; `/v2` listings consume them; page summaries use one message aggregate | `test_listing_pagination_e44.py` — 3 statements at 5 and 200 sessions, page-equivalence vs. the in-memory slice; `test_v2_api_contract.py` — listing/detail contract |
+| S4 | Tail-only `append_messages` with in-transaction `MAX(sequence) + 1`; unique `(tenant_id, session_id, sequence)` index | `test_message_append_e44.py` — one-row read at 200 stored messages; duplicate sequence fails closed |
+| S5 | `run_steps.position` + unique `(run_id, position)`; conditional upsert; `replace_run_steps_for_import` | `test_run_step_persistence_e44.py` — 1 row per checkpoint, `2N` rows over a 40-checkpoint run |
+
+Decisions held as written: protocol changes are additive except
+`append_messages` (all callers in-repo, updated in S4); both adapters keep
+explicit SQL, no ORM or shared SQL abstraction; no caching, read replicas,
+or event-store changes.
+
+Two deviations worth recording:
+
+- **S2-T1 landed inside S1.** `get_run` needs a pure `_decode_run` to
+  avoid opening a connection per decoded run, so the batching refactor
+  came with it rather than duplicating a one-off steps query for a single
+  story. S2 kept the remaining write-side work.
+- **S3-T3's DoR was inaccurate.** Session listings *did* embed the full
+  conversation (`_to_session_v2` mapped `summary.history`), not just
+  counts. Dropping it is a real payload change, taken deliberately:
+  `SessionV2` gains `message_count`/`last_activity`, `GET
+  /v2/sessions/{id}` still returns the conversation, and no `/v2`
+  frontend consumer read `history` from the listing (`app/sessions`,
+  `app/patches`, `components/shell/SidebarRail` — checked). The chat
+  page's history restore reads the **v1** `/sessions` endpoint, which is
+  untouched.
