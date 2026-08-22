@@ -113,7 +113,11 @@ services:
       - backend
 
   postgres:
-    image: postgres:16-alpine
+    # pgvector-capable PostgreSQL 16 (E48-S1, ADR-024): stock postgres:16-alpine
+    # does not bundle the `vector` extension, so migration 4
+    # (postgres_versions.py:_pg_m4_create_code_embeddings_table) cannot succeed
+    # against it. Pinned to a specific pgvector release, not a floating tag.
+    image: pgvector/pgvector:0.8.3-pg16
     profiles: ["prod", "postgres"]
     environment:
       POSTGRES_DB: autodev
