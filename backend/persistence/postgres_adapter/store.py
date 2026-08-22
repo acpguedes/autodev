@@ -14,6 +14,7 @@ from backend.persistence.postgres_adapter.eval_scoring import _EvalScoringMixin
 from backend.persistence.postgres_adapter.messages import _MessagesMixin
 from backend.persistence.postgres_adapter.runs import _RunsMixin
 from backend.persistence.postgres_adapter.sessions import _SessionsMixin
+from backend.persistence.postgres_adapter.vector_provisioning import provision_vector_extension
 
 
 class PostgresStore(_SessionsMixin, _RunsMixin, _MessagesMixin, _EvalScoringMixin):
@@ -33,6 +34,7 @@ class PostgresStore(_SessionsMixin, _RunsMixin, _MessagesMixin, _EvalScoringMixi
         """
         self.database_url = database_url
         with self.connect() as conn:
+            provision_vector_extension(conn)
             self._run_migrations(conn)
 
     def connect(self) -> Any:
