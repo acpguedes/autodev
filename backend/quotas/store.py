@@ -1,12 +1,21 @@
 """Durable tenant quota policy, usage, lease, and reservation store (ADR-019).
 
-PostgreSQL/SQLite are the sole authority for every value this module reads
-or writes; an optional Redis cache (wired in :mod:`backend.quotas.service`)
-never makes an admission decision on its own. SQLite serializes concurrent
-writers with ``BEGIN IMMEDIATE`` (a real file-lock, safe across threads and
-processes on one machine); PostgreSQL serializes with ``SELECT ... FOR
-UPDATE`` inside an explicit transaction. Every mutating method commits
-exactly once, at the end of its own transaction.
+SQLite is the sole implementation today (E49-S2, ADR-025): this store only
+accepts a ``sqlite://`` ``DATABASE_URL`` and predates the shared persistence
+contract, so it is not yet constructible against PostgreSQL at all. An
+optional Redis cache (wired in :mod:`backend.quotas.service`) never makes an
+admission decision on its own — SQLite is the sole authority for every value
+this module reads or writes. Concurrent writers are serialized with ``BEGIN
+IMMEDIATE`` (a real file-lock, safe across threads and processes on one
+machine); every mutating method commits exactly once, at the end of its own
+transaction.
+
+Porting this store onto PostgreSQL is E51, which will serialize the
+equivalent critical sections with an explicit transaction plus ``SELECT ...
+FOR UPDATE`` — the row-lock primitive already exists for that port at
+:func:`backend.persistence.contract.for_update_clause`, alongside
+:func:`backend.persistence.contract.begin_write` for the SQLite side of the
+same operation.
 """
 
 from __future__ import annotations

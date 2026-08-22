@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
+import time
+from pathlib import Path
 
 import pytest
 
@@ -116,3 +119,75 @@ def test_get_connection_falls_back_to_configured_store(monkeypatch: pytest.Monke
     )
 
     assert get_connection() == "connection-from-configured-store"
+
+
+# --- E49-S2: real-SQLite proof that begin_write() actually serializes writers ---
+
+
+def test_begin_write_serializes_concurrent_sqlite_writers(tmp_path: Path) -> None:
+    """Four threads racing a read-modify-write through begin_write() never lose an update.
+
+    A real mutual-exclusion proof, not a mock: if BEGIN IMMEDIATE were a
+    no-op, the read-then-write race below would very likely lose updates and
+    the final counter would be less than the number of increments attempted.
+    """
+    db_path = tmp_path / "concurrency.db"
+    setup_conn = sqlite3.connect(str(db_path))
+    setup_conn.execute("CREATE TABLE counter (id INTEGER PRIMARY KEY, value INTEGER)")
+    setup_conn.execute("INSERT INTO counter (id, value) VALUES (1, 0)")
+    setup_conn.commit()
+    setup_conn.close()
+
+    thread_count = 4
+    iterations_per_thread = 25
+    errors: list[BaseException] = []
+
+    def worker() -> None:
+        conn = sqlite3.connect(str(db_path), timeout=30)
+        try:
+            for _ in range(iterations_per_thread):
+                begin_write(conn, False)
+                current = conn.execute(
+                    "SELECT value FROM counter WHERE id = 1"
+                ).fetchone()[0]
+                # Yield deliberately between the read and the write to widen
+                # the race window a missing lock would need to survive.
+                time.sleep(0)
+                conn.execute(
+                    "UPDATE counter SET value = ? WHERE id = 1", (current + 1,)
+                )
+                conn.commit()
+        except BaseException as exc:  # noqa: BLE001 - captured to fail the test with detail
+            errors.append(exc)
+        finally:
+            conn.close()
+
+    threads = [threading.Thread(target=worker) for _ in range(thread_count)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+
+    assert not errors, errors
+    verify_conn = sqlite3.connect(str(db_path))
+    final_value = verify_conn.execute("SELECT value FROM counter WHERE id = 1").fetchone()[0]
+    verify_conn.close()
+    assert final_value == thread_count * iterations_per_thread
+
+
+def test_rollback_after_begin_write_restores_pre_transaction_state(tmp_path: Path) -> None:
+    """A transaction opened via begin_write() that is rolled back leaves no trace."""
+    db_path = tmp_path / "rollback.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE t (id INTEGER PRIMARY KEY, value TEXT)")
+    conn.execute("INSERT INTO t (id, value) VALUES (1, 'before')")
+    conn.commit()
+
+    begin_write(conn, False)
+    conn.execute("UPDATE t SET value = 'during' WHERE id = 1")
+    assert conn.execute("SELECT value FROM t WHERE id = 1").fetchone()[0] == "during"
+
+    conn.rollback()
+
+    assert conn.execute("SELECT value FROM t WHERE id = 1").fetchone()[0] == "before"
+    conn.close()
