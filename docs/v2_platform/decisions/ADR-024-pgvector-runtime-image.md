@@ -1,6 +1,6 @@
 # ADR-024: pgvector Runtime Image and Extension Provisioning
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-21
 - **Authors:** AutoDev platform team
 - **Related epic:** E48
@@ -37,14 +37,19 @@ couples schema migration to a privilege the application should not need.
 ## Decision
 
 1. **Ship a pgvector-capable PostgreSQL 16 runtime** for the Compose `prod`
-   and `postgres` profiles, replacing `postgres:16-alpine` — either a pinned
-   upstream `pgvector/pgvector:pg16` image or a versioned image built under
-   `infrastructure/docker/`. The concrete choice is recorded when E48-S1
-   lands and this ADR moves to `Accepted`.
+   and `postgres` profiles, replacing `postgres:16-alpine` with the pinned
+   upstream image **`pgvector/pgvector:0.8.3-pg16`**
+   (`infrastructure/docker-compose.yml:116`). Chosen over a self-built image
+   under `infrastructure/docker/` because the upstream image is maintained
+   by the pgvector project itself, tracks PostgreSQL security patches, and
+   needs no additional build step in CI or Compose.
 2. **Pin the PostgreSQL major version together with the pgvector version**,
    and document the supported pairs, so an image bump cannot silently move
    both at once. CI (E57-S1-T1) uses the same pinned image as Compose, so the
-   two cannot drift.
+   two cannot drift. Supported pair for this decision: **PostgreSQL 16 /
+   pgvector 0.8.3** (tag `0.8.3-pg16`). A future bump to a newer PostgreSQL
+   major or pgvector release updates this pin explicitly, in the same commit
+   as the compatibility statement in `docs/config.md`, rather than floating.
 3. **Separate extension provisioning from schema migration.**
    `CREATE EXTENSION` moves out of `_pg_m4` into an explicit provisioning
    step that runs before the migration runner. Existing migrations keep their
