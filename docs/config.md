@@ -61,14 +61,23 @@ Run the production-like local stack with:
 docker compose -f infrastructure/docker-compose.yml --profile prod up --build backend-prod
 ```
 
-> **PostgreSQL must be pgvector-capable (noted 2026-08-21).** The PostgreSQL
-> migration set runs `CREATE EXTENSION IF NOT EXISTS vector`
-> (`backend/persistence/migrations/postgres_versions.py:253`), which stock
-> `postgres:16-alpine` — the image the `prod` Compose profile currently uses
-> (`infrastructure/docker-compose.yml:116`) — cannot satisfy. On a managed
-> provider, an operator must install the extension before first boot, since
-> the application role often cannot create it. Tracked by E48 and ADR-024
-> (`docs/v2_platform/postgres_production_completeness.md`).
+> **PostgreSQL must be pgvector-capable (resolved 2026-08-22, E48/ADR-024).**
+> The `prod`/`postgres` Compose profiles ship
+> `pgvector/pgvector:0.8.3-pg16` (`infrastructure/docker-compose.yml:116`),
+> which bundles the `vector` extension PostgreSQL 16 needs to satisfy
+> `code_embeddings.embedding` (pgvector). Extension provisioning is a
+> separate, idempotent step
+> (`backend/persistence/postgres_adapter/vector_provisioning.py`) that runs
+> before schema migration on every store construction: it detects an
+> already-installed extension and proceeds without privilege, or attempts
+> `CREATE EXTENSION` and fails with an actionable message if it cannot. The
+> `prod` profile also fails closed at preflight — `backend/ops/doctor.py`
+> checks server version, extension presence, extension usability, and HNSW
+> index validity before the API accepts traffic (surfaced at `GET
+> /readiness`, in addition to `autodev doctor`) — so a missing capability is
+> a named startup failure, not a first-use migration error. See
+> "PostgreSQL/pgvector extension lifecycle" below for install, upgrade, and
+> rollback on a managed provider.
 >
 > **Known `prod` limitation (verified 2026-08-21).** Quotas, secrets,
 > execution policy, and execution environments cannot currently be
@@ -78,13 +87,56 @@ docker compose -f infrastructure/docker-compose.yml --profile prod up --build ba
 > `backend/environments/store.py:38`), and plan step state silently falls
 > back to `./autodev_plan_step_state.db`
 > (`backend/plans/step_state.py:132`). Closing this is the subject of epics
-> E48-E60. Connection-pool and statement-timeout settings do not exist yet
-> and are introduced by E60.
+> E49-E60 (E48's own scope — a pgvector-capable runtime — is resolved).
+> Connection-pool and statement-timeout settings do not exist yet and are
+> introduced by E60.
 
 `autodev config validate --profile prod` uses the same settings validation as
 startup. Missing Redis/MinIO settings, `AUTODEV_JOB_BACKEND` values other than
 `redis`, or `STORAGE_BACKEND` values other than `s3` abort with an actionable
 error before the API starts.
+
+### PostgreSQL/pgvector extension lifecycle (E48-S4, ADR-024)
+
+**Supported version pair:** PostgreSQL 16 with pgvector 0.8.3 (Compose image
+tag `pgvector/pgvector:0.8.3-pg16`). The pair is pinned together — bumping
+one without the other is not supported — and CI (E57) uses the same pinned
+image as Compose so the two cannot drift.
+
+**Self-hosted install (Compose).** Nothing to do: the `prod`/`postgres`
+profiles already ship the pgvector-capable image, and
+`provision_vector_extension()` creates the extension on first
+`PostgresStore` construction if it is not already present.
+
+**Managed provider install.** Provision a PostgreSQL 16 instance running (or
+offering as an installable extension) pgvector 0.8.3, then have an operator
+with sufficient privilege run once, before first boot:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+The application's own database role does not need — and should not be
+granted — `CREATE EXTENSION` privilege. If the extension is absent and the
+role cannot create it, startup fails at preflight
+(`pgvector_extension_present`, surfaced by `autodev doctor` and `GET
+/readiness`) with this same instruction, rather than a raw migration error.
+
+**Upgrade.** Upgrading pgvector on an existing database is an operator
+action (`ALTER EXTENSION vector UPDATE`) independent of application
+deployment; run it during a maintenance window, then confirm
+`pgvector_extension_usable` and `pgvector_hnsw_index` still report `ok` via
+`autodev doctor` or `GET /readiness`. A provider that only offers a pgvector
+version incompatible with the HNSW operator classes this codebase relies on
+is not a supported pair — `pgvector_extension_usable` fails closed rather
+than degrading silently.
+
+**Rollback.** Reverting the Compose image (or an operator dropping the
+extension) does not corrupt data: the down migration for `code_embeddings`
+deliberately leaves the extension installed. On a fresh volume, reverting
+the image restores the original defect (migration 4 cannot succeed) — this
+is expected, not a regression, and preflight will report it as
+`pgvector_extension_present: fail` rather than a late migration error.
 
 ## Artifact Storage (E8-S3)
 

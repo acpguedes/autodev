@@ -333,9 +333,22 @@ the last of the four Beta-hardening backend-efficiency epics — see the
 changelog entry and
 [phases/e47_backend_structural_consolidation.md](phases/e47_backend_structural_consolidation.md).
 
-**Next:** E13 — Marketplace & GA (0/4, not started). Beyond GA, the planned
-v2.1 (E20-E25), v2.2 (E26-E31) and v2.3 (E36-E40) waves are specified but
-not started.
+**E48 — PostgreSQL Runtime with pgvector is now complete (4/4, 2026-08-22)**,
+the first of the PostgreSQL Production Completeness epics: the `prod`/
+`postgres` Compose profiles now ship `pgvector/pgvector:0.8.3-pg16`
+(ADR-024, Accepted), extension provisioning is a separate idempotent step
+that fails closed with an actionable message rather than requiring
+`CREATE EXTENSION` privilege, and `backend/ops/doctor.py` plus a new `GET
+/readiness` endpoint fail closed on server version, extension presence,
+extension usability, and HNSW index validity before the API accepts
+traffic — see the changelog entry and
+[phases/e48_postgres_runtime_pgvector.md](phases/e48_postgres_runtime_pgvector.md).
+
+**Next:** E13 — Marketplace & GA (0/4, not started), or **E49 — Shared SQL
+Persistence Infrastructure** (0/4, now unblocked — E8 and E47-S4 are both
+done) as the next step in the PostgreSQL Production Completeness program.
+Beyond GA, the planned v2.1 (E20-E25), v2.2 (E26-E31) and v2.3 (E36-E40)
+waves are specified but not started.
 
 ### Accumulated per-epic record
 
@@ -469,7 +482,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E45 | Runtime I/O Efficiency: Job Queue, Event Bus, SSE & Indexing | Beta | Done | 5/5 | E0, E8-S2, E9, E43-S6 | [phases/e45_runtime_io_efficiency.md](phases/e45_runtime_io_efficiency.md) |
 | E46 | Execution Failure Classification & Self-Repair Governance | Beta | Done | 3/3 | E14, E32, E41-S5, E43-S1 | [phases/e46_failure_classification_self_repair.md](phases/e46_failure_classification_self_repair.md) |
 | E47 | Backend Structural Consolidation | Beta | Done | 5/5 | E2, E2-S6, E8, E44, E46 | [phases/e47_backend_structural_consolidation.md](phases/e47_backend_structural_consolidation.md) |
-| E48 | PostgreSQL Runtime with pgvector | Beta | Not started | 0/4 | E0-S3, E7-S2, E34-S2 | [phases/e48_postgres_runtime_pgvector.md](phases/e48_postgres_runtime_pgvector.md) |
+| E48 | PostgreSQL Runtime with pgvector | Beta | Done | 4/4 | E0-S3, E7-S2, E34-S2 | [phases/e48_postgres_runtime_pgvector.md](phases/e48_postgres_runtime_pgvector.md) |
 | E49 | Shared SQL Persistence Infrastructure | Beta | Not started | 0/4 | E8, E47-S4 | [phases/e49_shared_sql_infrastructure.md](phases/e49_shared_sql_infrastructure.md) |
 | E50 | PostgreSQL Schema, Migrations, Tenancy & RLS | Beta | Not started | 0/4 | E48, E49, E8-S1 | [phases/e50_postgres_schema_migrations_rls.md](phases/e50_postgres_schema_migrations_rls.md) |
 | E51 | QuotaStore on PostgreSQL & Concurrency | Beta | Not started | 0/4 | E49, E50-S1, E11-S3 | [phases/e51_quotastore_postgres_concurrency.md](phases/e51_quotastore_postgres_concurrency.md) |
@@ -483,7 +496,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E59 | Backup, Restore & Disaster Recovery | Beta | Not started | 0/3 | E8-S4, E55-S3, E57-S4 | [phases/e59_backup_restore_disaster_recovery.md](phases/e59_backup_restore_disaster_recovery.md) |
 | E60 | Connection Pooling & PostgreSQL Hardening | Beta | Not started | 0/4 | E51-E55, E57, E11-S1 | [phases/e60_postgres_pooling_hardening.md](phases/e60_postgres_pooling_hardening.md) |
 
-Total: **131/260 stories complete** across 60 epics (E19 is a proposed
+Total: **135/260 stories complete** across 60 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -652,11 +665,11 @@ program (`postgres_production_completeness.md`).
 - [ ] Backup/restore validated (RPO <= 5 min, RTO <= 30 min) in staging — no
       staging environment exists; validated via documented execution
       procedure only. Open (`phases/e8_persistence_data.md`).
-- [ ] The `prod` profile boots from empty on PostgreSQL 16 + pgvector and
-      serves a real vector query — `postgres_versions.py:253` runs
-      `CREATE EXTENSION IF NOT EXISTS vector` while
-      `infrastructure/docker-compose.yml:116` ships stock `postgres:16-alpine`,
-      so PG migration 4 cannot succeed on the shipped stack. Open (E48).
+- [x] The `prod` profile boots from empty on PostgreSQL 16 + pgvector and
+      serves a real vector query — resolved by E48 (`pgvector/pgvector:0.8.3-pg16`,
+      extension provisioning split from migration 4, preflight checks).
+      Verified 2026-08-22 against a real from-scratch bring-up: all 8
+      migrations apply, HNSW index valid, ordered vector query results.
 - [ ] SQLite and PostgreSQL pass the same functional contract — 13 tables have
       no PostgreSQL migration and 5 stores refuse a PostgreSQL URL. Open
       (E49-E56).
@@ -689,6 +702,40 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-22** — **E48 — PostgreSQL Runtime with pgvector complete (4/4,
+  ADR-024 Accepted)**, the first epic of the PostgreSQL Production
+  Completeness program. **E48-S1**: the `prod`/`postgres` Compose profiles
+  now ship `pgvector/pgvector:0.8.3-pg16` (`infrastructure/docker-compose.yml`)
+  in place of stock `postgres:16-alpine`; the version pair (PostgreSQL 16 /
+  pgvector 0.8.3) is pinned and documented, not a floating tag. **E48-S2**:
+  `CREATE EXTENSION IF NOT EXISTS vector` moved out of migration 4
+  (`_pg_m4_create_code_embeddings_table`) into a new, idempotent
+  `provision_vector_extension()` (`backend/persistence/postgres_adapter/vector_provisioning.py`)
+  run before the migration runner on every `PostgresStore` construction; it
+  detects an already-installed extension via `pg_extension` and proceeds
+  without `CREATE EXTENSION` privilege, or raises `VectorExtensionUnavailable`
+  with an actionable operator message when absent and not creatable.
+  Migration numbering and the `code_embeddings` RLS policy are unchanged.
+  **E48-S3**: `backend/ops/doctor.py` gained four ordered checks
+  (`postgres_server_version`, `pgvector_extension_present`,
+  `pgvector_extension_usable`, `pgvector_hnsw_index`), appended only for a
+  `postgresql://` `DATABASE_URL` and skipped if connectivity already failed;
+  each reports its own distinct, actionable cause (the readiness connection
+  uses autocommit so one failing check cannot poison the next one's
+  transaction). `backend/ops/bootstrap.py` needed no change — it already
+  gates store construction on `diagnostics_ok()`. A new `GET /readiness`
+  endpoint surfaces the same checks for an orchestrator; `/health` is
+  unchanged. **E48-S4**: extension install/upgrade/rollback and the
+  supported version pair are documented in `docs/config.md`;
+  `docs/feature_matrix.md`'s pgvector row no longer describes the runtime as
+  unable to satisfy its own migration. Verified end-to-end against a real,
+  from-scratch `pgvector/pgvector:0.8.3-pg16` bring-up: all 9 preflight
+  checks pass, all 8 PostgreSQL migrations apply (`schema_version=8`), the
+  HNSW index is valid, RLS is enabled and forced, and a real cosine-distance
+  vector query returns ordered results; a deliberately unprovisioned
+  database fails `pgvector_extension_present`/`_usable`/`pgvector_hnsw_index`
+  independently with distinct messages. No `/v2` contract changes.
 
 - **2026-08-21** — **Planning-only: added the E48-E60 PostgreSQL Production
   Completeness program — 13 Beta-hardening epics, 46 planned stories**, on
