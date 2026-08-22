@@ -27,6 +27,7 @@ from backend.artifacts.store import (
     ArtifactStore,
 )
 from backend.events.records import utcnow_iso
+from backend.persistence import contract
 from backend.persistence.database import get_store
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
 from backend.quotas.contracts import QuotaDenialReason, QuotaExceededError, QuotaResource
@@ -42,10 +43,8 @@ def artifact_pointer_statements(is_postgres: bool) -> tuple[str, ...]:
     Returns:
         The ordered DDL statements.
     """
-    if is_postgres:
-        json_type, time_type = "JSONB", "TIMESTAMPTZ"
-    else:
-        json_type, time_type = "TEXT", "TEXT"
+    json_type = contract.json_column_type(is_postgres)
+    time_type = contract.timestamp_column_type(is_postgres)
     return (
         f"""
         CREATE TABLE IF NOT EXISTS artifacts (
@@ -357,8 +356,7 @@ class ArtifactPointerStore:
     @property
     def _is_postgres(self) -> bool:
         """Whether the backing store is a PostgreSQL database."""
-        url = str(getattr(self._store, "database_url", ""))
-        return url.startswith(("postgresql://", "postgres://"))
+        return contract.is_postgres(getattr(self._store, "database_url", ""))
 
     def _sql(self, template: str) -> str:
         """Substitute the dialect placeholder into a SQL template.
@@ -369,7 +367,7 @@ class ArtifactPointerStore:
         Returns:
             The SQL with dialect-appropriate placeholders.
         """
-        return template.format(p="%s" if self._is_postgres else "?")
+        return contract.sql(template, self._is_postgres)
 
     def _connect(self) -> Any:
         """Return this thread's cached store connection, creating it once.
