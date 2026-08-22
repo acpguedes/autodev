@@ -125,8 +125,8 @@ class _FakeDoctorConnection:
     def __enter__(self) -> "_FakeDoctorConnection":
         return self
 
-    def __exit__(self, *_exc: object) -> bool:
-        return False
+    def __exit__(self, *_exc: object) -> None:
+        return None
 
     def close(self) -> None:
         return None
