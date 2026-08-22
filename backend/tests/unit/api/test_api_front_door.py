@@ -137,3 +137,24 @@ def test_health_regression(client: TestClient) -> None:
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_readiness_returns_named_diagnostic_checks(client: TestClient) -> None:
+    """``GET /readiness`` (E48-S3) surfaces named preflight checks, distinct from ``/health``."""
+    response = client.get("/readiness")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] in {"ok", "fail"}
+    names = [check["name"] for check in body["checks"]]
+    assert "settings" in names
+    assert "database" in names
+    for check in body["checks"]:
+        assert set(check) == {"name", "status", "detail"}
+
+
+def test_readiness_is_public_when_token_configured(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``/readiness`` stays reachable by an orchestrator even when an API token is set."""
+    monkeypatch.setenv("AUTODEV_API_TOKEN", "s3cret")
+    assert client.get("/readiness").status_code == 200
