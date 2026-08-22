@@ -56,6 +56,7 @@ from backend.observability.runtime import (
     get_meter,
     shutdown_observability,
 )
+from backend.ops.doctor import diagnostics_ok, run_diagnostics
 from backend.orchestrator.service import (
     AgentExecution,
     ExecutionPlan,
@@ -440,6 +441,24 @@ def swagger_ui_page() -> HTMLResponse:
 def healthcheck() -> Dict[str, str]:
     """Report basic liveness of the API process."""
     return {"status": "ok"}
+
+
+@public_endpoint
+@app.get("/readiness", tags=["meta"])
+def readiness() -> Dict[str, Any]:
+    """Report preflight diagnostic readiness, not just liveness (E48-S3).
+
+    Unlike ``/health``, this runs the same named checks as ``autodev doctor``
+    — including the PostgreSQL/pgvector checks (server version, extension
+    present, extension usable, HNSW index valid) when the configured store is
+    PostgreSQL — so an unhealthy database is visible to an orchestrator, not
+    only in logs. No check detail includes connection strings or credentials.
+    """
+    checks = run_diagnostics()
+    return {
+        "status": "ok" if diagnostics_ok(checks) else "fail",
+        "checks": [check.as_dict() for check in checks],
+    }
 
 
 @public_endpoint

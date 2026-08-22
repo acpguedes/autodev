@@ -13,7 +13,7 @@ import os
 import socket
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 CheckStatus = Literal["ok", "fail"]
 
@@ -125,6 +125,121 @@ def _check_database(database_url: str) -> DiagnosticCheck:
     return DiagnosticCheck("database", "fail", f"unsupported DATABASE_URL scheme: {url!r}")
 
 
+#: Minimum PostgreSQL major server version this codebase supports (E48-S3, ADR-024).
+_MIN_POSTGRES_SERVER_MAJOR_VERSION = 16
+
+#: Name of the HNSW index created by migration 4
+#: (``backend/persistence/migrations/postgres_versions.py:_pg_m4_create_code_embeddings_table``).
+_HNSW_INDEX_NAME = "idx_pg_code_embeddings_hnsw"
+
+
+def _is_postgres_database_url(database_url: str) -> bool:
+    """Return whether *database_url* addresses a PostgreSQL database."""
+    url = (database_url or "").strip()
+    return url.startswith("postgresql://") or url.startswith("postgres://")
+
+
+def _check_postgres_server_version(conn: Any) -> DiagnosticCheck:
+    """Verify the connected PostgreSQL server meets the minimum supported major version."""
+    row = conn.execute("SHOW server_version_num").fetchone()
+    version_num = int(row[0]) if row else 0
+    major = version_num // 10000
+    if major < _MIN_POSTGRES_SERVER_MAJOR_VERSION:
+        return DiagnosticCheck(
+            "postgres_server_version",
+            "fail",
+            f"server major version {major} is below the minimum supported "
+            f"{_MIN_POSTGRES_SERVER_MAJOR_VERSION}",
+        )
+    return DiagnosticCheck("postgres_server_version", "ok", f"server major version {major}")
+
+
+def _check_pgvector_extension_present(conn: Any) -> DiagnosticCheck:
+    """Verify the ``vector`` extension is installed (ADR-024, E48-S2)."""
+    row = conn.execute("SELECT 1 FROM pg_extension WHERE extname = 'vector'").fetchone()
+    if row is None:
+        return DiagnosticCheck(
+            "pgvector_extension_present",
+            "fail",
+            "the 'vector' extension is not installed; ask a database operator with "
+            "sufficient privilege to run: CREATE EXTENSION vector;",
+        )
+    return DiagnosticCheck("pgvector_extension_present", "ok", "vector extension installed")
+
+
+def _check_pgvector_extension_usable(conn: Any) -> DiagnosticCheck:
+    """Verify the ``vector`` type is usable by the connected role, not merely present.
+
+    A provider offering a different pgvector version may have the extension
+    catalog entry present but the type/operators unusable by this role — see
+    ADR-024's "presence is not sufficient" decision.
+    """
+    try:
+        conn.execute("SELECT '[1,2,3]'::vector")
+    except Exception as exc:  # noqa: BLE001 - any usability failure is a typed check result
+        return DiagnosticCheck(
+            "pgvector_extension_usable", "fail", f"vector type is not usable by this role: {exc}"
+        )
+    return DiagnosticCheck("pgvector_extension_usable", "ok", "vector type is usable")
+
+
+def _check_pgvector_hnsw_index(conn: Any) -> DiagnosticCheck:
+    """Verify the HNSW index over ``code_embeddings.embedding`` exists and is valid."""
+    try:
+        row = conn.execute(
+            f"SELECT indisvalid FROM pg_index WHERE indexrelid = '{_HNSW_INDEX_NAME}'::regclass"
+        ).fetchone()
+    except Exception as exc:  # noqa: BLE001 - any lookup failure is a typed check result
+        return DiagnosticCheck(
+            "pgvector_hnsw_index", "fail", f"could not verify HNSW index {_HNSW_INDEX_NAME!r}: {exc}"
+        )
+    if row is None:
+        return DiagnosticCheck(
+            "pgvector_hnsw_index", "fail", f"HNSW index {_HNSW_INDEX_NAME!r} does not exist"
+        )
+    if not row[0]:
+        return DiagnosticCheck(
+            "pgvector_hnsw_index", "fail", f"HNSW index {_HNSW_INDEX_NAME!r} exists but is not valid"
+        )
+    return DiagnosticCheck("pgvector_hnsw_index", "ok", "HNSW index is valid")
+
+
+def _pgvector_readiness_checks(database_url: str) -> list[DiagnosticCheck]:
+    """Run the four pgvector-specific preflight checks against *database_url* (E48-S3).
+
+    Only called for a PostgreSQL ``database_url`` whose connectivity
+    (``database`` check) already succeeded. Opens exactly one connection and
+    runs all four checks against it — one connection per startup, not one
+    per check — closing it afterward. Each of the four conditions is
+    reported independently even if an earlier one already failed: the
+    connection is put in autocommit mode so a failing statement (e.g. an
+    unusable ``vector`` type) cannot leave the implicit transaction aborted
+    and poison the next check's result.
+    """
+    import psycopg  # type: ignore[import-untyped]
+
+    try:
+        conn = psycopg.connect(database_url, connect_timeout=3)
+        conn.autocommit = True
+    except Exception as exc:  # noqa: BLE001 - any connection failure is a typed check result
+        detail = f"could not connect to check pgvector readiness: {exc}"
+        return [
+            DiagnosticCheck("postgres_server_version", "fail", detail),
+            DiagnosticCheck("pgvector_extension_present", "fail", detail),
+            DiagnosticCheck("pgvector_extension_usable", "fail", detail),
+            DiagnosticCheck("pgvector_hnsw_index", "fail", detail),
+        ]
+    try:
+        return [
+            _check_postgres_server_version(conn),
+            _check_pgvector_extension_present(conn),
+            _check_pgvector_extension_usable(conn),
+            _check_pgvector_hnsw_index(conn),
+        ]
+    finally:
+        conn.close()
+
+
 def _check_storage_backend(
     storage_backend: str, artifact_dir: str, minio_endpoint: str
 ) -> DiagnosticCheck:
@@ -178,7 +293,10 @@ def run_diagnostics() -> tuple[DiagnosticCheck, ...]:
         )
     )
     checks.append(_check_project_root(runtime_config.repository.project_root))
-    checks.append(_check_database(settings.database_url))
+    database_check = _check_database(settings.database_url)
+    checks.append(database_check)
+    if database_check.status == "ok" and _is_postgres_database_url(settings.database_url):
+        checks.extend(_pgvector_readiness_checks(settings.database_url))
     checks.append(
         _check_storage_backend(
             settings.storage_backend, settings.autodev_artifact_dir, settings.autodev_minio_endpoint
