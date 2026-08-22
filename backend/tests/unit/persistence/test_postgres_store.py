@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import pytest
 
 from backend.persistence.postgres_adapter import PostgresPlanStore, PostgresStore
+from backend.persistence.postgres_adapter.vector_provisioning import VectorExtensionUnavailable
 
 
 class FakeCursor:
@@ -16,6 +17,7 @@ class FakeCursor:
     def __init__(self, conn: "FakeConnection") -> None:
         """Wrap the owning fake connection to record executed statements on."""
         self.conn = conn
+        self._last_sql = ""
 
     def __enter__(self) -> "FakeCursor":
         """Support use as a context manager, mirroring the real cursor API."""
@@ -26,12 +28,22 @@ class FakeCursor:
         return None
 
     def execute(self, sql: str, params: object = None) -> "FakeCursor":
-        """Record the executed SQL and params on the owning connection."""
+        """Record the executed SQL and params on the owning connection.
+
+        Raises the connection's configured ``create_extension_error`` when
+        *sql* is a ``CREATE EXTENSION`` statement, simulating a role without
+        the privilege to create extensions.
+        """
         self.conn.executed.append((sql, params))
+        self._last_sql = sql
+        if "CREATE EXTENSION" in sql and self.conn.create_extension_error is not None:
+            raise self.conn.create_extension_error
         return self
 
     def fetchone(self) -> object:
-        """Return ``None``, as no query results are simulated."""
+        """Return a truthy row for a ``pg_extension`` presence check when configured, else ``None``."""
+        if "pg_extension" in self._last_sql and self.conn.pg_extension_installed:
+            return (1,)
         return None
 
     def fetchall(self) -> list[object]:
@@ -42,10 +54,23 @@ class FakeCursor:
 class FakeConnection:
     """In-memory stand-in for a psycopg connection, used to assert on executed migrations."""
 
-    def __init__(self) -> None:
-        """Initialize an empty executed-statement log and commit counter."""
+    def __init__(
+        self,
+        pg_extension_installed: bool = False,
+        create_extension_error: Exception | None = None,
+    ) -> None:
+        """Initialize an empty executed-statement log and commit counter.
+
+        Args:
+            pg_extension_installed: Whether ``SELECT ... FROM pg_extension``
+                should report the ``vector`` extension as already installed.
+            create_extension_error: If set, raised when ``CREATE EXTENSION``
+                is executed, simulating a role without that privilege.
+        """
         self.executed: list[tuple[str, object]] = []
         self.commits = 0
+        self.pg_extension_installed = pg_extension_installed
+        self.create_extension_error = create_extension_error
 
     def __enter__(self) -> "FakeConnection":
         """Support use as a context manager, mirroring the real connection API."""
@@ -70,11 +95,18 @@ class FakeConnection:
         self.commits += 1
 
 
-def install_fake_psycopg(monkeypatch: pytest.MonkeyPatch) -> list[FakeConnection]:
+def install_fake_psycopg(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    pg_extension_installed: bool = False,
+    create_extension_error: Exception | None = None,
+) -> list[FakeConnection]:
     """Patch ``sys.modules['psycopg']`` with a fake module recording connections made.
 
     Args:
         monkeypatch: Pytest fixture used to patch ``sys.modules``.
+        pg_extension_installed: Forwarded to each created :class:`FakeConnection`.
+        create_extension_error: Forwarded to each created :class:`FakeConnection`.
 
     Returns:
         The list of fake connections created via ``psycopg.connect``, appended
@@ -85,7 +117,10 @@ def install_fake_psycopg(monkeypatch: pytest.MonkeyPatch) -> list[FakeConnection
     def connect(database_url: str) -> FakeConnection:
         """Create and record a fake connection for the given (assumed PostgreSQL) URL."""
         assert database_url.startswith("postgresql://")
-        conn = FakeConnection()
+        conn = FakeConnection(
+            pg_extension_installed=pg_extension_installed,
+            create_extension_error=create_extension_error,
+        )
         connections.append(conn)
         return conn
 
@@ -115,3 +150,50 @@ def test_postgres_plan_store_runs_plan_migrations(monkeypatch: pytest.MonkeyPatc
     executed_sql = "\n".join(sql for sql, _params in connections[0].executed)
     assert "CREATE TABLE IF NOT EXISTS plan_documents" in executed_sql
     assert "CREATE TABLE IF NOT EXISTS plan_approvals" in executed_sql
+
+
+def test_provision_vector_extension_creates_when_absent_and_creatable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When ``vector`` is absent and creatable, construction creates it (E48-S2)."""
+    connections = install_fake_psycopg(
+        monkeypatch, pg_extension_installed=False, create_extension_error=None
+    )
+
+    PostgresStore("postgresql://autodev:autodev@postgres/autodev")
+
+    executed_sql = "\n".join(sql for sql, _params in connections[0].executed)
+    assert "CREATE EXTENSION IF NOT EXISTS vector" in executed_sql
+
+
+def test_provision_vector_extension_raises_when_absent_and_not_creatable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When ``vector`` is absent and this role lacks the privilege, construction fails
+    closed with an actionable error and no migration is applied (E48-S2)."""
+    connections = install_fake_psycopg(
+        monkeypatch,
+        pg_extension_installed=False,
+        create_extension_error=RuntimeError("permission denied to create extension"),
+    )
+
+    with pytest.raises(VectorExtensionUnavailable, match="CREATE EXTENSION vector"):
+        PostgresStore("postgresql://autodev:autodev@postgres/autodev")
+
+    executed_sql = "\n".join(sql for sql, _params in connections[0].executed)
+    assert "CREATE TABLE IF NOT EXISTS sessions" not in executed_sql
+
+
+def test_provision_vector_extension_skips_create_when_already_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """When ``vector`` is already installed, construction never attempts
+    ``CREATE EXTENSION`` at all — proving a role without that privilege still
+    boots successfully (E48-S2)."""
+    connections = install_fake_psycopg(monkeypatch, pg_extension_installed=True)
+
+    PostgresStore("postgresql://autodev:autodev@postgres/autodev")
+
+    executed_sql = "\n".join(sql for sql, _params in connections[0].executed)
+    assert "CREATE EXTENSION" not in executed_sql
+    assert "CREATE TABLE IF NOT EXISTS sessions" in executed_sql
