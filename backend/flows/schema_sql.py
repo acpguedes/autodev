@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.persistence.contract import json_column_type, timestamp_column_type
+
 
 def flow_state_statements(is_postgres: bool) -> tuple[str, ...]:
     """Build the CREATE TABLE/INDEX statements for the flow state schema.
@@ -12,10 +14,8 @@ def flow_state_statements(is_postgres: bool) -> tuple[str, ...]:
     Returns:
         The ordered DDL statements.
     """
-    if is_postgres:
-        json_type, time_type = "JSONB", "TIMESTAMPTZ"
-    else:
-        json_type, time_type = "TEXT", "TEXT"
+    json_type = json_column_type(is_postgres)
+    time_type = timestamp_column_type(is_postgres)
     return (
         f"""
         CREATE TABLE IF NOT EXISTS flow_runs (
