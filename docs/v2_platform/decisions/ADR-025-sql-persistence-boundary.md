@@ -1,6 +1,6 @@
 # ADR-025: SQL Persistence Boundary and Dialect Abstraction Scope
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-08-21
 - **Authors:** AutoDev platform team
 - **Related epic:** E49
@@ -63,12 +63,19 @@ writing the eight-fold duplicated pattern five more times.
    tenant-scoped operation applies `set_postgres_tenant()` on PostgreSQL and
    the `sqlite_tenant_clause()` predicate on SQLite through one call site,
    reusing `backend/persistence/tenancy.py`.
-6. **The rule is enforced automatically.** A guard asserts no
-   `sqlite3.connect(` or `psycopg.connect(` outside `backend/persistence/`,
-   with an explicit allowlist for the known legitimate exceptions —
-   `backend/persistence/backup.py:270,272,555,557` and
-   `backend/quotas/migrations.py:143`. Each allowlist entry names the story
-   that removes it; the allowlist shrinks and never grows silently.
+6. **The rule is enforced automatically.** A guard
+   (`backend/tests/unit/persistence/test_boundary_guard.py`) AST-scans
+   `backend/` — excluding `backend/persistence/` itself, where these
+   imports belong by design — for `sqlite3.connect(`/`psycopg.connect(`,
+   with an explicit allowlist for the known legitimate exceptions:
+   `backend/quotas/migrations.py:137,143` (the read-only tenancy verifier,
+   both dialect branches), `backend/ops/doctor.py:119` (the preflight
+   connectivity check, deliberately below the persistence layer so a
+   health check never constructs a Store or runs migrations as a side
+   effect), and each of the five category-3 stores' own `_connect()` — one
+   entry per store, naming the story that removes it (E51-E55). The
+   allowlist shrinks and never grows silently — a second guard test asserts
+   no entry is stale.
 7. **SQLite stays first-class.** The contract must not make SQLite a
    degraded path; parity is asserted by the E56 contract suite.
 
@@ -143,8 +150,10 @@ rather than done silently.
 
 ## References
 
-- `backend/persistence/base.py`, `backend/persistence/codecs.py`,
-  `backend/persistence/database.py:20-40`, `backend/persistence/tenancy.py`
+- `backend/persistence/contract.py` (the implementation), `backend/persistence/base.py`,
+  `backend/persistence/codecs.py`, `backend/persistence/database.py:20-40`,
+  `backend/persistence/tenancy.py`,
+  `backend/tests/unit/persistence/test_boundary_guard.py` (the guard)
 - `backend/quotas/store.py:41-70`, `backend/secret_store/store.py:40-83`,
   `backend/execution/policy.py:198-227`,
   `backend/environments/store.py:30-118`,

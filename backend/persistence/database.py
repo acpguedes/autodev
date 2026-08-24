@@ -11,6 +11,7 @@ from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from backend.config.settings import get_settings
+from backend.persistence.contract import is_postgres
 from backend.persistence.sqlite_adapter import SQLiteStore
 
 if TYPE_CHECKING:
@@ -19,7 +20,13 @@ if TYPE_CHECKING:
 
 DEFAULT_DATABASE_URL = "sqlite:///./autodev.db"
 
-# Backward-compat alias: code that imports DurableStore continues to work.
+#: Backward-compat, SQLite-only alias (E49-S4, ADR-025): predates
+#: :func:`get_store`'s dialect switch and is used exclusively by tests and
+#: :mod:`backend.sdk.testing` to build an ephemeral SQLite-backed store
+#: directly — it always returns :class:`SQLiteStore` regardless of
+#: ``DATABASE_URL`` and is never constructed by production code (which uses
+#: :func:`get_store`). Kept as-is rather than renamed: ~30 call sites, all
+#: test-only, with no behavior change to make renaming worth the churn.
 DurableStore = SQLiteStore
 
 
@@ -34,7 +41,7 @@ def get_store() -> "SQLiteStore | PostgresStore":
         ``DATABASE_URL``.
     """
     url = get_settings().database_url
-    if url.startswith("postgresql://") or url.startswith("postgres://"):
+    if is_postgres(url):
         from backend.persistence.postgres_adapter import PostgresStore  # noqa: PLC0415
         return PostgresStore(url)
     return SQLiteStore(url)
