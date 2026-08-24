@@ -22,6 +22,7 @@ from typing import Any, Callable, Generic, Sequence, TypeVar
 from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
+from backend.persistence import contract
 from backend.plugins.events import PluginEvent
 from backend.plugins.manifest import validate_manifest as validate_plugin_manifest
 from backend.plugins.store import PluginStore
@@ -135,7 +136,7 @@ class VersionedExtensionRegistryCore(Generic[RefT, ManifestT]):
             version: Exact SemVer version to deprecate.
             reason: Human-readable deprecation reason.
         """
-        placeholder = "%s" if self._is_postgres else "?"
+        placeholder = contract.placeholder(self._is_postgres)
         with self._store.connect() as conn:
             conn.execute(
                 f"""
@@ -165,7 +166,7 @@ class VersionedExtensionRegistryCore(Generic[RefT, ManifestT]):
             ext_id: Fully qualified extension id.
             version: Exact SemVer version to activate.
         """
-        placeholder = "%s" if self._is_postgres else "?"
+        placeholder = contract.placeholder(self._is_postgres)
         with self._store.connect() as conn:
             conn.execute(
                 f"""
@@ -196,7 +197,7 @@ class VersionedExtensionRegistryCore(Generic[RefT, ManifestT]):
         where = ""
         params: tuple[Any, ...] = ()
         if ext_id is not None:
-            placeholder = "%s" if self._is_postgres else "?"
+            placeholder = contract.placeholder(self._is_postgres)
             where = f" WHERE {self._id_column} = {placeholder}"
             params = (ext_id,)
         with self._store.connect() as conn:
@@ -257,74 +258,50 @@ class VersionedExtensionRegistryCore(Generic[RefT, ManifestT]):
 
     def _ensure_schema(self) -> None:
         """Create the backing table and its plugin-id index if absent."""
-        if self._is_postgres:
-            sql = f"""
-                CREATE TABLE IF NOT EXISTS {self._table} (
-                    {self._id_column} TEXT NOT NULL,
-                    version TEXT NOT NULL,
-                    plugin_id TEXT NOT NULL,
-                    manifest_json JSONB NOT NULL,
-                    deprecated INTEGER NOT NULL DEFAULT 0,
-                    deprecation_reason TEXT NOT NULL DEFAULT '',
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY({self._id_column}, version)
-                )
-            """
-            index_sql = (
-                f"CREATE INDEX IF NOT EXISTS idx_pg_{self._table}_plugin "
-                f"ON {self._table}(plugin_id)"
+        json_type = contract.json_column_type(self._is_postgres)
+        time_type = contract.timestamp_column_type(self._is_postgres)
+        index_prefix = "idx_pg_" if self._is_postgres else "idx_"
+        statement = f"""
+            CREATE TABLE IF NOT EXISTS {self._table} (
+                {self._id_column} TEXT NOT NULL,
+                version TEXT NOT NULL,
+                plugin_id TEXT NOT NULL,
+                manifest_json {json_type} NOT NULL,
+                deprecated INTEGER NOT NULL DEFAULT 0,
+                deprecation_reason TEXT NOT NULL DEFAULT '',
+                created_at {time_type} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at {time_type} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY({self._id_column}, version)
             )
-        else:
-            sql = f"""
-                CREATE TABLE IF NOT EXISTS {self._table} (
-                    {self._id_column} TEXT NOT NULL,
-                    version TEXT NOT NULL,
-                    plugin_id TEXT NOT NULL,
-                    manifest_json TEXT NOT NULL,
-                    deprecated INTEGER NOT NULL DEFAULT 0,
-                    deprecation_reason TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY({self._id_column}, version)
-                )
-            """
-            index_sql = (
-                f"CREATE INDEX IF NOT EXISTS idx_{self._table}_plugin "
-                f"ON {self._table}(plugin_id)"
-            )
+        """
+        index_statement = (
+            f"CREATE INDEX IF NOT EXISTS {index_prefix}{self._table}_plugin "
+            f"ON {self._table}(plugin_id)"
+        )
         with self._store.connect() as conn:
-            conn.execute(sql)
-            conn.execute(index_sql)
+            conn.execute(statement)
+            conn.execute(index_statement)
             conn.commit()
 
     @property
     def _is_postgres(self) -> bool:
         """Whether the backing store is a PostgreSQL database."""
-        return str(getattr(self._store, "database_url", "")).startswith(
-            ("postgresql://", "postgres://")
-        )
+        return contract.is_postgres(getattr(self._store, "database_url", ""))
 
     @property
     def _upsert_sql(self) -> str:
         """The dialect-appropriate upsert statement for this table."""
-        if self._is_postgres:
-            return f"""
+        return contract.sql(
+            f"""
                 INSERT INTO {self._table} ({self._id_column}, version, plugin_id, manifest_json, deprecated, deprecation_reason, updated_at)
-                VALUES (%s, %s, %s, %s::jsonb, 0, '', CURRENT_TIMESTAMP)
+                VALUES ({{p}}, {{p}}, {{p}}, {{p}}{{jsonb}}, 0, '', CURRENT_TIMESTAMP)
                 ON CONFLICT({self._id_column}, version) DO UPDATE SET
-                    plugin_id = EXCLUDED.plugin_id,
-                    manifest_json = EXCLUDED.manifest_json,
+                    plugin_id = excluded.plugin_id,
+                    manifest_json = excluded.manifest_json,
                     updated_at = CURRENT_TIMESTAMP
-            """
-        return f"""
-            INSERT INTO {self._table} ({self._id_column}, version, plugin_id, manifest_json, deprecated, deprecation_reason, updated_at)
-            VALUES (?, ?, ?, ?, 0, '', CURRENT_TIMESTAMP)
-            ON CONFLICT({self._id_column}, version) DO UPDATE SET
-                plugin_id = excluded.plugin_id,
-                manifest_json = excluded.manifest_json,
-                updated_at = CURRENT_TIMESTAMP
-        """
+            """,
+            self._is_postgres,
+        )
 
     def _upsert_params(self, manifest: ManifestT, plugin_id: str) -> tuple[Any, ...]:
         """Build the parameter tuple for the upsert statement."""

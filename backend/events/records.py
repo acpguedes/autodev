@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from backend.events.catalog import EventEnvelope
+from backend.persistence.contract import json_column_type, timestamp_column_type
 
 TERMINAL_STATUSES: frozenset[str] = frozenset({"completed", "failed"})
 """Projection statuses after which a partition receives no further events."""
@@ -49,10 +50,8 @@ def event_store_statements(is_postgres: bool) -> tuple[str, ...]:
     Returns:
         The ordered DDL statements.
     """
-    if is_postgres:
-        json_type, time_type = "JSONB", "TIMESTAMPTZ"
-    else:
-        json_type, time_type = "TEXT", "TEXT"
+    json_type = json_column_type(is_postgres)
+    time_type = timestamp_column_type(is_postgres)
     return (
         f"""
         CREATE TABLE IF NOT EXISTS events (

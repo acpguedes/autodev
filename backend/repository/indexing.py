@@ -19,6 +19,7 @@ from typing import Any, Iterable
 
 from backend.jobs.queue import get_queue, register_handler
 from backend.observability.tracing import trace_indexing
+from backend.persistence import contract
 from backend.persistence.database import get_store
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
 from backend.repository.chunking import Chunk, chunk_source
@@ -170,8 +171,7 @@ def enqueue_file_changed(
 
 def _param_style(store: Any) -> str:
     """Return the SQL placeholder style for *store*'s underlying connection."""
-    url = str(getattr(store, "database_url", ""))
-    return "%s" if url.startswith(("postgresql://", "postgres://")) else "?"
+    return contract.placeholder(contract.is_postgres(getattr(store, "database_url", "")))
 
 
 def _persist_chunks(conn: Any, param: str, file_path: str, chunks: list[Chunk], tenant_id: str) -> int:

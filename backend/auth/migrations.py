@@ -7,6 +7,8 @@ timestamps, PostgreSQL gets ``TIMESTAMPTZ``.
 
 from __future__ import annotations
 
+from backend.persistence.contract import timestamp_column_type
+
 
 def auth_store_statements(is_postgres: bool) -> tuple[str, ...]:
     """Build the CREATE TABLE/INDEX statements for the Auth Store schema.
@@ -18,7 +20,7 @@ def auth_store_statements(is_postgres: bool) -> tuple[str, ...]:
         The ordered DDL statements for ``service_credentials``,
         ``auth_sessions``, and ``access_audit``.
     """
-    time_type = "TIMESTAMPTZ" if is_postgres else "TEXT"
+    time_type = timestamp_column_type(is_postgres)
     return (
         f"""
         CREATE TABLE IF NOT EXISTS service_credentials (
