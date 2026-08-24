@@ -144,8 +144,14 @@ def scripted_conn(monkeypatch: pytest.MonkeyPatch) -> ScriptedConnection:
 
 @pytest.fixture
 def store(monkeypatch: pytest.MonkeyPatch, scripted_conn: ScriptedConnection) -> PostgresStore:
-    """Build a ``PostgresStore`` against the scripted connection, skipping migrations."""
+    """Build a ``PostgresStore`` against the scripted connection, skipping migrations
+    and vector-extension provisioning (E48-S2) so scripted fetch queues stay reserved
+    for the CRUD statements under test."""
     monkeypatch.setattr(PostgresStore, "_run_migrations", lambda self, conn: None)
+    monkeypatch.setattr(
+        "backend.persistence.postgres_adapter.store.provision_vector_extension",
+        lambda conn: None,
+    )
     return PostgresStore(database_url="postgresql://test/db")
 
 
