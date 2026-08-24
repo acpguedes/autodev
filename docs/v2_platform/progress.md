@@ -333,9 +333,22 @@ the last of the four Beta-hardening backend-efficiency epics — see the
 changelog entry and
 [phases/e47_backend_structural_consolidation.md](phases/e47_backend_structural_consolidation.md).
 
-**Next:** E13 — Marketplace & GA (0/4, not started). Beyond GA, the planned
-v2.1 (E20-E25), v2.2 (E26-E31) and v2.3 (E36-E40) waves are specified but
-not started.
+**E49 — Shared SQL Persistence Infrastructure is now complete (4/4,
+2026-08-23)**: the eight dual-dialect stores that each hand-rolled
+`_is_postgres`/`{p}`-template placeholder substitution now share one
+implementation (`backend/persistence/contract.py`, ADR-025), and an
+automated guard blocks a new domain module from opening a database
+connection directly — see the changelog entry and
+[phases/e49_shared_sql_infrastructure.md](phases/e49_shared_sql_infrastructure.md).
+(Note: this row was updated from a branch based on `main` before E48's PR
+#126 landed; E48's own row/count below reflects that branch point, not
+E48's actual completion — reconcile at merge time.)
+
+**Next:** E13 — Marketplace & GA (0/4, not started). Within the PostgreSQL
+Production Completeness program, **E50 — PostgreSQL Schema, Migrations,
+Tenancy & RLS** becomes eligible once E48 (PR #126) also lands, since it
+depends on both E48 and E49. Beyond GA, the planned v2.1 (E20-E25), v2.2
+(E26-E31) and v2.3 (E36-E40) waves are specified but not started.
 
 ### Accumulated per-epic record
 
@@ -470,7 +483,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E46 | Execution Failure Classification & Self-Repair Governance | Beta | Done | 3/3 | E14, E32, E41-S5, E43-S1 | [phases/e46_failure_classification_self_repair.md](phases/e46_failure_classification_self_repair.md) |
 | E47 | Backend Structural Consolidation | Beta | Done | 5/5 | E2, E2-S6, E8, E44, E46 | [phases/e47_backend_structural_consolidation.md](phases/e47_backend_structural_consolidation.md) |
 | E48 | PostgreSQL Runtime with pgvector | Beta | Not started | 0/4 | E0-S3, E7-S2, E34-S2 | [phases/e48_postgres_runtime_pgvector.md](phases/e48_postgres_runtime_pgvector.md) |
-| E49 | Shared SQL Persistence Infrastructure | Beta | Not started | 0/4 | E8, E47-S4 | [phases/e49_shared_sql_infrastructure.md](phases/e49_shared_sql_infrastructure.md) |
+| E49 | Shared SQL Persistence Infrastructure | Beta | Done | 4/4 | E8, E47-S4 | [phases/e49_shared_sql_infrastructure.md](phases/e49_shared_sql_infrastructure.md) |
 | E50 | PostgreSQL Schema, Migrations, Tenancy & RLS | Beta | Not started | 0/4 | E48, E49, E8-S1 | [phases/e50_postgres_schema_migrations_rls.md](phases/e50_postgres_schema_migrations_rls.md) |
 | E51 | QuotaStore on PostgreSQL & Concurrency | Beta | Not started | 0/4 | E49, E50-S1, E11-S3 | [phases/e51_quotastore_postgres_concurrency.md](phases/e51_quotastore_postgres_concurrency.md) |
 | E52 | SecretStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S1, E33 | [phases/e52_secretstore_postgres.md](phases/e52_secretstore_postgres.md) |
@@ -483,7 +496,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E59 | Backup, Restore & Disaster Recovery | Beta | Not started | 0/3 | E8-S4, E55-S3, E57-S4 | [phases/e59_backup_restore_disaster_recovery.md](phases/e59_backup_restore_disaster_recovery.md) |
 | E60 | Connection Pooling & PostgreSQL Hardening | Beta | Not started | 0/4 | E51-E55, E57, E11-S1 | [phases/e60_postgres_pooling_hardening.md](phases/e60_postgres_pooling_hardening.md) |
 
-Total: **131/260 stories complete** across 60 epics (E19 is a proposed
+Total: **135/260 stories complete** across 60 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -689,6 +702,40 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-23** — **E49 — Shared SQL Persistence Infrastructure complete
+  (4/4, ADR-025 Accepted)**. Eight stores (flows, events, artifacts, auth,
+  plugins, repository indexing) each duplicated the same small pattern —
+  an `_is_postgres` property, `{p}`-template placeholder substitution (or,
+  in `registry.py`/`PluginStore`/`VersionedExtensionRegistryCore`, two full
+  dual-branch SQL statements), and a `BEGIN IMMEDIATE`-on-SQLite guard.
+  **E49-S1**: `backend/persistence/contract.py` is the single
+  implementation — `is_postgres`/`placeholder`/`sql`/`jsonb_cast`/
+  `json_column_type`/`timestamp_column_type`/`get_connection`/
+  `PersistenceIntegrityError`. **E49-S2**: `begin_write`/`for_update_clause`
+  give the two dual-branch stores a shared serialization primitive;
+  `backend/quotas/store.py`'s docstring no longer claims a `SELECT ... FOR
+  UPDATE` PostgreSQL path that doesn't exist (confirmed:
+  `grep -rn "FOR UPDATE" backend/` was zero hits before this epic) — it now
+  points at the primitive E51 will use to implement that port. Verified
+  with a real 4-thread SQLite race (loses updates without `begin_write()`,
+  never with it) and, live, the same race against real PostgreSQL via
+  `for_update_clause()`. **E49-S3**: all eight stores migrated onto the
+  contract; `registry.py`/`PluginStore`/`VersionedExtensionRegistryCore`
+  collapsed their `%s::jsonb`-vs-`?` dual-branch statements into single
+  `{p}{jsonb}`-templated ones (unconditional lowercase `excluded`, already
+  proven dialect-safe elsewhere). Connection lifecycle (per-call,
+  per-thread-cached, context-manager, per-batch — genuinely different
+  across the eight) was deliberately left untouched. Zero test files
+  edited; the combined regression run (430 tests) passes unmodified.
+  **E49-S4**: `backend/tests/unit/persistence/test_boundary_guard.py`
+  AST-scans `backend/` for direct `sqlite3.connect(`/`psycopg.connect(`
+  outside `backend/persistence/`, against an explicit, story-annotated
+  allowlist (the five category-3 stores → E51-E55, plus
+  `backend/ops/doctor.py`'s preflight check and the read-only tenancy
+  verifier, both permanent) with a second test asserting no entry goes
+  stale. Demonstrated live: the guard fails on a deliberately added
+  `sqlite3.connect()` and passes once removed.
 
 - **2026-08-21** — **Planning-only: added the E48-E60 PostgreSQL Production
   Completeness program — 13 Beta-hardening epics, 46 planned stories**, on
