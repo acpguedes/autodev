@@ -69,10 +69,10 @@ writing the eight-fold duplicated pattern five more times.
    imports belong by design — for `sqlite3.connect(`/`psycopg.connect(`,
    with an explicit allowlist for the known legitimate exceptions:
    `backend/quotas/migrations.py:137,143` (the read-only tenancy verifier,
-   both dialect branches), `backend/ops/doctor.py:119` (the preflight
-   connectivity check, deliberately below the persistence layer so a
-   health check never constructs a Store or runs migrations as a side
-   effect), and each of the five category-3 stores' own `_connect()` — one
+   both dialect branches), `backend/ops/doctor.py:119,222` (the base and
+   pgvector preflight connectivity checks, both deliberately below the
+   persistence layer so a health check never constructs a Store or runs
+   migrations as a side effect), and each of the five category-3 stores' own `_connect()` — one
    entry per store, naming the story that removes it (E51-E55). The
    allowlist shrinks and never grows silently — a second guard test asserts
    no entry is stale.

@@ -241,16 +241,19 @@ _CODE_EMBEDDING_DIMENSION = 128
 
 
 def _pg_m4_create_code_embeddings_table(conn: Any) -> None:
-    """Create the ``vector`` extension, ``code_embeddings`` table, HNSW index, and RLS (E7-S2).
+    """Create the ``code_embeddings`` table, HNSW index, and RLS (E7-S2).
 
-    Requires PostgreSQL's ``vector`` extension (pgvector). Uses an HNSW index
-    over cosine distance (``vector_cosine_ops``) rather than IVFFlat — see
-    ADR-011 for the recall/latency trade-off this records.
+    Requires PostgreSQL's ``vector`` extension (pgvector) to already be
+    installed — since E48-S2/ADR-024, provisioning it is a separate step
+    (:func:`~backend.persistence.postgres_adapter.vector_provisioning.provision_vector_extension`)
+    run before the migration runner, so schema migration itself no longer
+    needs ``CREATE EXTENSION`` privilege. Uses an HNSW index over cosine
+    distance (``vector_cosine_ops``) rather than IVFFlat — see ADR-011 for
+    the recall/latency trade-off this records.
 
     Args:
         conn: Open psycopg connection.
     """
-    conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
     conn.execute(
         f"""
         CREATE TABLE IF NOT EXISTS code_embeddings (

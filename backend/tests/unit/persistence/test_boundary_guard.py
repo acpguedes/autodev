@@ -34,6 +34,10 @@ _ALLOWLIST: dict[tuple[str, int], str] = {
         "persistence layer (must not construct a Store or run migrations "
         "as a side effect of a health check)"
     ),
+    ("backend/ops/doctor.py", 222): (
+        "never - pgvector readiness checks (E48), same reason as :119 - "
+        "deliberately below the persistence layer"
+    ),
     ("backend/quotas/migrations.py", 137): "never - read-only tenancy verifier CLI check (PostgreSQL branch)",
     ("backend/quotas/migrations.py", 143): "never - read-only tenancy verifier CLI check (SQLite branch)",
     ("backend/quotas/store.py", 79): "E51 - QuotaStore on PostgreSQL",
