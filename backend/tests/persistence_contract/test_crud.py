@@ -29,7 +29,9 @@ def test_session_repository_crud(sql_store: SqlStore) -> None:
     assert sql_store.get_session(session_id) is not None
 
     sql_store.update_session_artifacts(session_id, {"note": "updated"})
-    assert sql_store.get_session(session_id)["artifacts"] == {"note": "updated"}
+    updated_session = sql_store.get_session(session_id)
+    assert updated_session is not None
+    assert updated_session["artifacts"] == {"note": "updated"}
 
     assert any(s["id"] == session_id for s in sql_store.list_sessions())
 
@@ -75,6 +77,7 @@ def test_run_repository_crud(sql_store: SqlStore) -> None:
         ],
     )
     updated = sql_store.get_run(run_id)
+    assert updated is not None
     assert updated["status"] == "completed"
     assert updated["results"] == [{"ok": True}]
 

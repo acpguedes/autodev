@@ -8,7 +8,7 @@ E51-E55 store wrappers) and never branch on backend identity themselves.
 
 from __future__ import annotations
 
-from typing import Iterator, Union
+from typing import Union
 
 import pytest
 
@@ -26,7 +26,7 @@ PlanStoreImpl = Union[SQLitePlanStore, PostgresPlanStore]
 
 
 @pytest.fixture
-def sql_store(backend: Backend) -> SqlStore:
+def sql_store(backend: Backend) -> SqlStore:  # noqa: F811 -- pytest fixture injection by name
     """Build the base store (sessions/runs/messages/eval scoring) for *backend*.
 
     Both concrete stores self-migrate in ``__init__``
@@ -65,7 +65,7 @@ def step_approval_store(sql_store: SqlStore) -> StepApprovalStore:
 
 
 @pytest.fixture
-def plan_store(backend: Backend) -> PlanStoreImpl:
+def plan_store(backend: Backend) -> PlanStoreImpl:  # noqa: F811 -- pytest fixture injection by name
     """Build the ``PlanRepository`` implementation for *backend*.
 
     Bypasses ``backend.plans.store.PlanStore``'s factory: it dispatches on

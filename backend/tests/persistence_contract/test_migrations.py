@@ -60,6 +60,8 @@ def test_down_then_up_round_trip_leaves_a_usable_schema(sql_store: SqlStore) -> 
 def test_data_survives_reconnecting_to_the_same_backend(backend: Backend) -> None:
     session_id = _uid("session")
 
+    first: SqlStore
+    second: SqlStore
     if backend.is_postgres:
         first = PostgresStore(backend.database_url)
     else:
