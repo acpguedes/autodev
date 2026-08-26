@@ -284,13 +284,20 @@ def test_apply_rls_migration_down_reverts_without_touching_tenant_id_column() ->
     assert "DROP COLUMN" not in executed_sql
 
 
-def test_apply_rls_migration_appended_last_after_plan_step_state() -> None:
-    """The RLS migration is the final step, applied after all thirteen tables exist."""
+def test_apply_rls_migration_appended_immediately_after_plan_step_state() -> None:
+    """The RLS migration is applied immediately after all thirteen tables exist.
+
+    It need not be the *last* migration overall -- a later epic's own
+    per-table follow-up (e.g. E52's ``secrets_rotation_integrity``, which
+    only adds an index/column to an already-RLS'd table) may legitimately
+    append after it, the same way E50-S1/S2/S3's own table-creation
+    migrations (m8/m9/m10) were each appended before this one without
+    disturbing an earlier migration's position.
+    """
     assert (
         _migration_index("apply_tenant_rls_to_new_tables")
         == _migration_index("create_plan_step_state_table") + 1
     )
-    assert _migration_index("apply_tenant_rls_to_new_tables") == len(POSTGRES_STORE_MIGRATIONS)
 
 
 def test_migration_round_trip_up_down_up_is_idempotent_in_sequence() -> None:
