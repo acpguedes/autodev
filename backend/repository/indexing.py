@@ -21,7 +21,7 @@ from backend.jobs.queue import get_queue, register_handler
 from backend.observability.tracing import trace_indexing
 from backend.persistence import contract
 from backend.persistence.database import get_store
-from backend.persistence.tenancy import DEFAULT_TENANT_ID
+from backend.persistence.tenancy import DEFAULT_TENANT_ID, set_postgres_tenant
 from backend.repository.chunking import Chunk, chunk_source
 
 #: Source file extensions walked by :func:`index`. Scoped to Python for
@@ -93,6 +93,7 @@ def reindex(
     """
     active_store = store if store is not None else get_store()
     param = _param_style(active_store)
+    is_postgres = contract.is_postgres(getattr(active_store, "database_url", ""))
     root = (repo_root or Path.cwd()).resolve()
     path_list = list(paths)
     written = 0
@@ -100,6 +101,12 @@ def reindex(
         for batch_start in range(0, len(path_list), _REINDEX_BATCH_SIZE):
             batch = path_list[batch_start : batch_start + _REINDEX_BATCH_SIZE]
             with active_store.connect() as conn:
+                if is_postgres:
+                    # code_chunks is Row-Level Security-scoped (E50); the GUC
+                    # is transaction-local (set_config(..., true)), so it must
+                    # be re-set for each batch's own connection/transaction,
+                    # same as every other store's _scope() call.
+                    set_postgres_tenant(conn, tenant_id)
                 for raw_path in batch:
                     measurements.file_count += 1
                     candidate = Path(raw_path)

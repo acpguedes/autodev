@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from backend.api.authorization import require_v2_principal, requires_scope
 from backend.auth.contracts import PrincipalV2
 from backend.persistence.database import get_store
+from backend.persistence.tenancy import set_postgres_tenant
 from backend.repository.retrieval.fusion import DEFAULT_RRF_K
 from backend.repository.retrieval.retriever import RetrievalFilters, retrieve
 
@@ -99,6 +100,9 @@ def retrieve_context(
     filters = RetrievalFilters(path_prefix=path_prefix, symbol=symbol)
     fusion_weights = (lexical_weight, vector_weight)
     with store.connect() as conn:
+        # code_chunks/code_embeddings are Row-Level Security-scoped (E50);
+        # _require_postgres_store above guarantees conn is PostgreSQL here.
+        set_postgres_tenant(conn, principal.tenant_id)
         snippets = retrieve(
             conn,
             query,
