@@ -68,6 +68,33 @@ def test_concurrent_lease_acquisition_grants_exactly_one() -> None:
     assert _store().count_active_leases(tenant_id) == 1
 
 
+def test_concurrent_reservation_commit_never_double_commits() -> None:
+    """N threads race to commit the same reservation -- only the first transition applies (E51-S3-T3)."""
+    tenant_id = _tenant()
+    store = _store()
+    reservation = store.reserve_storage(
+        tenant_id=tenant_id,
+        bytes_requested=500,
+        idempotency_key=f"{tenant_id}-resv",
+        max_storage_bytes=10_000,
+    )
+    assert reservation.granted and reservation.reservation_id is not None
+    candidate_sizes = [100, 200, 300, 400, 500, 600, 700, 800]
+
+    def _commit(actual_bytes: int) -> None:
+        _store().commit_storage_reservation(
+            tenant_id=tenant_id,
+            reservation_id=reservation.reservation_id,
+            actual_bytes=actual_bytes,
+        )
+
+    with ThreadPoolExecutor(max_workers=len(candidate_sizes)) as pool:
+        list(pool.map(_commit, candidate_sizes))
+
+    final_used = _store().storage_used(tenant_id)
+    assert final_used in candidate_sizes, "settled size must be exactly one racer's value, not a merge"
+
+
 def _acquire_lease_in_subprocess(args: tuple[str, str, str]) -> bool:
     """Worker for :func:`test_lease_acquisition_grants_exactly_one_across_processes`.
 
