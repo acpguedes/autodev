@@ -44,7 +44,7 @@ _ALLOWLIST: dict[tuple[str, int], str] = {
     ("backend/secret_store/store.py", 83): "E52 - SecretStore on PostgreSQL",
     ("backend/execution/policy.py", 227): "E53 - PolicyStore on PostgreSQL",
     ("backend/environments/store.py", 118): "E54 - EnvironmentStore on PostgreSQL",
-    ("backend/plans/step_state.py", 177): "E55 - Plan Step State on PostgreSQL",
+    ("backend/plans/step_state.py", 200): "E55 - Plan Step State on PostgreSQL",
 }
 
 
