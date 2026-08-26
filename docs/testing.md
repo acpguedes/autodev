@@ -280,15 +280,24 @@ make test-backend
 The `slow` marker (registered in `backend/pyproject.toml`) excludes tests that
 need a real external dependency — a Docker daemon
 (`test_sandbox_security_contract.py`, already covered on every PR by the
-`security-baseline` CI job) or a live PostgreSQL (`test_postgres_concurrency.py`
-in `plans`/`secret_store`/`quotas`/`execution`/`environments`, which skip today
-without `AUTODEV_TEST_POSTGRES_URL` and are expected to matter once E57 wires a
-real PostgreSQL service into CI). Run them explicitly once the dependency is
-available:
+`security-baseline` CI job) or a live PostgreSQL
+(`test_postgres_concurrency.py` in
+`plans`/`secret_store`/`quotas`/`execution`/`environments`). These, plus the
+PostgreSQL/MinIO variants of `test_backup_restore.py` and the full
+`backend/tests/persistence_contract` suite's `postgres` parameter, now run on
+every pull request via CI's `backend-tests-postgres` job (E57), against a
+real PostgreSQL 16 + pgvector, Redis, and MinIO. Run them locally the same
+way once you have a real PostgreSQL reachable:
 
 ```bash
-pytest backend/tests -m slow -rs
+AUTODEV_TEST_POSTGRES_URL=postgresql://user:pass@localhost/db pytest backend/tests -m slow -rs
 ```
+
+Set `AUTODEV_REQUIRE_POSTGRES=1` (and `AUTODEV_REQUIRE_MINIO=1` for the MinIO
+variants) to turn a missing service into a hard failure instead of a named
+skip — this is what the `backend-tests-postgres` CI job sets, so a broken
+service container turns that leg red rather than silently skipping its own
+proof.
 
 ### Frontend tests (vitest)
 

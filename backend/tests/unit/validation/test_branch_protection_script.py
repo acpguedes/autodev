@@ -60,6 +60,7 @@ def test_branch_protection_script_sends_typed_json_payload(tmp_path: Path) -> No
             "contexts": [
                 "lint-typecheck",
                 "backend-tests",
+                "backend-tests-postgres",
                 "patch-validation",
                 "security-baseline",
                 "frontend-checks",

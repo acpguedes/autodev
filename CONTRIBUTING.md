@@ -166,8 +166,11 @@ The goal is fast story iteration with a strict gate at `main`.
 4. **Parallel execution.** `make test-backend` (and CI's `backend-tests`) run
    the backend suite in parallel by default via `pytest-xdist` (`-n auto`),
    excluding the `slow` tier (tests needing a real Docker daemon or a live
-   PostgreSQL — see `docs/testing.md`). See `docs/testing.md` for the fixture
-   that makes this xdist-safe and how to run the `slow` tier explicitly.
+   PostgreSQL — see `docs/testing.md`). CI's `backend-tests-postgres` leg
+   (E57) runs the `slow` tier too, against a real PostgreSQL, Redis, and
+   MinIO service — that leg fails outright (not skip) if any of them is
+   unreachable. See `docs/testing.md` for the fixture that makes this
+   xdist-safe and how to run the `slow` tier explicitly.
 
 ### Validation Gates (E12-S4)
 
@@ -178,7 +181,8 @@ each:
 | Gate (required check) | Workflow | What it enforces |
 | --- | --- | --- |
 | `lint-typecheck` | `ci-backend.yml` | `ruff check backend tests` + `mypy backend` |
-| `backend-tests` | `ci-backend.yml` | full pytest suite + 85% product-coverage gate |
+| `backend-tests` | `ci-backend.yml` | full pytest suite (SQLite) + 85% product-coverage gate |
+| `backend-tests-postgres` | `ci-backend.yml` | full pytest suite, incl. `slow`, against real PostgreSQL 16 + pgvector, Redis, and MinIO (E57) — no coverage gate; the SQLite leg above owns coverage |
 | `patch-validation` | `ci-backend.yml` | patch engine dry-run does not write; path-traversal guard rejects escapes (`scripts/validate_patches.py`) |
 | `security-baseline` | `ci-backend.yml` | secret scanning + critical-CVE scan |
 | `frontend-checks` | `ci-frontend.yml` | eslint + tsc + vitest + build |
