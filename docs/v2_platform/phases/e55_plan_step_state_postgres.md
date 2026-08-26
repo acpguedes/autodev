@@ -3,7 +3,7 @@
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35 and E41-E47: added after initial Beta
 completion, before the wave is signed off).
-**Status:** Not started · **Stories:** 0/3
+**Status:** Done · **Stories:** 3/3
 **Depends on:** E49 (persistence contract), E50-S3 (`plan_step_state`
 redesign with `tenant_id` and a parent foreign key), E16-S2 (plan step state
 machine)

@@ -36,16 +36,15 @@ controls actually stop something rather than only existing in configuration.
 > **Profile constraint (added 2026-08-21, updated 2026-08-26).** This
 > rehearsal is currently executable only under `AUTODEV_PROFILE=local`
 > (SQLite). Preconditions 4, 5, and 6 — quotas, the execution environment
-> backend, and secrets — no longer depend on a SQLite-only store:
-> `QuotaStore` (E51), `SecretStore` (E52), and `EnvironmentStore` (E54) all
-> run on both backends via the E49 contract and no longer raise `ValueError`
-> on a `postgresql://` `DATABASE_URL`. Negative path N1 still depends on
-> `PolicyStore` (`backend/execution/policy.py:206`), which is the remaining
-> SQLite-only store blocking this flow's execution against a real `prod`
-> PostgreSQL stack (E53). Running this flow in `prod` is gated on the
-> E48-E60 program (`postgres_production_completeness.md`), after which
-> E57-S3 executes it in CI against a real `prod` stack. Stated here rather
-> than left implicit, per the E35-S1-T3 fact-vs-recommendation discipline.
+> backend, and secrets — and negative path N1 (`PolicyStore`) no longer
+> depend on a SQLite-only store: `QuotaStore` (E51), `SecretStore` (E52),
+> `PolicyStore` (E53), and `EnvironmentStore` (E54) all run on both backends
+> via the E49 contract and no longer raise `ValueError` on a
+> `postgresql://` `DATABASE_URL`. Running this flow in `prod` end to end is
+> gated on the remaining E48-E60 program work (`postgres_production_completeness.md`),
+> after which E57-S3 executes it in CI against a real `prod` stack. Stated
+> here rather than left implicit, per the E35-S1-T3 fact-vs-recommendation
+> discipline.
 
 ## Happy path
 

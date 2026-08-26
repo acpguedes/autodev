@@ -610,7 +610,187 @@ def _m15_down_secrets_rotation_integrity(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE secrets DROP COLUMN rotation_request_id")
 
 
-def _m16_create_environment_tables(conn: sqlite3.Connection) -> None:
+def _m16_create_policy_tables(conn: sqlite3.Connection) -> None:
+    """Create the execution-policy and pending-decision tables (E53-S1-T1).
+
+    Mirrors the PostgreSQL shape created by
+    ``_pg_m9_create_policy_and_environment_tables`` (E50-S2) -- same four
+    tables (``execution_policy_rules``, ``execution_dynamic_permissions``,
+    ``execution_policy_decisions``, ``pending_action_decisions``), same
+    tenant-first index shapes. Previously these tables existed only via
+    :class:`backend.execution.policy.PolicyStore`'s own imperative ``CREATE
+    TABLE IF NOT EXISTS``, applied outside any :class:`MigrationRunner` and
+    untracked by ``schema_version`` -- the same gap E51/E52 closed for the
+    quota and secret tables. Bringing it under this runner is what lets
+    ``PolicyStore`` stop creating its own schema and obtain a connection
+    from the configured State Store instead. ``CREATE TABLE IF NOT EXISTS``
+    keeps this a no-op against a pre-E53 database that already has these
+    exact tables; the index names differ from the pre-E53 ad hoc ones so
+    both old and new indexes may transiently coexist on an upgraded
+    database, which is harmless.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS execution_policy_rules (
+            rule_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            effect TEXT NOT NULL,
+            scope_kind TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            pattern TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_execution_policy_rules_tenant
+            ON execution_policy_rules(tenant_id, category);
+        CREATE TABLE IF NOT EXISTS execution_dynamic_permissions (
+            permission_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            scope_kind TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            pattern TEXT,
+            created_at TEXT NOT NULL,
+            created_by TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_execution_dynamic_permissions_tenant
+            ON execution_dynamic_permissions(tenant_id, category);
+        CREATE TABLE IF NOT EXISTS execution_policy_decisions (
+            decision_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            action_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            allowed INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            decided_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_execution_policy_decisions_tenant_run
+            ON execution_policy_decisions(tenant_id, run_id);
+        CREATE TABLE IF NOT EXISTS pending_action_decisions (
+            decision_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
+            action_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            decided_by TEXT,
+            decided_at TEXT,
+            pattern TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_pending_action_decisions_tenant_run
+            ON pending_action_decisions(tenant_id, run_id, task_id);
+        CREATE INDEX IF NOT EXISTS idx_pending_action_decisions_tenant_status
+            ON pending_action_decisions(tenant_id, status, expires_at);
+        """
+    )
+
+
+def _m16_down_drop_policy_tables(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m16_create_policy_tables` by dropping all four tables.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    for table in (
+        "execution_policy_rules",
+        "execution_dynamic_permissions",
+        "execution_policy_decisions",
+        "pending_action_decisions",
+    ):
+        conn.execute(f"DROP TABLE IF EXISTS {table}")
+
+
+def _m17_pending_action_decisions_status_expiry_index(conn: sqlite3.Connection) -> None:
+    """Add the index the cross-tenant expiry sweep actually needs (E53-S3-T2).
+
+    ``PolicyStore.list_due_pending_decisions()`` filters on ``status`` and
+    ``expires_at`` alone (deliberately no ``tenant_id`` -- it is the
+    operator/cron sweep across every tenant). Measured via ``EXPLAIN QUERY
+    PLAN`` against the tenant-first ``idx_pending_action_decisions_tenant_status``
+    index (E53-S1-T1): that index's leading column is ``tenant_id``, so an
+    unscoped query cannot seek into it and SQLite falls back to a full table
+    scan. This adds the ``(status, expires_at)`` index the expiry query can
+    actually use.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pending_action_decisions_status_expiry "
+        "ON pending_action_decisions(status, expires_at)"
+    )
+
+
+def _m17_down_pending_action_decisions_status_expiry_index(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m17_pending_action_decisions_status_expiry_index`.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    conn.execute("DROP INDEX IF EXISTS idx_pending_action_decisions_status_expiry")
+
+
+def _m18_create_plan_step_state_table(conn: sqlite3.Connection) -> None:
+    """Create ``plan_step_state`` under the shared SQLite State Store (E55-S1).
+
+    Mirrors the shape PostgreSQL already has via
+    ``_pg_m10_create_plan_step_state_table`` (E50-S3): ``tenant_id`` plus a
+    ``FOREIGN KEY`` reference to ``plan_documents(session_id)`` (SQLite does
+    not enforce this without ``PRAGMA foreign_keys = ON``, which this
+    codebase does not set, but the declaration documents the relationship
+    identically to the PostgreSQL schema). ``CREATE TABLE IF NOT EXISTS`` plus
+    :func:`_add_column_if_missing` make this idempotent against a pre-E55
+    installation whose ``plan_step_state`` table was created ad hoc by
+    ``StepApprovalStore.__init__`` (with no ``tenant_id`` column at all, or
+    with one backfilled by the store's old ``_ensure_tenant_id_column``
+    helper) -- either way, opening that existing file through this migration
+    leaves every existing row scoped to
+    :data:`~backend.persistence.tenancy.DEFAULT_TENANT_ID` (``'default'``)
+    without data loss.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS plan_step_state (
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            session_id TEXT NOT NULL,
+            step_index INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            state TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (session_id, step_index),
+            FOREIGN KEY (session_id) REFERENCES plan_documents(session_id)
+        )
+        """
+    )
+    _add_column_if_missing(conn, "plan_step_state", "tenant_id", "TEXT NOT NULL DEFAULT 'default'")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_plan_step_state_tenant_session "
+        "ON plan_step_state(tenant_id, session_id)"
+    )
+
+
+def _m18_down_drop_plan_step_state_table(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m18_create_plan_step_state_table` by dropping the table.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    conn.execute("DROP TABLE IF EXISTS plan_step_state")
+
+
+def _m19_create_environment_tables(conn: sqlite3.Connection) -> None:
     """Create the environment lifecycle and decision tables (E54-S1-T1).
 
     Mirrors the PostgreSQL shape created by
@@ -664,8 +844,8 @@ def _m16_create_environment_tables(conn: sqlite3.Connection) -> None:
     )
 
 
-def _m16_down_drop_environment_tables(conn: sqlite3.Connection) -> None:
-    """Revert :func:`_m16_create_environment_tables` by dropping both tables.
+def _m19_down_drop_environment_tables(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m19_create_environment_tables` by dropping both tables.
 
     Args:
         conn: SQLite connection to apply the rollback on.
@@ -727,8 +907,23 @@ STORE_MIGRATIONS: list[MigrationEntry] = [
         name="secrets_rotation_integrity",
     ),
     Migration(
-        up=_m16_create_environment_tables,
-        down=_m16_down_drop_environment_tables,
+        up=_m16_create_policy_tables,
+        down=_m16_down_drop_policy_tables,
+        name="create_policy_tables",
+    ),
+    Migration(
+        up=_m17_pending_action_decisions_status_expiry_index,
+        down=_m17_down_pending_action_decisions_status_expiry_index,
+        name="pending_action_decisions_status_expiry_index",
+    ),
+    Migration(
+        up=_m18_create_plan_step_state_table,
+        down=_m18_down_drop_plan_step_state_table,
+        name="create_plan_step_state_table",
+    ),
+    Migration(
+        up=_m19_create_environment_tables,
+        down=_m19_down_drop_environment_tables,
         name="create_environment_tables",
     ),
 ]

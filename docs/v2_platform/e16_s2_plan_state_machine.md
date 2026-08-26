@@ -45,19 +45,27 @@ step is approved; `under_review` if any step has left `draft`; otherwise
 
 ## Storage and atomicity
 
-Step state is tracked in a new, additive SQLite table
-(`plan_step_state`, keyed by `(session_id, step_index)`) managed by
-`StepApprovalStore`. It reuses the same SQLite file as `DATABASE_URL`
-when set to a `sqlite:///` URL — physically co-locating step state with
-the legacy plan content it was seeded from — and falls back to a
-dedicated file otherwise (a scope-limited choice for this story; a
-PostgreSQL-backed store is a follow-up if/when this table needs to live
-in the primary database).
+Step state is tracked in an additive table (`plan_step_state`, keyed by
+`(session_id, step_index)`, with a `tenant_id` column and a foreign key to
+`plan_documents(session_id)` since E50-S3) managed by `StepApprovalStore`.
+As of E55, the store runs on both SQLite and PostgreSQL through the shared
+persistence contract (E49, ADR-025) — the same port pattern established for
+`QuotaStore` (E51) and `SecretStore` (E52) — and every operation is
+tenant-scoped, enforced by Row-Level Security on PostgreSQL (E50-S4). Prior
+to E55 the store connected to SQLite directly and silently diverted to a
+standalone file whenever `DATABASE_URL` was unset or PostgreSQL; that
+fallback no longer exists (see `docs/config.md`'s
+`AUTODEV_PLAN_STEP_STATE_DB` note and `docs/v2_platform/phases/e55_plan_step_state_postgres.md`).
 
-Every read-check-write sequence (`update_content`, `transition`) is
-guarded by a `threading.Lock()` plus a single SQLite connection's
-transaction, so concurrent approve/reject/execute calls for the same
-step cannot race into a corrupted or duplicated transition.
+Every read-check-write sequence (`update_content`, `delete_step`,
+`transition`) is guarded by the backing connection's transaction —
+`BEGIN IMMEDIATE` on SQLite, `SELECT ... FOR UPDATE` on PostgreSQL — and its
+mutating `UPDATE`/`DELETE` is additionally conditioned on the exact state
+just read (`WHERE ... AND state = ...`), so a transition that raced past a
+concurrent one affects zero rows and is rejected outright rather than
+silently overwriting the winner (E55-S2). This replaced a process-local
+`threading.Lock()`, which protected nothing across replicas or separate
+processes.
 
 ## Events
 

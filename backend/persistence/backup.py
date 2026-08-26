@@ -21,6 +21,15 @@ Every backup directory contains a ``manifest.json`` with a ``schema_version``
 and a SHA-256 digest per copied file, enabling integrity verification before
 any restore (see ``docs/v2_platform/runbooks/e8_restore_runbook.md``).
 
+Both the SQLite and PostgreSQL components are whole-database snapshots, so
+they need no per-table entry in the manifest: every domain store sharing the
+configured ``DATABASE_URL`` is covered automatically, including
+``plan_step_state`` (:class:`~backend.plans.step_state.StepApprovalStore`,
+E55-S1) now that it lives in that same physical database rather than a
+standalone SQLite file invisible to this module (see
+``backend/tests/unit/persistence/test_backup_restore.py``'s
+``test_sqlite_backup_restore_round_trip_covers_plan_step_state``).
+
 CLI usage (exits non-zero on any failure)::
 
     python -m backend.persistence.backup backup --out <dir>
