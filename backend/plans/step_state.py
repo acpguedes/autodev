@@ -1,10 +1,10 @@
-"""Per-step approval state machine for the ``/v2`` plan approval surface (E16-S2).
+"""Per-step approval state machine for the ``/v2`` plan approval surface (E16-S2; E55).
 
 The legacy plan document (:class:`backend.plans.models.PlanDocument`) stores
 ``steps`` as a plain ``list[str]`` of content with a single plan-level
 ``status`` — there is no column for per-step approval state. This module
-layers a small, durable, lock-guarded SQLite table on top of that content so
-each step can move independently through:
+layers a small, durable, tenant-scoped ``plan_step_state`` table on top of
+that content so each step can move independently through:
 
 ``draft -> under_review -> approved | rejected -> executing -> completed``
 
@@ -20,6 +20,18 @@ mode) so E14-S3's approval/auto/hybrid execution modes — and, per E16-S2's
 reuse note, E14-S5 — can drive the same machine: an "auto" mode simply skips
 straight from ``under_review`` to ``approved`` without a human actor, while
 "hybrid" mixes both, without any change to the state model itself.
+
+Runs on both SQLite and PostgreSQL through the shared persistence contract
+(E49, ADR-025; E55), following the same port pattern
+:class:`~backend.quotas.store.QuotaStore` (E51) and
+:class:`~backend.secret_store.store.SecretStore` (E52) established. Prior to
+E55 this store connected to SQLite directly and silently diverted to a
+dedicated file (``AUTODEV_PLAN_STEP_STATE_DB``) whenever ``DATABASE_URL`` was
+unset or pointed at PostgreSQL -- the only store in the program that
+accepted a PostgreSQL configuration and then quietly wrote somewhere else.
+It now obtains its connection from the configured State Store, exactly like
+every sibling store, and every operation is scoped to a tenant via
+:meth:`StepApprovalStore._scope`.
 """
 
 from __future__ import annotations
@@ -29,9 +41,12 @@ from datetime import datetime, timezone
 from enum import StrEnum
 import os
 from pathlib import Path
-import sqlite3
 import threading
-from typing import Optional
+from typing import Any, Optional
+
+from backend.persistence import contract
+from backend.persistence.database import get_store
+from backend.persistence.tenancy import DEFAULT_TENANT_ID, set_postgres_tenant
 
 
 class StepState(StrEnum):
@@ -111,95 +126,120 @@ def rollup_plan_state(states: list[StepState]) -> StepState:
     return StepState.DRAFT
 
 
-def _resolve_step_state_db_path() -> Path:
-    """Resolve the SQLite file backing per-step approval state.
+def legacy_step_state_db_path() -> Path:
+    """Resolve the pre-E55 standalone SQLite file's path (migration input only).
 
-    Reuses the same SQLite file as the legacy plan store when
-    ``DATABASE_URL`` points at SQLite, keeping step state physically
-    co-located with step content. Otherwise (unset, or a PostgreSQL URL)
-    falls back to a dedicated SQLite file: this store still only ever
-    connects to SQLite -- a ``plan_step_state`` table now exists on
-    PostgreSQL too (E50-S3), with ``tenant_id`` and a foreign key to
-    ``plan_documents``, but wiring this store to read/write it is E55.
+    Prior to E55, :class:`StepApprovalStore` fell back to a dedicated SQLite
+    file whenever ``DATABASE_URL`` was unset or pointed at PostgreSQL:
+    ``AUTODEV_PLAN_STEP_STATE_DB`` (default ``./autodev_plan_step_state.db``).
+    This helper resolves *that* legacy location purely so the E55-S3
+    migration path can find and read any state left behind by a pre-E55
+    install -- it is no longer used to decide where this store reads or
+    writes. See ``AUTODEV_PLAN_STEP_STATE_DB`` in ``docs/config.md`` for the
+    variable's current (local-only, migration-source) meaning.
 
     Returns:
-        Absolute path to the SQLite file to open.
+        Absolute path to the legacy SQLite file, whether or not it exists.
     """
-    db_url = os.environ.get("DATABASE_URL", "")
-    if db_url.startswith("sqlite:///"):
-        return Path(db_url.removeprefix("sqlite:///")).expanduser().resolve()
-    if db_url.startswith("sqlite://"):
-        return Path(db_url.removeprefix("sqlite://")).expanduser().resolve()
     fallback = os.environ.get("AUTODEV_PLAN_STEP_STATE_DB", "./autodev_plan_step_state.db")
     return Path(fallback).expanduser().resolve()
 
 
-def _ensure_tenant_id_column(conn: sqlite3.Connection) -> None:
-    """Backfill ``tenant_id`` onto a pre-E50-S3 ``plan_step_state`` table.
+_ROW_COLUMNS = "session_id, step_index, content, state, updated_at"
 
-    ``CREATE TABLE IF NOT EXISTS`` above only takes effect for a brand-new
-    database file -- an existing one created before this story predates the
-    ``tenant_id`` column entirely. SQLite's ``ALTER TABLE ... ADD COLUMN``
-    with a ``DEFAULT`` clause backfills every existing row to that default
-    in the same statement, so pre-migration rows land on
-    :data:`~backend.persistence.tenancy.DEFAULT_TENANT_ID` (``'default'``)
-    without a separate ``UPDATE`` (E50-S3-T3).
+
+def _row_to_record(row: tuple) -> PlanStepRecord:
+    """Convert a positional ``plan_step_state`` row into a :class:`PlanStepRecord`.
 
     Args:
-        conn: Open SQLite connection with ``plan_step_state`` already created.
+        row: A row shaped like :data:`_ROW_COLUMNS`
+            (``session_id, step_index, content, state, updated_at``), from
+            either backend.
+
+    Returns:
+        The corresponding immutable record.
     """
-    columns = {row[1] for row in conn.execute("PRAGMA table_info(plan_step_state)").fetchall()}
-    if "tenant_id" not in columns:
-        conn.execute("ALTER TABLE plan_step_state ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
+    return PlanStepRecord(
+        session_id=row[0],
+        step_index=row[1],
+        content=row[2],
+        state=StepState(row[3]),
+        updated_at=row[4],
+    )
 
 
 class StepApprovalStore:
-    """SQLite-backed, lock-guarded per-step approval state.
+    """Durable, tenant-scoped per-step approval state, on either backend.
 
     Every read-check-write sequence (content edit, transition) is guarded by
-    both a process-local :class:`threading.Lock` and a single SQLite
+    both a process-local :class:`threading.Lock` and the backing
     connection's transaction, so concurrent approve/reject/execute calls for
     the same step cannot race into a corrupted or duplicated transition
-    (E16-S2-T3 atomicity requirement).
+    (E16-S2-T3 atomicity requirement). The ``plan_step_state`` table carries
+    Row-Level Security on PostgreSQL (E50-S4): every operation calls
+    :meth:`_scope` to set the ``app.tenant_id`` GUC inside the same
+    transaction as its query (a no-op on SQLite, which has no RLS and is
+    scoped by the explicit ``WHERE tenant_id = ...`` clauses already present
+    in each query).
     """
 
-    def __init__(self, db_path: Optional[Path] = None) -> None:
-        """Open (creating if needed) the SQLite-backed step-state table.
+    def __init__(self, db_path: Optional[Path] = None, *, store: Any = None) -> None:
+        """Open the store against an explicit SQLite file, an injected store, or the configured one.
 
         Args:
-            db_path: Explicit SQLite file path; defaults to
-                :func:`_resolve_step_state_db_path`.
+            db_path: When given (and ``store`` is not), a SQLite file to open
+                directly -- built into a dedicated
+                :class:`~backend.persistence.sqlite_adapter.store.SQLiteStore`
+                so tests can exercise real, independently-connected SQLite
+                instances against the same file.
+            store: An existing store exposing ``connect()`` (a
+                :class:`~backend.persistence.sqlite_adapter.store.SQLiteStore`
+                or ``PostgresStore``). Takes precedence over ``db_path``.
+                Defaults to the process-wide configured store
+                (:func:`backend.persistence.database.get_store`) when neither
+                is given -- the path production takes, and the one that no
+                longer ever produces a standalone SQLite file for a
+                PostgreSQL ``DATABASE_URL``.
+
+        Raises:
+            TypeError: If the resolved store does not expose ``connect()``.
         """
-        self._db_path = db_path or _resolve_step_state_db_path()
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
+        if store is None and db_path is not None:
+            from backend.persistence.sqlite_adapter.store import SQLiteStore  # noqa: PLC0415
+
+            store = SQLiteStore(f"sqlite:///{db_path}")
+        self._store = store or get_store()
+        if not hasattr(self._store, "connect"):
+            raise TypeError("StepApprovalStore requires a durable store with connect()")
         self._lock = threading.Lock()
-        with self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS plan_step_state (
-                    tenant_id TEXT NOT NULL DEFAULT 'default',
-                    session_id TEXT NOT NULL,
-                    step_index INTEGER NOT NULL,
-                    content TEXT NOT NULL,
-                    state TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    PRIMARY KEY (session_id, step_index),
-                    FOREIGN KEY (session_id) REFERENCES plan_documents(session_id)
-                )
-                """
-            )
-            _ensure_tenant_id_column(conn)
-            conn.commit()
 
-    def _connect(self) -> sqlite3.Connection:
-        """Open a fresh connection to the step-state database.
+    # --------------------------------------------------------------- helpers
 
-        Returns:
-            A connection with row access by column name.
-        """
-        conn = sqlite3.connect(str(self._db_path))
-        conn.row_factory = sqlite3.Row
-        return conn
+    @property
+    def _is_postgres(self) -> bool:
+        """Whether the backing store is a PostgreSQL database."""
+        return contract.is_postgres(getattr(self._store, "database_url", ""))
+
+    def _sql(self, template: str) -> str:
+        """Substitute this store's dialect placeholder into a SQL template."""
+        return contract.sql(template, self._is_postgres)
+
+    def _connect(self) -> Any:
+        """Open a fresh connection from the backing store."""
+        return self._store.connect()
+
+    def _begin_write(self, conn: Any) -> None:
+        """Start a write transaction eagerly on SQLite; a no-op on PostgreSQL."""
+        contract.begin_write(conn, self._is_postgres)
+
+    def _for_update(self) -> str:
+        """Return the row-lock clause for a critical-section ``SELECT``."""
+        return contract.for_update_clause(self._is_postgres)
+
+    def _scope(self, conn: Any, tenant_id: str) -> None:
+        """Set the PostgreSQL tenant GUC for this transaction; a no-op on SQLite."""
+        if self._is_postgres:
+            set_postgres_tenant(conn, tenant_id)
 
     @staticmethod
     def _now() -> str:
@@ -210,25 +250,11 @@ class StepApprovalStore:
         """
         return datetime.now(timezone.utc).isoformat()
 
-    @staticmethod
-    def _row_to_record(row: sqlite3.Row) -> PlanStepRecord:
-        """Convert a raw SQLite row into a :class:`PlanStepRecord`.
+    # ------------------------------------------------------------- reads
 
-        Args:
-            row: A row from the ``plan_step_state`` table.
-
-        Returns:
-            The corresponding immutable record.
-        """
-        return PlanStepRecord(
-            session_id=row["session_id"],
-            step_index=row["step_index"],
-            content=row["content"],
-            state=StepState(row["state"]),
-            updated_at=row["updated_at"],
-        )
-
-    def ensure_steps(self, session_id: str, contents: list[str]) -> list[PlanStepRecord]:
+    def ensure_steps(
+        self, session_id: str, contents: list[str], *, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> list[PlanStepRecord]:
         """Seed rows for step indices not yet tracked, then return every step.
 
         Existing rows (and their state/content) are left untouched — this is
@@ -238,68 +264,99 @@ class StepApprovalStore:
         Args:
             session_id: The owning session.
             contents: The plan's step contents, in order.
+            tenant_id: Tenant the plan belongs to.
 
         Returns:
             Every tracked step for the session, ordered by index.
         """
         now = self._now()
         with self._lock, self._connect() as conn:
+            self._scope(conn, tenant_id)
+            self._begin_write(conn)
             for index, content in enumerate(contents):
                 conn.execute(
-                    """
-                    INSERT INTO plan_step_state (session_id, step_index, content, state, updated_at)
-                    VALUES (?, ?, ?, ?, ?)
-                    ON CONFLICT(session_id, step_index) DO NOTHING
-                    """,
-                    (session_id, index, content, StepState.DRAFT.value, now),
+                    self._sql(
+                        "INSERT INTO plan_step_state "
+                        "(tenant_id, session_id, step_index, content, state, updated_at) "
+                        "VALUES ({p}, {p}, {p}, {p}, {p}, {p}) "
+                        "ON CONFLICT (session_id, step_index) DO NOTHING"
+                    ),
+                    (tenant_id, session_id, index, content, StepState.DRAFT.value, now),
                 )
             conn.commit()
             rows = conn.execute(
-                "SELECT * FROM plan_step_state WHERE session_id = ? ORDER BY step_index",
-                (session_id,),
+                self._sql(
+                    f"SELECT {_ROW_COLUMNS} FROM plan_step_state "
+                    "WHERE tenant_id = {p} AND session_id = {p} ORDER BY step_index"
+                ),
+                (tenant_id, session_id),
             ).fetchall()
-        return [self._row_to_record(row) for row in rows]
+        return [_row_to_record(row) for row in rows]
 
-    def list_steps(self, session_id: str) -> list[PlanStepRecord]:
+    def list_steps(
+        self, session_id: str, *, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> list[PlanStepRecord]:
         """List every tracked step for a session, ordered by index.
 
         Args:
             session_id: The owning session.
+            tenant_id: Tenant the plan belongs to.
 
         Returns:
             The tracked steps; empty if none have been seeded yet.
         """
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM plan_step_state WHERE session_id = ? ORDER BY step_index",
-                (session_id,),
-            ).fetchall()
-        return [self._row_to_record(row) for row in rows]
+        conn = self._connect()
+        self._scope(conn, tenant_id)
+        rows = conn.execute(
+            self._sql(
+                f"SELECT {_ROW_COLUMNS} FROM plan_step_state "
+                "WHERE tenant_id = {p} AND session_id = {p} ORDER BY step_index"
+            ),
+            (tenant_id, session_id),
+        ).fetchall()
+        return [_row_to_record(row) for row in rows]
 
-    def get_step(self, session_id: str, step_index: int) -> Optional[PlanStepRecord]:
+    def get_step(
+        self, session_id: str, step_index: int, *, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> Optional[PlanStepRecord]:
         """Fetch a single tracked step.
 
         Args:
             session_id: The owning session.
             step_index: Zero-based step position.
+            tenant_id: Tenant the plan belongs to.
 
         Returns:
             The step record, or ``None`` if not tracked.
         """
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM plan_step_state WHERE session_id = ? AND step_index = ?",
-                (session_id, step_index),
-            ).fetchone()
-        return self._row_to_record(row) if row else None
+        conn = self._connect()
+        self._scope(conn, tenant_id)
+        row = conn.execute(
+            self._sql(
+                f"SELECT {_ROW_COLUMNS} FROM plan_step_state "
+                "WHERE tenant_id = {p} AND session_id = {p} AND step_index = {p}"
+            ),
+            (tenant_id, session_id, step_index),
+        ).fetchone()
+        return _row_to_record(row) if row is not None else None
 
-    def update_content(self, session_id: str, step_index: int, content: str) -> PlanStepRecord:
+    # ------------------------------------------------------------ writes
+
+    def update_content(
+        self,
+        session_id: str,
+        step_index: int,
+        content: str,
+        *,
+        tenant_id: str = DEFAULT_TENANT_ID,
+    ) -> PlanStepRecord:
         """Overwrite a step's content while it is still editable.
 
         Args:
             session_id: The owning session.
             step_index: Zero-based step position.
             content: The new step content.
+            tenant_id: Tenant the plan belongs to.
 
         Returns:
             The updated record.
@@ -309,60 +366,82 @@ class StepApprovalStore:
             ValueError: If the step is not in an editable state.
         """
         with self._lock, self._connect() as conn:
+            self._scope(conn, tenant_id)
+            self._begin_write(conn)
             row = conn.execute(
-                "SELECT * FROM plan_step_state WHERE session_id = ? AND step_index = ?",
-                (session_id, step_index),
+                self._sql(
+                    f"SELECT {_ROW_COLUMNS} FROM plan_step_state "
+                    "WHERE tenant_id = {p} AND session_id = {p} AND step_index = {p}"
+                    + self._for_update()
+                ),
+                (tenant_id, session_id, step_index),
             ).fetchone()
             if row is None:
+                conn.rollback()
                 raise KeyError(f"Step {step_index} not found for session {session_id!r}.")
-            current = self._row_to_record(row)
+            current = _row_to_record(row)
             if current.state not in EDITABLE_STATES:
+                conn.rollback()
                 raise ValueError(
                     f"Cannot edit step {step_index} in state {current.state.value!r}; "
                     "only draft/under_review steps are editable."
                 )
             now = self._now()
             conn.execute(
-                "UPDATE plan_step_state SET content = ?, updated_at = ? WHERE session_id = ? AND step_index = ?",
-                (content, now, session_id, step_index),
+                self._sql(
+                    "UPDATE plan_step_state SET content = {p}, updated_at = {p} "
+                    "WHERE tenant_id = {p} AND session_id = {p} AND step_index = {p}"
+                ),
+                (content, now, tenant_id, session_id, step_index),
             )
             conn.commit()
             return PlanStepRecord(session_id, step_index, content, current.state, now)
 
-    def append_step(self, session_id: str, content: str) -> PlanStepRecord:
+    def append_step(
+        self, session_id: str, content: str, *, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> PlanStepRecord:
         """Append a new ``draft`` step to the end of a session's tracked plan.
 
         Args:
             session_id: The owning session.
             content: The new step's content.
+            tenant_id: Tenant the plan belongs to.
 
         Returns:
             The newly created step record, in the ``draft`` state.
         """
         now = self._now()
         with self._lock, self._connect() as conn:
+            self._scope(conn, tenant_id)
+            self._begin_write(conn)
             row = conn.execute(
-                "SELECT COALESCE(MAX(step_index), -1) AS max_index FROM plan_step_state "
-                "WHERE session_id = ?",
-                (session_id,),
+                self._sql(
+                    "SELECT COALESCE(MAX(step_index), -1) FROM plan_step_state "
+                    "WHERE tenant_id = {p} AND session_id = {p}"
+                ),
+                (tenant_id, session_id),
             ).fetchone()
-            next_index = row["max_index"] + 1
+            next_index = row[0] + 1
             conn.execute(
-                """
-                INSERT INTO plan_step_state (session_id, step_index, content, state, updated_at)
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (session_id, next_index, content, StepState.DRAFT.value, now),
+                self._sql(
+                    "INSERT INTO plan_step_state "
+                    "(tenant_id, session_id, step_index, content, state, updated_at) "
+                    "VALUES ({p}, {p}, {p}, {p}, {p}, {p})"
+                ),
+                (tenant_id, session_id, next_index, content, StepState.DRAFT.value, now),
             )
             conn.commit()
         return PlanStepRecord(session_id, next_index, content, StepState.DRAFT, now)
 
-    def delete_step(self, session_id: str, step_index: int) -> list[PlanStepRecord]:
+    def delete_step(
+        self, session_id: str, step_index: int, *, tenant_id: str = DEFAULT_TENANT_ID
+    ) -> list[PlanStepRecord]:
         """Remove a step and reindex subsequent steps to stay contiguous.
 
         Args:
             session_id: The owning session.
             step_index: Zero-based position of the step to remove.
+            tenant_id: Tenant the plan belongs to.
 
         Returns:
             Every remaining tracked step for the session, ordered by index.
@@ -373,25 +452,39 @@ class StepApprovalStore:
                 ``draft``/``under_review``/``rejected`` steps may be removed).
         """
         with self._lock, self._connect() as conn:
+            self._scope(conn, tenant_id)
+            self._begin_write(conn)
             row = conn.execute(
-                "SELECT * FROM plan_step_state WHERE session_id = ? AND step_index = ?",
-                (session_id, step_index),
+                self._sql(
+                    f"SELECT {_ROW_COLUMNS} FROM plan_step_state "
+                    "WHERE tenant_id = {p} AND session_id = {p} AND step_index = {p}"
+                    + self._for_update()
+                ),
+                (tenant_id, session_id, step_index),
             ).fetchone()
             if row is None:
+                conn.rollback()
                 raise KeyError(f"Step {step_index} not found for session {session_id!r}.")
-            current = self._row_to_record(row)
+            current = _row_to_record(row)
             if current.state not in REMOVABLE_STATES:
+                conn.rollback()
                 raise ValueError(
                     f"Cannot remove step {step_index} in state {current.state.value!r}; "
                     "only draft/under_review/rejected steps can be removed."
                 )
             conn.execute(
-                "DELETE FROM plan_step_state WHERE session_id = ? AND step_index = ?",
-                (session_id, step_index),
+                self._sql(
+                    "DELETE FROM plan_step_state "
+                    "WHERE tenant_id = {p} AND session_id = {p} AND step_index = {p}"
+                ),
+                (tenant_id, session_id, step_index),
             )
             remaining_rows = conn.execute(
-                "SELECT * FROM plan_step_state WHERE session_id = ? ORDER BY step_index",
-                (session_id,),
+                self._sql(
+                    f"SELECT {_ROW_COLUMNS} FROM plan_step_state "
+                    "WHERE tenant_id = {p} AND session_id = {p} ORDER BY step_index"
+                ),
+                (tenant_id, session_id),
             ).fetchall()
             now = self._now()
             reindexed: list[PlanStepRecord] = []
@@ -399,12 +492,14 @@ class StepApprovalStore:
             # by the time we reach it, so no PRIMARY KEY collision occurs
             # within this single transaction.
             for new_index, remaining_row in enumerate(remaining_rows):
-                record = self._row_to_record(remaining_row)
+                record = _row_to_record(remaining_row)
                 if record.step_index != new_index:
                     conn.execute(
-                        "UPDATE plan_step_state SET step_index = ?, updated_at = ? "
-                        "WHERE session_id = ? AND step_index = ?",
-                        (new_index, now, session_id, record.step_index),
+                        self._sql(
+                            "UPDATE plan_step_state SET step_index = {p}, updated_at = {p} "
+                            "WHERE tenant_id = {p} AND session_id = {p} AND step_index = {p}"
+                        ),
+                        (new_index, now, tenant_id, session_id, record.step_index),
                     )
                     record = PlanStepRecord(session_id, new_index, record.content, record.state, now)
                 reindexed.append(record)
@@ -412,7 +507,7 @@ class StepApprovalStore:
         return reindexed
 
     def transition(
-        self, session_id: str, step_index: int, action: str
+        self, session_id: str, step_index: int, action: str, *, tenant_id: str = DEFAULT_TENANT_ID
     ) -> tuple[StepState, PlanStepRecord]:
         """Atomically apply a state-machine action to a step.
 
@@ -421,6 +516,7 @@ class StepApprovalStore:
             step_index: Zero-based step position.
             action: One of ``"review"``, ``"approve"``, ``"reject"``,
                 ``"execute"``, ``"complete"``.
+            tenant_id: Tenant the plan belongs to.
 
         Returns:
             A tuple of ``(previous_state, updated_record)``.
@@ -431,22 +527,33 @@ class StepApprovalStore:
                 state.
         """
         with self._lock, self._connect() as conn:
+            self._scope(conn, tenant_id)
+            self._begin_write(conn)
             row = conn.execute(
-                "SELECT * FROM plan_step_state WHERE session_id = ? AND step_index = ?",
-                (session_id, step_index),
+                self._sql(
+                    f"SELECT {_ROW_COLUMNS} FROM plan_step_state "
+                    "WHERE tenant_id = {p} AND session_id = {p} AND step_index = {p}"
+                    + self._for_update()
+                ),
+                (tenant_id, session_id, step_index),
             ).fetchone()
             if row is None:
+                conn.rollback()
                 raise KeyError(f"Step {step_index} not found for session {session_id!r}.")
-            current = self._row_to_record(row)
+            current = _row_to_record(row)
             next_state = _LEGAL_TRANSITIONS[current.state].get(action)
             if next_state is None:
+                conn.rollback()
                 raise ValueError(
                     f"Cannot {action} step {step_index} while it is {current.state.value!r}."
                 )
             now = self._now()
             conn.execute(
-                "UPDATE plan_step_state SET state = ?, updated_at = ? WHERE session_id = ? AND step_index = ?",
-                (next_state.value, now, session_id, step_index),
+                self._sql(
+                    "UPDATE plan_step_state SET state = {p}, updated_at = {p} "
+                    "WHERE tenant_id = {p} AND session_id = {p} AND step_index = {p}"
+                ),
+                (next_state.value, now, tenant_id, session_id, step_index),
             )
             conn.commit()
             return current.state, PlanStepRecord(session_id, step_index, current.content, next_state, now)
@@ -458,5 +565,6 @@ __all__ = [
     "PlanStepRecord",
     "StepApprovalStore",
     "StepState",
+    "legacy_step_state_db_path",
     "rollup_plan_state",
 ]

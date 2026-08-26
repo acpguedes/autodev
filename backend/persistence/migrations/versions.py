@@ -610,6 +610,57 @@ def _m15_down_secrets_rotation_integrity(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE secrets DROP COLUMN rotation_request_id")
 
 
+def _m16_create_plan_step_state_table(conn: sqlite3.Connection) -> None:
+    """Create ``plan_step_state`` under the shared SQLite State Store (E55-S1).
+
+    Mirrors the shape PostgreSQL already has via
+    ``_pg_m10_create_plan_step_state_table`` (E50-S3): ``tenant_id`` plus a
+    ``FOREIGN KEY`` reference to ``plan_documents(session_id)`` (SQLite does
+    not enforce this without ``PRAGMA foreign_keys = ON``, which this
+    codebase does not set, but the declaration documents the relationship
+    identically to the PostgreSQL schema). ``CREATE TABLE IF NOT EXISTS`` plus
+    :func:`_add_column_if_missing` make this idempotent against a pre-E55
+    installation whose ``plan_step_state`` table was created ad hoc by
+    ``StepApprovalStore.__init__`` (with no ``tenant_id`` column at all, or
+    with one backfilled by the store's old ``_ensure_tenant_id_column``
+    helper) -- either way, opening that existing file through this migration
+    leaves every existing row scoped to
+    :data:`~backend.persistence.tenancy.DEFAULT_TENANT_ID` (``'default'``)
+    without data loss.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS plan_step_state (
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            session_id TEXT NOT NULL,
+            step_index INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            state TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (session_id, step_index),
+            FOREIGN KEY (session_id) REFERENCES plan_documents(session_id)
+        )
+        """
+    )
+    _add_column_if_missing(conn, "plan_step_state", "tenant_id", "TEXT NOT NULL DEFAULT 'default'")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_plan_step_state_tenant_session "
+        "ON plan_step_state(tenant_id, session_id)"
+    )
+
+
+def _m16_down_drop_plan_step_state_table(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m16_create_plan_step_state_table` by dropping the table.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    conn.execute("DROP TABLE IF EXISTS plan_step_state")
+
+
 STORE_MIGRATIONS: list[MigrationEntry] = [
     _m1_create_core_tables,
     _m2_runs_add_run_type,
@@ -661,6 +712,11 @@ STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_m15_secrets_rotation_integrity,
         down=_m15_down_secrets_rotation_integrity,
         name="secrets_rotation_integrity",
+    ),
+    Migration(
+        up=_m16_create_plan_step_state_table,
+        down=_m16_down_drop_plan_step_state_table,
+        name="create_plan_step_state_table",
     ),
 ]
 
