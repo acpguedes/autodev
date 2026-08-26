@@ -7,7 +7,42 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-26 (**E50 complete — 4/4, PostgreSQL Schema,
+**Last updated:** 2026-08-26 (**E51 complete — 4/4, QuotaStore on
+PostgreSQL & Concurrency**, on `epic/e51-quotastore-postgres-concurrency` —
+the first of the five category-3 store ports (E51-E55) that E50 prepared
+the schema for. `QuotaStore` no longer opens `sqlite3` directly or rejects
+a `postgresql://` `DATABASE_URL`: it obtains its connection from the
+configured State Store via the E49 contract, so the `prod` profile can now
+construct and use it. **E51-S1** ports policy compare-and-swap and monthly
+usage accounting, replacing `BEGIN IMMEDIATE`-only serialization with
+`SELECT ... FOR UPDATE` (policy) and a single atomic conditional `UPDATE`
+(`used + delta <= limit`, usage) — and closes a genuine PostgreSQL phantom-
+row race neither of those alone prevents (counting a tenant's existing rows
+then conditionally inserting a new one: a lease, a reservation, a first
+policy) with a transaction-scoped `pg_advisory_xact_lock` keyed by tenant
+id, verified against a real local PostgreSQL after an initial multi-
+threaded test run showed >1 lease granted for a single concurrency slot
+without it. Adds the five quota tables to the SQLite `MigrationRunner`
+(`versions.py` m12/m13) mirroring E50-S1's PostgreSQL migration 8; SQLite's
+`request_rate_buckets` gets a non-key `tenant_id` backfill column to match
+PostgreSQL's tenant-first primary key without rebuilding the table.
+**E51-S2/S3** port run leases, storage reservations, and request-rate
+buckets in the same change (one file, interdependent tenant-scope/lock
+helpers), adding `tenant_id` to the store and service APIs for the
+operations that previously took only an opaque id — RLS requires the
+caller's tenant to scope every write, and lease identity must not be
+derivable across tenants. **E51-S4** proves all three concurrency
+invariants (no oversubscription, no duplicate leases, no double-commit/
+double-refund) against a real multi-connection, and for lease acquisition
+genuinely multi-*process*, local PostgreSQL
+(`backend/tests/unit/quotas/test_postgres_concurrency.py`, skips without
+`AUTODEV_TEST_POSTGRES_URL` — E57 wires this into CI) and corrects the
+store's module docstring to describe the PostgreSQL design as implemented
+rather than aspirational. Cross-tenant policy enumeration
+(`list_tenant_ids`) is a documented, deliberate scope boundary: it requires
+a superuser/`BYPASSRLS` administrative path, not a persistence-port
+concern.)
+Previous entry: 2026-08-26 (**E50 complete — 4/4, PostgreSQL Schema,
 Migrations, Tenancy & RLS**, on `epic/e50-postgres-schema-migrations-rls` —
 closes the schema half of the gap `postgres_production_completeness.md`
 identified: the 13 domain tables (quotas, secrets, execution policy,
@@ -376,8 +411,8 @@ automated guard blocks a new domain module from opening a database
 connection directly — see the changelog entry and
 [phases/e49_shared_sql_infrastructure.md](phases/e49_shared_sql_infrastructure.md).
 
-**Next:** E13 — Marketplace & GA (0/4, not started), or **E51 — QuotaStore
-on PostgreSQL & Concurrency** (0/4, now unblocked — E49 and E50-S1 are both
+**Next:** E13 — Marketplace & GA (0/4, not started), or **E52 —
+SecretStore on PostgreSQL** (0/3, now unblocked — E49 and E50-S1 are both
 done) as the next step in the PostgreSQL Production
 Completeness program. Beyond GA, the planned v2.1 (E20-E25), v2.2
 (E26-E31) and v2.3 (E36-E40) waves are specified but not started.
@@ -517,7 +552,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E48 | PostgreSQL Runtime with pgvector | Beta | Done | 4/4 | E0-S3, E7-S2, E34-S2 | [phases/e48_postgres_runtime_pgvector.md](phases/e48_postgres_runtime_pgvector.md) |
 | E49 | Shared SQL Persistence Infrastructure | Beta | Done | 4/4 | E8, E47-S4 | [phases/e49_shared_sql_infrastructure.md](phases/e49_shared_sql_infrastructure.md) |
 | E50 | PostgreSQL Schema, Migrations, Tenancy & RLS | Beta | Done | 4/4 | E48, E49, E8-S1 | [phases/e50_postgres_schema_migrations_rls.md](phases/e50_postgres_schema_migrations_rls.md) |
-| E51 | QuotaStore on PostgreSQL & Concurrency | Beta | Not started | 0/4 | E49, E50-S1, E11-S3 | [phases/e51_quotastore_postgres_concurrency.md](phases/e51_quotastore_postgres_concurrency.md) |
+| E51 | QuotaStore on PostgreSQL & Concurrency | Beta | Done | 4/4 | E49, E50-S1, E11-S3 | [phases/e51_quotastore_postgres_concurrency.md](phases/e51_quotastore_postgres_concurrency.md) |
 | E52 | SecretStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S1, E33 | [phases/e52_secretstore_postgres.md](phases/e52_secretstore_postgres.md) |
 | E53 | PolicyStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S2, E14 | [phases/e53_policystore_postgres.md](phases/e53_policystore_postgres.md) |
 | E54 | EnvironmentStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S2, E32 | [phases/e54_environmentstore_postgres.md](phases/e54_environmentstore_postgres.md) |
@@ -528,7 +563,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E59 | Backup, Restore & Disaster Recovery | Beta | Not started | 0/3 | E8-S4, E55-S3, E57-S4 | [phases/e59_backup_restore_disaster_recovery.md](phases/e59_backup_restore_disaster_recovery.md) |
 | E60 | Connection Pooling & PostgreSQL Hardening | Beta | Not started | 0/4 | E51-E55, E57, E11-S1 | [phases/e60_postgres_pooling_hardening.md](phases/e60_postgres_pooling_hardening.md) |
 
-Total: **143/260 stories complete** across 60 epics (E19 is a proposed
+Total: **147/260 stories complete** across 60 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
