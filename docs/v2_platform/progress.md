@@ -708,7 +708,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E53 | PolicyStore on PostgreSQL | Beta | Done | 3/3 | E49, E50-S2, E14 | [phases/e53_policystore_postgres.md](phases/e53_policystore_postgres.md) |
 | E54 | EnvironmentStore on PostgreSQL | Beta | Done | 3/3 | E49, E50-S2, E32 | [phases/e54_environmentstore_postgres.md](phases/e54_environmentstore_postgres.md) |
 | E55 | Plan Step State on PostgreSQL | Beta | Done | 3/3 | E49, E50-S3, E16-S2 | [phases/e55_plan_step_state_postgres.md](phases/e55_plan_step_state_postgres.md) |
-| E56 | SQLite/PostgreSQL Contract Test Suite | Beta | Not started | 0/3 | E49, E50, E51-E55 | [phases/e56_sqlite_postgres_contract_tests.md](phases/e56_sqlite_postgres_contract_tests.md) |
+| E56 | SQLite/PostgreSQL Contract Test Suite | Beta | Done | 3/3 | E49, E50, E51-E55 | [phases/e56_sqlite_postgres_contract_tests.md](phases/e56_sqlite_postgres_contract_tests.md) |
 | E57 | CI & Real PostgreSQL E2E | Beta | Not started | 0/4 | E48, E56, E51-E55 | [phases/e57_ci_postgres_e2e.md](phases/e57_ci_postgres_e2e.md) |
 | E58 | SQLite → PostgreSQL Data Migration | Beta | Not started | 0/4 | E50-E55, E57 | [phases/e58_sqlite_to_postgres_migration.md](phases/e58_sqlite_to_postgres_migration.md) |
 | E59 | Backup, Restore & Disaster Recovery | Beta | Not started | 0/3 | E8-S4, E55-S3, E57-S4 | [phases/e59_backup_restore_disaster_recovery.md](phases/e59_backup_restore_disaster_recovery.md) |
@@ -888,9 +888,19 @@ program (`postgres_production_completeness.md`).
       extension provisioning split from migration 4, preflight checks).
       Verified 2026-08-22 against a real from-scratch bring-up: all 8
       migrations apply, HNSW index valid, ordered vector query results.
-- [ ] SQLite and PostgreSQL pass the same functional contract — 13 tables have
-      no PostgreSQL migration and 5 stores refuse a PostgreSQL URL. Open
-      (E49-E56).
+- [x] SQLite and PostgreSQL pass the same functional contract — resolved by
+      E49 (shared SQL infra), E50 (migrations/RLS for the 13 tables), E51-E55
+      (the five store ports), and E56 (the contract suite itself):
+      `backend/tests/persistence_contract/` runs CRUD, pagination,
+      transactions, concurrency, tenant isolation, and migration/restart
+      cases against every repository and store on both a real PostgreSQL and
+      SQLite via one shared harness, with a negative control proving it is
+      not vacuously green. E56 also fixed two real gaps the suite surfaced:
+      `create_session` raising a backend-specific exception instead of the
+      shared `PersistenceIntegrityError` (E49-S1-T2's mapping existed but no
+      store used it), and a cross-transaction RLS bug in
+      `StepApprovalStore.ensure_steps` invisible under a superuser test
+      connection.
 - [ ] Every pull request runs a real `prod`-profile E2E — no workflow in
       `.github/workflows/` has a `services:` block; all PostgreSQL paths are
       exercised against a monkeypatched `psycopg`. Open (E57).
