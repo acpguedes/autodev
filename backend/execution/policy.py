@@ -9,12 +9,10 @@ outside production, preserving the platform's Local-first guarantee.
 from __future__ import annotations
 
 import fnmatch
-import os
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, Protocol
+from typing import Any, Optional, Protocol
 from uuid import uuid4
 
 try:
@@ -31,8 +29,9 @@ except ImportError:  # pragma: no cover - Python < 3.11 compatibility
 from backend.config.settings import Settings, get_settings
 from backend.events.runtime import emit_event
 from backend.execution.contracts import ExecutionAction, ExecutionActionType
-
-_DEFAULT_DATABASE_URL = "sqlite:///./autodev.db"
+from backend.persistence import contract
+from backend.persistence.database import get_store
+from backend.persistence.tenancy import set_postgres_tenant
 
 
 class PolicyCategory(StrEnum):
@@ -195,126 +194,125 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _resolve_db_path(database_url: str) -> Path:
-    """Resolve a ``sqlite://`` URL to a filesystem path, matching the core stores."""
-    url = (database_url or _DEFAULT_DATABASE_URL).strip()
-    if url.startswith("sqlite:///"):
-        raw = url.removeprefix("sqlite:///")
-    elif url.startswith("sqlite://"):
-        raw = url.removeprefix("sqlite://")
-    else:
-        raise ValueError(f"PolicyStore requires a sqlite:// DATABASE_URL. Got: {url!r}")
-    return Path(raw).expanduser().resolve()
+#: Column order for a full ``pending_action_decisions`` row, shared by every
+#: ``SELECT`` that reads a whole row and by :meth:`PolicyStore._row_to_decision`
+#: -- explicit rather than ``SELECT *`` so positional indexing (required for
+#: a query to read identically on SQLite's ``sqlite3.Row`` and a PostgreSQL
+#: cursor's plain tuple) never depends on each backend's own column order.
+_PENDING_DECISION_COLUMNS = (
+    "decision_id, tenant_id, run_id, task_id, action_id, category, prompt, "
+    "status, created_at, expires_at, decided_by, decided_at, pattern"
+)
 
 
 class PolicyStore:
-    """SQLite-backed durable store for policy rules, dynamic permissions, and audit."""
+    """Durable store for policy rules, dynamic permissions, and decision audit.
 
-    def __init__(self, db_path: Optional[Path] = None) -> None:
-        """Open (creating if needed) the SQLite-backed policy tables.
+    Runs on both SQLite and PostgreSQL through the shared persistence
+    contract (E49, ADR-025; E53), following the same port pattern
+    :class:`~backend.quotas.store.QuotaStore` (E51) and
+    :class:`~backend.secret_store.store.SecretStore` (E52) established. The
+    ``pending_action_decisions`` terminal transition
+    (:meth:`resolve_pending_decision`) is a single state-guarded conditional
+    ``UPDATE`` (``WHERE ... AND status = 'pending'``) rather than a
+    read-then-write pair: unlike the phantom-row races E51/E52 closed with a
+    ``pg_advisory_xact_lock`` (counting existing rows, then conditionally
+    inserting a new one), this transition only ever touches a row that
+    already exists, so PostgreSQL's own row-level locking on the ``UPDATE``
+    statement is already sufficient -- a concurrent second ``UPDATE`` blocks
+    until the first commits, then re-evaluates its ``WHERE`` clause against
+    the now-committed ``status`` and matches zero rows.
+
+    All four tables carry Row-Level Security on PostgreSQL (E50-S4): every
+    tenant-scoped operation calls
+    :func:`~backend.persistence.tenancy.set_postgres_tenant` via
+    :meth:`PolicyStore._scope` (a no-op on SQLite, which has no RLS and is
+    scoped by the ``WHERE tenant_id = ...`` clauses already present in each
+    query). :meth:`list_due_pending_decisions` is a deliberate exception,
+    documented on the method itself.
+    """
+
+    def __init__(self, db_path: Optional[Path] = None, *, store: Any = None) -> None:
+        """Open the store against an explicit SQLite file, an injected store, or the configured one.
 
         Args:
-            db_path: Explicit database file path; defaults to resolving
-                ``DATABASE_URL``.
+            db_path: When given (and ``store`` is not), a SQLite file to open
+                directly -- built into a dedicated
+                :class:`~backend.persistence.sqlite_adapter.store.SQLiteStore`
+                so tests can exercise real, independently-connected SQLite
+                instances against the same file.
+            store: An existing store exposing ``connect()`` (a
+                :class:`~backend.persistence.sqlite_adapter.store.SQLiteStore`
+                or ``PostgresStore``). Takes precedence over ``db_path``.
+                Defaults to the process-wide configured store
+                (:func:`backend.persistence.database.get_store`) when neither
+                is given -- the path production takes.
+
+        Raises:
+            TypeError: If the resolved store does not expose ``connect()``.
         """
-        self._db_path = db_path or _resolve_db_path(os.environ.get("DATABASE_URL", ""))
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as conn:
-            self._create_schema(conn)
-            conn.commit()
+        if store is None and db_path is not None:
+            from backend.persistence.sqlite_adapter.store import SQLiteStore  # noqa: PLC0415
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self._db_path), timeout=30)
-        conn.row_factory = sqlite3.Row
-        return conn
+            store = SQLiteStore(f"sqlite:///{db_path}")
+        self._store = store or get_store()
+        if not hasattr(self._store, "connect"):
+            raise TypeError("PolicyStore requires a durable store with connect()")
 
-    @staticmethod
-    def _create_schema(conn: sqlite3.Connection) -> None:
-        conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS execution_policy_rules (
-                rule_id TEXT PRIMARY KEY,
-                tenant_id TEXT NOT NULL,
-                category TEXT NOT NULL,
-                effect TEXT NOT NULL,
-                scope_kind TEXT NOT NULL,
-                scope_id TEXT NOT NULL,
-                pattern TEXT,
-                created_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_execution_policy_rules_tenant
-                ON execution_policy_rules(tenant_id, category);
-            CREATE TABLE IF NOT EXISTS execution_dynamic_permissions (
-                permission_id TEXT PRIMARY KEY,
-                tenant_id TEXT NOT NULL,
-                category TEXT NOT NULL,
-                scope_kind TEXT NOT NULL,
-                scope_id TEXT NOT NULL,
-                pattern TEXT,
-                created_at TEXT NOT NULL,
-                created_by TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_execution_dynamic_permissions_tenant
-                ON execution_dynamic_permissions(tenant_id, category);
-            CREATE TABLE IF NOT EXISTS execution_policy_decisions (
-                decision_id TEXT PRIMARY KEY,
-                tenant_id TEXT NOT NULL,
-                run_id TEXT NOT NULL,
-                action_id TEXT NOT NULL,
-                category TEXT NOT NULL,
-                allowed INTEGER NOT NULL,
-                reason TEXT NOT NULL,
-                actor TEXT NOT NULL,
-                decided_at TEXT NOT NULL
-            );
-            CREATE INDEX IF NOT EXISTS idx_execution_policy_decisions_run
-                ON execution_policy_decisions(run_id);
-            CREATE TABLE IF NOT EXISTS pending_action_decisions (
-                decision_id TEXT PRIMARY KEY,
-                tenant_id TEXT NOT NULL,
-                run_id TEXT NOT NULL,
-                task_id TEXT NOT NULL,
-                action_id TEXT NOT NULL,
-                category TEXT NOT NULL,
-                prompt TEXT NOT NULL,
-                status TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                expires_at TEXT NOT NULL,
-                decided_by TEXT,
-                decided_at TEXT,
-                pattern TEXT
-            );
-            CREATE INDEX IF NOT EXISTS idx_pending_action_decisions_run
-                ON pending_action_decisions(run_id, task_id);
-            CREATE INDEX IF NOT EXISTS idx_pending_action_decisions_tenant
-                ON pending_action_decisions(tenant_id, status);
-            """
-        )
+    # --------------------------------------------------------------- helpers
+
+    @property
+    def _is_postgres(self) -> bool:
+        """Whether the backing store is a PostgreSQL database."""
+        return contract.is_postgres(getattr(self._store, "database_url", ""))
+
+    def _sql(self, template: str) -> str:
+        """Substitute this store's dialect placeholder into a SQL template."""
+        return contract.sql(template, self._is_postgres)
+
+    def _connect(self) -> Any:
+        """Open a fresh connection from the backing store."""
+        return self._store.connect()
+
+    def _begin_write(self, conn: Any) -> None:
+        """Start a write transaction eagerly on SQLite; a no-op on PostgreSQL."""
+        contract.begin_write(conn, self._is_postgres)
+
+    def _scope(self, conn: Any, tenant_id: str) -> None:
+        """Set the PostgreSQL tenant GUC for this transaction; a no-op on SQLite."""
+        if self._is_postgres:
+            set_postgres_tenant(conn, tenant_id)
+
+    # ---------------------------------------------------------------- rules
 
     def has_any_rules(self, tenant_id: str) -> bool:
         """Return whether *tenant_id* has at least one stored policy rule."""
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT 1 FROM execution_policy_rules WHERE tenant_id = ? LIMIT 1",
-                (tenant_id,),
-            ).fetchone()
+        conn = self._connect()
+        self._scope(conn, tenant_id)
+        row = conn.execute(
+            self._sql("SELECT 1 FROM execution_policy_rules WHERE tenant_id = {p} LIMIT 1"),
+            (tenant_id,),
+        ).fetchone()
         return row is not None
 
     def list_rules(self, tenant_id: str) -> list[PolicyRule]:
         """Return every stored policy rule for *tenant_id*."""
-        with self._connect() as conn:
-            rows = conn.execute(
+        conn = self._connect()
+        self._scope(conn, tenant_id)
+        rows = conn.execute(
+            self._sql(
                 "SELECT category, effect, scope_kind, scope_id, pattern "
-                "FROM execution_policy_rules WHERE tenant_id = ?",
-                (tenant_id,),
-            ).fetchall()
+                "FROM execution_policy_rules WHERE tenant_id = {p}"
+            ),
+            (tenant_id,),
+        ).fetchall()
         return [
             PolicyRule(
-                category=PolicyCategory(row["category"]),
-                effect=PolicyEffect(row["effect"]),
-                scope_kind=PolicyScopeKind(row["scope_kind"]),
-                scope_id=row["scope_id"],
-                pattern=row["pattern"],
+                category=PolicyCategory(row[0]),
+                effect=PolicyEffect(row[1]),
+                scope_kind=PolicyScopeKind(row[2]),
+                scope_id=row[3],
+                pattern=row[4],
             )
             for row in rows
         ]
@@ -323,10 +321,14 @@ class PolicyStore:
         """Durably store *rule* for *tenant_id* and return its new rule id."""
         rule_id = str(uuid4())
         with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            self._begin_write(conn)
             conn.execute(
-                "INSERT INTO execution_policy_rules "
-                "(rule_id, tenant_id, category, effect, scope_kind, scope_id, pattern, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                self._sql(
+                    "INSERT INTO execution_policy_rules "
+                    "(rule_id, tenant_id, category, effect, scope_kind, scope_id, pattern, created_at) "
+                    "VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})"
+                ),
                 (
                     rule_id,
                     tenant_id,
@@ -341,23 +343,28 @@ class PolicyStore:
             conn.commit()
         return rule_id
 
+    # ---------------------------------------------------- dynamic permissions
+
     def list_dynamic_permissions(self, tenant_id: str) -> list[tuple[str, PolicyRule]]:
         """Return every dynamic permission for *tenant_id* as ``(id, rule)`` pairs."""
-        with self._connect() as conn:
-            rows = conn.execute(
+        conn = self._connect()
+        self._scope(conn, tenant_id)
+        rows = conn.execute(
+            self._sql(
                 "SELECT permission_id, category, scope_kind, scope_id, pattern "
-                "FROM execution_dynamic_permissions WHERE tenant_id = ?",
-                (tenant_id,),
-            ).fetchall()
+                "FROM execution_dynamic_permissions WHERE tenant_id = {p}"
+            ),
+            (tenant_id,),
+        ).fetchall()
         return [
             (
-                row["permission_id"],
+                row[0],
                 PolicyRule(
-                    category=PolicyCategory(row["category"]),
+                    category=PolicyCategory(row[1]),
                     effect=PolicyEffect.ALLOW,
-                    scope_kind=PolicyScopeKind(row["scope_kind"]),
-                    scope_id=row["scope_id"],
-                    pattern=row["pattern"],
+                    scope_kind=PolicyScopeKind(row[2]),
+                    scope_id=row[3],
+                    pattern=row[4],
                 ),
             )
             for row in rows
@@ -367,10 +374,14 @@ class PolicyStore:
         """Durably persist a hybrid-mode "always" grant and return its id."""
         permission_id = str(uuid4())
         with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            self._begin_write(conn)
             conn.execute(
-                "INSERT INTO execution_dynamic_permissions "
-                "(permission_id, tenant_id, category, scope_kind, scope_id, pattern, created_at, created_by) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                self._sql(
+                    "INSERT INTO execution_dynamic_permissions "
+                    "(permission_id, tenant_id, category, scope_kind, scope_id, pattern, created_at, created_by) "
+                    "VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})"
+                ),
                 (
                     permission_id,
                     tenant_id,
@@ -388,13 +399,19 @@ class PolicyStore:
     def remove_dynamic_permission(self, tenant_id: str, permission_id: str) -> bool:
         """Revoke a dynamic permission; return whether a row was removed."""
         with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            self._begin_write(conn)
             cursor = conn.execute(
-                "DELETE FROM execution_dynamic_permissions "
-                "WHERE tenant_id = ? AND permission_id = ?",
+                self._sql(
+                    "DELETE FROM execution_dynamic_permissions "
+                    "WHERE tenant_id = {p} AND permission_id = {p}"
+                ),
                 (tenant_id, permission_id),
             )
             conn.commit()
         return cursor.rowcount > 0
+
+    # --------------------------------------------------------- decision audit
 
     def record_decision(
         self,
@@ -407,12 +424,20 @@ class PolicyStore:
         reason: str,
         actor: str,
     ) -> None:
-        """Durably record one policy decision for audit."""
+        """Durably record one policy decision for audit.
+
+        Append-only: no method updates or deletes a row in
+        ``execution_policy_decisions`` once written (E53-S2).
+        """
         with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            self._begin_write(conn)
             conn.execute(
-                "INSERT INTO execution_policy_decisions "
-                "(decision_id, tenant_id, run_id, action_id, category, allowed, reason, actor, decided_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                self._sql(
+                    "INSERT INTO execution_policy_decisions "
+                    "(decision_id, tenant_id, run_id, action_id, category, allowed, reason, actor, decided_at) "
+                    "VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})"
+                ),
                 (
                     str(uuid4()),
                     tenant_id,
@@ -426,6 +451,8 @@ class PolicyStore:
                 ),
             )
             conn.commit()
+
+    # ------------------------------------------------------ pending decisions
 
     def create_pending_decision(
         self,
@@ -443,11 +470,15 @@ class PolicyStore:
         decision_id = str(uuid4())
         created_at = _now()
         with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            self._begin_write(conn)
             conn.execute(
-                "INSERT INTO pending_action_decisions "
-                "(decision_id, tenant_id, run_id, task_id, action_id, category, prompt, status, "
-                "created_at, expires_at, decided_by, decided_at, pattern) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)",
+                self._sql(
+                    "INSERT INTO pending_action_decisions "
+                    "(decision_id, tenant_id, run_id, task_id, action_id, category, prompt, status, "
+                    "created_at, expires_at, decided_by, decided_at, pattern) "
+                    "VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, NULL, NULL, {p})"
+                ),
                 (
                     decision_id,
                     tenant_id,
@@ -477,71 +508,164 @@ class PolicyStore:
             pattern=pattern,
         )
 
-    def get_pending_decision(self, decision_id: str) -> Optional[PendingDecision]:
-        """Fetch one pending decision by id, regardless of its status."""
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM pending_action_decisions WHERE decision_id = ?", (decision_id,)
-            ).fetchone()
+    def get_pending_decision(self, decision_id: str, *, tenant_id: str) -> Optional[PendingDecision]:
+        """Fetch one pending decision by id, regardless of its status.
+
+        Args:
+            decision_id: The decision to fetch.
+            tenant_id: Caller's tenant. Required (rather than checked after
+                the fact) so the query is scoped identically on both
+                backends: an explicit ``WHERE tenant_id = ...`` predicate on
+                SQLite, and the same predicate plus Row-Level Security on
+                PostgreSQL (:meth:`_scope`) -- a decision belonging to
+                another tenant is indistinguishable from a nonexistent one.
+        """
+        conn = self._connect()
+        self._scope(conn, tenant_id)
+        row = conn.execute(
+            self._sql(
+                f"SELECT {_PENDING_DECISION_COLUMNS} FROM pending_action_decisions "
+                "WHERE decision_id = {p} AND tenant_id = {p}"
+            ),
+            (decision_id, tenant_id),
+        ).fetchone()
         return self._row_to_decision(row) if row is not None else None
 
-    def get_decision_for_task(self, run_id: str, task_id: str) -> Optional[PendingDecision]:
-        """Fetch the most recent decision request for one run's task, if any."""
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT * FROM pending_action_decisions WHERE run_id = ? AND task_id = ? "
-                "ORDER BY created_at DESC LIMIT 1",
-                (run_id, task_id),
-            ).fetchone()
+    def get_decision_for_task(
+        self, run_id: str, task_id: str, *, tenant_id: str
+    ) -> Optional[PendingDecision]:
+        """Fetch the most recent decision request for one run's task, if any.
+
+        Args:
+            run_id: The run the task belongs to.
+            task_id: The task awaiting (or that awaited) a decision.
+            tenant_id: Caller's tenant, scoping the lookup the same way
+                :meth:`get_pending_decision` does.
+        """
+        conn = self._connect()
+        self._scope(conn, tenant_id)
+        row = conn.execute(
+            self._sql(
+                f"SELECT {_PENDING_DECISION_COLUMNS} FROM pending_action_decisions "
+                "WHERE tenant_id = {p} AND run_id = {p} AND task_id = {p} "
+                "ORDER BY created_at DESC LIMIT 1"
+            ),
+            (tenant_id, run_id, task_id),
+        ).fetchone()
         return self._row_to_decision(row) if row is not None else None
 
     def list_pending_decisions(self, tenant_id: str) -> list[PendingDecision]:
         """List every still-pending decision for a tenant."""
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM pending_action_decisions WHERE tenant_id = ? AND status = ?",
-                (tenant_id, DecisionStatus.PENDING.value),
-            ).fetchall()
+        conn = self._connect()
+        self._scope(conn, tenant_id)
+        rows = conn.execute(
+            self._sql(
+                f"SELECT {_PENDING_DECISION_COLUMNS} FROM pending_action_decisions "
+                "WHERE tenant_id = {p} AND status = {p}"
+            ),
+            (tenant_id, DecisionStatus.PENDING.value),
+        ).fetchall()
         return [self._row_to_decision(row) for row in rows]
 
     def list_due_pending_decisions(self, *, before: str) -> list[PendingDecision]:
-        """List every pending decision whose ``expires_at`` is at or before *before*."""
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT * FROM pending_action_decisions WHERE status = ? AND expires_at <= ?",
-                (DecisionStatus.PENDING.value, before),
-            ).fetchall()
+        """List every pending decision whose ``expires_at`` is at or before *before*.
+
+        Deliberately cross-tenant, for the operator/cron expiry sweep
+        (:meth:`~backend.execution.decisions.DecisionService.expire_due`):
+        there is no single tenant to scope this query to. On SQLite (no
+        Row-Level Security) this reads every tenant's due decisions, same as
+        before the port. On PostgreSQL, this intentionally does not set the
+        ``app.tenant_id`` GUC -- with Row-Level Security forced, the result
+        reflects whatever the connection's ambient tenant scope already is,
+        which is empty for an unscoped connection, so this returns no rows
+        until a superuser/``BYPASSRLS`` administrative path exists. This is
+        the same documented scope boundary
+        :meth:`~backend.quotas.store.QuotaStore.list_tenant_ids` accepted in
+        E51 for the equivalent cross-tenant enumeration; solving it requires
+        an administrative connection path, not a persistence-port concern
+        for this epic.
+
+        Args:
+            before: ISO-8601 cutoff; a decision expiring at or before this
+                instant is due.
+        """
+        conn = self._connect()
+        rows = conn.execute(
+            self._sql(
+                f"SELECT {_PENDING_DECISION_COLUMNS} FROM pending_action_decisions "
+                "WHERE status = {p} AND expires_at <= {p}"
+            ),
+            (DecisionStatus.PENDING.value, before),
+        ).fetchall()
         return [self._row_to_decision(row) for row in rows]
 
     def resolve_pending_decision(
-        self, decision_id: str, *, status: DecisionStatus, decided_by: str
+        self, decision_id: str, *, status: DecisionStatus, decided_by: str, tenant_id: str
     ) -> bool:
-        """Resolve a pending decision; a no-op (returns ``False``) if already resolved."""
+        """Atomically resolve a pending decision to a terminal state (E53-S2).
+
+        A single state-guarded conditional ``UPDATE``
+        (``WHERE decision_id = ... AND tenant_id = ... AND status =
+        'pending'``): exactly one concurrent caller's ``UPDATE`` can ever
+        affect this row, because the second caller's ``UPDATE`` blocks on
+        the row lock the first holds, then -- once the first commits --
+        re-evaluates its own ``WHERE`` clause against the now-committed
+        ``status`` and matches zero rows. No caller-side check-then-write is
+        involved; the atomicity is the single statement's own guarantee, on
+        both backends.
+
+        Args:
+            decision_id: The decision to resolve.
+            status: The terminal status to record.
+            decided_by: Who resolved it.
+            tenant_id: Caller's tenant, scoping the update the same way
+                :meth:`get_pending_decision` scopes its read.
+
+        Returns:
+            ``True`` if this call performed the transition (the decision was
+            still pending); ``False`` if it was already resolved (by this
+            call's own tenant filter finding nothing pending, whether
+            because another caller won the race or because the decision
+            never existed for this tenant) -- callers distinguish "already
+            resolved" from "resolved to what I wanted" via a follow-up read.
+        """
         with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            self._begin_write(conn)
             cursor = conn.execute(
-                "UPDATE pending_action_decisions SET status = ?, decided_by = ?, decided_at = ? "
-                "WHERE decision_id = ? AND status = ?",
-                (status.value, decided_by, _now(), decision_id, DecisionStatus.PENDING.value),
+                self._sql(
+                    "UPDATE pending_action_decisions SET status = {p}, decided_by = {p}, decided_at = {p} "
+                    "WHERE decision_id = {p} AND tenant_id = {p} AND status = {p}"
+                ),
+                (
+                    status.value,
+                    decided_by,
+                    _now(),
+                    decision_id,
+                    tenant_id,
+                    DecisionStatus.PENDING.value,
+                ),
             )
             conn.commit()
         return cursor.rowcount > 0
 
     @staticmethod
-    def _row_to_decision(row: sqlite3.Row) -> PendingDecision:
+    def _row_to_decision(row: tuple) -> PendingDecision:
+        """Build a :class:`PendingDecision` from a row shaped like :data:`_PENDING_DECISION_COLUMNS`."""
         return PendingDecision(
-            decision_id=row["decision_id"],
-            tenant_id=row["tenant_id"],
-            run_id=row["run_id"],
-            task_id=row["task_id"],
-            action_id=row["action_id"],
-            category=PolicyCategory(row["category"]),
-            prompt=row["prompt"],
-            status=DecisionStatus(row["status"]),
-            created_at=row["created_at"],
-            expires_at=row["expires_at"],
-            decided_by=row["decided_by"],
-            decided_at=row["decided_at"],
-            pattern=row["pattern"],
+            decision_id=row[0],
+            tenant_id=row[1],
+            run_id=row[2],
+            task_id=row[3],
+            action_id=row[4],
+            category=PolicyCategory(row[5]),
+            prompt=row[6],
+            status=DecisionStatus(row[7]),
+            created_at=row[8],
+            expires_at=row[9],
+            decided_by=row[10],
+            decided_at=row[11],
+            pattern=row[12],
         )
 
 

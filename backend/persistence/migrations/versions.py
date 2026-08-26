@@ -610,6 +610,135 @@ def _m15_down_secrets_rotation_integrity(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE secrets DROP COLUMN rotation_request_id")
 
 
+def _m16_create_policy_tables(conn: sqlite3.Connection) -> None:
+    """Create the execution-policy and pending-decision tables (E53-S1-T1).
+
+    Mirrors the PostgreSQL shape created by
+    ``_pg_m9_create_policy_and_environment_tables`` (E50-S2) -- same four
+    tables (``execution_policy_rules``, ``execution_dynamic_permissions``,
+    ``execution_policy_decisions``, ``pending_action_decisions``), same
+    tenant-first index shapes. Previously these tables existed only via
+    :class:`backend.execution.policy.PolicyStore`'s own imperative ``CREATE
+    TABLE IF NOT EXISTS``, applied outside any :class:`MigrationRunner` and
+    untracked by ``schema_version`` -- the same gap E51/E52 closed for the
+    quota and secret tables. Bringing it under this runner is what lets
+    ``PolicyStore`` stop creating its own schema and obtain a connection
+    from the configured State Store instead. ``CREATE TABLE IF NOT EXISTS``
+    keeps this a no-op against a pre-E53 database that already has these
+    exact tables; the index names differ from the pre-E53 ad hoc ones so
+    both old and new indexes may transiently coexist on an upgraded
+    database, which is harmless.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS execution_policy_rules (
+            rule_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            effect TEXT NOT NULL,
+            scope_kind TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            pattern TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_execution_policy_rules_tenant
+            ON execution_policy_rules(tenant_id, category);
+        CREATE TABLE IF NOT EXISTS execution_dynamic_permissions (
+            permission_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            scope_kind TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            pattern TEXT,
+            created_at TEXT NOT NULL,
+            created_by TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_execution_dynamic_permissions_tenant
+            ON execution_dynamic_permissions(tenant_id, category);
+        CREATE TABLE IF NOT EXISTS execution_policy_decisions (
+            decision_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            action_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            allowed INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            decided_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_execution_policy_decisions_tenant_run
+            ON execution_policy_decisions(tenant_id, run_id);
+        CREATE TABLE IF NOT EXISTS pending_action_decisions (
+            decision_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
+            action_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            decided_by TEXT,
+            decided_at TEXT,
+            pattern TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_pending_action_decisions_tenant_run
+            ON pending_action_decisions(tenant_id, run_id, task_id);
+        CREATE INDEX IF NOT EXISTS idx_pending_action_decisions_tenant_status
+            ON pending_action_decisions(tenant_id, status, expires_at);
+        """
+    )
+
+
+def _m16_down_drop_policy_tables(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m16_create_policy_tables` by dropping all four tables.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    for table in (
+        "execution_policy_rules",
+        "execution_dynamic_permissions",
+        "execution_policy_decisions",
+        "pending_action_decisions",
+    ):
+        conn.execute(f"DROP TABLE IF EXISTS {table}")
+
+
+def _m17_pending_action_decisions_status_expiry_index(conn: sqlite3.Connection) -> None:
+    """Add the index the cross-tenant expiry sweep actually needs (E53-S3-T2).
+
+    ``PolicyStore.list_due_pending_decisions()`` filters on ``status`` and
+    ``expires_at`` alone (deliberately no ``tenant_id`` -- it is the
+    operator/cron sweep across every tenant). Measured via ``EXPLAIN QUERY
+    PLAN`` against the tenant-first ``idx_pending_action_decisions_tenant_status``
+    index (E53-S1-T1): that index's leading column is ``tenant_id``, so an
+    unscoped query cannot seek into it and SQLite falls back to a full table
+    scan. This adds the ``(status, expires_at)`` index the expiry query can
+    actually use.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pending_action_decisions_status_expiry "
+        "ON pending_action_decisions(status, expires_at)"
+    )
+
+
+def _m17_down_pending_action_decisions_status_expiry_index(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m17_pending_action_decisions_status_expiry_index`.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    conn.execute("DROP INDEX IF EXISTS idx_pending_action_decisions_status_expiry")
+
+
 STORE_MIGRATIONS: list[MigrationEntry] = [
     _m1_create_core_tables,
     _m2_runs_add_run_type,
@@ -661,6 +790,16 @@ STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_m15_secrets_rotation_integrity,
         down=_m15_down_secrets_rotation_integrity,
         name="secrets_rotation_integrity",
+    ),
+    Migration(
+        up=_m16_create_policy_tables,
+        down=_m16_down_drop_policy_tables,
+        name="create_policy_tables",
+    ),
+    Migration(
+        up=_m17_pending_action_decisions_status_expiry_index,
+        down=_m17_down_pending_action_decisions_status_expiry_index,
+        name="pending_action_decisions_status_expiry_index",
     ),
 ]
 
