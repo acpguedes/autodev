@@ -213,6 +213,41 @@ class TestStorageReservation:
         store.release_storage_reservation(tenant_id="acme", reservation_id=result.reservation_id)
         assert store.storage_used("acme") == 0
 
+    def test_commit_after_release_does_not_double_commit(self, store: QuotaStore) -> None:
+        result = store.reserve_storage(
+            tenant_id="acme", bytes_requested=500, idempotency_key="k1", max_storage_bytes=1000
+        )
+        assert result.reservation_id is not None
+        store.release_storage_reservation(tenant_id="acme", reservation_id=result.reservation_id)
+        store.commit_storage_reservation(
+            tenant_id="acme", reservation_id=result.reservation_id, actual_bytes=500
+        )
+        assert store.storage_used("acme") == 0
+
+    def test_double_commit_does_not_double_count(self, store: QuotaStore) -> None:
+        result = store.reserve_storage(
+            tenant_id="acme", bytes_requested=500, idempotency_key="k1", max_storage_bytes=1000
+        )
+        assert result.reservation_id is not None
+        store.commit_storage_reservation(
+            tenant_id="acme", reservation_id=result.reservation_id, actual_bytes=420
+        )
+        store.commit_storage_reservation(
+            tenant_id="acme", reservation_id=result.reservation_id, actual_bytes=999
+        )
+        assert store.storage_used("acme") == 420
+
+    def test_release_after_commit_does_not_double_refund(self, store: QuotaStore) -> None:
+        result = store.reserve_storage(
+            tenant_id="acme", bytes_requested=500, idempotency_key="k1", max_storage_bytes=1000
+        )
+        assert result.reservation_id is not None
+        store.commit_storage_reservation(
+            tenant_id="acme", reservation_id=result.reservation_id, actual_bytes=420
+        )
+        store.release_storage_reservation(tenant_id="acme", reservation_id=result.reservation_id)
+        assert store.storage_used("acme") == 420
+
 
 class TestRequestRateLimiting:
     """Fixed one-second-window per-credential rate limiting."""
