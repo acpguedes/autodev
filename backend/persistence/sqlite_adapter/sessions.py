@@ -6,6 +6,7 @@ import sqlite3
 from typing import Any
 
 from backend.persistence.codecs import build_session_record, dumps_json, loads_json
+from backend.persistence.contract import translate_integrity_error
 from backend.persistence.sqlite_adapter._shared import _ConnectionOwner
 from backend.persistence.tenancy import DEFAULT_TENANT_ID, sqlite_tenant_clause
 
@@ -34,13 +35,22 @@ class _SessionsMixin(_ConnectionOwner):
             plan: Ordered list of plan step descriptions.
             artifacts: Arbitrary session artifacts, serialized to JSON.
             tenant_id: Tenant the new session belongs to.
+
+        Raises:
+            backend.persistence.contract.PersistenceIntegrityError: If
+                ``session_id`` already exists (E56-S2-T3: the same shared
+                type PostgreSQL raises for the same violation).
         """
         with self.connect() as conn:
-            conn.execute(
-                "INSERT INTO sessions (id, goal, plan_json, artifacts_json, tenant_id) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (session_id, goal, dumps_json(plan), dumps_json(artifacts), tenant_id),
-            )
+            try:
+                conn.execute(
+                    "INSERT INTO sessions (id, goal, plan_json, artifacts_json, tenant_id) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (session_id, goal, dumps_json(plan), dumps_json(artifacts), tenant_id),
+                )
+            except sqlite3.IntegrityError as exc:
+                conn.rollback()
+                raise translate_integrity_error(exc) from exc
             conn.commit()
 
     def get_session(
