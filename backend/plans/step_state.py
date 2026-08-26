@@ -41,7 +41,6 @@ from datetime import datetime, timezone
 from enum import StrEnum
 import os
 from pathlib import Path
-import threading
 from typing import Any, Optional
 
 from backend.persistence import contract
@@ -171,16 +170,30 @@ def _row_to_record(row: tuple) -> PlanStepRecord:
 class StepApprovalStore:
     """Durable, tenant-scoped per-step approval state, on either backend.
 
-    Every read-check-write sequence (content edit, transition) is guarded by
-    both a process-local :class:`threading.Lock` and the backing
-    connection's transaction, so concurrent approve/reject/execute calls for
-    the same step cannot race into a corrupted or duplicated transition
-    (E16-S2-T3 atomicity requirement). The ``plan_step_state`` table carries
-    Row-Level Security on PostgreSQL (E50-S4): every operation calls
-    :meth:`_scope` to set the ``app.tenant_id`` GUC inside the same
-    transaction as its query (a no-op on SQLite, which has no RLS and is
-    scoped by the explicit ``WHERE tenant_id = ...`` clauses already present
-    in each query).
+    Concurrency is serialized by the database, not by a process-local lock
+    (E55-S2; a ``threading.Lock`` protects nothing across replicas or
+    processes, which is exactly the gap this story closes). Every mutating
+    method opens a single connection's transaction via
+    :meth:`_begin_write` -- ``BEGIN IMMEDIATE`` on SQLite (a real,
+    whole-database file lock, safe across threads and processes on one
+    machine) and, on PostgreSQL, an explicit transaction whose critical read
+    takes :meth:`_for_update`'s row lock (``SELECT ... FOR UPDATE``) on the
+    one row being transitioned. :meth:`transition`, :meth:`update_content`,
+    and :meth:`delete_step` additionally guard their ``UPDATE``/``DELETE``
+    with the exact state read moments earlier (``WHERE ... AND state =
+    ...``) and check the affected row count: a concurrent transaction that
+    changed the row's state between the read and the write loses the row
+    lock's wait and then fails this guard, so it is rejected outright (a
+    :class:`ValueError`) rather than silently overwriting the winner's
+    transition -- this is what makes "two replicas cannot both move a step
+    out of ``under_review``" true for a genuine cross-process race, not just
+    within one Python process.
+
+    The ``plan_step_state`` table carries Row-Level Security on PostgreSQL
+    (E50-S4): every operation calls :meth:`_scope` to set the
+    ``app.tenant_id`` GUC inside the same transaction as its query (a no-op
+    on SQLite, which has no RLS and is scoped by the explicit ``WHERE
+    tenant_id = ...`` clauses already present in each query).
     """
 
     def __init__(self, db_path: Optional[Path] = None, *, store: Any = None) -> None:
@@ -211,7 +224,6 @@ class StepApprovalStore:
         self._store = store or get_store()
         if not hasattr(self._store, "connect"):
             raise TypeError("StepApprovalStore requires a durable store with connect()")
-        self._lock = threading.Lock()
 
     # --------------------------------------------------------------- helpers
 
@@ -240,6 +252,28 @@ class StepApprovalStore:
         """Set the PostgreSQL tenant GUC for this transaction; a no-op on SQLite."""
         if self._is_postgres:
             set_postgres_tenant(conn, tenant_id)
+
+    def _lock_session_for_write(self, conn: Any, tenant_id: str, session_id: str) -> None:
+        """Serialize every writer for one session's step list against each other, on PostgreSQL.
+
+        :meth:`append_step` counts existing rows (``MAX(step_index)``) and
+        then conditionally inserts a new one -- the same "phantom row" shape
+        E51-S2 identified for quota leases/reservations, where ``SELECT ...
+        FOR UPDATE`` alone cannot protect the insert because the row it
+        would lock does not exist yet. SQLite's :meth:`_begin_write`
+        (``BEGIN IMMEDIATE``) already closes this gap with a whole-database
+        write lock, so this is a no-op there. On PostgreSQL, a
+        transaction-scoped advisory lock keyed by ``(tenant_id,
+        session_id)`` (released automatically at commit or rollback)
+        serializes every such writer for the same session.
+
+        Args:
+            conn: Open connection with an in-progress write transaction.
+            tenant_id: Tenant the session's plan belongs to.
+            session_id: The owning session.
+        """
+        if self._is_postgres:
+            conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (f"{tenant_id}:{session_id}",))
 
     @staticmethod
     def _now() -> str:
@@ -270,7 +304,7 @@ class StepApprovalStore:
             Every tracked step for the session, ordered by index.
         """
         now = self._now()
-        with self._lock, self._connect() as conn:
+        with self._connect() as conn:
             self._scope(conn, tenant_id)
             self._begin_write(conn)
             for index, content in enumerate(contents):
@@ -363,9 +397,11 @@ class StepApprovalStore:
 
         Raises:
             KeyError: If the step is not tracked.
-            ValueError: If the step is not in an editable state.
+            ValueError: If the step is not in an editable state, including
+                one that left :data:`EDITABLE_STATES` in a concurrent
+                transaction between this method's read and its write.
         """
-        with self._lock, self._connect() as conn:
+        with self._connect() as conn:
             self._scope(conn, tenant_id)
             self._begin_write(conn)
             row = conn.execute(
@@ -387,13 +423,23 @@ class StepApprovalStore:
                     "only draft/under_review steps are editable."
                 )
             now = self._now()
-            conn.execute(
+            # Guarded by the exact state just read: a concurrent transition
+            # that moved the step out of an editable state between the read
+            # above and this write affects zero rows here rather than
+            # silently overwriting content past its approval decision.
+            cursor = conn.execute(
                 self._sql(
                     "UPDATE plan_step_state SET content = {p}, updated_at = {p} "
-                    "WHERE tenant_id = {p} AND session_id = {p} AND step_index = {p}"
+                    "WHERE tenant_id = {p} AND session_id = {p} AND step_index = {p} AND state = {p}"
                 ),
-                (content, now, tenant_id, session_id, step_index),
+                (content, now, tenant_id, session_id, step_index, current.state.value),
             )
+            if cursor.rowcount == 0:
+                conn.rollback()
+                raise ValueError(
+                    f"Cannot edit step {step_index}: its state changed concurrently "
+                    "since it was read."
+                )
             conn.commit()
             return PlanStepRecord(session_id, step_index, content, current.state, now)
 
@@ -411,9 +457,10 @@ class StepApprovalStore:
             The newly created step record, in the ``draft`` state.
         """
         now = self._now()
-        with self._lock, self._connect() as conn:
+        with self._connect() as conn:
             self._scope(conn, tenant_id)
             self._begin_write(conn)
+            self._lock_session_for_write(conn, tenant_id, session_id)
             row = conn.execute(
                 self._sql(
                     "SELECT COALESCE(MAX(step_index), -1) FROM plan_step_state "
@@ -449,11 +496,15 @@ class StepApprovalStore:
         Raises:
             KeyError: If the step is not tracked.
             ValueError: If the step is not in :data:`REMOVABLE_STATES` (only
-                ``draft``/``under_review``/``rejected`` steps may be removed).
+                ``draft``/``under_review``/``rejected`` steps may be removed),
+                including one that left :data:`REMOVABLE_STATES` in a
+                concurrent transaction between this method's read and its
+                write.
         """
-        with self._lock, self._connect() as conn:
+        with self._connect() as conn:
             self._scope(conn, tenant_id)
             self._begin_write(conn)
+            self._lock_session_for_write(conn, tenant_id, session_id)
             row = conn.execute(
                 self._sql(
                     f"SELECT {_ROW_COLUMNS} FROM plan_step_state "
@@ -472,13 +523,24 @@ class StepApprovalStore:
                     f"Cannot remove step {step_index} in state {current.state.value!r}; "
                     "only draft/under_review/rejected steps can be removed."
                 )
-            conn.execute(
+            # Guarded by the exact state just read: a concurrent transition
+            # that moved the step out of a removable state between the read
+            # above and this write affects zero rows here rather than
+            # silently deleting a step that just became part of the
+            # execution record.
+            cursor = conn.execute(
                 self._sql(
                     "DELETE FROM plan_step_state "
-                    "WHERE tenant_id = {p} AND session_id = {p} AND step_index = {p}"
+                    "WHERE tenant_id = {p} AND session_id = {p} AND step_index = {p} AND state = {p}"
                 ),
-                (tenant_id, session_id, step_index),
+                (tenant_id, session_id, step_index, current.state.value),
             )
+            if cursor.rowcount == 0:
+                conn.rollback()
+                raise ValueError(
+                    f"Cannot remove step {step_index}: its state changed concurrently "
+                    "since it was read."
+                )
             remaining_rows = conn.execute(
                 self._sql(
                     f"SELECT {_ROW_COLUMNS} FROM plan_step_state "
@@ -524,9 +586,12 @@ class StepApprovalStore:
         Raises:
             KeyError: If the step is not tracked.
             ValueError: If ``action`` is not legal from the step's current
-                state.
+                state, including a state a concurrent transaction moved the
+                step to between this method's read and its write (E55-S2:
+                exactly one of two racing transitions wins; the other is
+                rejected, never silently overwritten).
         """
-        with self._lock, self._connect() as conn:
+        with self._connect() as conn:
             self._scope(conn, tenant_id)
             self._begin_write(conn)
             row = conn.execute(
@@ -548,13 +613,27 @@ class StepApprovalStore:
                     f"Cannot {action} step {step_index} while it is {current.state.value!r}."
                 )
             now = self._now()
-            conn.execute(
+            # Guarded by the exact state just read: on PostgreSQL, a second
+            # transaction blocked on this row's FOR UPDATE lock re-reads the
+            # winner's already-committed state once granted, so its own
+            # _LEGAL_TRANSITIONS lookup for the *original* action against
+            # that new state is what actually rejects it (this UPDATE guard
+            # is defense in depth for that path, and the only thing standing
+            # between a correct rejection and a silent overwrite on a
+            # storage layer without row locking).
+            cursor = conn.execute(
                 self._sql(
                     "UPDATE plan_step_state SET state = {p}, updated_at = {p} "
-                    "WHERE tenant_id = {p} AND session_id = {p} AND step_index = {p}"
+                    "WHERE tenant_id = {p} AND session_id = {p} AND step_index = {p} AND state = {p}"
                 ),
-                (next_state.value, now, tenant_id, session_id, step_index),
+                (next_state.value, now, tenant_id, session_id, step_index, current.state.value),
             )
+            if cursor.rowcount == 0:
+                conn.rollback()
+                raise ValueError(
+                    f"Cannot {action} step {step_index}: its state changed concurrently "
+                    "since it was read."
+                )
             conn.commit()
             return current.state, PlanStepRecord(session_id, step_index, current.content, next_state, now)
 
