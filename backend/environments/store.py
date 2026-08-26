@@ -389,6 +389,54 @@ class EnvironmentStore:
         ).fetchall()
         return [self._row_to_record(row) for row in rows]
 
+    def claim_expired_active(self, tenant_id: str, *, before: str) -> list[EnvironmentRecord]:
+        """Atomically claim every one tenant's active environments whose TTL has passed (E54-S3-T1).
+
+        A single conditional ``UPDATE ... WHERE status = 'active' ...
+        RETURNING`` transitions each matching row straight to ``"orphaned"``
+        as part of selecting it -- there is no separate claim marker,
+        because the status flip itself *is* the claim, and it reuses
+        :meth:`mark_status`'s own terminal-status semantics (an environment
+        already torn down or already claimed by another replica is not
+        ``status = 'active'`` any more, so it simply will not match).
+
+        This is what makes reaping safe to run on every replica
+        simultaneously (E54-S3-T2): PostgreSQL re-evaluates an ``UPDATE``'s
+        ``WHERE`` clause against each row's latest committed version before
+        applying it, so two replicas racing the same sweep can never both
+        claim the same row -- the loser's statement matches zero rows for
+        it once the winner's transaction has committed. Crash recovery
+        (E54-S3-T3) follows from the same property: an environment orphaned
+        by a process that died mid-lifecycle stays ``status = 'active'``
+        (nothing ever marked it otherwise) until its TTL passes, at which
+        point *any* replica's next sweep -- not only the one that created
+        it -- claims and tears it down.
+
+        Args:
+            tenant_id: Tenant to claim expired environments for.
+            before: ISO-8601 cutoff; rows with ``expires_at`` at or before
+                this are claimed.
+
+        Returns:
+            The claimed records, already reflecting the ``"orphaned"``
+            status and this call's ``torn_down_at`` -- the caller now owns
+            tearing down each one's real resources exactly once.
+        """
+        conn = self._connect()
+        self._scope(conn, tenant_id)
+        self._begin_write(conn)
+        claimed_at = _now()
+        rows = conn.execute(
+            self._sql(
+                "UPDATE execution_environments SET status = 'orphaned', torn_down_at = {p} "
+                "WHERE tenant_id = {p} AND status = 'active' AND expires_at <= {p} "
+                f"RETURNING {_ENV_COLUMNS}"
+            ),
+            (claimed_at, tenant_id, before),
+        ).fetchall()
+        conn.commit()
+        return [self._row_to_record(row) for row in rows]
+
     # ------------------------------------------------------------- decisions
 
     def record_decision(self, record: EnvironmentDecisionRecord) -> None:

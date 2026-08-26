@@ -467,7 +467,14 @@ class EnvironmentManager:
         )
 
     def reap_orphans(self, *, tenant_id: str, at: Optional[str] = None) -> int:
-        """Tear down and mark orphaned every one tenant's active environments past their TTL.
+        """Claim, tear down, and mark orphaned every one tenant's active environments past their TTL.
+
+        Claiming (E54-S3-T1/T2) happens atomically in the store: each
+        expired row is claimed by exactly one caller, so this is safe to
+        call concurrently from every replica -- including a second replica
+        recovering an environment orphaned by a process that crashed
+        mid-lifecycle (E54-S3-T3), since nothing but the TTL gates when a
+        never-torn-down environment becomes claimable.
 
         Args:
             tenant_id: Tenant to reap orphaned environments for (RLS scope
@@ -477,11 +484,11 @@ class EnvironmentManager:
             at: ISO-8601 cutoff; defaults to now.
 
         Returns:
-            The number of environments reaped.
+            The number of environments this call claimed and reaped.
         """
         cutoff = at or _now()
-        expired = self._store.list_expired_active(tenant_id, before=cutoff)
-        for record in expired:
+        claimed = self._store.claim_expired_active(tenant_id, before=cutoff)
+        for record in claimed:
             handle = EnvironmentHandle(
                 environment_id=record.environment_id,
                 run_id=record.run_id,
@@ -493,16 +500,12 @@ class EnvironmentManager:
             try:
                 self.teardown(handle, reason="orphan_reaped")
             except EnvironmentBackendError:
-                # Best-effort: the record is still marked orphaned below via
-                # the store update inside teardown()'s own mark_status call
-                # not having run -- fall back to a direct status flip.
-                self._store.mark_status(
-                    record.environment_id,
-                    tenant_id=tenant_id,
-                    status="orphaned",
-                    torn_down_at=_now(),
-                )
-        return len(expired)
+                # Best-effort: claim_expired_active() already flipped this
+                # record to "orphaned" atomically before this loop ever ran,
+                # so it is not left in "active" limbo even if the backend's
+                # own teardown fails -- nothing further to do here.
+                pass
+        return len(claimed)
 
     def list_for_run(self, run_id: str, *, tenant_id: str) -> list[EnvironmentRecord]:
         """List every environment record provisioned for one run (audit, E32-S4-T1)."""

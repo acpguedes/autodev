@@ -101,6 +101,35 @@ def test_list_expired_active_finds_only_past_ttl(tmp_path: Path) -> None:
     assert [r.environment_id for r in expired] == ["env-stale"]
 
 
+def test_claim_expired_active_claims_and_marks_orphaned(tmp_path: Path) -> None:
+    store = EnvironmentStore(db_path=tmp_path / "env.db")
+    store.create_environment(_record("env-fresh", expires_in_seconds=3600))
+    store.create_environment(_record("env-stale", expires_in_seconds=-10))
+    cutoff = datetime.now(timezone.utc).isoformat()
+
+    claimed = store.claim_expired_active("t1", before=cutoff)
+
+    assert [r.environment_id for r in claimed] == ["env-stale"]
+    assert claimed[0].status == "orphaned"
+    assert claimed[0].torn_down_at is not None
+    fetched = store.get("env-stale", tenant_id="t1")
+    assert fetched is not None
+    assert fetched.status == "orphaned"
+
+
+def test_claim_expired_active_claims_each_row_exactly_once(tmp_path: Path) -> None:
+    """E54-S3-T1: a second claim attempt over the same window claims nothing further."""
+    store = EnvironmentStore(db_path=tmp_path / "env.db")
+    store.create_environment(_record("env-stale", expires_in_seconds=-10))
+    cutoff = datetime.now(timezone.utc).isoformat()
+
+    first = store.claim_expired_active("t1", before=cutoff)
+    second = store.claim_expired_active("t1", before=cutoff)
+
+    assert [r.environment_id for r in first] == ["env-stale"]
+    assert second == []
+
+
 def test_list_for_run_returns_only_that_runs_environments(tmp_path: Path) -> None:
     store = EnvironmentStore(db_path=tmp_path / "env.db")
     store.create_environment(_record("env-1"))
