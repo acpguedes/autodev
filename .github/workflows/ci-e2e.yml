@@ -3,7 +3,21 @@ name: CI E2E
 on:
   push:
     branches: [ main ]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "tests/**"
+      - ".github/workflows/ci-e2e.yml"
   pull_request:
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "tests/**"
+      - ".github/workflows/ci-e2e.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

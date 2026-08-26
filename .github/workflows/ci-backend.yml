@@ -3,7 +3,31 @@ name: CI Backend
 on:
   push:
     branches: [ main ]
+    paths:
+      - "backend/**"
+      - "tests/**"
+      - "scripts/**"
+      - "sdk/**"
+      - "sandbox/**"
+      - ".coveragerc"
+      - "mypy.ini"
+      - ".trivyignore.yaml"
+      - ".github/workflows/ci-backend.yml"
   pull_request:
+    paths:
+      - "backend/**"
+      - "tests/**"
+      - "scripts/**"
+      - "sdk/**"
+      - "sandbox/**"
+      - ".coveragerc"
+      - "mypy.ini"
+      - ".trivyignore.yaml"
+      - ".github/workflows/ci-backend.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -112,7 +136,7 @@ jobs:
 
       - name: Run backend test suite with coverage gate
         run: |
-          python -m pytest tests backend/tests -q \
+          python -m pytest tests backend/tests -q -n auto -m "not slow" \
             --cov=backend --cov-report=term-missing --cov-report=xml:coverage.xml \
             --cov-fail-under=85
 

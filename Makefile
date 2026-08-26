@@ -74,17 +74,12 @@ install-dev: venv ## Install optional dev tools (black, ruff, mypy, pytest-cov, 
 # --------------------------------------------------------------------------
 # Test
 # --------------------------------------------------------------------------
-.PHONY: test test-backend test-backend-parallel test-frontend coverage
+.PHONY: test test-backend test-frontend coverage
 
 test: test-backend test-frontend ## Run the full backend + frontend test suites
 
-test-backend: ## Run the backend pytest suite with coverage gate (>=85% of product code, see .coveragerc)
-	$(PY) -m pytest $(PYTEST_PATHS) -q \
-		--cov=backend --cov-report=term-missing --cov-report=xml:coverage.xml \
-		--cov-fail-under=85
-
-test-backend-parallel: ## Backend suite via pytest-xdist (needs `make install-dev`); serial run is authoritative on disagreement
-	$(PY) -m pytest $(PYTEST_PATHS) -q -n auto \
+test-backend: ## Run the backend pytest suite in parallel with the coverage gate (>=85% of product code, see .coveragerc). Excludes `slow` (Docker/live-Postgres) tests — run those with `pytest -m slow` once the dependency is available.
+	$(PY) -m pytest $(PYTEST_PATHS) -q -n auto -m "not slow" \
 		--cov=backend --cov-report=term-missing --cov-report=xml:coverage.xml \
 		--cov-fail-under=85
 
@@ -92,7 +87,7 @@ test-frontend: ## Run the frontend vitest suite
 	cd $(FRONTEND_DIR) && $(NPM) test
 
 coverage: ## Run backend tests with coverage (needs `make install-dev`)
-	$(PY) -m pytest $(PYTEST_PATHS) \
+	$(PY) -m pytest $(PYTEST_PATHS) -m "not slow" \
 		--cov=backend --cov-report=term-missing --cov-report=html
 
 # --------------------------------------------------------------------------

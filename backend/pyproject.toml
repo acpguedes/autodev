@@ -43,4 +43,5 @@ markers = [
   "unit: fast, isolated tests with no external services (default tier).",
   "integration: cross-subsystem tests, still local-first (SQLite/stub providers, no live network).",
   "e2e: end-to-end tests exercising a running API server and/or the frontend.",
+  "slow: needs a real external dependency (Docker, a live PostgreSQL) — excluded from the default PR gate, run explicitly (e.g. by security-baseline) or once the dependency is wired into CI.",
 ]

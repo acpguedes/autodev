@@ -33,9 +33,12 @@ from backend.quotas.contracts import RunBudgetLimits, TenantQuotaPolicy
 
 _POSTGRES_URL = os.environ.get("AUTODEV_TEST_POSTGRES_URL", "")
 
-pytestmark = pytest.mark.skipif(
-    not _POSTGRES_URL, reason="requires AUTODEV_TEST_POSTGRES_URL (a real PostgreSQL, E51)"
-)
+pytestmark = [
+    pytest.mark.slow,
+    pytest.mark.skipif(
+        not _POSTGRES_URL, reason="requires AUTODEV_TEST_POSTGRES_URL (a real PostgreSQL, E51)"
+    ),
+]
 
 
 def _store():

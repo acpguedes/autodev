@@ -21,6 +21,7 @@ from backend.config.runtime import reset_runtime_config_cache
 from backend.config.settings import reset_settings_cache
 from backend.llm.composition import reset_model_composition_cache
 from backend.llm.factory import get_chat_model
+from backend.persistence.database import reset_store_cache
 
 #: Fixed seed used to make any randomized test behavior reproducible.
 DETERMINISTIC_SEED = 1337
@@ -55,9 +56,18 @@ def isolated_runtime_config(
     fixture, any test exercising an agent would issue a live, credentialed model
     call against whatever endpoint the developer had configured.
 
+    ``DATABASE_URL`` defaults to the cwd-relative ``sqlite:///./autodev.db``
+    (:data:`backend.persistence.database.DEFAULT_DATABASE_URL`), and
+    :func:`~backend.persistence.database.get_store` caches the resolved store
+    with ``maxsize=1`` for the whole process. Left unisolated, every test that
+    reaches ``get_store()`` (directly or via ``TestClient(app)``) shares one
+    real on-disk database with every other test and, under ``pytest-xdist``,
+    with every other worker process — the file the previous fixture forgot to
+    isolate is exactly the one all the others exist to protect.
+
     The fixture points the config path at a per-test file, forces the offline
-    ``stub`` provider, strips credential-bearing variables, and resets every
-    cache that snapshots them.
+    ``stub`` provider, points ``DATABASE_URL`` at a per-test SQLite file, and
+    resets every cache that snapshots them.
 
     The reset runs on entry only, deliberately. Isolation is already complete:
     the next test's own setup resets the same caches before it can observe
@@ -80,6 +90,7 @@ def isolated_runtime_config(
     """
     monkeypatch.setenv("AUTODEV_CONFIG_PATH", str(tmp_path / "autodev.config.json"))
     monkeypatch.setenv("LLM_PROVIDER", "stub")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'autodev.db'}")
     for variable in _CREDENTIAL_ENV_VARS:
         monkeypatch.delenv(variable, raising=False)
 
@@ -87,6 +98,7 @@ def isolated_runtime_config(
     reset_settings_cache()
     reset_model_composition_cache()
     get_chat_model.cache_clear()
+    reset_store_cache()
     yield
 
 
