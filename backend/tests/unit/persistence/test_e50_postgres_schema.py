@@ -75,3 +75,53 @@ def test_quota_and_secret_tables_migration_down_drops_all_six() -> None:
 def test_quota_and_secret_migration_appended_without_reordering() -> None:
     """The new migration is appended immediately after ``run_step_position``, never reordering it."""
     assert _migration_index("create_quota_and_secret_tables") == _migration_index("run_step_position") + 1
+
+
+# ---------------------------------------------------------------------------
+# E50-S2 — execution policy and environment tables
+# ---------------------------------------------------------------------------
+
+POLICY_AND_ENVIRONMENT_TABLES = (
+    "execution_policy_rules",
+    "execution_dynamic_permissions",
+    "execution_policy_decisions",
+    "pending_action_decisions",
+    "execution_environments",
+    "execution_environment_decisions",
+)
+
+
+def test_policy_and_environment_tables_migration_creates_all_six() -> None:
+    """The up migration issues ``CREATE TABLE`` for every policy/environment table."""
+    conn = FakeConnection()
+    migration = _migration_named("create_policy_and_environment_tables")
+
+    migration.up(conn)
+
+    executed_sql = "\n".join(sql for sql, _params in conn.executed)
+    for table in POLICY_AND_ENVIRONMENT_TABLES:
+        assert f"CREATE TABLE IF NOT EXISTS {table}" in executed_sql
+    # Pending-decision lookup and expiry-scan indexes called out by E50-S2-T3.
+    assert "idx_pg_pending_action_decisions_tenant_run" in executed_sql
+    assert "idx_pg_pending_action_decisions_tenant_status" in executed_sql
+    assert "ON pending_action_decisions(tenant_id, status, expires_at)" in executed_sql
+
+
+def test_policy_and_environment_tables_migration_down_drops_all_six() -> None:
+    """The down migration drops every policy/environment table it created."""
+    conn = FakeConnection()
+    migration = _migration_named("create_policy_and_environment_tables")
+
+    migration.down(conn)
+
+    executed_sql = "\n".join(sql for sql, _params in conn.executed)
+    for table in POLICY_AND_ENVIRONMENT_TABLES:
+        assert f"DROP TABLE IF EXISTS {table}" in executed_sql
+
+
+def test_policy_and_environment_migration_appended_after_quota_and_secret() -> None:
+    """The policy/environment migration is appended right after the quota/secret one."""
+    assert (
+        _migration_index("create_policy_and_environment_tables")
+        == _migration_index("create_quota_and_secret_tables") + 1
+    )
