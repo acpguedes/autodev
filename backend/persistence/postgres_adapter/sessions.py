@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+import psycopg
+
 from backend.persistence.codecs import build_session_record, dumps_json, loads_json
+from backend.persistence.contract import translate_integrity_error
 from backend.persistence.postgres_adapter._shared import _ConnectionOwner
 from backend.persistence.tenancy import DEFAULT_TENANT_ID, set_postgres_tenant
 
@@ -21,14 +24,24 @@ class _SessionsMixin(_ConnectionOwner):
         artifacts: dict[str, Any],
         tenant_id: str = DEFAULT_TENANT_ID,
     ) -> None:
-        """Insert a new session row, scoped to *tenant_id*."""
+        """Insert a new session row, scoped to *tenant_id*.
+
+        Raises:
+            backend.persistence.contract.PersistenceIntegrityError: If
+                ``session_id`` already exists (E56-S2-T3: the same shared
+                type SQLite raises for the same violation).
+        """
         with self.connect() as conn:
             set_postgres_tenant(conn, tenant_id)
-            conn.execute(
-                "INSERT INTO sessions (id, goal, plan_json, artifacts_json, tenant_id) "
-                "VALUES (%s, %s, %s::jsonb, %s::jsonb, %s)",
-                (session_id, goal, dumps_json(plan), dumps_json(artifacts), tenant_id),
-            )
+            try:
+                conn.execute(
+                    "INSERT INTO sessions (id, goal, plan_json, artifacts_json, tenant_id) "
+                    "VALUES (%s, %s, %s::jsonb, %s::jsonb, %s)",
+                    (session_id, goal, dumps_json(plan), dumps_json(artifacts), tenant_id),
+                )
+            except psycopg.errors.IntegrityError as exc:
+                conn.rollback()
+                raise translate_integrity_error(exc) from exc
             conn.commit()
 
     def get_session(self, session_id: str, tenant_id: str = DEFAULT_TENANT_ID) -> dict[str, Any] | None:
