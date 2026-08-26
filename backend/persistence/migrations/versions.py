@@ -520,6 +520,96 @@ def _m13_down_remove_tenant_id_from_request_rate_buckets(conn: sqlite3.Connectio
         conn.execute("ALTER TABLE request_rate_buckets DROP COLUMN tenant_id")
 
 
+def _m14_create_secrets_table(conn: sqlite3.Connection) -> None:
+    """Create the versioned secret store table (E52-S1-T1).
+
+    Mirrors the PostgreSQL shape created by
+    ``_pg_m8_create_quota_and_secret_tables`` (E50-S1). Previously this table
+    existed only via :class:`backend.secret_store.store.SecretStore`'s own
+    imperative ``CREATE TABLE IF NOT EXISTS``, applied outside any
+    :class:`MigrationRunner` and untracked by ``schema_version`` -- the same
+    gap E51-S1 closed for the quota tables. Bringing it under this runner is
+    what lets ``SecretStore`` stop creating its own schema and obtain a
+    connection from the configured State Store instead. ``CREATE TABLE IF
+    NOT EXISTS`` keeps this a no-op against a pre-E52 database that already
+    has this exact table.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS secrets (
+            tenant_id TEXT NOT NULL,
+            project TEXT NOT NULL,
+            name TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            ciphertext TEXT NOT NULL,
+            status TEXT NOT NULL,
+            backend_kind TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            rotated_at TEXT,
+            revoked_at TEXT,
+            PRIMARY KEY (tenant_id, project, name, version)
+        );
+        CREATE INDEX IF NOT EXISTS idx_secrets_latest
+            ON secrets(tenant_id, project, name, version DESC);
+        """
+    )
+
+
+def _m14_down_drop_secrets_table(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m14_create_secrets_table` by dropping the table.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    conn.execute("DROP TABLE IF EXISTS secrets")
+
+
+def _m15_secrets_rotation_integrity(conn: sqlite3.Connection) -> None:
+    """Add rotation idempotency and the one-active-version invariant (E52-S2-T2/T3).
+
+    ``rotation_request_id`` records the caller-supplied idempotency key a
+    rotation was created with (``NULL`` for non-idempotent callers and every
+    ``create()``); the partial unique index on it means a retried rotation
+    with the same key cannot insert a second row even if a bug ever bypassed
+    :class:`~backend.secret_store.store.SecretStore`'s own advisory-lock
+    check. The partial unique index on ``(tenant_id, project, name) WHERE
+    status = 'active'`` makes "exactly one active version" a database
+    constraint rather than only an application-level guarantee -- the same
+    defense-in-depth relationship E51-S2-T2 established for quota policy
+    versions.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    _add_column_if_missing(conn, "secrets", "rotation_request_id", "TEXT")
+    conn.executescript(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_secrets_rotation_request
+            ON secrets(tenant_id, project, name, rotation_request_id)
+            WHERE rotation_request_id IS NOT NULL;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_secrets_one_active
+            ON secrets(tenant_id, project, name)
+            WHERE status = 'active';
+        """
+    )
+
+
+def _m15_down_secrets_rotation_integrity(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m15_secrets_rotation_integrity`.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    conn.execute("DROP INDEX IF EXISTS idx_secrets_one_active")
+    conn.execute("DROP INDEX IF EXISTS idx_secrets_rotation_request")
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(secrets)").fetchall()}
+    if "rotation_request_id" in existing:
+        conn.execute("ALTER TABLE secrets DROP COLUMN rotation_request_id")
+
+
 STORE_MIGRATIONS: list[MigrationEntry] = [
     _m1_create_core_tables,
     _m2_runs_add_run_type,
@@ -561,6 +651,16 @@ STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_m13_add_tenant_id_to_request_rate_buckets,
         down=_m13_down_remove_tenant_id_from_request_rate_buckets,
         name="add_tenant_id_to_request_rate_buckets",
+    ),
+    Migration(
+        up=_m14_create_secrets_table,
+        down=_m14_down_drop_secrets_table,
+        name="create_secrets_table",
+    ),
+    Migration(
+        up=_m15_secrets_rotation_integrity,
+        down=_m15_down_secrets_rotation_integrity,
+        name="secrets_rotation_integrity",
     ),
 ]
 

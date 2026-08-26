@@ -66,19 +66,29 @@ class SecretService:
         self._audit("secret.created", metadata, actor_id=actor_id)
         return metadata
 
-    def rotate(self, reference: SecretReference, value: str, *, actor_id: str) -> SecretMetadata:
+    def rotate(
+        self,
+        reference: SecretReference,
+        value: str,
+        *,
+        actor_id: str,
+        idempotency_key: Optional[str] = None,
+    ) -> SecretMetadata:
         """Store a new version of an existing secret.
 
         Args:
             reference: Scoped reference to rotate.
             value: Raw new secret value; encrypted before it ever reaches the store.
             actor_id: Authenticated caller performing this operation (audit only).
+            idempotency_key: When given, a retry of this exact rotation
+                request returns the version already created for it instead
+                of creating another one.
 
         Returns:
             The new version's metadata.
         """
         ciphertext = encrypt_secret_value(value, settings=self._settings)
-        metadata = self._store.rotate(reference, ciphertext)
+        metadata = self._store.rotate(reference, ciphertext, idempotency_key=idempotency_key)
         self._audit("secret.rotated", metadata, actor_id=actor_id)
         return metadata
 

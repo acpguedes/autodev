@@ -890,6 +890,45 @@ def _pg_m11_down_revoke_tenant_rls_from_new_tables(conn: Any) -> None:
         _revoke_tenant_rls(conn, table)
 
 
+def _pg_m12_secrets_rotation_integrity(conn: Any) -> None:
+    """Add rotation idempotency and the one-active-version invariant (E52-S2-T2/T3).
+
+    Mirrors the SQLite migration of the same purpose
+    (``_m15_secrets_rotation_integrity``). ``rotation_request_id`` records
+    the caller-supplied idempotency key a rotation was created with, guarded
+    by a partial unique index so a retried rotation with the same key cannot
+    insert a second row even outside :class:`~backend.secret_store.store.SecretStore`'s
+    own advisory-lock check. The partial unique index on ``(tenant_id,
+    project, name) WHERE status = 'active'`` makes "exactly one active
+    version" a database constraint, not only an application-level guarantee.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute("ALTER TABLE secrets ADD COLUMN IF NOT EXISTS rotation_request_id TEXT")
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_pg_secrets_rotation_request "
+        "ON secrets(tenant_id, project, name, rotation_request_id) "
+        "WHERE rotation_request_id IS NOT NULL"
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_pg_secrets_one_active "
+        "ON secrets(tenant_id, project, name) "
+        "WHERE status = 'active'"
+    )
+
+
+def _pg_m12_down_secrets_rotation_integrity(conn: Any) -> None:
+    """Revert :func:`_pg_m12_secrets_rotation_integrity`.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute("DROP INDEX IF EXISTS idx_pg_secrets_one_active")
+    conn.execute("DROP INDEX IF EXISTS idx_pg_secrets_rotation_request")
+    conn.execute("ALTER TABLE secrets DROP COLUMN IF EXISTS rotation_request_id")
+
+
 POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
     _pg_m1_create_core_tables,
     Migration(
@@ -946,6 +985,11 @@ POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_pg_m11_apply_tenant_rls_to_new_tables,
         down=_pg_m11_down_revoke_tenant_rls_from_new_tables,
         name="apply_tenant_rls_to_new_tables",
+    ),
+    Migration(
+        up=_pg_m12_secrets_rotation_integrity,
+        down=_pg_m12_down_secrets_rotation_integrity,
+        name="secrets_rotation_integrity",
     ),
 ]
 
