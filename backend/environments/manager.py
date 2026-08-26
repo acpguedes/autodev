@@ -140,8 +140,20 @@ class EnvironmentManager:
 
         Reaps any of the tenant's orphaned environments first (lazy sweep,
         mirroring :class:`~backend.execution.decisions.DecisionService`),
-        then admits the request against the tenant's concurrent-environment
-        ceiling, then delegates provisioning to the resolved backend.
+        delegates provisioning to the resolved backend, then admits the
+        resulting record against the tenant's concurrent-environment ceiling.
+
+        The admission check happens *after* the backend call and is atomic
+        with the record's insert (E54-S2): a separate "count, then insert"
+        pair of calls would leave a race window across replicas where two
+        concurrent requests could both observe the tenant under its ceiling
+        and both be admitted, overshooting it. Denial after backend
+        provisioning is safe here because
+        :class:`~backend.environments.backends.HardenedContainerBackend`'s
+        ``provision()`` does not itself create a real container (containers
+        are per-command, spun up lazily by ``SandboxRunner`` when a command
+        actually runs) -- denial just tears down the unpersisted handle via
+        the backend's (here, no-op) ``teardown()``.
 
         Args:
             run_id: Orchestrator run this environment is provisioned for.
@@ -164,8 +176,6 @@ class EnvironmentManager:
         self.reap_orphans(tenant_id=tenant_id)
         active_profile = profile or EnvironmentProfile()
         limit = self._settings.autodev_environment_max_concurrent
-        if self._store.count_active(tenant_id) >= limit:
-            raise EnvironmentCapacityExceededError(tenant_id, limit)
 
         handle = self._backend.provision(
             run_id=run_id, tenant_id=tenant_id, profile=active_profile, workspace_ref=workspace_ref
@@ -173,7 +183,7 @@ class EnvironmentManager:
         created_at = _now()
         ttl = self._settings.autodev_environment_ttl_seconds
         expires_iso = (datetime.now(timezone.utc) + timedelta(seconds=ttl)).isoformat()
-        self._store.create_environment(
+        admitted = self._store.create_environment(
             EnvironmentRecord(
                 environment_id=handle.environment_id,
                 run_id=run_id,
@@ -185,8 +195,19 @@ class EnvironmentManager:
                 status="active",
                 created_at=created_at,
                 expires_at=expires_iso,
-            )
+            ),
+            max_concurrent=limit,
         )
+        if not admitted:
+            try:
+                self._backend.teardown(handle)
+            except EnvironmentBackendError:
+                logger.warning(
+                    "environment %s: capacity denied but teardown of the unpersisted "
+                    "handle failed",
+                    handle.environment_id,
+                )
+            raise EnvironmentCapacityExceededError(tenant_id, limit)
         emit_event(
             "environment.instance.provisioned",
             tenant_id=tenant_id,
