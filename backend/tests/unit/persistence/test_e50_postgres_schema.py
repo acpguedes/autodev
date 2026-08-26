@@ -10,8 +10,12 @@ PostgreSQL E2E, not yet started). SQLite-side assertions run against a real
 
 from __future__ import annotations
 
+import sqlite3
+from pathlib import Path
+
 from backend.persistence.migrations.postgres_versions import POSTGRES_STORE_MIGRATIONS
 from backend.persistence.migrations.runner import Migration
+from backend.plans.step_state import StepApprovalStore
 from backend.tests.unit.persistence.test_tenancy_migrations import FakeConnection
 
 #: The thirteen tables this epic brings under versioned migration + RLS.
@@ -125,3 +129,96 @@ def test_policy_and_environment_migration_appended_after_quota_and_secret() -> N
         _migration_index("create_policy_and_environment_tables")
         == _migration_index("create_quota_and_secret_tables") + 1
     )
+
+
+# ---------------------------------------------------------------------------
+# E50-S3 — plan_step_state redesign
+# ---------------------------------------------------------------------------
+
+
+def test_plan_step_state_migration_creates_table_with_tenant_and_fk() -> None:
+    """The up migration creates ``plan_step_state`` with ``tenant_id`` and a parent foreign key."""
+    conn = FakeConnection()
+    migration = _migration_named("create_plan_step_state_table")
+
+    migration.up(conn)
+
+    executed_sql = "\n".join(sql for sql, _params in conn.executed)
+    assert "CREATE TABLE IF NOT EXISTS plan_step_state" in executed_sql
+    assert "tenant_id TEXT NOT NULL DEFAULT 'default'" in executed_sql
+    assert "REFERENCES plan_documents(session_id)" in executed_sql
+    assert "idx_pg_plan_step_state_tenant_session" in executed_sql
+
+
+def test_plan_step_state_migration_down_drops_table() -> None:
+    """The down migration drops ``plan_step_state``."""
+    conn = FakeConnection()
+    migration = _migration_named("create_plan_step_state_table")
+
+    migration.down(conn)
+
+    executed_sql = "\n".join(sql for sql, _params in conn.executed)
+    assert "DROP TABLE IF EXISTS plan_step_state" in executed_sql
+
+
+def test_plan_step_state_migration_appended_after_policy_and_environment() -> None:
+    """The ``plan_step_state`` migration is appended after the policy/environment one."""
+    assert (
+        _migration_index("create_plan_step_state_table")
+        == _migration_index("create_policy_and_environment_tables") + 1
+    )
+
+
+def test_plan_step_state_migration_runs_after_plan_documents_exists() -> None:
+    """``plan_step_state``'s foreign key target, ``plan_documents``, is created earlier in the list."""
+    assert _migration_index("add_tenant_id_and_rls_to_plan_tables") < _migration_index(
+        "create_plan_step_state_table"
+    )
+
+
+def test_sqlite_plan_step_state_fresh_db_has_tenant_id(tmp_path: Path) -> None:
+    """A freshly created ``plan_step_state`` SQLite table carries ``tenant_id`` defaulted to ``'default'``."""
+    db_path = tmp_path / "step_state.db"
+    StepApprovalStore(db_path=db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(plan_step_state)").fetchall()}
+        assert "tenant_id" in columns
+    finally:
+        conn.close()
+
+
+def test_sqlite_plan_step_state_backfills_existing_rows_to_default_tenant(tmp_path: Path) -> None:
+    """Opening a pre-E50-S3 ``plan_step_state`` database adds ``tenant_id`` and backfills existing rows."""
+    db_path = tmp_path / "legacy_step_state.db"
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE plan_step_state (
+                session_id TEXT NOT NULL,
+                step_index INTEGER NOT NULL,
+                content TEXT NOT NULL,
+                state TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (session_id, step_index)
+            )
+            """
+        )
+        conn.execute(
+            "INSERT INTO plan_step_state VALUES ('s1', 0, 'do the thing', 'draft', '2026-01-01T00:00:00Z')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    StepApprovalStore(db_path=db_path)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        row = conn.execute("SELECT tenant_id FROM plan_step_state WHERE session_id = 's1'").fetchone()
+        assert row is not None
+        assert row[0] == "default"
+    finally:
+        conn.close()

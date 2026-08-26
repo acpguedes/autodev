@@ -117,9 +117,10 @@ def _resolve_step_state_db_path() -> Path:
     Reuses the same SQLite file as the legacy plan store when
     ``DATABASE_URL`` points at SQLite, keeping step state physically
     co-located with step content. Otherwise (unset, or a PostgreSQL URL)
-    falls back to a dedicated SQLite file: per-step approval state is a new,
-    additive v2-only concern and does not require extending the PostgreSQL
-    schema/migrations for this story.
+    falls back to a dedicated SQLite file: this store still only ever
+    connects to SQLite -- a ``plan_step_state`` table now exists on
+    PostgreSQL too (E50-S3), with ``tenant_id`` and a foreign key to
+    ``plan_documents``, but wiring this store to read/write it is E55.
 
     Returns:
         Absolute path to the SQLite file to open.
@@ -131,6 +132,25 @@ def _resolve_step_state_db_path() -> Path:
         return Path(db_url.removeprefix("sqlite://")).expanduser().resolve()
     fallback = os.environ.get("AUTODEV_PLAN_STEP_STATE_DB", "./autodev_plan_step_state.db")
     return Path(fallback).expanduser().resolve()
+
+
+def _ensure_tenant_id_column(conn: sqlite3.Connection) -> None:
+    """Backfill ``tenant_id`` onto a pre-E50-S3 ``plan_step_state`` table.
+
+    ``CREATE TABLE IF NOT EXISTS`` above only takes effect for a brand-new
+    database file -- an existing one created before this story predates the
+    ``tenant_id`` column entirely. SQLite's ``ALTER TABLE ... ADD COLUMN``
+    with a ``DEFAULT`` clause backfills every existing row to that default
+    in the same statement, so pre-migration rows land on
+    :data:`~backend.persistence.tenancy.DEFAULT_TENANT_ID` (``'default'``)
+    without a separate ``UPDATE`` (E50-S3-T3).
+
+    Args:
+        conn: Open SQLite connection with ``plan_step_state`` already created.
+    """
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(plan_step_state)").fetchall()}
+    if "tenant_id" not in columns:
+        conn.execute("ALTER TABLE plan_step_state ADD COLUMN tenant_id TEXT NOT NULL DEFAULT 'default'")
 
 
 class StepApprovalStore:
@@ -157,15 +177,18 @@ class StepApprovalStore:
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS plan_step_state (
+                    tenant_id TEXT NOT NULL DEFAULT 'default',
                     session_id TEXT NOT NULL,
                     step_index INTEGER NOT NULL,
                     content TEXT NOT NULL,
                     state TEXT NOT NULL,
                     updated_at TEXT NOT NULL,
-                    PRIMARY KEY (session_id, step_index)
+                    PRIMARY KEY (session_id, step_index),
+                    FOREIGN KEY (session_id) REFERENCES plan_documents(session_id)
                 )
                 """
             )
+            _ensure_tenant_id_column(conn)
             conn.commit()
 
     def _connect(self) -> sqlite3.Connection:

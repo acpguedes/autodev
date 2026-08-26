@@ -754,6 +754,52 @@ def _pg_m9_down_drop_policy_and_environment_tables(conn: Any) -> None:
         conn.execute(f"DROP TABLE IF EXISTS {table}")
 
 
+def _pg_m10_create_plan_step_state_table(conn: Any) -> None:
+    """Create the ``plan_step_state`` table on PostgreSQL, with tenant scoping (E50-S3).
+
+    ``plan_step_state`` (`backend/plans/step_state.py`) previously had no
+    PostgreSQL counterpart at all -- it fell back to a dedicated SQLite file
+    whenever ``DATABASE_URL`` pointed at PostgreSQL. This migration gives it
+    a real relational home: ``tenant_id`` (missing entirely before this
+    story) plus a foreign key to the plan document it belongs to
+    (``plan_documents.session_id``, created earlier in this migration list
+    by :func:`add_tenant_id_and_rls_to_plan_tables`) so step state cannot
+    outlive or detach from its parent. The store itself is not yet wired to
+    read/write this table -- that port is E55; this table is legitimately
+    unused on PostgreSQL until then. Row-Level Security is applied
+    separately by :func:`_pg_m11_apply_tenant_rls_to_new_tables` (E50-S4).
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS plan_step_state (
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            session_id TEXT NOT NULL REFERENCES plan_documents(session_id) ON DELETE CASCADE,
+            step_index INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            state TEXT NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (session_id, step_index)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_plan_step_state_tenant_session "
+        "ON plan_step_state(tenant_id, session_id)"
+    )
+
+
+def _pg_m10_down_drop_plan_step_state_table(conn: Any) -> None:
+    """Revert :func:`_pg_m10_create_plan_step_state_table` by dropping the table.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute("DROP TABLE IF EXISTS plan_step_state")
+
+
 POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
     _pg_m1_create_core_tables,
     Migration(
@@ -800,6 +846,11 @@ POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_pg_m9_create_policy_and_environment_tables,
         down=_pg_m9_down_drop_policy_and_environment_tables,
         name="create_policy_and_environment_tables",
+    ),
+    Migration(
+        up=_pg_m10_create_plan_step_state_table,
+        down=_pg_m10_down_drop_plan_step_state_table,
+        name="create_plan_step_state_table",
     ),
 ]
 
