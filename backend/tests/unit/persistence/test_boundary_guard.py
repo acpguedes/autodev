@@ -38,8 +38,8 @@ _ALLOWLIST: dict[tuple[str, int], str] = {
         "never - pgvector readiness checks (E48), same reason as :119 - "
         "deliberately below the persistence layer"
     ),
-    ("backend/quotas/migrations.py", 137): "never - read-only tenancy verifier CLI check (PostgreSQL branch)",
-    ("backend/quotas/migrations.py", 143): "never - read-only tenancy verifier CLI check (SQLite branch)",
+    ("backend/quotas/migrations.py", 153): "never - read-only tenancy verifier CLI check (PostgreSQL branch)",
+    ("backend/quotas/migrations.py", 159): "never - read-only tenancy verifier CLI check (SQLite branch)",
     ("backend/quotas/store.py", 79): "E51 - QuotaStore on PostgreSQL",
     ("backend/secret_store/store.py", 83): "E52 - SecretStore on PostgreSQL",
     ("backend/execution/policy.py", 227): "E53 - PolicyStore on PostgreSQL",
