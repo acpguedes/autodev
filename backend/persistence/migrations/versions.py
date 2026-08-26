@@ -709,6 +709,36 @@ def _m16_down_drop_policy_tables(conn: sqlite3.Connection) -> None:
         conn.execute(f"DROP TABLE IF EXISTS {table}")
 
 
+def _m17_pending_action_decisions_status_expiry_index(conn: sqlite3.Connection) -> None:
+    """Add the index the cross-tenant expiry sweep actually needs (E53-S3-T2).
+
+    ``PolicyStore.list_due_pending_decisions()`` filters on ``status`` and
+    ``expires_at`` alone (deliberately no ``tenant_id`` -- it is the
+    operator/cron sweep across every tenant). Measured via ``EXPLAIN QUERY
+    PLAN`` against the tenant-first ``idx_pending_action_decisions_tenant_status``
+    index (E53-S1-T1): that index's leading column is ``tenant_id``, so an
+    unscoped query cannot seek into it and SQLite falls back to a full table
+    scan. This adds the ``(status, expires_at)`` index the expiry query can
+    actually use.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pending_action_decisions_status_expiry "
+        "ON pending_action_decisions(status, expires_at)"
+    )
+
+
+def _m17_down_pending_action_decisions_status_expiry_index(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m17_pending_action_decisions_status_expiry_index`.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    conn.execute("DROP INDEX IF EXISTS idx_pending_action_decisions_status_expiry")
+
+
 STORE_MIGRATIONS: list[MigrationEntry] = [
     _m1_create_core_tables,
     _m2_runs_add_run_type,
@@ -765,6 +795,11 @@ STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_m16_create_policy_tables,
         down=_m16_down_drop_policy_tables,
         name="create_policy_tables",
+    ),
+    Migration(
+        up=_m17_pending_action_decisions_status_expiry_index,
+        down=_m17_down_pending_action_decisions_status_expiry_index,
+        name="pending_action_decisions_status_expiry_index",
     ),
 ]
 
