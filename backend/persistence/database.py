@@ -27,6 +27,10 @@ DEFAULT_DATABASE_URL = "sqlite:///./autodev.db"
 #: ``DATABASE_URL`` and is never constructed by production code (which uses
 #: :func:`get_store`). Kept as-is rather than renamed: ~30 call sites, all
 #: test-only, with no behavior change to make renaming worth the churn.
+#: Not a dual-backend contract harness (E56-S1-T3): for that, see
+#: :mod:`backend.tests.persistence_contract`, which builds
+#: :class:`SQLiteStore`/``PostgresStore`` directly per backend instead of
+#: through this alias.
 DurableStore = SQLiteStore
 
 
