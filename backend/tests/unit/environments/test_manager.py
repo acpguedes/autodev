@@ -75,7 +75,7 @@ def test_provision_persists_a_record_and_emits_provisioned_event(tmp_path: Path)
     handle = manager.provision(run_id="run-1", tenant_id="t1", workspace_ref=str(ws))
     assert handle.backend_kind is EnvironmentBackendKind.HARDENED_CONTAINER
 
-    records = manager.list_for_run("run-1")
+    records = manager.list_for_run("run-1", tenant_id="t1")
     assert len(records) == 1
     assert records[0].status == "active"
     assert records[0].profile_hash == handle.profile.content_hash()
@@ -109,7 +109,7 @@ def test_provision_with_unavailable_backend_raises_and_persists_nothing(tmp_path
     ws.mkdir()
     with pytest.raises(EnvironmentBackendError):
         manager.provision(run_id="run-1", tenant_id="t1", workspace_ref=str(ws))
-    assert manager.list_for_run("run-1") == []
+    assert manager.list_for_run("run-1", tenant_id="t1") == []
 
 
 def test_evaluate_filesystem_denies_and_audits_traversal(tmp_path: Path) -> None:
@@ -122,7 +122,7 @@ def test_evaluate_filesystem_denies_and_audits_traversal(tmp_path: Path) -> None
     assert denial is not None
     assert denial.category == "filesystem"
 
-    decisions = manager.list_decisions_for_run("run-1")
+    decisions = manager.list_decisions_for_run("run-1", tenant_id="t1")
     assert len(decisions) == 1
     assert decisions[0].allowed is False
 
@@ -139,7 +139,7 @@ def test_evaluate_filesystem_allows_and_audits_workspace_path(tmp_path: Path) ->
     denial = manager.evaluate_filesystem(handle, path="notes.md")
     assert denial is None
 
-    decisions = manager.list_decisions_for_run("run-1")
+    decisions = manager.list_decisions_for_run("run-1", tenant_id="t1")
     assert decisions[0].allowed is True
 
 
@@ -177,7 +177,7 @@ def test_teardown_marks_record_torn_down_and_emits_event(tmp_path: Path) -> None
 
     manager.teardown(handle)
 
-    records = manager.list_for_run("run-1")
+    records = manager.list_for_run("run-1", tenant_id="t1")
     assert records[0].status == "torn_down"
     assert records[0].torn_down_at is not None
 
@@ -194,9 +194,9 @@ def test_reap_orphans_tears_down_expired_active_environments(tmp_path: Path) -> 
     from datetime import datetime, timedelta, timezone
 
     future = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
-    reaped = manager.reap_orphans(at=future)
+    reaped = manager.reap_orphans(tenant_id="t1", at=future)
     assert reaped == 1
-    record = manager.list_for_run("run-1")[0]
+    record = manager.list_for_run("run-1", tenant_id="t1")[0]
     assert record.status == "orphaned"
     assert record.environment_id == handle.environment_id
 

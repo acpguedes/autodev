@@ -161,7 +161,7 @@ class EnvironmentManager:
                 the profile (e.g. an unrecognized backend, or an
                 unenforceable network policy).
         """
-        self.reap_orphans()
+        self.reap_orphans(tenant_id=tenant_id)
         active_profile = profile or EnvironmentProfile()
         limit = self._settings.autodev_environment_max_concurrent
         if self._store.count_active(tenant_id) >= limit:
@@ -433,6 +433,7 @@ class EnvironmentManager:
         self._backend.teardown(handle)
         self._store.mark_status(
             handle.environment_id,
+            tenant_id=handle.tenant_id,
             status="torn_down" if reason != "orphan_reaped" else "orphaned",
             torn_down_at=_now(),
         )
@@ -444,17 +445,21 @@ class EnvironmentManager:
             subject={"runId": handle.run_id, "environmentId": handle.environment_id},
         )
 
-    def reap_orphans(self, *, at: Optional[str] = None) -> int:
-        """Tear down and mark orphaned every active environment past its TTL.
+    def reap_orphans(self, *, tenant_id: str, at: Optional[str] = None) -> int:
+        """Tear down and mark orphaned every one tenant's active environments past their TTL.
 
         Args:
+            tenant_id: Tenant to reap orphaned environments for (RLS scope
+                on PostgreSQL, E54-S1) -- the sweep is per-tenant because the
+                concurrency ceiling :meth:`provision` checks is itself
+                per-tenant.
             at: ISO-8601 cutoff; defaults to now.
 
         Returns:
             The number of environments reaped.
         """
         cutoff = at or _now()
-        expired = self._store.list_expired_active(before=cutoff)
+        expired = self._store.list_expired_active(tenant_id, before=cutoff)
         for record in expired:
             handle = EnvironmentHandle(
                 environment_id=record.environment_id,
@@ -470,16 +475,21 @@ class EnvironmentManager:
                 # Best-effort: the record is still marked orphaned below via
                 # the store update inside teardown()'s own mark_status call
                 # not having run -- fall back to a direct status flip.
-                self._store.mark_status(record.environment_id, status="orphaned", torn_down_at=_now())
+                self._store.mark_status(
+                    record.environment_id,
+                    tenant_id=tenant_id,
+                    status="orphaned",
+                    torn_down_at=_now(),
+                )
         return len(expired)
 
-    def list_for_run(self, run_id: str) -> list[EnvironmentRecord]:
+    def list_for_run(self, run_id: str, *, tenant_id: str) -> list[EnvironmentRecord]:
         """List every environment record provisioned for one run (audit, E32-S4-T1)."""
-        return self._store.list_for_run(run_id)
+        return self._store.list_for_run(run_id, tenant_id=tenant_id)
 
-    def list_decisions_for_run(self, run_id: str):  # type: ignore[no-untyped-def]
+    def list_decisions_for_run(self, run_id: str, *, tenant_id: str):  # type: ignore[no-untyped-def]
         """List every policy decision recorded for one run's environments (audit)."""
-        return self._store.list_decisions_for_run(run_id)
+        return self._store.list_decisions_for_run(run_id, tenant_id=tenant_id)
 
 
 __all__ = ["EnvironmentCapacityExceededError", "EnvironmentManager"]
