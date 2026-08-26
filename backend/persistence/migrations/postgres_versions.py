@@ -470,6 +470,426 @@ def _pg_m7_down_run_step_position(conn: Any) -> None:
     conn.execute("ALTER TABLE run_steps DROP COLUMN IF EXISTS position")
 
 
+def _pg_m8_create_quota_and_secret_tables(conn: Any) -> None:
+    """Create the quota, lease, reservation, and secret tables (E50-S1).
+
+    These five quota/lease tables and the ``secrets`` table were previously
+    created imperatively by :class:`backend.quotas.store.QuotaStore` and
+    :class:`backend.secret_store.store.SecretStore` (SQLite-only, per
+    E49-S2/ADR-025), with no PostgreSQL counterpart and no
+    ``schema_version`` tracking. This migration mirrors their SQLite shape
+    with PostgreSQL types (``JSONB``, ``TIMESTAMPTZ``, ``BIGINT``) and
+    tenant-first keys/indexes. Row-Level Security is applied separately by
+    :func:`_pg_m11_apply_tenant_rls_to_new_tables` (E50-S4) — these tables
+    are legitimately unread on PostgreSQL until their store port lands
+    (E51, E52).
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tenant_quota_policies (
+            tenant_id TEXT PRIMARY KEY,
+            policy_json JSONB NOT NULL,
+            version BIGINT NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tenant_usage_windows (
+            tenant_id TEXT NOT NULL,
+            resource TEXT NOT NULL,
+            window_key TEXT NOT NULL,
+            used BIGINT NOT NULL DEFAULT 0,
+            warned INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (tenant_id, resource, window_key)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS run_leases (
+            run_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            acquired_at TIMESTAMPTZ NOT NULL,
+            expires_at TIMESTAMPTZ NOT NULL,
+            released_at TIMESTAMPTZ
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_run_leases_tenant "
+        "ON run_leases(tenant_id, released_at, expires_at)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS storage_reservations (
+            reservation_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            bytes BIGINT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_storage_reservations_tenant "
+        "ON storage_reservations(tenant_id, status)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS request_rate_buckets (
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            credential_id TEXT NOT NULL,
+            window_start BIGINT NOT NULL,
+            count BIGINT NOT NULL DEFAULT 0,
+            PRIMARY KEY (tenant_id, credential_id, window_start)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_request_rate_buckets_tenant "
+        "ON request_rate_buckets(tenant_id, credential_id)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS secrets (
+            tenant_id TEXT NOT NULL,
+            project TEXT NOT NULL,
+            name TEXT NOT NULL,
+            version BIGINT NOT NULL,
+            ciphertext TEXT NOT NULL,
+            status TEXT NOT NULL,
+            backend_kind TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            rotated_at TIMESTAMPTZ,
+            revoked_at TIMESTAMPTZ,
+            PRIMARY KEY (tenant_id, project, name, version)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_secrets_latest "
+        "ON secrets(tenant_id, project, name, version DESC)"
+    )
+
+
+def _pg_m8_down_drop_quota_and_secret_tables(conn: Any) -> None:
+    """Revert :func:`_pg_m8_create_quota_and_secret_tables` by dropping its six tables.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    for table in (
+        "tenant_quota_policies",
+        "tenant_usage_windows",
+        "run_leases",
+        "storage_reservations",
+        "request_rate_buckets",
+        "secrets",
+    ):
+        conn.execute(f"DROP TABLE IF EXISTS {table}")
+
+
+def _pg_m9_create_policy_and_environment_tables(conn: Any) -> None:
+    """Create the execution-policy and environment tables (E50-S2).
+
+    Mirrors the SQLite shape of ``execution_policy_rules``,
+    ``execution_dynamic_permissions``, ``execution_policy_decisions``, and
+    ``pending_action_decisions`` (`backend/execution/policy.py`), plus
+    ``execution_environments`` and ``execution_environment_decisions``
+    (``backend/environments/store.py``), with tenant-first indexes serving
+    the pending-decision lookup and expiry-scan queries these stores
+    actually run. Row-Level Security is applied separately by
+    :func:`_pg_m11_apply_tenant_rls_to_new_tables` (E50-S4).
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS execution_policy_rules (
+            rule_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            effect TEXT NOT NULL,
+            scope_kind TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            pattern TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_execution_policy_rules_tenant "
+        "ON execution_policy_rules(tenant_id, category)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS execution_dynamic_permissions (
+            permission_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            scope_kind TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            pattern TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_by TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_execution_dynamic_permissions_tenant "
+        "ON execution_dynamic_permissions(tenant_id, category)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS execution_policy_decisions (
+            decision_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            action_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            allowed INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            decided_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_execution_policy_decisions_tenant_run "
+        "ON execution_policy_decisions(tenant_id, run_id)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pending_action_decisions (
+            decision_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
+            action_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMPTZ NOT NULL,
+            decided_by TEXT,
+            decided_at TIMESTAMPTZ,
+            pattern TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_pending_action_decisions_tenant_run "
+        "ON pending_action_decisions(tenant_id, run_id, task_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_pending_action_decisions_tenant_status "
+        "ON pending_action_decisions(tenant_id, status, expires_at)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS execution_environments (
+            environment_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            backend_kind TEXT NOT NULL,
+            profile_id TEXT NOT NULL,
+            profile_hash TEXT NOT NULL,
+            workspace_path TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMPTZ NOT NULL,
+            torn_down_at TIMESTAMPTZ
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_execution_environments_tenant_run "
+        "ON execution_environments(tenant_id, run_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_execution_environments_tenant_status "
+        "ON execution_environments(tenant_id, status, expires_at)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS execution_environment_decisions (
+            decision_id TEXT PRIMARY KEY,
+            environment_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            target TEXT NOT NULL,
+            allowed INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            decided_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_execution_environment_decisions_tenant_env "
+        "ON execution_environment_decisions(tenant_id, environment_id)"
+    )
+
+
+def _pg_m9_down_drop_policy_and_environment_tables(conn: Any) -> None:
+    """Revert :func:`_pg_m9_create_policy_and_environment_tables` by dropping its six tables.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    for table in (
+        "execution_policy_rules",
+        "execution_dynamic_permissions",
+        "execution_policy_decisions",
+        "pending_action_decisions",
+        "execution_environments",
+        "execution_environment_decisions",
+    ):
+        conn.execute(f"DROP TABLE IF EXISTS {table}")
+
+
+def _pg_m10_create_plan_step_state_table(conn: Any) -> None:
+    """Create the ``plan_step_state`` table on PostgreSQL, with tenant scoping (E50-S3).
+
+    ``plan_step_state`` (`backend/plans/step_state.py`) previously had no
+    PostgreSQL counterpart at all -- it fell back to a dedicated SQLite file
+    whenever ``DATABASE_URL`` pointed at PostgreSQL. This migration gives it
+    a real relational home: ``tenant_id`` (missing entirely before this
+    story) plus a foreign key to the plan document it belongs to
+    (``plan_documents.session_id``, created earlier in this migration list
+    by :func:`add_tenant_id_and_rls_to_plan_tables`) so step state cannot
+    outlive or detach from its parent. The store itself is not yet wired to
+    read/write this table -- that port is E55; this table is legitimately
+    unused on PostgreSQL until then. Row-Level Security is applied
+    separately by :func:`_pg_m11_apply_tenant_rls_to_new_tables` (E50-S4).
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS plan_step_state (
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            session_id TEXT NOT NULL REFERENCES plan_documents(session_id) ON DELETE CASCADE,
+            step_index INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            state TEXT NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (session_id, step_index)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_plan_step_state_tenant_session "
+        "ON plan_step_state(tenant_id, session_id)"
+    )
+
+
+def _pg_m10_down_drop_plan_step_state_table(conn: Any) -> None:
+    """Revert :func:`_pg_m10_create_plan_step_state_table` by dropping the table.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute("DROP TABLE IF EXISTS plan_step_state")
+
+
+#: The thirteen tables E50-S1/S2/S3 created without RLS, brought under
+#: tenant isolation by :func:`_pg_m11_apply_tenant_rls_to_new_tables`
+#: (E50-S4-T1). Reused by :mod:`backend.quotas.migrations` so the tenancy
+#: verifier's table list and this migration's list cannot drift apart.
+E50_TENANT_SCOPED_TABLES = (
+    "tenant_quota_policies",
+    "tenant_usage_windows",
+    "run_leases",
+    "storage_reservations",
+    "request_rate_buckets",
+    "secrets",
+    "execution_policy_rules",
+    "execution_dynamic_permissions",
+    "execution_policy_decisions",
+    "pending_action_decisions",
+    "execution_environments",
+    "execution_environment_decisions",
+    "plan_step_state",
+)
+
+
+def _apply_tenant_rls(conn: Any, table: str) -> None:
+    """Enable, force, and policy-scope Row-Level Security for *table* (E50-S4-T1 generator).
+
+    The reusable core of the ``ENABLE``/``FORCE``/``CREATE POLICY`` pattern
+    already used inline for ``code_chunks``/``code_embeddings`` and the
+    core/plan table retrofits above -- factored out here so E50-S4 applies
+    it to all thirteen new tables without writing new policy SQL per table.
+    ``FORCE`` is required alongside ``ENABLE`` because the application
+    connects as the tables' owner, and PostgreSQL exempts owners from RLS by
+    default.
+
+    Args:
+        conn: Open psycopg connection.
+        table: Name of a table that already has a ``tenant_id`` column.
+    """
+    conn.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
+    conn.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
+    conn.execute(f"DROP POLICY IF EXISTS {table}_tenant_isolation ON {table}")
+    conn.execute(
+        f"CREATE POLICY {table}_tenant_isolation ON {table} "
+        "USING (tenant_id = current_setting('app.tenant_id', true))"
+    )
+
+
+def _revoke_tenant_rls(conn: Any, table: str) -> None:
+    """Revert :func:`_apply_tenant_rls` for *table*, without touching its ``tenant_id`` column.
+
+    Unlike the core-table retrofit's down step
+    (:func:`_pg_m2_down_tenant_id_and_rls`), this does not drop
+    ``tenant_id`` -- for these thirteen tables that column is part of the
+    table's own creation migration (E50-S1/S2/S3), not something this
+    migration added.
+
+    Args:
+        conn: Open psycopg connection.
+        table: Table to remove RLS enforcement from.
+    """
+    conn.execute(f"DROP POLICY IF EXISTS {table}_tenant_isolation ON {table}")
+    conn.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")
+    conn.execute(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY")
+
+
+def _pg_m11_apply_tenant_rls_to_new_tables(conn: Any) -> None:
+    """Apply Row-Level Security to all thirteen E50-S1/S2/S3 tables (E50-S4-T1).
+
+    This is where the platform's largest isolation gap closes: ``secrets``,
+    ``run_leases``, and ``pending_action_decisions`` (among the other ten)
+    previously relied on application ``WHERE`` clauses alone. Applying RLS
+    here, one migration after each table's creation, mirrors how the core
+    store tables originally got RLS retrofitted in migration 2 -- a
+    separate step after their migration-1 creation.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    for table in E50_TENANT_SCOPED_TABLES:
+        _apply_tenant_rls(conn, table)
+
+
+def _pg_m11_down_revoke_tenant_rls_from_new_tables(conn: Any) -> None:
+    """Revert :func:`_pg_m11_apply_tenant_rls_to_new_tables` for all thirteen tables.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    for table in E50_TENANT_SCOPED_TABLES:
+        _revoke_tenant_rls(conn, table)
+
+
 POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
     _pg_m1_create_core_tables,
     Migration(
@@ -507,7 +927,27 @@ POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
         down=_pg_m7_down_run_step_position,
         name="run_step_position",
     ),
+    Migration(
+        up=_pg_m8_create_quota_and_secret_tables,
+        down=_pg_m8_down_drop_quota_and_secret_tables,
+        name="create_quota_and_secret_tables",
+    ),
+    Migration(
+        up=_pg_m9_create_policy_and_environment_tables,
+        down=_pg_m9_down_drop_policy_and_environment_tables,
+        name="create_policy_and_environment_tables",
+    ),
+    Migration(
+        up=_pg_m10_create_plan_step_state_table,
+        down=_pg_m10_down_drop_plan_step_state_table,
+        name="create_plan_step_state_table",
+    ),
+    Migration(
+        up=_pg_m11_apply_tenant_rls_to_new_tables,
+        down=_pg_m11_down_revoke_tenant_rls_from_new_tables,
+        name="apply_tenant_rls_to_new_tables",
+    ),
 ]
 
 
-__all__ = ["POSTGRES_STORE_MIGRATIONS"]
+__all__ = ["E50_TENANT_SCOPED_TABLES", "POSTGRES_STORE_MIGRATIONS"]
