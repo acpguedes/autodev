@@ -168,7 +168,7 @@ def _run_message_job(payload: Dict[str, Any]) -> Dict[str, Any]:
             tenant_id=tenant_id,
         )
     finally:
-        orchestrator._quota_service.release_run_lease(run_id)
+        orchestrator._quota_service.release_run_lease(tenant_id, run_id)
     return {"run_id": run_id}
 
 

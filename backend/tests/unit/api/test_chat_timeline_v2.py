@@ -191,7 +191,7 @@ class TestCreateTurnV2:
         response = client.post(f"/v2/sessions/{session['session_id']}/turns", json={"message": "hi"})
         assert response.status_code == 429
 
-        quota_service.release_run_lease("already-running")
+        quota_service.release_run_lease(DEFAULT_TENANT_ID, "already-running")
 
 
 class TestGetTurnV2:

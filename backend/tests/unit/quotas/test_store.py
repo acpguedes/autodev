@@ -113,20 +113,20 @@ class TestRunLeaseAtomicity:
         store.acquire_run_lease(
             tenant_id="acme", run_id="run-1", max_concurrent_runs=1, lease_seconds=90
         )
-        assert store.heartbeat_run_lease("run-1", lease_seconds=90) is True
+        assert store.heartbeat_run_lease(tenant_id="acme", run_id="run-1", lease_seconds=90) is True
 
     def test_heartbeat_on_released_lease_is_a_noop(self, store: QuotaStore) -> None:
         store.acquire_run_lease(
             tenant_id="acme", run_id="run-1", max_concurrent_runs=1, lease_seconds=90
         )
-        store.release_run_lease("run-1")
-        assert store.heartbeat_run_lease("run-1", lease_seconds=90) is False
+        store.release_run_lease(tenant_id="acme", run_id="run-1")
+        assert store.heartbeat_run_lease(tenant_id="acme", run_id="run-1", lease_seconds=90) is False
 
     def test_release_frees_the_concurrency_slot(self, store: QuotaStore) -> None:
         store.acquire_run_lease(
             tenant_id="acme", run_id="run-1", max_concurrent_runs=1, lease_seconds=90
         )
-        store.release_run_lease("run-1")
+        store.release_run_lease(tenant_id="acme", run_id="run-1")
         result = store.acquire_run_lease(
             tenant_id="acme", run_id="run-2", max_concurrent_runs=1, lease_seconds=90
         )
@@ -198,7 +198,9 @@ class TestStorageReservation:
             tenant_id="acme", bytes_requested=500, idempotency_key="k1", max_storage_bytes=1000
         )
         assert result.reservation_id is not None
-        store.commit_storage_reservation(result.reservation_id, actual_bytes=420)
+        store.commit_storage_reservation(
+            tenant_id="acme", reservation_id=result.reservation_id, actual_bytes=420
+        )
         assert store.storage_used("acme") == 420
 
     def test_release_frees_a_reservation_that_will_never_be_committed(
@@ -208,7 +210,7 @@ class TestStorageReservation:
             tenant_id="acme", bytes_requested=500, idempotency_key="k1", max_storage_bytes=1000
         )
         assert result.reservation_id is not None
-        store.release_storage_reservation(result.reservation_id)
+        store.release_storage_reservation(tenant_id="acme", reservation_id=result.reservation_id)
         assert store.storage_used("acme") == 0
 
 
@@ -217,16 +219,33 @@ class TestRequestRateLimiting:
 
     def test_requests_within_the_limit_are_admitted(self, store: QuotaStore) -> None:
         for _ in range(3):
-            assert store.consume_request_slot(credential_id="cred-1", requests_per_second=3) is True
+            assert (
+                store.consume_request_slot(
+                    tenant_id="acme", credential_id="cred-1", requests_per_second=3
+                )
+                is True
+            )
 
     def test_the_request_exceeding_the_limit_is_denied(self, store: QuotaStore) -> None:
         for _ in range(2):
-            store.consume_request_slot(credential_id="cred-1", requests_per_second=2)
-        assert store.consume_request_slot(credential_id="cred-1", requests_per_second=2) is False
+            store.consume_request_slot(
+                tenant_id="acme", credential_id="cred-1", requests_per_second=2
+            )
+        assert (
+            store.consume_request_slot(
+                tenant_id="acme", credential_id="cred-1", requests_per_second=2
+            )
+            is False
+        )
 
     def test_different_credentials_have_independent_windows(self, store: QuotaStore) -> None:
-        store.consume_request_slot(credential_id="cred-1", requests_per_second=1)
-        assert store.consume_request_slot(credential_id="cred-2", requests_per_second=1) is True
+        store.consume_request_slot(tenant_id="acme", credential_id="cred-1", requests_per_second=1)
+        assert (
+            store.consume_request_slot(
+                tenant_id="acme", credential_id="cred-2", requests_per_second=1
+            )
+            is True
+        )
 
 
 class TestMonthlyUsage:
