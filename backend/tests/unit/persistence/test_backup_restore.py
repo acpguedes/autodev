@@ -30,6 +30,8 @@ from backend.persistence.backup import (
     main,
 )
 from backend.persistence.sqlite_adapter import SQLiteStore
+from backend.persistence.sqlite_adapter.plan_store import SQLitePlanStore
+from backend.plans.step_state import StepApprovalStore
 
 _POSTGRES_URL = os.environ.get("AUTODEV_TEST_POSTGRES_URL", "")
 _MINIO_ENDPOINT = os.environ.get("AUTODEV_TEST_MINIO_ENDPOINT", "")
@@ -116,6 +118,39 @@ def test_sqlite_backup_restore_round_trip(tmp_path: Path) -> None:
     assert [m["content"] for m in messages] == ["hello", "world"]
     runs = restored.list_runs("sess-1")
     assert [r["id"] for r in runs] == ["run-1"]
+
+
+def test_sqlite_backup_restore_round_trip_covers_plan_step_state(tmp_path: Path) -> None:
+    """``plan_step_state`` (E55) survives backup/restore -- it needs no manifest entry of its own.
+
+    ``StepApprovalStore`` now lives in the same physical SQLite file as
+    every other domain store (E55-S1), so ``BackupManager``'s existing
+    whole-file snapshot already covers it; this proves that directly rather
+    than by inspection of the manifest shape, which never itemizes tables.
+    """
+    db_path = tmp_path / "state" / "autodev.db"
+    db_path.parent.mkdir(parents=True)
+    plan_store = SQLitePlanStore(db_path=db_path)
+    plan_store.upsert_plan("sess-1", ["Write the migration"], tenant_id="default")
+    step_store = StepApprovalStore(db_path=db_path)
+    step_store.ensure_steps("sess-1", ["Write the migration"], tenant_id="default")
+    step_store.transition("sess-1", 0, "review", tenant_id="default")
+    step_store.transition("sess-1", 0, "approve", tenant_id="default")
+
+    manager = BackupManager(database_url=f"sqlite:///{db_path}")
+    backup_dir = tmp_path / "backup"
+    report = manager.backup(backup_dir)
+    assert {c.name: c.status for c in report.components}["sqlite"] == "completed"
+
+    db_path.unlink()
+    assert not db_path.exists()
+
+    manager.restore(backup_dir)
+    restored = StepApprovalStore(db_path=db_path)
+    record = restored.get_step("sess-1", 0, tenant_id="default")
+    assert record is not None
+    assert record.state.value == "approved"
+    assert record.content == "Write the migration"
 
 
 def test_artifact_mirror_round_trip_local(tmp_path: Path) -> None:

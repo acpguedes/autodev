@@ -132,12 +132,11 @@ def _seeded_records(
     the tenant check happens here, at the plan document, not against
     ``backend.persistence.database``'s sessions table.
 
-    :class:`StepApprovalStore` (``plan_step_state``) itself carries no
-    ``tenant_id`` column of its own (a known gap — see ADR-019's E11-S3
-    evidence note): it is only ever reached through a ``session_id`` that
-    already passed this tenant-scoped plan-document lookup, so access is
-    transitively scoped as long as every entry point calls this function
-    first, which every handler in this module does.
+    :class:`StepApprovalStore` (``plan_step_state``) itself carries its own
+    ``tenant_id`` column and Row-Level Security on PostgreSQL (E50-S3/S4,
+    wired up in E55): every store call below passes ``tenant_id`` through so
+    the store's own scoping is real, not merely transitive through this
+    plan-document lookup.
 
     Args:
         store: The step-approval store.
@@ -157,7 +156,7 @@ def _seeded_records(
     plan = plan_store.get_plan(session_id, tenant_id=tenant_id)
     if plan is None:
         v2_error(404, f"Plan for session {session_id!r} not found.")
-    return store.ensure_steps(session_id, plan.steps)
+    return store.ensure_steps(session_id, plan.steps, tenant_id=tenant_id)
 
 
 def _sync_legacy_plan(
@@ -181,7 +180,7 @@ def _sync_legacy_plan(
     Returns:
         Every tracked step for the session after the sync, ordered by index.
     """
-    records = store.list_steps(session_id)
+    records = store.list_steps(session_id, tenant_id=tenant_id)
     plan_store = _legacy_plan_store()
     plan_store.upsert_plan(
         session_id, [record.content for record in records], tenant_id=tenant_id
@@ -190,7 +189,13 @@ def _sync_legacy_plan(
 
 
 def _transition(
-    store: StepApprovalStore, session_id: str, step_index: int, action: str, *, actor: str = "anonymous"
+    store: StepApprovalStore,
+    session_id: str,
+    step_index: int,
+    action: str,
+    *,
+    tenant_id: str,
+    actor: str = "anonymous",
 ) -> PlanStepRecord:
     """Apply a state-machine action to a step and emit its transition event.
 
@@ -200,6 +205,8 @@ def _transition(
         step_index: Zero-based step position.
         action: One of ``"review"``, ``"approve"``, ``"reject"``,
             ``"execute"``, ``"complete"``.
+        tenant_id: Tenant the plan belongs to (the authenticated principal's
+            tenant — never a client-supplied value).
         actor: Who (or what) triggered the transition.
 
     Returns:
@@ -210,7 +217,7 @@ def _transition(
             legal from the step's current state.
     """
     try:
-        previous_state, record = store.transition(session_id, step_index, action)
+        previous_state, record = store.transition(session_id, step_index, action, tenant_id=tenant_id)
     except KeyError as exc:
         v2_error(404, str(exc))
     except ValueError as exc:
@@ -219,7 +226,9 @@ def _transition(
     return record
 
 
-def _ensure_under_review(store: StepApprovalStore, session_id: str, record: PlanStepRecord) -> PlanStepRecord:
+def _ensure_under_review(
+    store: StepApprovalStore, session_id: str, record: PlanStepRecord, *, tenant_id: str
+) -> PlanStepRecord:
     """Auto-promote a freshly-seeded ``draft`` step to ``under_review``.
 
     There is no dedicated "submit for review" endpoint in this story's
@@ -229,12 +238,16 @@ def _ensure_under_review(store: StepApprovalStore, session_id: str, record: Plan
         store: The step-approval store.
         session_id: The owning session.
         record: The step's current record.
+        tenant_id: Tenant the plan belongs to (the authenticated principal's
+            tenant — never a client-supplied value).
 
     Returns:
         The step's record, promoted to ``under_review`` if it was ``draft``.
     """
     if record.state is StepState.DRAFT:
-        return _transition(store, session_id, record.step_index, "review", actor="system")
+        return _transition(
+            store, session_id, record.step_index, "review", tenant_id=tenant_id, actor="system"
+        )
     return record
 
 
@@ -261,7 +274,10 @@ def get_plan_v2(
             tenant, or no plan document exists for the session.
     """
     records = _seeded_records(store, session_id, tenant_id=principal.tenant_id)
-    records = [_ensure_under_review(store, session_id, record) for record in records]
+    records = [
+        _ensure_under_review(store, session_id, record, tenant_id=principal.tenant_id)
+        for record in records
+    ]
     return _to_plan_v2(session_id, records)
 
 
@@ -290,10 +306,10 @@ def get_plan_step_v2(
             tenant, or the plan/step does not exist.
     """
     _seeded_records(store, session_id, tenant_id=principal.tenant_id)
-    record = store.get_step(session_id, step_index)
+    record = store.get_step(session_id, step_index, tenant_id=principal.tenant_id)
     if record is None:
         v2_error(404, f"Step {step_index} not found for session {session_id!r}.")
-    record = _ensure_under_review(store, session_id, record)
+    record = _ensure_under_review(store, session_id, record, tenant_id=principal.tenant_id)
     return _to_step_v2(record)
 
 
@@ -325,15 +341,17 @@ def update_plan_step_v2(
             longer editable (already approved/rejected/executing/completed).
     """
     _seeded_records(store, session_id, tenant_id=principal.tenant_id)
-    record = store.get_step(session_id, step_index)
+    record = store.get_step(session_id, step_index, tenant_id=principal.tenant_id)
     if record is None:
         v2_error(404, f"Step {step_index} not found for session {session_id!r}.")
     # Editing content is itself "acting upon" the step, so a fresh ``draft``
     # step is auto-promoted to ``under_review`` on its first edit — the same
     # rule already applied to reads and approve/reject decisions.
-    _ensure_under_review(store, session_id, record)
+    _ensure_under_review(store, session_id, record, tenant_id=principal.tenant_id)
     try:
-        record = store.update_content(session_id, step_index, body.content)
+        record = store.update_content(
+            session_id, step_index, body.content, tenant_id=principal.tenant_id
+        )
     except KeyError as exc:
         v2_error(404, str(exc))
     except ValueError as exc:
@@ -370,11 +388,13 @@ def approve_plan_step_v2(
     """
     del body
     _seeded_records(store, session_id, tenant_id=principal.tenant_id)
-    record = store.get_step(session_id, step_index)
+    record = store.get_step(session_id, step_index, tenant_id=principal.tenant_id)
     if record is None:
         v2_error(404, f"Step {step_index} not found for session {session_id!r}.")
-    record = _ensure_under_review(store, session_id, record)
-    record = _transition(store, session_id, step_index, "approve", actor=principal.subject)
+    record = _ensure_under_review(store, session_id, record, tenant_id=principal.tenant_id)
+    record = _transition(
+        store, session_id, step_index, "approve", tenant_id=principal.tenant_id, actor=principal.subject
+    )
     return _to_step_v2(record)
 
 
@@ -407,11 +427,13 @@ def reject_plan_step_v2(
     """
     del body
     _seeded_records(store, session_id, tenant_id=principal.tenant_id)
-    record = store.get_step(session_id, step_index)
+    record = store.get_step(session_id, step_index, tenant_id=principal.tenant_id)
     if record is None:
         v2_error(404, f"Step {step_index} not found for session {session_id!r}.")
-    record = _ensure_under_review(store, session_id, record)
-    record = _transition(store, session_id, step_index, "reject", actor=principal.subject)
+    record = _ensure_under_review(store, session_id, record, tenant_id=principal.tenant_id)
+    record = _transition(
+        store, session_id, step_index, "reject", tenant_id=principal.tenant_id, actor=principal.subject
+    )
     return _to_step_v2(record)
 
 
@@ -469,10 +491,10 @@ def execute_approved_steps_v2(
             v2_error(400, f"No approved steps to execute for session {session_id!r}.")
 
     for index in target_indices:
-        _transition(store, session_id, index, "execute", actor=principal.subject)
-        _transition(store, session_id, index, "complete", actor=principal.subject)
+        _transition(store, session_id, index, "execute", tenant_id=principal.tenant_id, actor=principal.subject)
+        _transition(store, session_id, index, "complete", tenant_id=principal.tenant_id, actor=principal.subject)
 
-    final_records = store.list_steps(session_id)
+    final_records = store.list_steps(session_id, tenant_id=principal.tenant_id)
     return _to_plan_v2(session_id, final_records)
 
 
@@ -501,10 +523,10 @@ def add_plan_step_v2(
         HTTPException: 404 if no plan document exists for the session.
     """
     _seeded_records(store, session_id, tenant_id=principal.tenant_id)
-    record = store.append_step(session_id, body.content)
+    record = store.append_step(session_id, body.content, tenant_id=principal.tenant_id)
     _sync_legacy_plan(session_id, store, tenant_id=principal.tenant_id)
     emit_mutation(session_id, record.step_index, "added", principal.subject)
-    final_records = store.list_steps(session_id)
+    final_records = store.list_steps(session_id, tenant_id=principal.tenant_id)
     return _to_plan_v2(session_id, final_records)
 
 
@@ -539,14 +561,14 @@ def remove_plan_step_v2(
     """
     _seeded_records(store, session_id, tenant_id=principal.tenant_id)
     try:
-        store.delete_step(session_id, step_index)
+        store.delete_step(session_id, step_index, tenant_id=principal.tenant_id)
     except KeyError as exc:
         v2_error(404, str(exc))
     except ValueError as exc:
         v2_error(400, str(exc))
     _sync_legacy_plan(session_id, store, tenant_id=principal.tenant_id)
     emit_mutation(session_id, step_index, "removed", principal.subject)
-    final_records = store.list_steps(session_id)
+    final_records = store.list_steps(session_id, tenant_id=principal.tenant_id)
     return _to_plan_v2(session_id, final_records)
 
 
