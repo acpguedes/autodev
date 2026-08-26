@@ -3,7 +3,19 @@ name: CI Evals
 on:
   push:
     branches: [ main ]
+    paths:
+      - "backend/**"
+      - "evals/**"
+      - ".github/workflows/ci-evals.yml"
   pull_request:
+    paths:
+      - "backend/**"
+      - "evals/**"
+      - ".github/workflows/ci-evals.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read

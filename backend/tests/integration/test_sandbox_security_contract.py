@@ -18,6 +18,8 @@ from backend.execution.runner import CommandRunner
 from backend.validation import SandboxRunner, ValidationJob, sandbox_policy_from_settings
 from backend.validation.sandbox import SandboxPolicy
 
+pytestmark = pytest.mark.slow
+
 
 def _docker_runner(project_root: Path) -> SandboxRunner:
     """Build a runner with a real, hardened policy rooted at ``project_root``."""

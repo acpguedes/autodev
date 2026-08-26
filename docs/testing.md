@@ -213,7 +213,7 @@ the full eval.yaml/dataset walkthrough and field reference, see
 ```bash
 make test-backend
 # raw:
-.venv/bin/python -m pytest tests backend/tests -q
+.venv/bin/python -m pytest tests backend/tests -q -n auto -m "not slow"
 ```
 
 The suite spans **285+ tests** across two locations:
@@ -254,26 +254,41 @@ The **full suite** (`make check` / `make container-check`) is mandatory only at
 the epic → `main` PR gate. Do not add tests that duplicate existing coverage —
 every new test must protect a behavior delivered by the story.
 
-### Parallel execution (pytest-xdist)
+### Parallel execution (pytest-xdist) and the `slow` tier
 
-The backend suite is parallel-safe. Measured on this repository
-(2026-07-04, `pytest -n auto`): **285/285 tests pass, wall time drops from
-~1m52s (serial) to ~57s (parallel)**.
+`make test-backend` (and CI's `backend-tests` job) run the suite in parallel
+via `pytest-xdist` (`-n auto`) by default — this is no longer opt-in.
+
+What made this safe: every test that reaches the durable store — directly or
+through `TestClient(app)` — ultimately calls
+`backend.persistence.database.get_store()`, a process-wide
+`@lru_cache(maxsize=1)`. Its default, `DATABASE_URL=sqlite:///./autodev.db`,
+is a path relative to the repo root. Left unisolated, every test (and, under
+`-n auto`, every worker process) shared the same on-disk file — the classic
+"works serially, flakes in parallel" signature (lock contention, cross-test
+row visibility). The autouse `isolated_runtime_config` fixture
+(`backend/tests/conftest.py`) now points `DATABASE_URL` at a per-test file
+under `tmp_path` and calls `reset_store_cache()`, closing the leak at its
+source rather than working around it with `-n 0`.
 
 ```bash
-make install-dev                          # installs pytest-xdist
-.venv/bin/python -m pytest tests backend/tests -q -n auto
+.venv/bin/python -m pytest tests backend/tests -q -n auto -m "not slow"
 # or:
-make test-backend-parallel
+make test-backend
 ```
 
-Caveats:
+The `slow` marker (registered in `backend/pyproject.toml`) excludes tests that
+need a real external dependency — a Docker daemon
+(`test_sandbox_security_contract.py`, already covered on every PR by the
+`security-baseline` CI job) or a live PostgreSQL (`test_postgres_concurrency.py`
+in `plans`/`secret_store`/`quotas`/`execution`/`environments`, which skip today
+without `AUTODEV_TEST_POSTGRES_URL` and are expected to matter once E57 wires a
+real PostgreSQL service into CI). Run them explicitly once the dependency is
+available:
 
-- The serial result is authoritative: if a test fails only under `-n auto`
-  (most likely the timing-sensitive `test_sandbox_runner.py` cases — see
-  Troubleshooting), re-run serially before treating it as a real failure.
-- The coverage gate (`--cov`) also works under xdist, but keep CI on the
-  serial path until parallel runs have been flake-free for a while.
+```bash
+pytest backend/tests -m slow -rs
+```
 
 ### Frontend tests (vitest)
 
@@ -293,7 +308,7 @@ Vitest picks up `frontend/lib/**/*.test.ts` (see `frontend/vitest.config.ts`).
 of 85% on product code**: `--cov=backend --cov-fail-under=85`, with
 `backend/tests/*` omitted via the root `.coveragerc`. pytest-cov auto-discovers
 this file when pytest runs from the repo root, which is how every
-`make test-backend*` / CI invocation runs. The omit matters — without it,
+`make test-backend` / CI invocation runs. The omit matters — without it,
 coverage.py counts the test files themselves as "covered by being executed",
 which inflates the number and hides real gaps in `backend/` (raw/unfiltered
 coverage on this repo is ~93%; the product-code-only figure the gate enforces
@@ -311,7 +326,7 @@ product-only coverage correctly.
 ```bash
 make test-backend
 # raw:
-.venv/bin/python -m pytest tests backend/tests -q \
+.venv/bin/python -m pytest tests backend/tests -q -n auto -m "not slow" \
   --cov=backend --cov-report=term-missing --cov-report=xml:coverage.xml \
   --cov-fail-under=85
 # (backend/tests/* is omitted via the root .coveragerc, picked up automatically)
@@ -427,26 +442,36 @@ make container-down    # tear it down
 
 ## 9. Reproduce CI locally
 
-Four GitHub Actions workflows (`.github/workflows/`) gate every PR — all
-trigger on both `push` to `main` and `pull_request`:
+Four GitHub Actions workflows (`.github/workflows/`) gate every PR — each
+triggers on `push` to `main` and on `pull_request`, scoped to the paths it
+actually depends on (a frontend-only change does not run `ci-backend.yml`,
+and vice versa; see each workflow's `paths:` list). Every workflow also
+cancels a superseded in-flight run for the same ref (`concurrency:`
+`cancel-in-progress`), so pushing again to a PR does not pile up runs.
 
-- **`ci-backend.yml`** — four independent jobs (E12-S4 Validation Gates):
+- **`ci-backend.yml`** — paths: `backend/**`, `tests/**`, `scripts/**`,
+  `sdk/**`, `sandbox/**`, `.coveragerc`, `mypy.ini`, `.trivyignore.yaml`.
+  Four independent jobs (E12-S4 Validation Gates):
   - `lint-typecheck` — `ruff check backend tests` + `mypy backend`, pinned to
     the same `ruff`/`mypy` versions `make install-dev` installs.
   - `patch-validation` — the patch engine's dry-run + path-traversal guard
     (`scripts/validate_patches.py`, local: `make validate-patches`).
   - `security-baseline` — secret scanning, the Docker sandbox security
     contract test, `.trivyignore.yaml` exception validation, then a Trivy
-    HIGH/CRITICAL vulnerability + license scan (see §5).
-  - `backend-tests` — the pytest suite with the 85% coverage gate, plus a
-    coverage summary published to the job's step summary.
-- **`ci-frontend.yml`** — frontend lint → typecheck → unit test → build.
-- **`ci-e2e.yml`** — smoke e2e: boots the backend
+    HIGH/CRITICAL vulnerability + license scan (see §5). This is the only
+    job that runs the `slow`-marked Docker contract test.
+  - `backend-tests` — the pytest suite in parallel (`-n auto`), excluding the
+    `slow` tier, with the 85% coverage gate, plus a coverage summary
+    published to the job's step summary.
+- **`ci-frontend.yml`** — paths: `frontend/**`. Frontend lint → typecheck →
+  unit test → build.
+- **`ci-e2e.yml`** — paths: `backend/**`, `frontend/**`, `tests/**` (needs a
+  working backend and frontend together). Smoke e2e: boots the backend
   (`uvicorn backend.api.main:app`), health-probes `/docs`, then runs the
   Playwright suite (`frontend/e2e/`) against the built Next.js app.
-- **`ci-evals.yml`** — `reference-eval-gate`: runs the reference agent eval
-  offline and fails the build if its quality gate fails (§3, "Agent evals").
-  Equivalent locally: `make eval-reference`.
+- **`ci-evals.yml`** — paths: `backend/**`, `evals/**`. `reference-eval-gate`:
+  runs the reference agent eval offline and fails the build if its quality
+  gate fails (§3, "Agent evals"). Equivalent locally: `make eval-reference`.
 
 Reproduce `lint-typecheck` and `backend-tests` together with:
 
@@ -510,5 +535,6 @@ output, `dist/`/`build/`/`*.egg-info`, the frontend `.next/`/`out/`/
 | `ruff/black/mypy: No module named ...` | Run `make install-dev`. |
 | `ModuleNotFoundError: backend` in pytest | Run from the repo root; `tests/conftest.py` adds it to `sys.path`. |
 | Occasional `test_sandbox_runner.py` failures in a full run | Known low-frequency flake — those tests spawn real subprocesses and can be timing-sensitive under load. They pass in isolation (`pytest backend/tests/test_sandbox_runner.py`); re-running `make test-backend` clears it. |
+| Occasional failures in `test_chat_timeline_v2.py` (`..._eventually_completes_with_real_results`, `test_get_turn_happy_path`) or `test_flows_checkpoint.py::TestCheckpointOverhead` under `-n auto` | Same class of flake as above, not a correctness bug: these assert a real wall-clock bound (a 5 s poll timeout for a background job, a 50 ms/step checkpoint-cost NFR) that a fully core-saturated `-n auto` run (one worker per CPU, so on a 4-core box the whole suite's CPU-bound tests compete at once) can occasionally miss. They pass in isolation. Re-running clears it; do not add `pytest-rerunfailures` retries (see the determinism policy above) — if it recurs often on your hardware, run `make test-backend` once serially (`pytest tests backend/tests -q -m "not slow" ...`, no `-n auto`) to confirm before treating it as a real regression. |
 | Frontend `next: not found` | Run `make install-frontend`. |
 | `git status` shows generated files | Open an issue — every artifact should be in [`.gitignore`](../.gitignore); `make clean` is the stopgap. |

@@ -163,12 +163,11 @@ The goal is fast story iteration with a strict gate at `main`.
    make container-check  # same gate inside the backend container
    ```
 
-4. **Parallel execution.** The backend suite may be run in parallel with
-   `pytest-xdist` (`pip install pytest-xdist`, then `pytest -n auto`) to speed
-   up the full-suite gate. Parallel runs are an optimization, not a substitute:
-   if a parallel run fails in a way a serial run does not, the serial result is
-   authoritative. See `docs/testing.md` for the current status of parallel
-   execution.
+4. **Parallel execution.** `make test-backend` (and CI's `backend-tests`) run
+   the backend suite in parallel by default via `pytest-xdist` (`-n auto`),
+   excluding the `slow` tier (tests needing a real Docker daemon or a live
+   PostgreSQL — see `docs/testing.md`). See `docs/testing.md` for the fixture
+   that makes this xdist-safe and how to run the `slow` tier explicitly.
 
 ### Validation Gates (E12-S4)
 
