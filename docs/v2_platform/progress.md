@@ -7,7 +7,51 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-26 (**E52 complete — 3/3, SecretStore on
+**Last updated:** 2026-08-26 (**E54 complete — 3/3, EnvironmentStore on
+PostgreSQL**, on `epic/e54-environmentstore-postgres` — the fourth of the
+five category-3 store ports (E51-E55). `EnvironmentStore` no longer opens
+`sqlite3` directly, resolves `DATABASE_URL` itself, or rejects a
+`postgresql://` URL: it obtains its connection from the configured State
+Store via the E49 contract, same pattern E51/E52 established for
+`QuotaStore`/`SecretStore`. **E54-S1** moves the store onto
+`get_store()`/`contract.sql()`, drops the private `_resolve_db_path` and
+`_create_schema` in favor of a new SQLite `MigrationRunner` entry
+(`create_environment_tables`) mirroring the PostgreSQL shape E50-S2 already
+created. Because `execution_environments`/`execution_environment_decisions`
+carry Row-Level Security on PostgreSQL (E50-S4, `FORCE ROW LEVEL SECURITY`),
+every lookup that previously took only an id now also takes an explicit
+`tenant_id` to scope the `app.tenant_id` GUC — a real correctness
+requirement the SQLite-only original never needed, not just a defense-in-
+depth filter; `EnvironmentManager` and its `reap_orphans()`/`list_for_run()`/
+`list_decisions_for_run()` carry `tenant_id` through accordingly.
+`mark_status()` becomes idempotent: once a record reaches a terminal status
+(`torn_down`/`orphaned`), further calls are a no-op rather than overwriting
+an already-recorded `torn_down_at` or reopening a different terminal state.
+**E54-S2** enforces the per-tenant concurrent-environment limit the same
+way E51/E52 close their own phantom-row races: `create_environment()`'s
+optional `max_concurrent` check-then-insert is serialized by a transaction-
+scoped `pg_advisory_xact_lock` keyed by the tenant id, and
+`EnvironmentManager.provision()` is reordered to call the backend before
+this now-atomic admission check (safe because `HardenedContainerBackend`'s
+`provision()` does not itself create a real container — containers are
+per-command, spun up lazily by `SandboxRunner` — so a denial just tears
+down the unpersisted handle via the backend's no-op `teardown()`).
+**E54-S3** adds `claim_expired_active()`: a single conditional `UPDATE ...
+WHERE status = 'active' ... RETURNING` that claims each expired environment
+exactly once, because PostgreSQL re-evaluates an `UPDATE`'s `WHERE` clause
+against each row's latest committed version before applying it — two
+replicas racing the same sweep can never both win the same row. This is
+also what crash recovery reduces to: an environment orphaned by a process
+that died mid-lifecycle simply stays `active` until its TTL passes, at
+which point *any* replica's next sweep reclaims it, proven by a genuine
+cross-process test (a second, separate OS process reclaiming an
+environment left behind by a "crashed" owner, with the tenant's
+concurrency count returning to zero). The `AUTODEV_EXECUTION_ENVIRONMENT_
+BACKEND=unavailable` kill switch (E35 runbook) is unaffected by the port.
+The concurrency and crash-recovery tests skip locally (no
+`AUTODEV_TEST_POSTGRES_URL`), the same accepted limitation as the merged
+E51/E52 PRs; CI wiring for a real PostgreSQL service lands in E57.)
+Previous entry: 2026-08-26 (**E52 complete — 3/3, SecretStore on
 PostgreSQL**, on `epic/e52-secretstore-postgres` — the second of the five
 category-3 store ports (E51-E55). `SecretStore` no longer opens `sqlite3`
 directly or rejects a `postgresql://` `DATABASE_URL`: it obtains its
@@ -579,7 +623,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E51 | QuotaStore on PostgreSQL & Concurrency | Beta | Done | 4/4 | E49, E50-S1, E11-S3 | [phases/e51_quotastore_postgres_concurrency.md](phases/e51_quotastore_postgres_concurrency.md) |
 | E52 | SecretStore on PostgreSQL | Beta | Done | 3/3 | E49, E50-S1, E33 | [phases/e52_secretstore_postgres.md](phases/e52_secretstore_postgres.md) |
 | E53 | PolicyStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S2, E14 | [phases/e53_policystore_postgres.md](phases/e53_policystore_postgres.md) |
-| E54 | EnvironmentStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S2, E32 | [phases/e54_environmentstore_postgres.md](phases/e54_environmentstore_postgres.md) |
+| E54 | EnvironmentStore on PostgreSQL | Beta | Done | 3/3 | E49, E50-S2, E32 | [phases/e54_environmentstore_postgres.md](phases/e54_environmentstore_postgres.md) |
 | E55 | Plan Step State on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S3, E16-S2 | [phases/e55_plan_step_state_postgres.md](phases/e55_plan_step_state_postgres.md) |
 | E56 | SQLite/PostgreSQL Contract Test Suite | Beta | Not started | 0/3 | E49, E50, E51-E55 | [phases/e56_sqlite_postgres_contract_tests.md](phases/e56_sqlite_postgres_contract_tests.md) |
 | E57 | CI & Real PostgreSQL E2E | Beta | Not started | 0/4 | E48, E56, E51-E55 | [phases/e57_ci_postgres_e2e.md](phases/e57_ci_postgres_e2e.md) |
