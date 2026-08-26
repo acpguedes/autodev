@@ -790,6 +790,70 @@ def _m18_down_drop_plan_step_state_table(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS plan_step_state")
 
 
+def _m19_create_environment_tables(conn: sqlite3.Connection) -> None:
+    """Create the environment lifecycle and decision tables (E54-S1-T1).
+
+    Mirrors the PostgreSQL shape created by
+    ``_pg_m9_create_policy_and_environment_tables`` (E50-S2). Previously
+    these two tables existed only via
+    :class:`backend.environments.store.EnvironmentStore`'s own imperative
+    ``CREATE TABLE IF NOT EXISTS``, applied outside any
+    :class:`MigrationRunner` and untracked by ``schema_version`` -- the same
+    gap E51-S1/E52-S1 closed for the quota and secret tables. Bringing them
+    under this runner is what lets ``EnvironmentStore`` stop creating its
+    own schema and obtain a connection from the configured State Store
+    instead. ``CREATE TABLE IF NOT EXISTS`` keeps this a no-op against a
+    pre-E54 database that already has these exact tables.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS execution_environments (
+            environment_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            backend_kind TEXT NOT NULL,
+            profile_id TEXT NOT NULL,
+            profile_hash TEXT NOT NULL,
+            workspace_path TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            torn_down_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_execution_environments_tenant_run
+            ON execution_environments(tenant_id, run_id);
+        CREATE INDEX IF NOT EXISTS idx_execution_environments_tenant_status
+            ON execution_environments(tenant_id, status, expires_at);
+        CREATE TABLE IF NOT EXISTS execution_environment_decisions (
+            decision_id TEXT PRIMARY KEY,
+            environment_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            target TEXT NOT NULL,
+            allowed INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            decided_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_execution_environment_decisions_tenant_env
+            ON execution_environment_decisions(tenant_id, environment_id);
+        """
+    )
+
+
+def _m19_down_drop_environment_tables(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m19_create_environment_tables` by dropping both tables.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    for table in ("execution_environments", "execution_environment_decisions"):
+        conn.execute(f"DROP TABLE IF EXISTS {table}")
+
+
 STORE_MIGRATIONS: list[MigrationEntry] = [
     _m1_create_core_tables,
     _m2_runs_add_run_type,
@@ -856,6 +920,11 @@ STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_m18_create_plan_step_state_table,
         down=_m18_down_drop_plan_step_state_table,
         name="create_plan_step_state_table",
+    ),
+    Migration(
+        up=_m19_create_environment_tables,
+        down=_m19_down_drop_environment_tables,
+        name="create_environment_tables",
     ),
 ]
 

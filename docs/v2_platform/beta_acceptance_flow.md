@@ -33,19 +33,18 @@ controls actually stop something rather than only existing in configuration.
    referenced by the reference project's execution profile, so it can be
    revoked in N4.
 
-> **Profile constraint (updated 2026-08-26, E53).** This rehearsal is
-> currently executable only under `AUTODEV_PROFILE=local` (SQLite).
-> Precondition 5 — the execution environment backend — still depends on
-> `EnvironmentStore`, which raises `ValueError` on the `postgresql://` URL
-> the `prod` profile requires (`backend/environments/store.py:38` vs
-> `backend/config/settings.py:332-336`); porting it is E54. Preconditions 4
-> and 6 (quotas, secrets) and negative path N1 (`PolicyStore`) no longer
-> block `prod`: `QuotaStore` (E51), `SecretStore` (E52), and `PolicyStore`
-> (E53) all run on both SQLite and PostgreSQL through the E49 contract.
-> Running this flow in `prod` end to end is still gated on `EnvironmentStore`
-> (E54) landing, after which E57-S3 executes it in CI against a real `prod`
-> stack. Stated here rather than left implicit, per the E35-S1-T3
-> fact-vs-recommendation discipline.
+> **Profile constraint (added 2026-08-21, updated 2026-08-26).** This
+> rehearsal is currently executable only under `AUTODEV_PROFILE=local`
+> (SQLite). Preconditions 4, 5, and 6 — quotas, the execution environment
+> backend, and secrets — and negative path N1 (`PolicyStore`) no longer
+> depend on a SQLite-only store: `QuotaStore` (E51), `SecretStore` (E52),
+> `PolicyStore` (E53), and `EnvironmentStore` (E54) all run on both backends
+> via the E49 contract and no longer raise `ValueError` on a
+> `postgresql://` `DATABASE_URL`. Running this flow in `prod` end to end is
+> gated on the remaining E48-E60 program work (`postgres_production_completeness.md`),
+> after which E57-S3 executes it in CI against a real `prod` stack. Stated
+> here rather than left implicit, per the E35-S1-T3 fact-vs-recommendation
+> discipline.
 
 ## Happy path
 

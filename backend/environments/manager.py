@@ -140,8 +140,20 @@ class EnvironmentManager:
 
         Reaps any of the tenant's orphaned environments first (lazy sweep,
         mirroring :class:`~backend.execution.decisions.DecisionService`),
-        then admits the request against the tenant's concurrent-environment
-        ceiling, then delegates provisioning to the resolved backend.
+        delegates provisioning to the resolved backend, then admits the
+        resulting record against the tenant's concurrent-environment ceiling.
+
+        The admission check happens *after* the backend call and is atomic
+        with the record's insert (E54-S2): a separate "count, then insert"
+        pair of calls would leave a race window across replicas where two
+        concurrent requests could both observe the tenant under its ceiling
+        and both be admitted, overshooting it. Denial after backend
+        provisioning is safe here because
+        :class:`~backend.environments.backends.HardenedContainerBackend`'s
+        ``provision()`` does not itself create a real container (containers
+        are per-command, spun up lazily by ``SandboxRunner`` when a command
+        actually runs) -- denial just tears down the unpersisted handle via
+        the backend's (here, no-op) ``teardown()``.
 
         Args:
             run_id: Orchestrator run this environment is provisioned for.
@@ -161,11 +173,9 @@ class EnvironmentManager:
                 the profile (e.g. an unrecognized backend, or an
                 unenforceable network policy).
         """
-        self.reap_orphans()
+        self.reap_orphans(tenant_id=tenant_id)
         active_profile = profile or EnvironmentProfile()
         limit = self._settings.autodev_environment_max_concurrent
-        if self._store.count_active(tenant_id) >= limit:
-            raise EnvironmentCapacityExceededError(tenant_id, limit)
 
         handle = self._backend.provision(
             run_id=run_id, tenant_id=tenant_id, profile=active_profile, workspace_ref=workspace_ref
@@ -173,7 +183,7 @@ class EnvironmentManager:
         created_at = _now()
         ttl = self._settings.autodev_environment_ttl_seconds
         expires_iso = (datetime.now(timezone.utc) + timedelta(seconds=ttl)).isoformat()
-        self._store.create_environment(
+        admitted = self._store.create_environment(
             EnvironmentRecord(
                 environment_id=handle.environment_id,
                 run_id=run_id,
@@ -185,8 +195,19 @@ class EnvironmentManager:
                 status="active",
                 created_at=created_at,
                 expires_at=expires_iso,
-            )
+            ),
+            max_concurrent=limit,
         )
+        if not admitted:
+            try:
+                self._backend.teardown(handle)
+            except EnvironmentBackendError:
+                logger.warning(
+                    "environment %s: capacity denied but teardown of the unpersisted "
+                    "handle failed",
+                    handle.environment_id,
+                )
+            raise EnvironmentCapacityExceededError(tenant_id, limit)
         emit_event(
             "environment.instance.provisioned",
             tenant_id=tenant_id,
@@ -433,6 +454,7 @@ class EnvironmentManager:
         self._backend.teardown(handle)
         self._store.mark_status(
             handle.environment_id,
+            tenant_id=handle.tenant_id,
             status="torn_down" if reason != "orphan_reaped" else "orphaned",
             torn_down_at=_now(),
         )
@@ -444,18 +466,29 @@ class EnvironmentManager:
             subject={"runId": handle.run_id, "environmentId": handle.environment_id},
         )
 
-    def reap_orphans(self, *, at: Optional[str] = None) -> int:
-        """Tear down and mark orphaned every active environment past its TTL.
+    def reap_orphans(self, *, tenant_id: str, at: Optional[str] = None) -> int:
+        """Claim, tear down, and mark orphaned every one tenant's active environments past their TTL.
+
+        Claiming (E54-S3-T1/T2) happens atomically in the store: each
+        expired row is claimed by exactly one caller, so this is safe to
+        call concurrently from every replica -- including a second replica
+        recovering an environment orphaned by a process that crashed
+        mid-lifecycle (E54-S3-T3), since nothing but the TTL gates when a
+        never-torn-down environment becomes claimable.
 
         Args:
+            tenant_id: Tenant to reap orphaned environments for (RLS scope
+                on PostgreSQL, E54-S1) -- the sweep is per-tenant because the
+                concurrency ceiling :meth:`provision` checks is itself
+                per-tenant.
             at: ISO-8601 cutoff; defaults to now.
 
         Returns:
-            The number of environments reaped.
+            The number of environments this call claimed and reaped.
         """
         cutoff = at or _now()
-        expired = self._store.list_expired_active(before=cutoff)
-        for record in expired:
+        claimed = self._store.claim_expired_active(tenant_id, before=cutoff)
+        for record in claimed:
             handle = EnvironmentHandle(
                 environment_id=record.environment_id,
                 run_id=record.run_id,
@@ -467,19 +500,20 @@ class EnvironmentManager:
             try:
                 self.teardown(handle, reason="orphan_reaped")
             except EnvironmentBackendError:
-                # Best-effort: the record is still marked orphaned below via
-                # the store update inside teardown()'s own mark_status call
-                # not having run -- fall back to a direct status flip.
-                self._store.mark_status(record.environment_id, status="orphaned", torn_down_at=_now())
-        return len(expired)
+                # Best-effort: claim_expired_active() already flipped this
+                # record to "orphaned" atomically before this loop ever ran,
+                # so it is not left in "active" limbo even if the backend's
+                # own teardown fails -- nothing further to do here.
+                pass
+        return len(claimed)
 
-    def list_for_run(self, run_id: str) -> list[EnvironmentRecord]:
+    def list_for_run(self, run_id: str, *, tenant_id: str) -> list[EnvironmentRecord]:
         """List every environment record provisioned for one run (audit, E32-S4-T1)."""
-        return self._store.list_for_run(run_id)
+        return self._store.list_for_run(run_id, tenant_id=tenant_id)
 
-    def list_decisions_for_run(self, run_id: str):  # type: ignore[no-untyped-def]
+    def list_decisions_for_run(self, run_id: str, *, tenant_id: str):  # type: ignore[no-untyped-def]
         """List every policy decision recorded for one run's environments (audit)."""
-        return self._store.list_decisions_for_run(run_id)
+        return self._store.list_decisions_for_run(run_id, tenant_id=tenant_id)
 
 
 __all__ = ["EnvironmentCapacityExceededError", "EnvironmentManager"]
