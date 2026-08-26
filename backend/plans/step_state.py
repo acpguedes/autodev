@@ -318,6 +318,15 @@ class StepApprovalStore:
                     (tenant_id, session_id, index, content, StepState.DRAFT.value, now),
                 )
             conn.commit()
+            # Re-scope after the commit above: PostgreSQL's set_config(...,
+            # true) (E56-S3 finding) is transaction-local, so it was reset
+            # the instant the write transaction committed. Without this, the
+            # SELECT below runs with no app.tenant_id set at all, and this
+            # table's FORCE ROW LEVEL SECURITY policy then hides every row
+            # -- including the ones just inserted -- from any non-superuser
+            # connection (invisible under a superuser test role, which
+            # bypasses RLS entirely and is why this went unnoticed).
+            self._scope(conn, tenant_id)
             rows = conn.execute(
                 self._sql(
                     f"SELECT {_ROW_COLUMNS} FROM plan_step_state "

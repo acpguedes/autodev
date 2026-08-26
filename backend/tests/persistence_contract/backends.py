@@ -22,6 +22,16 @@ import pytest
 #: ``backend/tests/unit/{quotas,secret_store,execution,environments,plans}/test_postgres_concurrency.py``,
 #: generalized here from per-test tenant rows to per-test databases so each
 #: contract run gets a real from-empty migration (S1-T2).
+#:
+#: This role must NOT be a PostgreSQL superuser (and must not have the
+#: BYPASSRLS attribute). A superuser bypasses Row-Level Security
+#: unconditionally, even on a table with ``FORCE ROW LEVEL SECURITY`` -- the
+#: Postgres images' bootstrap ``POSTGRES_USER`` is a superuser by default,
+#: so a locally spun-up dev container needs a second, ordinary role (``LOGIN
+#: CREATEDB``, otherwise default privileges) for this suite's tenant
+#: isolation cases to mean anything (E56-S3-T2: this was found the hard way
+#: -- a superuser connection made every isolation case pass vacuously and
+#: hid a real cross-transaction RLS bug in ``StepApprovalStore.ensure_steps``).
 POSTGRES_ADMIN_URL_ENV = "AUTODEV_TEST_POSTGRES_URL"
 
 #: Reason attached to a skipped PostgreSQL case -- explicit and named, never
