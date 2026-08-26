@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -14,7 +15,7 @@ from backend.evals.spec import validate_eval_spec
 from backend.observability import tracing
 from backend.observability.tracing import get_tracer
 from backend.orchestrator.service import OrchestratorService
-from backend.persistence.database import DurableStore
+from backend.persistence.database import DurableStore, reset_store_cache
 from backend.persistence.sqlite_adapter import SQLiteStore
 from backend.reasoning import (
     ReasoningInput,
@@ -38,15 +39,23 @@ from backend.validation.sandbox import SandboxRunner
 
 
 @pytest.fixture(autouse=True)
-def _isolated_quota_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _isolated_quota_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Point every default ``QuotaService``'s store at a throwaway DB.
 
     ``OrchestratorService``/``ReasoningService`` both default to a
     ``QuotaService()`` that resolves ``DATABASE_URL`` from the environment;
     without this, every instance built here would silently read/write the
-    repo's shared dev ``autodev.db`` (E11-S3).
+    repo's shared dev ``autodev.db`` (E11-S3). Since E51, ``QuotaStore()``'s
+    default path resolves through
+    :func:`backend.persistence.database.get_store`, a process-wide
+    ``lru_cache`` -- reset it around the test too, or every test after the
+    first would keep reusing the *first* test's throwaway DB regardless of
+    this fixture's fresh ``DATABASE_URL``.
     """
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'quotas.db'}")
+    reset_store_cache()
+    yield
+    reset_store_cache()
 
 
 def test_trace_run_interface_is_available() -> None:
