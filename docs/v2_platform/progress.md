@@ -7,7 +7,31 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-21 (**Planning-only: added the E48-E60 PostgreSQL
+**Last updated:** 2026-08-26 (**E50 complete — 4/4, PostgreSQL Schema,
+Migrations, Tenancy & RLS**, on `epic/e50-postgres-schema-migrations-rls` —
+closes the schema half of the gap `postgres_production_completeness.md`
+identified: the 13 domain tables (quotas, secrets, execution policy,
+environments, plan step state) that were created by ad hoc
+`CREATE TABLE IF NOT EXISTS` outside `MigrationRunner`, untracked by
+`schema_version`, and without Row-Level Security. **E50-S1/S2/S3** append
+versioned PostgreSQL migrations 8-10 (`POSTGRES_STORE_MIGRATIONS`) creating
+all 13 with PostgreSQL types (`JSONB`/`TIMESTAMPTZ`/`BIGINT`) and
+tenant-first keys/indexes; `plan_step_state` additionally gains `tenant_id`
+and a foreign key to `plan_documents` on **both** backends (SQLite
+backfills existing rows to `DEFAULT_TENANT_ID` via an `ADD COLUMN ...
+DEFAULT` statement). **E50-S4** applies `ENABLE`/`FORCE ROW LEVEL SECURITY`
+plus a `<t>_tenant_isolation` policy to all 13 via a shared
+`_apply_tenant_rls()` generator (migration 11), and extends
+`backend/quotas/migrations.py`'s `--check` verifier to cover them on
+PostgreSQL. The 13 tables' *stores* are still SQLite-only — reads/writes
+land in E51-E55 — so this epic is schema-only by design (out of scope: no
+push/PR without explicit authorization was overridden by the requesting
+session for this epic). Live cross-tenant RLS enforcement proof against a
+running PostgreSQL is deferred to E57 (CI & Real PostgreSQL E2E, not yet
+started); this epic's tests assert migration DDL shape via the existing
+`FakeConnection` pattern, consistent with every other PostgreSQL migration
+test in this codebase to date.)
+Previous entry: 2026-08-21 (**Planning-only: added the E48-E60 PostgreSQL
 Production Completeness program — 13 Beta-hardening epics, 46 planned
 stories**, on `main`. The `prod` profile requires PostgreSQL
 (`backend/config/settings.py:332-336`) while four domain stores raise
@@ -352,9 +376,9 @@ automated guard blocks a new domain module from opening a database
 connection directly — see the changelog entry and
 [phases/e49_shared_sql_infrastructure.md](phases/e49_shared_sql_infrastructure.md).
 
-**Next:** E13 — Marketplace & GA (0/4, not started), or **E50 — PostgreSQL
-Schema, Migrations, Tenancy & RLS** (0/4, now unblocked — E48, E49, and
-E8-S1 are all done) as the next step in the PostgreSQL Production
+**Next:** E13 — Marketplace & GA (0/4, not started), or **E51 — QuotaStore
+on PostgreSQL & Concurrency** (0/4, now unblocked — E49 and E50-S1 are both
+done) as the next step in the PostgreSQL Production
 Completeness program. Beyond GA, the planned v2.1 (E20-E25), v2.2
 (E26-E31) and v2.3 (E36-E40) waves are specified but not started.
 
@@ -492,7 +516,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E47 | Backend Structural Consolidation | Beta | Done | 5/5 | E2, E2-S6, E8, E44, E46 | [phases/e47_backend_structural_consolidation.md](phases/e47_backend_structural_consolidation.md) |
 | E48 | PostgreSQL Runtime with pgvector | Beta | Done | 4/4 | E0-S3, E7-S2, E34-S2 | [phases/e48_postgres_runtime_pgvector.md](phases/e48_postgres_runtime_pgvector.md) |
 | E49 | Shared SQL Persistence Infrastructure | Beta | Done | 4/4 | E8, E47-S4 | [phases/e49_shared_sql_infrastructure.md](phases/e49_shared_sql_infrastructure.md) |
-| E50 | PostgreSQL Schema, Migrations, Tenancy & RLS | Beta | Not started | 0/4 | E48, E49, E8-S1 | [phases/e50_postgres_schema_migrations_rls.md](phases/e50_postgres_schema_migrations_rls.md) |
+| E50 | PostgreSQL Schema, Migrations, Tenancy & RLS | Beta | Done | 4/4 | E48, E49, E8-S1 | [phases/e50_postgres_schema_migrations_rls.md](phases/e50_postgres_schema_migrations_rls.md) |
 | E51 | QuotaStore on PostgreSQL & Concurrency | Beta | Not started | 0/4 | E49, E50-S1, E11-S3 | [phases/e51_quotastore_postgres_concurrency.md](phases/e51_quotastore_postgres_concurrency.md) |
 | E52 | SecretStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S1, E33 | [phases/e52_secretstore_postgres.md](phases/e52_secretstore_postgres.md) |
 | E53 | PolicyStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S2, E14 | [phases/e53_policystore_postgres.md](phases/e53_policystore_postgres.md) |
@@ -504,7 +528,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E59 | Backup, Restore & Disaster Recovery | Beta | Not started | 0/3 | E8-S4, E55-S3, E57-S4 | [phases/e59_backup_restore_disaster_recovery.md](phases/e59_backup_restore_disaster_recovery.md) |
 | E60 | Connection Pooling & PostgreSQL Hardening | Beta | Not started | 0/4 | E51-E55, E57, E11-S1 | [phases/e60_postgres_pooling_hardening.md](phases/e60_postgres_pooling_hardening.md) |
 
-Total: **139/260 stories complete** across 60 epics (E19 is a proposed
+Total: **143/260 stories complete** across 60 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
@@ -710,6 +734,42 @@ v1 upgrade migration, and release notes.
 ## Changelog
 
 Add a dated entry every time a story/epic/wave status changes.
+
+- **2026-08-26** — **E50 — PostgreSQL Schema, Migrations, Tenancy & RLS
+  complete (4/4)**. Thirteen tables (quotas, secrets, execution policy,
+  execution environments, plan step state) previously existed only as
+  ad hoc `CREATE TABLE IF NOT EXISTS` calls inside each store's SQLite
+  `_create_schema`, none registered in `POSTGRES_STORE_MIGRATIONS`, none
+  tracked by `schema_version`, none RLS-protected. **E50-S1**: migration 8
+  creates `tenant_quota_policies`, `tenant_usage_windows`, `run_leases`,
+  `storage_reservations`, `request_rate_buckets`, and `secrets` on
+  PostgreSQL with `JSONB`/`TIMESTAMPTZ`/`BIGINT` types and tenant-first
+  keys/indexes. **E50-S2**: migration 9 creates
+  `execution_policy_rules`, `execution_dynamic_permissions`,
+  `execution_policy_decisions`, `pending_action_decisions`,
+  `execution_environments`, and `execution_environment_decisions`, with
+  tenant-first indexes serving the pending-decision lookup and
+  expiry-scan queries these stores actually run. **E50-S3**: migration 10
+  creates `plan_step_state` on PostgreSQL for the first time (`tenant_id`
+  plus a foreign key to `plan_documents.session_id`) and gives the SQLite
+  table the same `tenant_id` column — pre-migration rows backfill to
+  `DEFAULT_TENANT_ID` via SQLite's `ALTER TABLE ... ADD COLUMN ... DEFAULT`
+  semantics, no separate `UPDATE` needed. **E50-S4**: migration 11 applies
+  `ENABLE`/`FORCE ROW LEVEL SECURITY` plus a `<t>_tenant_isolation` policy
+  to all thirteen tables via a new shared `_apply_tenant_rls()` generator
+  (`backend/persistence/migrations/postgres_versions.py`), reused instead
+  of duplicating the policy SQL per table; `backend/quotas/migrations.py`'s
+  `--check` verifier now covers all thirteen on PostgreSQL via
+  `_postgres_expected_tables()`, without over-reporting a false gap for
+  the twelve that remain SQLite-unchanged by design. Existing migrations
+  1-7 were never edited or reordered. Every table's *store* still only
+  reads/writes SQLite — the schema exists and is tenant-isolated ahead of
+  the store ports (E51-E55), matching how the core tables' RLS was
+  originally retrofitted one migration after their creation. Live
+  cross-tenant RLS enforcement against a running PostgreSQL is deferred to
+  E57 (CI & Real PostgreSQL E2E, not yet started); this epic's tests
+  assert migration DDL shape via the `FakeConnection` pattern already used
+  by every other PostgreSQL migration test in this codebase.
 
 - **2026-08-23** — **E49 — Shared SQL Persistence Infrastructure complete
   (4/4, ADR-025 Accepted)**. Eight stores (flows, events, artifacts, auth,
