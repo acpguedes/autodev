@@ -115,3 +115,67 @@ def test_list_metadata_shows_latest_version_only(tmp_path: Path) -> None:
     listed = store.list_metadata("t1")
     assert len(listed) == 1
     assert listed[0].version == 3
+
+
+def test_same_secret_name_in_different_tenants_never_collides(tmp_path: Path) -> None:
+    """E52-S3-T1: same (project, name) in two tenants stores and resolves independently."""
+    store = _store(tmp_path)
+    store.create(_ref(tenant_id="t1"), "t1-value")
+    store.create(_ref(tenant_id="t2"), "t2-value")
+    t1_ciphertext, _ = store.resolve_latest_active(_ref(tenant_id="t1"))
+    t2_ciphertext, _ = store.resolve_latest_active(_ref(tenant_id="t2"))
+    assert t1_ciphertext == "t1-value"
+    assert t2_ciphertext == "t2-value"
+
+
+def test_ciphertext_written_before_the_port_decrypts_unchanged(tmp_path: Path) -> None:
+    """E52-S1-T3: a row shaped like the pre-port schema (no rotation_request_id) still resolves."""
+    store = _store(tmp_path)
+    with store._connect() as conn:  # noqa: SLF001 - simulating a pre-port row directly
+        conn.execute(
+            "INSERT INTO secrets "
+            "(tenant_id, project, name, version, ciphertext, status, backend_kind, "
+            " created_at, rotated_at, revoked_at) "
+            "VALUES ('t1', 'default', 'legacy-secret', 1, 'legacy-ciphertext', 'active', "
+            " 'encrypted_database', '2026-01-01T00:00:00+00:00', NULL, NULL)"
+        )
+        conn.commit()
+    ciphertext, metadata = store.resolve_latest_active(_ref("legacy-secret"))
+    assert ciphertext == "legacy-ciphertext"
+    assert metadata.version == 1
+
+
+def test_rotate_with_idempotency_key_retry_creates_no_extra_version(tmp_path: Path) -> None:
+    """E52-S2-T3: a retried rotation with the same idempotency key is a no-op."""
+    store = _store(tmp_path)
+    store.create(_ref(), "v1")
+    first = store.rotate(_ref(), "v2", idempotency_key="req-1")
+    second = store.rotate(_ref(), "v2-retry-payload", idempotency_key="req-1")
+    assert first.version == second.version == 2
+    ciphertext, _ = store.resolve_latest_active(_ref())
+    assert ciphertext == "v2"
+    assert len(store.list_metadata("t1")) == 1
+
+
+def test_rotate_without_idempotency_key_always_creates_a_new_version(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    store.create(_ref(), "v1")
+    store.rotate(_ref(), "v2")
+    third = store.rotate(_ref(), "v3")
+    assert third.version == 3
+
+
+def test_database_rejects_a_second_active_version_bypassing_the_store(tmp_path: Path) -> None:
+    """E52-S2-T2: the one-active-version invariant is enforced by a constraint, not only app logic."""
+    import sqlite3
+
+    store = _store(tmp_path)
+    store.create(_ref(), "v1")
+    with pytest.raises(sqlite3.IntegrityError):
+        with store._connect() as conn:  # noqa: SLF001 - deliberately bypassing SecretStore.rotate()
+            conn.execute(
+                "INSERT INTO secrets "
+                "(tenant_id, project, name, version, ciphertext, status, backend_kind, created_at) "
+                "VALUES ('t1', 'default', 'git-token', 2, 'v2', 'active', 'encrypted_database', 'now')"
+            )
+            conn.commit()
