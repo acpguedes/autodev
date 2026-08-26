@@ -24,11 +24,17 @@ Code: `backend/secret_store/`.
   `AUTODEV_SECRET_ENCRYPTION_KEY`. Unset (local mode) derives an
   ephemeral per-process key, mirroring
   `AUTODEV_SESSION_ENCRYPTION_KEY`'s own local-mode fallback.
-- `store.py` — `SecretStore`, a durable SQLite-backed, versioned store
+- `store.py` — `SecretStore`, a durable versioned store, running on both
+  SQLite and PostgreSQL through the shared persistence contract (E49,
+  ADR-025; ported E52), scoped to `(tenant_id, project, name, version)`
   (`create`/`rotate`/`revoke`/`resolve_latest_active`/`get_metadata`/
-  `list_metadata`) scoped to `(tenant_id, project, name, version)`.
-  `resolve_latest_active` is the *only* method that ever returns
-  ciphertext, and only the injection path (E33-S2) calls it.
+  `list_metadata`). `resolve_latest_active` is the *only* method that ever
+  returns ciphertext, and only the injection path (E33-S2) calls it.
+  Rotation is serialized per secret reference with a transaction-scoped
+  PostgreSQL advisory lock (a no-op on SQLite, whose write lock already
+  covers it) plus a partial unique index enforcing exactly one active
+  version as a database constraint; an optional `idempotency_key` on
+  `rotate()` makes a retried request a no-op instead of an extra version.
 - `service.py` — `SecretService`: crypto + store + durable
   `secret.*` audit events for every create/rotate/revoke/resolve.
 
@@ -74,8 +80,9 @@ Database-encrypted-at-rest with envelope keys (Fernet) is the Beta
 default; the ciphertext format and backend are swappable behind
 `SecretBackendKind`/`SecretStore` without touching
 `SecretReference`/`SecretMetadata` or any caller — see ADR-014 for the
-full trade-off table and the honest scope reduction (Postgres RLS and an
-external KMS/vault backend are deferred, not silently dropped).
+full trade-off table. Postgres RLS on `secrets` (E50-S4) plus the E52
+store port close the first half of the original scope reduction; an
+external KMS/vault backend remains deferred, not silently dropped.
 
 ## Injection into execution environments (E33-S2)
 

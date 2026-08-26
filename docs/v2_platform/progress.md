@@ -7,7 +7,31 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-26 (**E51 complete — 4/4, QuotaStore on
+**Last updated:** 2026-08-26 (**E52 complete — 3/3, SecretStore on
+PostgreSQL**, on `epic/e52-secretstore-postgres` — the second of the five
+category-3 store ports (E51-E55). `SecretStore` no longer opens `sqlite3`
+directly or rejects a `postgresql://` `DATABASE_URL`: it obtains its
+connection from the configured State Store via the E49 contract, same
+pattern E51 established for `QuotaStore`. **E52-S1** moves the store onto
+`get_store()`/`contract.sql()`, drops the private `_create_schema` in favor
+of two new SQLite `MigrationRunner` entries (`create_secrets_table`,
+`secrets_rotation_integrity`) mirroring the PostgreSQL shape E50-S1 already
+created, and verifies a pre-port ciphertext row still decrypts unchanged.
+**E52-S2** closes a rotation-specific version of E51's phantom-row race:
+`SELECT ... FOR UPDATE` on the current active row is not enough for a
+rotation, because PostgreSQL re-reads that row's *committed* values once
+the lock grants — which still show the old version number even after a
+concurrent transaction already inserted the new one — so rotation uses a
+transaction-scoped `pg_advisory_xact_lock` keyed by the secret reference
+instead (verified against a real local PostgreSQL: disabling the lock
+reproduces a primary-key `UniqueViolation` within a handful of runs). A
+partial unique index enforces "exactly one active version" as a database
+constraint, and an optional `idempotency_key` makes a retried `rotate()` a
+no-op. **E52-S3** proves same-name isolation across tenant and project,
+asserts no audit event across create/rotate/resolve/revoke ever carries the
+plaintext value, and proves resolution fails closed (propagates, never
+returns empty) when the backing store is unreachable.)
+Previous entry: 2026-08-26 (**E51 complete — 4/4, QuotaStore on
 PostgreSQL & Concurrency**, on `epic/e51-quotastore-postgres-concurrency` —
 the first of the five category-3 store ports (E51-E55) that E50 prepared
 the schema for. `QuotaStore` no longer opens `sqlite3` directly or rejects
@@ -553,7 +577,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E49 | Shared SQL Persistence Infrastructure | Beta | Done | 4/4 | E8, E47-S4 | [phases/e49_shared_sql_infrastructure.md](phases/e49_shared_sql_infrastructure.md) |
 | E50 | PostgreSQL Schema, Migrations, Tenancy & RLS | Beta | Done | 4/4 | E48, E49, E8-S1 | [phases/e50_postgres_schema_migrations_rls.md](phases/e50_postgres_schema_migrations_rls.md) |
 | E51 | QuotaStore on PostgreSQL & Concurrency | Beta | Done | 4/4 | E49, E50-S1, E11-S3 | [phases/e51_quotastore_postgres_concurrency.md](phases/e51_quotastore_postgres_concurrency.md) |
-| E52 | SecretStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S1, E33 | [phases/e52_secretstore_postgres.md](phases/e52_secretstore_postgres.md) |
+| E52 | SecretStore on PostgreSQL | Beta | Done | 3/3 | E49, E50-S1, E33 | [phases/e52_secretstore_postgres.md](phases/e52_secretstore_postgres.md) |
 | E53 | PolicyStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S2, E14 | [phases/e53_policystore_postgres.md](phases/e53_policystore_postgres.md) |
 | E54 | EnvironmentStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S2, E32 | [phases/e54_environmentstore_postgres.md](phases/e54_environmentstore_postgres.md) |
 | E55 | Plan Step State on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S3, E16-S2 | [phases/e55_plan_step_state_postgres.md](phases/e55_plan_step_state_postgres.md) |
