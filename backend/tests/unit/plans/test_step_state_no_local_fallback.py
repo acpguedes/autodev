@@ -13,6 +13,7 @@ of any name appears there as a side effect either way.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -22,7 +23,7 @@ from backend.persistence.database import reset_store_cache
 
 
 @pytest.fixture(autouse=True)
-def _reset_caches() -> None:
+def _reset_caches() -> Iterator[None]:
     reset_settings_cache()
     reset_store_cache()
     yield

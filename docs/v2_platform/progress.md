@@ -7,7 +7,44 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-26 (**E52 complete — 3/3, SecretStore on
+**Last updated:** 2026-08-26 (**E55 complete — 3/3, Plan Step State on
+PostgreSQL**, on `epic/e55-plan-step-state-postgres` — the third of the
+five category-3 store ports (E51-E55), and the one that closes the
+program's last *silent* divergence: `StepApprovalStore` used to accept a
+`postgresql://` `DATABASE_URL` and quietly write `./autodev_plan_step_state.db`
+instead — every other unported store at least failed loudly with a
+`ValueError`. **E55-S1** ports the store onto `get_store()`/`contract.sql()`,
+dropping the private path-resolution fallback and the inline
+`CREATE TABLE`/`_ensure_tenant_id_column` in favor of a new SQLite
+`MigrationRunner` entry (`create_plan_step_state_table`) mirroring the
+PostgreSQL shape E50-S3 already created, and threads the authenticated
+principal's `tenant_id` through every `/v2/plans` handler and store call —
+previously `plan_step_state` carried a `tenant_id` column no code ever
+populated correctly, scoped only "transitively" through a `session_id` that
+happened to pass an upstream tenant check. **E55-S2** replaces a
+process-local `threading.Lock` — which the store's own docstring admitted
+"protects nothing across replicas" — with `BEGIN IMMEDIATE`/`SELECT ... FOR
+UPDATE` transactions plus a transaction-scoped `pg_advisory_xact_lock`
+around `append_step`'s `MAX(step_index)` read (the same phantom-row shape
+E51/E52 closed for quota leases and secret rotations), and makes
+`transition`/`update_content`/`delete_step` state-guarded conditional
+writes (`WHERE ... AND state = ...`) so a transition racing a concurrent one
+is rejected outright instead of silently overwritten — proved by a real
+multi-threaded PostgreSQL concurrency test (skips without
+`AUTODEV_TEST_POSTGRES_URL`, consistent with E51/E52's same accepted local
+limitation) showing exactly one of sixteen racing approve/reject calls
+wins, plus direct negative-test coverage of every illegal transition, edit,
+and delete the six-state machine (E16-S2) forbids. **E55-S3** migrates a
+pre-E55 install's standalone `autodev_plan_step_state.db` with a new
+`backend.persistence.step_state_migration` module that reports rows read,
+written, and unresolved (an orphaned `session_id` with no matching
+`plan_documents` row) rather than dropping them, retains the legacy file
+untouched for rollback, proves a PostgreSQL `DATABASE_URL` now fails closed
+on a connection error rather than ever writing a local file again, and
+confirms `plan_step_state` needs no dedicated backup-manifest entry since
+it now lives inside the same physical database `BackupManager` already
+snapshots/dumps whole.)
+Previous entry: 2026-08-26 (**E52 complete — 3/3, SecretStore on
 PostgreSQL**, on `epic/e52-secretstore-postgres` — the second of the five
 category-3 store ports (E51-E55). `SecretStore` no longer opens `sqlite3`
 directly or rejects a `postgresql://` `DATABASE_URL`: it obtains its
@@ -580,7 +617,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E52 | SecretStore on PostgreSQL | Beta | Done | 3/3 | E49, E50-S1, E33 | [phases/e52_secretstore_postgres.md](phases/e52_secretstore_postgres.md) |
 | E53 | PolicyStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S2, E14 | [phases/e53_policystore_postgres.md](phases/e53_policystore_postgres.md) |
 | E54 | EnvironmentStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S2, E32 | [phases/e54_environmentstore_postgres.md](phases/e54_environmentstore_postgres.md) |
-| E55 | Plan Step State on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S3, E16-S2 | [phases/e55_plan_step_state_postgres.md](phases/e55_plan_step_state_postgres.md) |
+| E55 | Plan Step State on PostgreSQL | Beta | Done | 3/3 | E49, E50-S3, E16-S2 | [phases/e55_plan_step_state_postgres.md](phases/e55_plan_step_state_postgres.md) |
 | E56 | SQLite/PostgreSQL Contract Test Suite | Beta | Not started | 0/3 | E49, E50, E51-E55 | [phases/e56_sqlite_postgres_contract_tests.md](phases/e56_sqlite_postgres_contract_tests.md) |
 | E57 | CI & Real PostgreSQL E2E | Beta | Not started | 0/4 | E48, E56, E51-E55 | [phases/e57_ci_postgres_e2e.md](phases/e57_ci_postgres_e2e.md) |
 | E58 | SQLite → PostgreSQL Data Migration | Beta | Not started | 0/4 | E50-E55, E57 | [phases/e58_sqlite_to_postgres_migration.md](phases/e58_sqlite_to_postgres_migration.md) |

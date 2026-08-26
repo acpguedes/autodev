@@ -30,7 +30,6 @@ import argparse
 from dataclasses import dataclass, field
 from pathlib import Path
 import sqlite3
-import sys
 from typing import Any, Optional
 
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
