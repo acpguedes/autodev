@@ -21,6 +21,7 @@ BRANCH="${BRANCH:-main}"
 REQUIRED_CHECKS=(
   "lint-typecheck"
   "backend-tests"
+  "backend-tests-postgres"
   "patch-validation"
   "security-baseline"
   "frontend-checks"
