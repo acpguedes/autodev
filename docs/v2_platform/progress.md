@@ -7,7 +7,70 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-26 (**E54 complete — 3/3, EnvironmentStore on
+**Last updated:** 2026-08-26 (**E57 complete — 4/4, CI & Real PostgreSQL
+E2E**, on `epic/e57-ci-postgres-e2e` — closes the structural blind spot the
+epic doc names as this program's root cause: no CI workflow had ever started
+a real PostgreSQL, Redis, or MinIO, so every PostgreSQL code path E48-E56
+built was proven only against a monkeypatched `psycopg` or a `skip`-by-
+default local run. **E57-S1** adds `scripts/ci_migrations_check.py`, an
+explicit CI step that provisions a throwaway PostgreSQL database and proves
+migrations-from-empty, an idempotent re-run, and a rollback/upgrade round
+trip fail fast rather than surfacing inside a test — `PostgresStore`
+already applies every migration on construction, so this makes that
+explicit rather than incidental. Adds `backend/tests/postgres_gate.py`:
+`AUTODEV_REQUIRE_POSTGRES`/`AUTODEV_REQUIRE_MINIO` turn a missing real
+service into a hard CI failure instead of the existing named skip, wired
+into the contract suite's `backend` fixture and the six PostgreSQL/MinIO-
+gated test modules. **E57-S2** adds a `backend-tests-postgres` job to
+`ci-backend.yml`: the pinned `pgvector/pgvector:0.8.3-pg16` image (E48-S1)
+plus Redis and MinIO, running the full suite — including the `slow` tier
+the SQLite `backend-tests` leg excludes — with the new
+`AUTODEV_REQUIRE_*` flags set, so a broken service turns the leg red rather
+than silently skipping. No `--cov-fail-under` on this leg by design: the
+SQLite leg keeps owning coverage. Verifying this locally against a real
+container surfaced two real, previously-invisible bugs: a non-superuser
+role only inherits `pgvector` from `template1` for databases it creates
+itself (PostgreSQL 15+ also revoked default `CREATE` on `public` from
+non-owning roles), which the shared `AUTODEV_TEST_POSTGRES_URL` database
+needed explicitly; and the five `test_postgres_concurrency.py` files
+(E51-E55) share one persistent database by design, so multiple `-n auto`
+xdist workers starting different files at once raced `PostgresStore`'s
+first-ever `schema_version` creation — fixed with one serial pre-migration
+step before pytest starts. **E57-S3/S4** land together (one `prod-e2e` job
+in `ci-e2e.yml`, since S4's backup/restore needs the exact stack S3 already
+boots): boots the real `prod` profile against the same service containers
+— `validate_profile`/`validate_auth_readiness` enforcement is the boot
+itself — mints two tenants' service credentials directly into the Auth
+Store (`scripts/ci_prod_e2e_mint_credentials.py`, bypassing OIDC entirely)
+and runs `scripts/ci_prod_e2e_smoke.py`: a session create/read round trip
+that drives the planner agent for real, two-tenant Row-Level Security
+proven both directions over the API, and a real vector query through
+hybrid retrieval seeded via the production `index()` pipeline. Concurrency
+invariants (S3-T3) are the E57-S2 leg's job, not repeated here. Then stops
+the backend, backs it up with the existing `BackupManager` CLI, wipes the
+database (drop + recreate empty — verified locally that booting against a
+genuinely wiped database fails closed at `validate_auth_readiness`, so this
+is not a vacuous check), restores, and reruns the smoke script in
+`--post-restore` mode, which lists sessions as each tenant and asserts the
+pre-backup session survived. Diagnostics on failure: backend logs, MinIO
+logs, a `schema_version` query. This surfaced two more real PostgreSQL-only
+bugs, both fixed: `PendingDecision.expires_at` (`backend/execution/
+policy.py`) and every Auth Store timestamp (`backend/auth/store.py`)
+assumed SQLite's `TEXT`-timestamp shape and crashed on the `datetime`
+object psycopg deserializes `TIMESTAMPTZ` into; and `backend/repository/
+indexing.py`'s `reindex()` plus `/v2/context/retrieve`'s handler never
+scoped their connection to the tenant via `set_postgres_tenant` before
+touching the Row-Level Security-forced `code_chunks`/`code_embeddings`
+tables (E50), so every real write failed and every real query returned
+nothing. `CONTRIBUTING.md`'s gate table and
+`scripts/configure_branch_protection.sh`'s required-check list both add
+`backend-tests-postgres`; applying updated branch protection remains a
+separate repo-admin action (the script's own docstring), not done here.
+Deliberately out of scope, stated rather than silently skipped: a full
+multi-step plan/approve/execute task run through the stub LLM's agent
+orchestration, and API-level tenant identity via OIDC — the DB/service-key
+level RLS and concurrency proofs already exercised are what E57 asked for.)
+Previous entry: 2026-08-26 (**E54 complete — 3/3, EnvironmentStore on
 PostgreSQL**, on `epic/e54-environmentstore-postgres` — the fifth and last of
 the five category-3 store ports (E51-E55) to merge, closing out the program:
 `QuotaStore` (E51), `SecretStore` (E52), `PolicyStore` (E53),
@@ -709,7 +772,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E54 | EnvironmentStore on PostgreSQL | Beta | Done | 3/3 | E49, E50-S2, E32 | [phases/e54_environmentstore_postgres.md](phases/e54_environmentstore_postgres.md) |
 | E55 | Plan Step State on PostgreSQL | Beta | Done | 3/3 | E49, E50-S3, E16-S2 | [phases/e55_plan_step_state_postgres.md](phases/e55_plan_step_state_postgres.md) |
 | E56 | SQLite/PostgreSQL Contract Test Suite | Beta | Done | 3/3 | E49, E50, E51-E55 | [phases/e56_sqlite_postgres_contract_tests.md](phases/e56_sqlite_postgres_contract_tests.md) |
-| E57 | CI & Real PostgreSQL E2E | Beta | Not started | 0/4 | E48, E56, E51-E55 | [phases/e57_ci_postgres_e2e.md](phases/e57_ci_postgres_e2e.md) |
+| E57 | CI & Real PostgreSQL E2E | Beta | Done | 4/4 | E48, E56, E51-E55 | [phases/e57_ci_postgres_e2e.md](phases/e57_ci_postgres_e2e.md) |
 | E58 | SQLite → PostgreSQL Data Migration | Beta | Not started | 0/4 | E50-E55, E57 | [phases/e58_sqlite_to_postgres_migration.md](phases/e58_sqlite_to_postgres_migration.md) |
 | E59 | Backup, Restore & Disaster Recovery | Beta | Not started | 0/3 | E8-S4, E55-S3, E57-S4 | [phases/e59_backup_restore_disaster_recovery.md](phases/e59_backup_restore_disaster_recovery.md) |
 | E60 | Connection Pooling & PostgreSQL Hardening | Beta | Not started | 0/4 | E51-E55, E57, E11-S1 | [phases/e60_postgres_pooling_hardening.md](phases/e60_postgres_pooling_hardening.md) |

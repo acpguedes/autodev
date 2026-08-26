@@ -308,7 +308,9 @@ Delivered by E9-S4 (part of the Done E9 — APIs, Events & MCP epic).
 | Backend CI (ruff + mypy + pytest) | `default` | GitHub Actions; `make check-backend` |
 | Frontend CI (lint + typecheck + vitest) | `default` | GitHub Actions; `make check-frontend` |
 | Coverage gates | `default` | `.github/workflows/ci-backend.yml`; `pytest --cov=backend --cov-fail-under=60` |
-| Smoke e2e job (boot + health check) | `default` | `.github/workflows/ci-backend.yml` `smoke-e2e` job: boots `uvicorn`, polls `/health`, asserts HTTP 200 |
+| Smoke e2e job (boot + health check) | `default` | `.github/workflows/ci-e2e.yml` `smoke-e2e` job: boots `uvicorn`, polls `/health`, asserts HTTP 200 |
+| Real PostgreSQL/Redis/MinIO test matrix leg | `default` | `.github/workflows/ci-backend.yml` `backend-tests-postgres` job (E57): the full backend suite, including the `slow` tier, against a real `pgvector/pgvector:0.8.3-pg16`, `redis:7-alpine`, and MinIO — `AUTODEV_REQUIRE_POSTGRES`/`AUTODEV_REQUIRE_MINIO` fail the leg (not skip) if a service is unreachable |
+| Real `prod`-profile E2E + backup/restore | `default` | `.github/workflows/ci-e2e.yml` `prod-e2e` job (E57): boots the real `prod` profile, a session create/read flow + two-tenant RLS both directions + a real vector query (`scripts/ci_prod_e2e_smoke.py`), then a backup/wipe/restore round trip with a post-restore smoke test |
 | Infra / docs validation | `planned` | No docker-compose/terraform lint or docs-link-check step in CI yet; tracked as Unit 22 |
 
 ---
