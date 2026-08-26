@@ -79,17 +79,41 @@ docker compose -f infrastructure/docker-compose.yml --profile prod up --build ba
 > "PostgreSQL/pgvector extension lifecycle" below for install, upgrade, and
 > rollback on a managed provider.
 >
-> **Known `prod` limitation (verified 2026-08-21).** Quotas, secrets,
-> execution policy, and execution environments cannot currently be
-> constructed under `AUTODEV_PROFILE=prod`: their stores raise `ValueError`
-> on a `postgresql://` URL (`backend/quotas/store.py:49`,
-> `backend/secret_store/store.py:48`, `backend/execution/policy.py:206`,
-> `backend/environments/store.py:38`), and plan step state silently falls
-> back to `./autodev_plan_step_state.db`
-> (`backend/plans/step_state.py:132`). Closing this is the subject of epics
-> E49-E60 (E48's own scope — a pgvector-capable runtime — is resolved).
-> Connection-pool and statement-timeout settings do not exist yet and are
-> introduced by E60.
+> **Known `prod` limitation (verified 2026-08-26).** Execution policy and
+> execution environments cannot currently be constructed under
+> `AUTODEV_PROFILE=prod`: their stores raise `ValueError` on a
+> `postgresql://` URL (`backend/execution/policy.py:206`,
+> `backend/environments/store.py:38`). `QuotaStore` (E51) and `SecretStore`
+> (E52) are already ported onto the shared persistence contract and
+> construct correctly under `prod`. `StepApprovalStore` (plan step state,
+> E55) no longer diverts to a standalone SQLite file on a `postgresql://`
+> URL either — it now resolves through the same configured State Store as
+> every other domain store; see "Plan step state" below. Closing the
+> remaining two stores is the subject of epics E49-E60 (E48's own scope — a
+> pgvector-capable runtime — is resolved). Connection-pool and
+> statement-timeout settings do not exist yet and are introduced by E60.
+
+> **Plan step state (`AUTODEV_PLAN_STEP_STATE_DB`, E55).** Prior to E55,
+> `StepApprovalStore` silently wrote per-step plan-approval state to a
+> standalone SQLite file (`AUTODEV_PLAN_STEP_STATE_DB`, default
+> `./autodev_plan_step_state.db`) whenever `DATABASE_URL` was unset or
+> pointed at PostgreSQL — invisible to other replicas and absent from every
+> backup manifest. E55 removed that fallback: the store now always resolves
+> its connection through the configured State Store
+> (`backend.persistence.database.get_store()`), the same dispatch every
+> other `/v2` store uses, and `plan_step_state` lives under the same
+> tenant-scoped, Row-Level-Security-enforced table on PostgreSQL that E50-S3
+> created for it. `AUTODEV_PLAN_STEP_STATE_DB` still exists, but only as a
+> local-SQLite convenience: it selects which file
+> `backend.plans.step_state.StepApprovalStore(db_path=...)` opens when a
+> caller (tests, or a one-off script) explicitly asks for a dedicated file
+> rather than the configured store — it has no effect on where the
+> production store connects, and it is never consulted under a
+> `postgresql://` `DATABASE_URL`. A pre-E55 install's existing
+> `./autodev_plan_step_state.db` (if any) is migrated by
+> `python -m backend.persistence.step_state_migration`; the legacy file is
+> retained, not deleted, so the migration can be re-run or the port reverted
+> without data loss.
 
 `autodev config validate --profile prod` uses the same settings validation as
 startup. Missing Redis/MinIO settings, `AUTODEV_JOB_BACKEND` values other than

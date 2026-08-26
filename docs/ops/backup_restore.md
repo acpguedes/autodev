@@ -58,6 +58,19 @@ python -m backend.persistence.backup backup --out /backups/autodev/$(date +%Y%m%
 Store backup artifacts outside the database host and verify retention policies
 match the deployment's compliance requirements.
 
+**Coverage note (E55).** The SQLite/PostgreSQL components above are
+whole-database snapshots, so every domain store sharing `DATABASE_URL` is
+captured with no per-table manifest entry needed — including
+`plan_step_state` (per-step plan approval state,
+`backend/plans/step_state.py` `StepApprovalStore`) now that it lives in that
+same physical database rather than a standalone SQLite file this tooling
+never saw. A pre-E55 install's leftover `./autodev_plan_step_state.db` (if
+one exists) is outside `DATABASE_URL` and therefore outside this backup
+entirely; migrate it once with
+`python -m backend.persistence.step_state_migration` before relying on
+`BackupManager` as its only durability guarantee — the legacy file is never
+deleted by that migration, so it remains a fallback source even after.
+
 ## Restore
 
 Use the same CLI — it verifies the manifest before touching anything:

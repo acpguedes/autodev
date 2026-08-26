@@ -637,6 +637,53 @@ class StepApprovalStore:
             conn.commit()
             return current.state, PlanStepRecord(session_id, step_index, current.content, next_state, now)
 
+    # ------------------------------------------------------- migration (E55-S3)
+
+    def import_legacy_row(
+        self,
+        tenant_id: str,
+        session_id: str,
+        step_index: int,
+        content: str,
+        state: str,
+        updated_at: str,
+    ) -> None:
+        """Insert or replace one step's exact historical state, bypassing the state machine.
+
+        For :mod:`backend.persistence.step_state_migration` only, restoring
+        rows read from a pre-E55 standalone SQLite file verbatim -- content,
+        state, and timestamp exactly as they were, with no transition
+        validation, since a migration is not a live approval decision.
+        Idempotent (``ON CONFLICT ... DO UPDATE``): migrating the same
+        legacy file twice converges rather than erroring or duplicating.
+
+        Args:
+            tenant_id: Tenant to write the row under (the legacy row's own
+                ``tenant_id``, or :data:`~backend.persistence.tenancy.DEFAULT_TENANT_ID`
+                for a pre-E50-S3 legacy file that never had the column).
+            session_id: The owning session.
+            step_index: Zero-based step position.
+            content: The step's content, exactly as read from the legacy file.
+            state: The step's state value, exactly as read from the legacy file.
+            updated_at: The step's last-updated timestamp, exactly as read
+                from the legacy file.
+        """
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            self._begin_write(conn)
+            conn.execute(
+                self._sql(
+                    "INSERT INTO plan_step_state "
+                    "(tenant_id, session_id, step_index, content, state, updated_at) "
+                    "VALUES ({p}, {p}, {p}, {p}, {p}, {p}) "
+                    "ON CONFLICT (session_id, step_index) DO UPDATE SET "
+                    "tenant_id = excluded.tenant_id, content = excluded.content, "
+                    "state = excluded.state, updated_at = excluded.updated_at"
+                ),
+                (tenant_id, session_id, step_index, content, state, updated_at),
+            )
+            conn.commit()
+
 
 __all__ = [
     "EDITABLE_STATES",
