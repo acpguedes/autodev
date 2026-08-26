@@ -26,12 +26,20 @@ _ROWS = {
 
 
 class _DummyConn:
-    """Minimal context-manager stand-in for a connection; never queried directly (backends are mocked)."""
+    """Minimal context-manager stand-in for a connection; never queried directly (backends are mocked).
+
+    ``execute`` is a no-op: the router calls it once, to set the RLS tenant
+    GUC (``set_postgres_tenant``, E57), before ever reaching the mocked
+    lexical/vector backends below.
+    """
 
     def __enter__(self) -> "_DummyConn":
         return self
 
     def __exit__(self, *exc: object) -> None:
+        return None
+
+    def execute(self, *args: object, **kwargs: object) -> None:
         return None
 
 
