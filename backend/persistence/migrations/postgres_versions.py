@@ -470,6 +470,130 @@ def _pg_m7_down_run_step_position(conn: Any) -> None:
     conn.execute("ALTER TABLE run_steps DROP COLUMN IF EXISTS position")
 
 
+def _pg_m8_create_quota_and_secret_tables(conn: Any) -> None:
+    """Create the quota, lease, reservation, and secret tables (E50-S1).
+
+    These five quota/lease tables and the ``secrets`` table were previously
+    created imperatively by :class:`backend.quotas.store.QuotaStore` and
+    :class:`backend.secret_store.store.SecretStore` (SQLite-only, per
+    E49-S2/ADR-025), with no PostgreSQL counterpart and no
+    ``schema_version`` tracking. This migration mirrors their SQLite shape
+    with PostgreSQL types (``JSONB``, ``TIMESTAMPTZ``, ``BIGINT``) and
+    tenant-first keys/indexes. Row-Level Security is applied separately by
+    :func:`_pg_m11_apply_tenant_rls_to_new_tables` (E50-S4) — these tables
+    are legitimately unread on PostgreSQL until their store port lands
+    (E51, E52).
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tenant_quota_policies (
+            tenant_id TEXT PRIMARY KEY,
+            policy_json JSONB NOT NULL,
+            version BIGINT NOT NULL,
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS tenant_usage_windows (
+            tenant_id TEXT NOT NULL,
+            resource TEXT NOT NULL,
+            window_key TEXT NOT NULL,
+            used BIGINT NOT NULL DEFAULT 0,
+            warned INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (tenant_id, resource, window_key)
+        )
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS run_leases (
+            run_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            acquired_at TIMESTAMPTZ NOT NULL,
+            expires_at TIMESTAMPTZ NOT NULL,
+            released_at TIMESTAMPTZ
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_run_leases_tenant "
+        "ON run_leases(tenant_id, released_at, expires_at)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS storage_reservations (
+            reservation_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            bytes BIGINT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_storage_reservations_tenant "
+        "ON storage_reservations(tenant_id, status)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS request_rate_buckets (
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            credential_id TEXT NOT NULL,
+            window_start BIGINT NOT NULL,
+            count BIGINT NOT NULL DEFAULT 0,
+            PRIMARY KEY (tenant_id, credential_id, window_start)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_request_rate_buckets_tenant "
+        "ON request_rate_buckets(tenant_id, credential_id)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS secrets (
+            tenant_id TEXT NOT NULL,
+            project TEXT NOT NULL,
+            name TEXT NOT NULL,
+            version BIGINT NOT NULL,
+            ciphertext TEXT NOT NULL,
+            status TEXT NOT NULL,
+            backend_kind TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            rotated_at TIMESTAMPTZ,
+            revoked_at TIMESTAMPTZ,
+            PRIMARY KEY (tenant_id, project, name, version)
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_secrets_latest "
+        "ON secrets(tenant_id, project, name, version DESC)"
+    )
+
+
+def _pg_m8_down_drop_quota_and_secret_tables(conn: Any) -> None:
+    """Revert :func:`_pg_m8_create_quota_and_secret_tables` by dropping its six tables.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    for table in (
+        "tenant_quota_policies",
+        "tenant_usage_windows",
+        "run_leases",
+        "storage_reservations",
+        "request_rate_buckets",
+        "secrets",
+    ):
+        conn.execute(f"DROP TABLE IF EXISTS {table}")
+
+
 POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
     _pg_m1_create_core_tables,
     Migration(
@@ -506,6 +630,11 @@ POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_pg_m7_run_step_position,
         down=_pg_m7_down_run_step_position,
         name="run_step_position",
+    ),
+    Migration(
+        up=_pg_m8_create_quota_and_secret_tables,
+        down=_pg_m8_down_drop_quota_and_secret_tables,
+        name="create_quota_and_secret_tables",
     ),
 ]
 
