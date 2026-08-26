@@ -800,6 +800,96 @@ def _pg_m10_down_drop_plan_step_state_table(conn: Any) -> None:
     conn.execute("DROP TABLE IF EXISTS plan_step_state")
 
 
+#: The thirteen tables E50-S1/S2/S3 created without RLS, brought under
+#: tenant isolation by :func:`_pg_m11_apply_tenant_rls_to_new_tables`
+#: (E50-S4-T1). Reused by :mod:`backend.quotas.migrations` so the tenancy
+#: verifier's table list and this migration's list cannot drift apart.
+E50_TENANT_SCOPED_TABLES = (
+    "tenant_quota_policies",
+    "tenant_usage_windows",
+    "run_leases",
+    "storage_reservations",
+    "request_rate_buckets",
+    "secrets",
+    "execution_policy_rules",
+    "execution_dynamic_permissions",
+    "execution_policy_decisions",
+    "pending_action_decisions",
+    "execution_environments",
+    "execution_environment_decisions",
+    "plan_step_state",
+)
+
+
+def _apply_tenant_rls(conn: Any, table: str) -> None:
+    """Enable, force, and policy-scope Row-Level Security for *table* (E50-S4-T1 generator).
+
+    The reusable core of the ``ENABLE``/``FORCE``/``CREATE POLICY`` pattern
+    already used inline for ``code_chunks``/``code_embeddings`` and the
+    core/plan table retrofits above -- factored out here so E50-S4 applies
+    it to all thirteen new tables without writing new policy SQL per table.
+    ``FORCE`` is required alongside ``ENABLE`` because the application
+    connects as the tables' owner, and PostgreSQL exempts owners from RLS by
+    default.
+
+    Args:
+        conn: Open psycopg connection.
+        table: Name of a table that already has a ``tenant_id`` column.
+    """
+    conn.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
+    conn.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
+    conn.execute(f"DROP POLICY IF EXISTS {table}_tenant_isolation ON {table}")
+    conn.execute(
+        f"CREATE POLICY {table}_tenant_isolation ON {table} "
+        "USING (tenant_id = current_setting('app.tenant_id', true))"
+    )
+
+
+def _revoke_tenant_rls(conn: Any, table: str) -> None:
+    """Revert :func:`_apply_tenant_rls` for *table*, without touching its ``tenant_id`` column.
+
+    Unlike the core-table retrofit's down step
+    (:func:`_pg_m2_down_tenant_id_and_rls`), this does not drop
+    ``tenant_id`` -- for these thirteen tables that column is part of the
+    table's own creation migration (E50-S1/S2/S3), not something this
+    migration added.
+
+    Args:
+        conn: Open psycopg connection.
+        table: Table to remove RLS enforcement from.
+    """
+    conn.execute(f"DROP POLICY IF EXISTS {table}_tenant_isolation ON {table}")
+    conn.execute(f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY")
+    conn.execute(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY")
+
+
+def _pg_m11_apply_tenant_rls_to_new_tables(conn: Any) -> None:
+    """Apply Row-Level Security to all thirteen E50-S1/S2/S3 tables (E50-S4-T1).
+
+    This is where the platform's largest isolation gap closes: ``secrets``,
+    ``run_leases``, and ``pending_action_decisions`` (among the other ten)
+    previously relied on application ``WHERE`` clauses alone. Applying RLS
+    here, one migration after each table's creation, mirrors how the core
+    store tables originally got RLS retrofitted in migration 2 -- a
+    separate step after their migration-1 creation.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    for table in E50_TENANT_SCOPED_TABLES:
+        _apply_tenant_rls(conn, table)
+
+
+def _pg_m11_down_revoke_tenant_rls_from_new_tables(conn: Any) -> None:
+    """Revert :func:`_pg_m11_apply_tenant_rls_to_new_tables` for all thirteen tables.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    for table in E50_TENANT_SCOPED_TABLES:
+        _revoke_tenant_rls(conn, table)
+
+
 POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
     _pg_m1_create_core_tables,
     Migration(
@@ -852,7 +942,12 @@ POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
         down=_pg_m10_down_drop_plan_step_state_table,
         name="create_plan_step_state_table",
     ),
+    Migration(
+        up=_pg_m11_apply_tenant_rls_to_new_tables,
+        down=_pg_m11_down_revoke_tenant_rls_from_new_tables,
+        name="apply_tenant_rls_to_new_tables",
+    ),
 ]
 
 
-__all__ = ["POSTGRES_STORE_MIGRATIONS"]
+__all__ = ["E50_TENANT_SCOPED_TABLES", "POSTGRES_STORE_MIGRATIONS"]

@@ -13,9 +13,16 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from backend.persistence.migrations.postgres_versions import POSTGRES_STORE_MIGRATIONS
-from backend.persistence.migrations.runner import Migration
+from backend.persistence.migrations.postgres_versions import (
+    E50_TENANT_SCOPED_TABLES,
+    POSTGRES_STORE_MIGRATIONS,
+)
+from backend.persistence.migrations.runner import Migration, _as_migration
 from backend.plans.step_state import StepApprovalStore
+from backend.quotas.migrations import (
+    _postgres_expected_tables,
+    check_postgres_tenant_isolation,
+)
 from backend.tests.unit.persistence.test_tenancy_migrations import FakeConnection
 
 #: The thirteen tables this epic brings under versioned migration + RLS.
@@ -34,6 +41,23 @@ def _migration_named(name: str) -> Migration:
         if isinstance(migration, Migration) and migration.name == name:
             return migration
     raise AssertionError(f"no migration named {name!r}")
+
+
+class _RlsStatusConnection:
+    """A minimal ``pg_class`` stand-in reporting scripted RLS status per table."""
+
+    def __init__(self, rls_enabled: set[str]) -> None:
+        self._rls_enabled = rls_enabled
+
+    def execute(self, sql: str, params: tuple[str, ...] = ()) -> "_RlsStatusConnection":
+        assert "pg_class" in sql
+        self._queried_table = params[0]
+        return self
+
+    def fetchone(self) -> tuple[bool, bool] | None:
+        if self._queried_table in self._rls_enabled:
+            return (True, True)
+        return None
 
 
 def _migration_index(name: str) -> int:
@@ -222,3 +246,85 @@ def test_sqlite_plan_step_state_backfills_existing_rows_to_default_tenant(tmp_pa
         assert row[0] == "default"
     finally:
         conn.close()
+
+
+# ---------------------------------------------------------------------------
+# E50-S4 — Row-Level Security and isolation proof
+# ---------------------------------------------------------------------------
+
+
+def test_apply_rls_migration_covers_all_thirteen_tables() -> None:
+    """The RLS migration enables, forces, and policy-scopes every one of the thirteen tables."""
+    conn = FakeConnection()
+    migration = _migration_named("apply_tenant_rls_to_new_tables")
+
+    migration.up(conn)
+
+    executed_sql = "\n".join(sql for sql, _params in conn.executed)
+    for table in E50_TENANT_SCOPED_TABLES:
+        assert f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY" in executed_sql
+        assert f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY" in executed_sql
+        assert f"CREATE POLICY {table}_tenant_isolation ON {table}" in executed_sql
+    assert executed_sql.count("current_setting('app.tenant_id', true)") == len(E50_TENANT_SCOPED_TABLES)
+    assert len(E50_TENANT_SCOPED_TABLES) == 13
+
+
+def test_apply_rls_migration_down_reverts_without_touching_tenant_id_column() -> None:
+    """The down step drops RLS enforcement but never drops ``tenant_id`` (owned by the creation migrations)."""
+    conn = FakeConnection()
+    migration = _migration_named("apply_tenant_rls_to_new_tables")
+
+    migration.down(conn)
+
+    executed_sql = "\n".join(sql for sql, _params in conn.executed)
+    for table in E50_TENANT_SCOPED_TABLES:
+        assert f"DROP POLICY IF EXISTS {table}_tenant_isolation ON {table}" in executed_sql
+        assert f"ALTER TABLE {table} NO FORCE ROW LEVEL SECURITY" in executed_sql
+        assert f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY" in executed_sql
+    assert "DROP COLUMN" not in executed_sql
+
+
+def test_apply_rls_migration_appended_last_after_plan_step_state() -> None:
+    """The RLS migration is the final step, applied after all thirteen tables exist."""
+    assert (
+        _migration_index("apply_tenant_rls_to_new_tables")
+        == _migration_index("create_plan_step_state_table") + 1
+    )
+    assert _migration_index("apply_tenant_rls_to_new_tables") == len(POSTGRES_STORE_MIGRATIONS)
+
+
+def test_migration_round_trip_up_down_up_is_idempotent_in_sequence() -> None:
+    """Running every migration's up, then every down in reverse, then up again replays cleanly."""
+    conn = FakeConnection()
+    migrations = [_as_migration(entry) for entry in POSTGRES_STORE_MIGRATIONS]
+    for migration in migrations:
+        migration.up(conn)
+    for migration in reversed(migrations):
+        migration.down(conn)
+    for migration in migrations:
+        migration.up(conn)  # must not raise on a scripted-fresh re-application
+
+
+def test_quotas_migrations_verifier_includes_all_thirteen_e50_tables() -> None:
+    """E50-S4-T2: the PostgreSQL tenancy verifier's default scope covers all thirteen new tables."""
+    expected = _postgres_expected_tables()
+    for table in E50_TENANT_SCOPED_TABLES:
+        assert table in expected
+
+
+def test_check_postgres_tenant_isolation_flags_missing_rls_on_new_tables() -> None:
+    """A table missing forced RLS is reported; one with it is not (E50-S4-T3 DDL-level proof)."""
+    conn = _RlsStatusConnection(rls_enabled=set())
+
+    missing = check_postgres_tenant_isolation(conn, tables=E50_TENANT_SCOPED_TABLES)
+
+    assert set(missing) == set(E50_TENANT_SCOPED_TABLES)
+
+
+def test_check_postgres_tenant_isolation_passes_when_all_thirteen_have_forced_rls() -> None:
+    """Once every table reports forced RLS, the verifier finds nothing missing."""
+    conn = _RlsStatusConnection(rls_enabled=set(E50_TENANT_SCOPED_TABLES))
+
+    missing = check_postgres_tenant_isolation(conn, tables=E50_TENANT_SCOPED_TABLES)
+
+    assert missing == []

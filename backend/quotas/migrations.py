@@ -19,6 +19,9 @@ import sys
 from typing import Any, Iterable
 
 from backend.persistence.migrations.postgres_versions import (
+    E50_TENANT_SCOPED_TABLES,
+)
+from backend.persistence.migrations.postgres_versions import (
     PLAN_STORE_TENANT_SCOPED_TABLES as PG_PLAN_TABLES,
 )
 from backend.persistence.migrations.versions import (
@@ -97,24 +100,37 @@ def check_postgres_tenant_isolation(
     Args:
         conn: Open PostgreSQL connection to inspect.
         tables: Tables to check; defaults to every table this module knows
-            should carry tenant isolation.
+            should carry tenant isolation on PostgreSQL, including the
+            thirteen tables E50 brings under RLS.
 
     Returns:
         Names of tables missing ``ENABLE``/``FORCE ROW LEVEL SECURITY``, in
         the order given.
     """
-    targets = tuple(tables) if tables is not None else _all_expected_tables()
+    targets = tuple(tables) if tables is not None else _postgres_expected_tables()
     return [table for table in targets if not _postgres_table_has_forced_rls(conn, table)]
 
 
 def _all_expected_tables() -> tuple[str, ...]:
-    """Return every table this module expects to carry tenant isolation."""
+    """Return every table this module expects to carry tenant isolation on SQLite.
+
+    Deliberately excludes :data:`E50_TENANT_SCOPED_TABLES` -- twelve of
+    those thirteen tables are PostgreSQL-only additions (E50 scope: SQLite
+    is unchanged except ``plan_step_state``), so checking for them on a
+    SQLite deployment would report a false gap for tables this epic never
+    touched there.
+    """
     return (
         *TENANT_SCOPED_STORE_TABLES,
         *SQLITE_PLAN_TABLES,
         *PG_PLAN_TABLES,
         *ADDITIONAL_TENANT_SCOPED_TABLES,
     )
+
+
+def _postgres_expected_tables() -> tuple[str, ...]:
+    """Return every table this module expects to carry tenant isolation on PostgreSQL (E50-S4-T2)."""
+    return (*_all_expected_tables(), *E50_TENANT_SCOPED_TABLES)
 
 
 def _resolve_database_url() -> str:
