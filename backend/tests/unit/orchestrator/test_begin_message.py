@@ -158,7 +158,7 @@ def test_begin_message_at_the_concurrency_ceiling_leaves_no_run_record(
         orchestrator_service.begin_message(session_id, "start", tenant_id=_TENANT_ID)
 
     assert orchestrator_service.list_runs(session_id, tenant_id=_TENANT_ID) == []
-    quota_service.release_run_lease(held_run_id)
+    quota_service.release_run_lease(_TENANT_ID, held_run_id)
 
 
 def test_begin_message_eventually_completes_via_the_real_background_job(

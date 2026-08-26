@@ -185,7 +185,9 @@ class QuotaService:
         """
         policy = self.resolve_policy(tenant_id)
         admitted = self._store.consume_request_slot(
-            credential_id=credential_id, requests_per_second=policy.requests_per_second
+            tenant_id=tenant_id,
+            credential_id=credential_id,
+            requests_per_second=policy.requests_per_second,
         )
         if not admitted:
             raise QuotaExceededError(
@@ -289,15 +291,16 @@ class QuotaService:
             )
         return lease
 
-    def release_run_lease(self, run_id: str) -> None:
+    def release_run_lease(self, tenant_id: str, run_id: str) -> None:
         """Release a run's concurrency lease, freeing its tenant's slot.
 
         Safe to call even if no lease was ever granted for ``run_id``.
 
         Args:
+            tenant_id: Tenant the run belongs to.
             run_id: Identifier of the run to release.
         """
-        self._store.release_run_lease(run_id)
+        self._store.release_run_lease(tenant_id=tenant_id, run_id=run_id)
 
     def reserve_storage(
         self, *, tenant_id: str, bytes_requested: int, idempotency_key: str
@@ -337,13 +340,17 @@ class QuotaService:
             )
         return result
 
-    def commit_storage_reservation(self, reservation_id: str, *, actual_bytes: int) -> None:
+    def commit_storage_reservation(
+        self, tenant_id: str, reservation_id: str, *, actual_bytes: int
+    ) -> None:
         """Settle a reservation to its actual byte size on a successful write."""
-        self._store.commit_storage_reservation(reservation_id, actual_bytes=actual_bytes)
+        self._store.commit_storage_reservation(
+            tenant_id=tenant_id, reservation_id=reservation_id, actual_bytes=actual_bytes
+        )
 
-    def release_storage_reservation(self, reservation_id: str) -> None:
+    def release_storage_reservation(self, tenant_id: str, reservation_id: str) -> None:
         """Release a reservation that will never be committed (failed write)."""
-        self._store.release_storage_reservation(reservation_id)
+        self._store.release_storage_reservation(tenant_id=tenant_id, reservation_id=reservation_id)
 
 
 __all__ = ["QuotaPolicyMissingError", "QuotaService", "TenantUsageSnapshot"]

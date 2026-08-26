@@ -465,9 +465,9 @@ def persist_artifact(
         pointer = store.put_artifact(kind, object_key, payload, content_type=content_type)
         stored = pointers.record(pointer, kind=kind, tenant_id=tenant_id, context=context)
     except Exception:
-        quota_service.release_storage_reservation(reservation_id)
+        quota_service.release_storage_reservation(tenant_id, reservation_id)
         raise
-    quota_service.commit_storage_reservation(reservation_id, actual_bytes=pointer.size_bytes)
+    quota_service.commit_storage_reservation(tenant_id, reservation_id, actual_bytes=pointer.size_bytes)
     return stored
 
 

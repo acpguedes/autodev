@@ -376,19 +376,22 @@ def policy_to_json(policy: TenantQuotaPolicy) -> str:
     )
 
 
-def policy_from_json(tenant_id: str, payload: str, version: int) -> TenantQuotaPolicy:
+def policy_from_json(tenant_id: str, payload: str | dict[str, Any], version: int) -> TenantQuotaPolicy:
     """Deserialize a stored policy JSON payload back into a typed policy.
 
     Args:
         tenant_id: Tenant the policy belongs to (stored separately as the
             table's primary key, not duplicated inside the JSON payload).
-        payload: The JSON payload written by :func:`policy_to_json`.
+        payload: The JSON payload written by :func:`policy_to_json`. SQLite's
+            ``TEXT`` column always returns a string; PostgreSQL's ``JSONB``
+            column may already be decoded to a ``dict`` by the driver before
+            this ever runs (E51) -- both are accepted directly.
         version: The row's current optimistic-concurrency version.
 
     Returns:
         The deserialized policy.
     """
-    data: dict[str, Any] = json.loads(payload)
+    data: dict[str, Any] = payload if isinstance(payload, dict) else json.loads(payload)
     budget_data = data["default_run_budget"]
     return TenantQuotaPolicy(
         tenant_id=tenant_id,

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -20,19 +21,28 @@ import pytest
 from backend.artifacts.cleanup import cleanup_unreferenced_artifacts
 from backend.artifacts.pointers import ArtifactPointerStore, persist_artifact
 from backend.artifacts.store import ArtifactKind, LocalArtifactStore
+from backend.persistence.database import reset_store_cache
 from backend.persistence.sqlite_adapter import SQLiteStore
 
 
 @pytest.fixture(autouse=True)
-def _isolated_quota_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _isolated_quota_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Point ``persist_artifact``'s default ``QuotaService`` at a throwaway DB.
 
     ``persist_artifact`` (E11-S3) reserves storage bytes via a QuotaService
     constructed with no explicit store, which resolves ``DATABASE_URL`` from
     the environment -- without this, every test here would silently write
-    storage reservations into the repo's shared dev ``autodev.db``.
+    storage reservations into the repo's shared dev ``autodev.db``. Since
+    E51, ``QuotaStore()``'s default path resolves through
+    :func:`backend.persistence.database.get_store`, a process-wide
+    ``lru_cache`` -- reset it around the test too, or every test after the
+    first would keep reusing the *first* test's throwaway DB regardless of
+    this fixture's fresh ``DATABASE_URL``.
     """
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'quotas.db'}")
+    reset_store_cache()
+    yield
+    reset_store_cache()
 
 
 @pytest.fixture()

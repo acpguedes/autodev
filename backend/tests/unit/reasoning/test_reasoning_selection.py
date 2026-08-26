@@ -9,12 +9,14 @@ traced. Also checks the Agent Runtime binding adapter.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 from backend.agents.manifest import AgentBudgets
 from backend.agents.provider import ScriptedLLMProvider, StubLLMProvider
+from backend.persistence.database import reset_store_cache
 from backend.reasoning import (
     ReasoningInput,
     ReasoningService,
@@ -37,13 +39,21 @@ from backend.reasoning.strategies import register_builtin_strategies
 
 
 @pytest.fixture(autouse=True)
-def _isolated_quota_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _isolated_quota_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Point ``ReasoningService``'s default ``QuotaService`` at a throwaway DB.
 
     Without this, every ``ReasoningService()`` built here would silently
-    read/write the repo's shared dev ``autodev.db`` (E11-S3).
+    read/write the repo's shared dev ``autodev.db`` (E11-S3). Since E51,
+    ``QuotaStore()``'s default path resolves through
+    :func:`backend.persistence.database.get_store`, a process-wide
+    ``lru_cache`` -- reset it around the test too, or every test after the
+    first would keep reusing the *first* test's throwaway DB regardless of
+    this fixture's fresh ``DATABASE_URL``.
     """
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'quotas.db'}")
+    reset_store_cache()
+    yield
+    reset_store_cache()
 
 
 def _policy_with_rules(*, on_exceed: str = "fail_closed") -> ReasoningPolicy:

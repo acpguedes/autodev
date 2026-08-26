@@ -99,7 +99,7 @@ class PlanLifecycleMixin(OrchestratorState):
                 mode=mode,
             )
         finally:
-            self._quota_service.release_run_lease(run_id)
+            self._quota_service.release_run_lease(tenant_id, run_id)
 
     def resume_plan_execution(
         self,
@@ -195,7 +195,7 @@ class PlanLifecycleMixin(OrchestratorState):
                 start_index=len(execution_plan.tasks) - len(remaining_tasks) + 1,
             )
         finally:
-            self._quota_service.release_run_lease(run_id)
+            self._quota_service.release_run_lease(tenant_id, run_id)
 
         return self._finalize_plan_run(
             session_id=session_id,
