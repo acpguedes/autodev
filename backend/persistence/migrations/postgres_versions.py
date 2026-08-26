@@ -594,6 +594,166 @@ def _pg_m8_down_drop_quota_and_secret_tables(conn: Any) -> None:
         conn.execute(f"DROP TABLE IF EXISTS {table}")
 
 
+def _pg_m9_create_policy_and_environment_tables(conn: Any) -> None:
+    """Create the execution-policy and environment tables (E50-S2).
+
+    Mirrors the SQLite shape of ``execution_policy_rules``,
+    ``execution_dynamic_permissions``, ``execution_policy_decisions``, and
+    ``pending_action_decisions`` (`backend/execution/policy.py`), plus
+    ``execution_environments`` and ``execution_environment_decisions``
+    (``backend/environments/store.py``), with tenant-first indexes serving
+    the pending-decision lookup and expiry-scan queries these stores
+    actually run. Row-Level Security is applied separately by
+    :func:`_pg_m11_apply_tenant_rls_to_new_tables` (E50-S4).
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS execution_policy_rules (
+            rule_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            effect TEXT NOT NULL,
+            scope_kind TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            pattern TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_execution_policy_rules_tenant "
+        "ON execution_policy_rules(tenant_id, category)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS execution_dynamic_permissions (
+            permission_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            scope_kind TEXT NOT NULL,
+            scope_id TEXT NOT NULL,
+            pattern TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_by TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_execution_dynamic_permissions_tenant "
+        "ON execution_dynamic_permissions(tenant_id, category)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS execution_policy_decisions (
+            decision_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            action_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            allowed INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            decided_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_execution_policy_decisions_tenant_run "
+        "ON execution_policy_decisions(tenant_id, run_id)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS pending_action_decisions (
+            decision_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
+            action_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMPTZ NOT NULL,
+            decided_by TEXT,
+            decided_at TIMESTAMPTZ,
+            pattern TEXT
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_pending_action_decisions_tenant_run "
+        "ON pending_action_decisions(tenant_id, run_id, task_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_pending_action_decisions_tenant_status "
+        "ON pending_action_decisions(tenant_id, status, expires_at)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS execution_environments (
+            environment_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            backend_kind TEXT NOT NULL,
+            profile_id TEXT NOT NULL,
+            profile_hash TEXT NOT NULL,
+            workspace_path TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            expires_at TIMESTAMPTZ NOT NULL,
+            torn_down_at TIMESTAMPTZ
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_execution_environments_tenant_run "
+        "ON execution_environments(tenant_id, run_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_execution_environments_tenant_status "
+        "ON execution_environments(tenant_id, status, expires_at)"
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS execution_environment_decisions (
+            decision_id TEXT PRIMARY KEY,
+            environment_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            tenant_id TEXT NOT NULL,
+            category TEXT NOT NULL,
+            target TEXT NOT NULL,
+            allowed INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            decided_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_execution_environment_decisions_tenant_env "
+        "ON execution_environment_decisions(tenant_id, environment_id)"
+    )
+
+
+def _pg_m9_down_drop_policy_and_environment_tables(conn: Any) -> None:
+    """Revert :func:`_pg_m9_create_policy_and_environment_tables` by dropping its six tables.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    for table in (
+        "execution_policy_rules",
+        "execution_dynamic_permissions",
+        "execution_policy_decisions",
+        "pending_action_decisions",
+        "execution_environments",
+        "execution_environment_decisions",
+    ):
+        conn.execute(f"DROP TABLE IF EXISTS {table}")
+
+
 POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
     _pg_m1_create_core_tables,
     Migration(
@@ -635,6 +795,11 @@ POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_pg_m8_create_quota_and_secret_tables,
         down=_pg_m8_down_drop_quota_and_secret_tables,
         name="create_quota_and_secret_tables",
+    ),
+    Migration(
+        up=_pg_m9_create_policy_and_environment_tables,
+        down=_pg_m9_down_drop_policy_and_environment_tables,
+        name="create_policy_and_environment_tables",
     ),
 ]
 
