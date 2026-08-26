@@ -929,6 +929,40 @@ def _pg_m12_down_secrets_rotation_integrity(conn: Any) -> None:
     conn.execute("ALTER TABLE secrets DROP COLUMN IF EXISTS rotation_request_id")
 
 
+def _pg_m13_pending_action_decisions_status_expiry_index(conn: Any) -> None:
+    """Add the index the cross-tenant expiry sweep actually needs (E53-S3-T2).
+
+    Mirrors ``_m17_pending_action_decisions_status_expiry_index`` (SQLite,
+    E53-S3-T2): ``PolicyStore.list_due_pending_decisions()`` filters on
+    ``status``/``expires_at`` alone (the operator/cron sweep across every
+    tenant, deliberately unscoped), so the tenant-first
+    ``idx_pg_pending_action_decisions_tenant_status`` index (E50-S2) cannot
+    serve it -- its leading column is ``tenant_id``. Note this query is
+    additionally blocked by Row-Level Security on PostgreSQL until an
+    administrative/``BYPASSRLS`` connection path exists (documented on
+    :meth:`backend.execution.policy.PolicyStore.list_due_pending_decisions`);
+    this index is added for schema parity with SQLite and to serve that
+    query once such a path lands, not because it changes today's RLS-gated
+    behavior.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_pending_action_decisions_status_expiry "
+        "ON pending_action_decisions(status, expires_at)"
+    )
+
+
+def _pg_m13_down_pending_action_decisions_status_expiry_index(conn: Any) -> None:
+    """Revert :func:`_pg_m13_pending_action_decisions_status_expiry_index`.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute("DROP INDEX IF EXISTS idx_pg_pending_action_decisions_status_expiry")
+
+
 POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
     _pg_m1_create_core_tables,
     Migration(
@@ -990,6 +1024,11 @@ POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_pg_m12_secrets_rotation_integrity,
         down=_pg_m12_down_secrets_rotation_integrity,
         name="secrets_rotation_integrity",
+    ),
+    Migration(
+        up=_pg_m13_pending_action_decisions_status_expiry_index,
+        down=_pg_m13_down_pending_action_decisions_status_expiry_index,
+        name="pending_action_decisions_status_expiry_index",
     ),
 ]
 
