@@ -110,6 +110,27 @@ def test_list_for_run_returns_only_that_runs_environments(tmp_path: Path) -> Non
     assert [r.environment_id for r in records] == ["env-1"]
 
 
+def test_create_environment_denies_at_the_concurrency_ceiling(tmp_path: Path) -> None:
+    """E54-S2: the count-then-insert admission check happens atomically, in one call."""
+    store = EnvironmentStore(db_path=tmp_path / "env.db")
+    admitted_first = store.create_environment(_record("env-1"), max_concurrent=1)
+    assert admitted_first is True
+
+    admitted_second = store.create_environment(
+        dataclasses.replace(_record("env-2"), run_id="run-2"), max_concurrent=1
+    )
+    assert admitted_second is False
+    assert store.get("env-2", tenant_id="t1") is None
+    assert store.count_active("t1") == 1
+
+
+def test_create_environment_ceiling_is_per_tenant(tmp_path: Path) -> None:
+    store = EnvironmentStore(db_path=tmp_path / "env.db")
+    store.create_environment(_record("env-1", tenant_id="t1"), max_concurrent=1)
+    admitted = store.create_environment(_record("env-2", tenant_id="t2"), max_concurrent=1)
+    assert admitted is True
+
+
 def test_record_and_list_decisions(tmp_path: Path) -> None:
     store = EnvironmentStore(db_path=tmp_path / "env.db")
     store.create_environment(_record("env-1"))

@@ -176,6 +176,31 @@ class EnvironmentStore:
         if self._is_postgres:
             set_postgres_tenant(conn, tenant_id)
 
+    def _lock_tenant_for_write(self, conn: Any, tenant_id: str) -> None:
+        """Serialize this transaction against other writers for the same tenant, on PostgreSQL.
+
+        :meth:`create_environment`'s concurrency-limited path counts existing
+        active rows for a tenant and then conditionally inserts a *new* row
+        (E54-S2) -- ``SELECT ... FOR UPDATE`` cannot protect that shape,
+        because it can only lock rows that already exist; a phantom row
+        inserted by a concurrent transaction is invisible to it. SQLite's
+        :func:`~backend.persistence.contract.begin_write` (``BEGIN
+        IMMEDIATE``) already closes this gap with a whole-database write
+        lock, so this is a no-op there. On PostgreSQL, a transaction-scoped
+        advisory lock keyed by the tenant id (released automatically at
+        commit or rollback -- never held past this transaction) gives every
+        such writer for the same tenant the same serialization SQLite gets
+        for free, mirroring
+        :meth:`~backend.quotas.store.QuotaStore._lock_tenant_for_write`.
+
+        Args:
+            conn: Open connection with an in-progress write transaction.
+            tenant_id: Tenant whose writers should be serialized against
+                each other.
+        """
+        if self._is_postgres:
+            conn.execute("SELECT pg_advisory_xact_lock(hashtext(%s))", (tenant_id,))
+
     @staticmethod
     def _row_to_record(row: tuple) -> EnvironmentRecord:
         return EnvironmentRecord(
@@ -208,40 +233,68 @@ class EnvironmentStore:
 
     # ------------------------------------------------------------- lifecycle
 
-    def create_environment(self, record: EnvironmentRecord) -> None:
+    def create_environment(
+        self, record: EnvironmentRecord, *, max_concurrent: Optional[int] = None
+    ) -> bool:
         """Durably persist a newly provisioned environment's record.
-
-        The per-tenant concurrency ceiling is not enforced here (E54-S2 adds
-        that) -- this method preserves S1's "keep the observable state
-        machine unchanged" scope: an unconditional insert, matching the
-        pre-port behavior.
 
         Args:
             record: The environment record to insert.
+            max_concurrent: When given, the insert is admitted only if the
+                tenant's current active-environment count is below this
+                ceiling. The count and the insert happen inside one
+                transaction, serialized by :meth:`_lock_tenant_for_write`
+                (E54-S2) -- a separate :meth:`count_active` call followed by
+                this call would leave a race window across replicas/
+                connections where both could observe the same
+                under-the-limit count and both insert, overshooting it.
+                ``None`` (the default) skips the check, inserting
+                unconditionally.
+
+        Returns:
+            ``True`` if the record was inserted. ``False`` only when
+            ``max_concurrent`` was given and the tenant was already at
+            capacity -- the caller must not treat *record* as persisted and
+            must release any real resource it already provisioned for this
+            attempt.
         """
-        conn = self._connect()
-        self._scope(conn, record.tenant_id)
-        conn.execute(
-            self._sql(
-                "INSERT INTO execution_environments "
-                "(environment_id, run_id, tenant_id, backend_kind, profile_id, profile_hash, "
-                "workspace_path, status, created_at, expires_at, torn_down_at) "
-                "VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, NULL)"
-            ),
-            (
-                record.environment_id,
-                record.run_id,
-                record.tenant_id,
-                record.backend_kind,
-                record.profile_id,
-                record.profile_hash,
-                record.workspace_path,
-                record.status,
-                record.created_at,
-                record.expires_at,
-            ),
-        )
-        conn.commit()
+        with self._connect() as conn:
+            self._scope(conn, record.tenant_id)
+            self._begin_write(conn)
+            self._lock_tenant_for_write(conn, record.tenant_id)
+            if max_concurrent is not None:
+                active = conn.execute(
+                    self._sql(
+                        "SELECT COUNT(*) FROM execution_environments "
+                        "WHERE tenant_id = {p} AND status = 'active' AND expires_at > {p}"
+                    ),
+                    (record.tenant_id, _now()),
+                ).fetchone()[0]
+                if active >= max_concurrent:
+                    conn.rollback()
+                    return False
+            conn.execute(
+                self._sql(
+                    "INSERT INTO execution_environments "
+                    "(environment_id, run_id, tenant_id, backend_kind, profile_id, profile_hash, "
+                    "workspace_path, status, created_at, expires_at, torn_down_at) "
+                    "VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, NULL)"
+                ),
+                (
+                    record.environment_id,
+                    record.run_id,
+                    record.tenant_id,
+                    record.backend_kind,
+                    record.profile_id,
+                    record.profile_hash,
+                    record.workspace_path,
+                    record.status,
+                    record.created_at,
+                    record.expires_at,
+                ),
+            )
+            conn.commit()
+        return True
 
     def count_active(self, tenant_id: str) -> int:
         """Return the tenant's current active (non-expired, non-torn-down) environment count."""
