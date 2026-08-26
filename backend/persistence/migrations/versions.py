@@ -413,6 +413,113 @@ def _m11_down_run_step_position(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE run_steps DROP COLUMN position")
 
 
+def _m12_create_quota_tables(conn: sqlite3.Connection) -> None:
+    """Create the tenant quota, lease, reservation, and rate-bucket tables (E51-S1-T1).
+
+    These five tables previously existed only via
+    :class:`backend.quotas.store.QuotaStore`'s own imperative ``CREATE TABLE
+    IF NOT EXISTS`` schema, applied outside any :class:`MigrationRunner` and
+    untracked by ``schema_version`` -- the same gap E50-S1 already closed on
+    the PostgreSQL side (``_pg_m8_create_quota_and_secret_tables``). Bringing
+    them under this runner is what lets ``QuotaStore`` stop creating its own
+    schema and obtain a connection from the configured State Store instead
+    (E51-S1-T1). ``CREATE TABLE IF NOT EXISTS`` keeps this a no-op against a
+    pre-E51 database that already has these exact tables.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS tenant_quota_policies (
+            tenant_id TEXT PRIMARY KEY,
+            policy_json TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS tenant_usage_windows (
+            tenant_id TEXT NOT NULL,
+            resource TEXT NOT NULL,
+            window_key TEXT NOT NULL,
+            used INTEGER NOT NULL DEFAULT 0,
+            warned INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (tenant_id, resource, window_key)
+        );
+        CREATE TABLE IF NOT EXISTS run_leases (
+            run_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            acquired_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            released_at TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_run_leases_tenant
+            ON run_leases(tenant_id, released_at, expires_at);
+        CREATE TABLE IF NOT EXISTS storage_reservations (
+            reservation_id TEXT PRIMARY KEY,
+            tenant_id TEXT NOT NULL,
+            bytes INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_storage_reservations_tenant
+            ON storage_reservations(tenant_id, status);
+        CREATE TABLE IF NOT EXISTS request_rate_buckets (
+            credential_id TEXT NOT NULL,
+            window_start INTEGER NOT NULL,
+            count INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (credential_id, window_start)
+        );
+        """
+    )
+
+
+def _m12_down_drop_quota_tables(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m12_create_quota_tables` by dropping all five tables.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    for table in (
+        "tenant_quota_policies",
+        "tenant_usage_windows",
+        "run_leases",
+        "storage_reservations",
+        "request_rate_buckets",
+    ):
+        conn.execute(f"DROP TABLE IF EXISTS {table}")
+
+
+def _m13_add_tenant_id_to_request_rate_buckets(conn: sqlite3.Connection) -> None:
+    """Backfill ``tenant_id`` onto ``request_rate_buckets`` (E51-S1-T2).
+
+    The PostgreSQL counterpart (E50-S1) includes ``tenant_id`` as part of its
+    primary key, ``(tenant_id, credential_id, window_start)``, so that Row-
+    Level Security (E50-S4) can scope it. SQLite cannot fold a new column
+    into an existing primary key without rebuilding the table, and this
+    table's uniqueness was never actually violated across tenants sharing a
+    credential id in practice, so this only adds a plain ``NOT NULL DEFAULT
+    'default'`` column -- enough for both dialects' queries to bind the same
+    ``tenant_id`` parameter, without changing SQLite's existing
+    ``(credential_id, window_start)`` uniqueness or touching existing rows'
+    identity.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    _add_column_if_missing(conn, "request_rate_buckets", "tenant_id", "TEXT NOT NULL DEFAULT 'default'")
+
+
+def _m13_down_remove_tenant_id_from_request_rate_buckets(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m13_add_tenant_id_to_request_rate_buckets`.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(request_rate_buckets)").fetchall()}
+    if "tenant_id" in existing:
+        conn.execute("ALTER TABLE request_rate_buckets DROP COLUMN tenant_id")
+
+
 STORE_MIGRATIONS: list[MigrationEntry] = [
     _m1_create_core_tables,
     _m2_runs_add_run_type,
@@ -444,6 +551,16 @@ STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_m11_run_step_position,
         down=_m11_down_run_step_position,
         name="run_step_position",
+    ),
+    Migration(
+        up=_m12_create_quota_tables,
+        down=_m12_down_drop_quota_tables,
+        name="create_quota_tables",
+    ),
+    Migration(
+        up=_m13_add_tenant_id_to_request_rate_buckets,
+        down=_m13_down_remove_tenant_id_from_request_rate_buckets,
+        name="add_tenant_id_to_request_rate_buckets",
     ),
 ]
 

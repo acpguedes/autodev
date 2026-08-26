@@ -166,7 +166,7 @@ class ChatMixin(OrchestratorState):
                 run_trace.finish(status="completed")
                 return result
         finally:
-            self._quota_service.release_run_lease(prepared.run_id)
+            self._quota_service.release_run_lease(tenant_id, prepared.run_id)
 
     def begin_message(
         self, session_id: str, message: str, *, tenant_id: str = DEFAULT_TENANT_ID

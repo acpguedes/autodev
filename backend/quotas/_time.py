@@ -16,9 +16,32 @@ def now_plus(seconds: int) -> str:
     return iso(time.time() + seconds)
 
 
-def parse_iso(value: str) -> float:
-    """Parse an ISO-8601 timestamp back to a Unix timestamp."""
+def parse_iso(value: str | datetime) -> float:
+    """Parse an ISO-8601 timestamp back to a Unix timestamp.
+
+    Args:
+        value: A timestamp as read back from a ``TEXT`` (SQLite) or
+            ``TIMESTAMPTZ`` (PostgreSQL) column. SQLite always returns
+            ``str``; psycopg decodes ``TIMESTAMPTZ`` to an already-aware
+            :class:`datetime` before this ever runs (E51) -- both accepted
+            directly.
+    """
+    if isinstance(value, datetime):
+        return value.timestamp()
     return datetime.fromisoformat(value).timestamp()
 
 
-__all__ = ["iso", "now_plus", "parse_iso"]
+def normalize(value: str | datetime) -> str:
+    """Return a raw timestamp column value as an ISO-8601 string, regardless of dialect.
+
+    Args:
+        value: A timestamp as read back from a ``TEXT`` (SQLite) or
+            ``TIMESTAMPTZ`` (PostgreSQL) column -- see :func:`parse_iso`.
+
+    Returns:
+        The value as an ISO-8601 string.
+    """
+    return value.isoformat() if isinstance(value, datetime) else value
+
+
+__all__ = ["iso", "normalize", "now_plus", "parse_iso"]

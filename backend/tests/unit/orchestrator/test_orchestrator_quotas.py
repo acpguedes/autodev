@@ -71,7 +71,7 @@ def test_run_denied_at_the_concurrency_ceiling_leaves_no_run_record(
     runs = orchestrator_service.list_runs(session_id, tenant_id=_TENANT_ID)
     assert runs == []
 
-    quota_service.release_run_lease(held_run_id)
+    quota_service.release_run_lease(_TENANT_ID, held_run_id)
 
 
 def test_lease_is_released_after_a_successful_run(orchestrator_service: OrchestratorService) -> None:
