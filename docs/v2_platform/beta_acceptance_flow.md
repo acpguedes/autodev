@@ -33,18 +33,19 @@ controls actually stop something rather than only existing in configuration.
    referenced by the reference project's execution profile, so it can be
    revoked in N4.
 
-> **Profile constraint (added 2026-08-21).** This rehearsal is currently
-> executable only under `AUTODEV_PROFILE=local` (SQLite). Preconditions 4, 5,
-> and 6 — quotas, the execution environment backend, and secrets — depend on
-> `QuotaStore`, `EnvironmentStore`, and `SecretStore`, each of which raises
-> `ValueError` on the `postgresql://` URL the `prod` profile requires
-> (`backend/quotas/store.py:49`, `backend/environments/store.py:38`,
-> `backend/secret_store/store.py:48` vs `backend/config/settings.py:332-336`);
-> negative path N1 additionally depends on `PolicyStore`
-> (`backend/execution/policy.py:206`). Running this flow in `prod` is gated on
-> the E48-E60 program (`postgres_production_completeness.md`), after which
-> E57-S3 executes it in CI against a real `prod` stack. Stated here rather
-> than left implicit, per the E35-S1-T3 fact-vs-recommendation discipline.
+> **Profile constraint (updated 2026-08-26, E53).** This rehearsal is
+> currently executable only under `AUTODEV_PROFILE=local` (SQLite).
+> Precondition 5 — the execution environment backend — still depends on
+> `EnvironmentStore`, which raises `ValueError` on the `postgresql://` URL
+> the `prod` profile requires (`backend/environments/store.py:38` vs
+> `backend/config/settings.py:332-336`); porting it is E54. Preconditions 4
+> and 6 (quotas, secrets) and negative path N1 (`PolicyStore`) no longer
+> block `prod`: `QuotaStore` (E51), `SecretStore` (E52), and `PolicyStore`
+> (E53) all run on both SQLite and PostgreSQL through the E49 contract.
+> Running this flow in `prod` end to end is still gated on `EnvironmentStore`
+> (E54) landing, after which E57-S3 executes it in CI against a real `prod`
+> stack. Stated here rather than left implicit, per the E35-S1-T3
+> fact-vs-recommendation discipline.
 
 ## Happy path
 

@@ -8,7 +8,7 @@
 > 6600-line reference document.
 
 **Last updated:** 2026-08-26 (**E55 complete — 3/3, Plan Step State on
-PostgreSQL**, on `epic/e55-plan-step-state-postgres` — the third of the
+PostgreSQL**, on `epic/e55-plan-step-state-postgres` — the fourth of the
 five category-3 store ports (E51-E55), and the one that closes the
 program's last *silent* divergence: `StepApprovalStore` used to accept a
 `postgresql://` `DATABASE_URL` and quietly write `./autodev_plan_step_state.db`
@@ -44,6 +44,49 @@ on a connection error rather than ever writing a local file again, and
 confirms `plan_step_state` needs no dedicated backup-manifest entry since
 it now lives inside the same physical database `BackupManager` already
 snapshots/dumps whole.)
+Previous entry: 2026-08-26 (**E53 complete — 3/3, PolicyStore on
+PostgreSQL**, on `epic/e53-policystore-postgres` — the third of the five
+category-3 store ports (E51-E55). `PolicyStore` no longer opens `sqlite3`
+directly or rejects a `postgresql://` `DATABASE_URL`: it obtains its
+connection from the configured State Store via the E49 contract, same
+pattern E51/E52 established for `QuotaStore`/`SecretStore`. **E53-S1** moves
+the store onto `get_store()`/`contract.sql()`, drops the private
+`_create_schema` in favor of a new SQLite `MigrationRunner` entry
+(`create_policy_tables`) mirroring the PostgreSQL shape E50-S2 already
+created, and ports all four tables (rules, dynamic permissions, decision
+audit, pending decisions) onto dialect-templated SQL. Along the way it
+closes a latent Row-Level-Security incompatibility:
+`get_pending_decision`/`get_decision_for_task`/`resolve_pending_decision`
+previously took no `tenant_id` at all, relying on an app-level check *after*
+the fetch — harmless on SQLite, but on PostgreSQL with RLS forced an
+unscoped connection reads zero rows for every tenant, silently breaking the
+whole approval flow. All three now take an explicit `tenant_id`, scoped
+identically on both backends. **E53-S2** finds the terminal transition was
+already a state-guarded conditional `UPDATE` (unlike E51/E52's phantom-row
+races, a transition only ever touches a row that already exists, so
+PostgreSQL's own row lock on the `UPDATE` statement is sufficient without an
+advisory lock) and adds the piece that was missing: `DecisionService.resolve()`
+is now idempotent on a replay with the *same* recorded outcome (returns the
+recorded result) while a replay with a *different* outcome still raises —
+the loser never silently overwrites or appears to get its own way. Proven
+with a real multi-threaded SQLite race (16 threads, interleaved
+approve/reject) that runs unconditionally, plus a PostgreSQL-specific
+mirror of the same proof (skips locally, same as E51/E52's). **E53-S3**
+measures the pending/expiry query paths with `EXPLAIN QUERY PLAN` against a
+real SQLite file: the tenant-scoped lookups use their tenant-first indexes
+as expected, but the cross-tenant expiry sweep (`list_due_pending_decisions`,
+deliberately unscoped — there is no single tenant to scope an operator/cron
+sweep to) cannot, since `tenant_id` is those indexes' leading column; adds
+`idx_pending_action_decisions_status_expiry` to actually serve it. Proves
+fail-closed behavior directly (an unreachable store propagates its
+connection error rather than defaulting to allow) and tenant isolation
+across all four tables, including a white-box check of the audit trail
+(which has no public read API). Two scope boundaries are documented rather
+than solved, matching E51's `list_tenant_ids` precedent: dynamic permissions
+have no expiry concept in the pre-E53 codebase (adding one would be a
+policy-semantics change, out of this persistence-port epic's scope), and
+the expiry sweep's cross-tenant PostgreSQL read is still blocked by RLS
+until an administrative/`BYPASSRLS` connection path exists.)
 Previous entry: 2026-08-26 (**E52 complete — 3/3, SecretStore on
 PostgreSQL**, on `epic/e52-secretstore-postgres` — the second of the five
 category-3 store ports (E51-E55). `SecretStore` no longer opens `sqlite3`
@@ -615,7 +658,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E50 | PostgreSQL Schema, Migrations, Tenancy & RLS | Beta | Done | 4/4 | E48, E49, E8-S1 | [phases/e50_postgres_schema_migrations_rls.md](phases/e50_postgres_schema_migrations_rls.md) |
 | E51 | QuotaStore on PostgreSQL & Concurrency | Beta | Done | 4/4 | E49, E50-S1, E11-S3 | [phases/e51_quotastore_postgres_concurrency.md](phases/e51_quotastore_postgres_concurrency.md) |
 | E52 | SecretStore on PostgreSQL | Beta | Done | 3/3 | E49, E50-S1, E33 | [phases/e52_secretstore_postgres.md](phases/e52_secretstore_postgres.md) |
-| E53 | PolicyStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S2, E14 | [phases/e53_policystore_postgres.md](phases/e53_policystore_postgres.md) |
+| E53 | PolicyStore on PostgreSQL | Beta | Done | 3/3 | E49, E50-S2, E14 | [phases/e53_policystore_postgres.md](phases/e53_policystore_postgres.md) |
 | E54 | EnvironmentStore on PostgreSQL | Beta | Not started | 0/3 | E49, E50-S2, E32 | [phases/e54_environmentstore_postgres.md](phases/e54_environmentstore_postgres.md) |
 | E55 | Plan Step State on PostgreSQL | Beta | Done | 3/3 | E49, E50-S3, E16-S2 | [phases/e55_plan_step_state_postgres.md](phases/e55_plan_step_state_postgres.md) |
 | E56 | SQLite/PostgreSQL Contract Test Suite | Beta | Not started | 0/3 | E49, E50, E51-E55 | [phases/e56_sqlite_postgres_contract_tests.md](phases/e56_sqlite_postgres_contract_tests.md) |

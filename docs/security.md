@@ -196,6 +196,20 @@ E14-S2) before it reaches the runner:
   operator-approved action class stops pausing for approval; REST:
   `GET/POST /v2/execution/policy` (`policy:read`/`policy:admin`),
   `GET/DELETE /v2/execution/policy/dynamic`.
+- **PostgreSQL (E53, 2026-08-26):** `PolicyStore` runs on both SQLite and
+  PostgreSQL through the E49 contract — the `prod` profile can construct
+  and use it. The pending-decision terminal transition (approve/reject/
+  timeout) is a single state-guarded conditional `UPDATE`
+  (`WHERE ... AND status = 'pending'`), so exactly one concurrent caller
+  can ever move a decision out of `pending`; `DecisionService.resolve()`
+  is idempotent on a replay of the same recorded outcome but still raises
+  on a replay with a *different* outcome, so a losing racer never
+  silently overwrites (or appears to have gotten) the decided result. An
+  unreachable store propagates its connection error rather than defaulting
+  to allow (fail-closed by construction, not by an explicit catch). All
+  four tables (rules, dynamic permissions, decision audit, pending
+  decisions) are tenant-isolated; a decision id or task lookup meant for
+  one tenant returns nothing for another.
 
 See [`docs/execution/engine.md`](execution/engine.md) and
 [`docs/execution/modes.md`](execution/modes.md) for the full execution
