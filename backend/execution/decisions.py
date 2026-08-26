@@ -94,7 +94,7 @@ class DecisionService:
                 "always" resolution can persist a meaningful dynamic
                 permission without re-deriving the action later.
         """
-        existing = self._store.get_decision_for_task(run_id, task_id)
+        existing = self._store.get_decision_for_task(run_id, task_id, tenant_id=tenant_id)
         if existing is not None:
             return self._maybe_expire(existing)
         expires_at = (
@@ -119,15 +119,24 @@ class DecisionService:
         )
         return decision
 
-    def get_for_task(self, run_id: str, task_id: str) -> Optional[PendingDecision]:
+    def get_for_task(self, run_id: str, task_id: str, *, tenant_id: str) -> Optional[PendingDecision]:
         """Return the decision for one run's task, self-expiring it if due."""
-        existing = self._store.get_decision_for_task(run_id, task_id)
+        existing = self._store.get_decision_for_task(run_id, task_id, tenant_id=tenant_id)
         return self._maybe_expire(existing) if existing is not None else None
 
     def resolve(
         self, decision_id: str, *, tenant_id: str, decision: DecisionStatus, actor: str
     ) -> PendingDecision:
         """Resolve a pending decision to ``APPROVED`` or ``DENIED``.
+
+        Idempotent (E53-S2): replaying the same decision id with the same
+        outcome -- whether because this exact call already ran once before,
+        or because a concurrent racing call already recorded that outcome --
+        returns the already-recorded result instead of raising. Replaying
+        with a *different* outcome than the one already recorded (a genuine
+        double-approval-vs-rejection race) still raises
+        :class:`DecisionAlreadyResolvedError`: the loser must not silently
+        appear to have gotten its own way.
 
         Args:
             decision_id: The decision to resolve.
@@ -141,17 +150,27 @@ class DecisionService:
 
         Raises:
             DecisionNotFoundError: If no such decision exists for this tenant.
-            DecisionAlreadyResolvedError: If it was already resolved
-                (including a concurrent timeout discovered on read).
+            DecisionAlreadyResolvedError: If it was already resolved to a
+                *different* outcome (including a concurrent timeout
+                discovered on read).
         """
-        pending = self._store.get_pending_decision(decision_id)
-        if pending is None or pending.tenant_id != tenant_id:
+        pending = self._store.get_pending_decision(decision_id, tenant_id=tenant_id)
+        if pending is None:
             raise DecisionNotFoundError(decision_id)
         pending = self._maybe_expire(pending)
         if pending.status is not DecisionStatus.PENDING:
+            if pending.status is decision:
+                return pending
             raise DecisionAlreadyResolvedError(decision_id)
-        ok = self._store.resolve_pending_decision(decision_id, status=decision, decided_by=actor)
+        ok = self._store.resolve_pending_decision(
+            decision_id, status=decision, decided_by=actor, tenant_id=tenant_id
+        )
         if not ok:
+            # Lost a race against a concurrent resolver -- re-read the
+            # outcome it recorded rather than assuming it disagreed with us.
+            refreshed = self._store.get_pending_decision(decision_id, tenant_id=tenant_id)
+            if refreshed is not None and refreshed.status is decision:
+                return refreshed
             raise DecisionAlreadyResolvedError(decision_id)
         emit_event(
             "run.human.resolved",
@@ -160,7 +179,7 @@ class DecisionService:
             data={"stepKey": pending.task_id, "decision": decision.value},
             subject={"runId": pending.run_id, "taskId": pending.task_id},
         )
-        resolved = self._store.get_pending_decision(decision_id)
+        resolved = self._store.get_pending_decision(decision_id, tenant_id=tenant_id)
         assert resolved is not None  # just resolved above; must exist
         return resolved
 
@@ -182,7 +201,10 @@ class DecisionService:
         expired: list[PendingDecision] = []
         for pending in due:
             ok = self._store.resolve_pending_decision(
-                pending.decision_id, status=DecisionStatus.TIMED_OUT, decided_by="system:timeout"
+                pending.decision_id,
+                status=DecisionStatus.TIMED_OUT,
+                decided_by="system:timeout",
+                tenant_id=pending.tenant_id,
             )
             if not ok:
                 continue
@@ -193,7 +215,7 @@ class DecisionService:
                 data={"stepKey": pending.task_id, "decision": DecisionStatus.TIMED_OUT.value},
                 subject={"runId": pending.run_id, "taskId": pending.task_id},
             )
-            refreshed = self._store.get_pending_decision(pending.decision_id)
+            refreshed = self._store.get_pending_decision(pending.decision_id, tenant_id=pending.tenant_id)
             if refreshed is not None:
                 expired.append(refreshed)
         return expired
@@ -210,7 +232,7 @@ class DecisionService:
         if pending.expires_at > self._now().isoformat():
             return pending
         self.expire_due(at=self._now().isoformat())
-        refreshed = self._store.get_pending_decision(pending.decision_id)
+        refreshed = self._store.get_pending_decision(pending.decision_id, tenant_id=pending.tenant_id)
         return refreshed if refreshed is not None else pending
 
 
