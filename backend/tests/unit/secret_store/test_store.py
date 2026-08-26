@@ -85,6 +85,20 @@ def test_tenant_isolation_by_construction(tmp_path: Path) -> None:
         store.resolve_latest_active(_ref(tenant_id="t2"))
 
 
+def test_same_name_different_project_never_collides(tmp_path: Path) -> None:
+    """E52-S3-T1: same tenant, same secret name, different project -- independent chains."""
+    store = _store(tmp_path)
+    store.create(_ref(project="p1"), "p1-value")
+    store.create(_ref(project="p2"), "p2-value")
+    p1_ciphertext, _ = store.resolve_latest_active(_ref(project="p1"))
+    p2_ciphertext, _ = store.resolve_latest_active(_ref(project="p2"))
+    assert p1_ciphertext == "p1-value"
+    assert p2_ciphertext == "p2-value"
+    store.rotate(_ref(project="p1"), "p1-value-2")
+    p2_after_rotate, _ = store.resolve_latest_active(_ref(project="p2"))
+    assert p2_after_rotate == "p2-value", "rotating one project's secret must not affect another's"
+
+
 def test_get_metadata_never_carries_a_value(tmp_path: Path) -> None:
     store = _store(tmp_path)
     store.create(_ref(), "s3cr3t")

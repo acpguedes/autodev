@@ -95,6 +95,38 @@ def test_resolve_emits_secret_resolved_event(tmp_path: Path) -> None:
     resolved = [e for e in envelopes if e.type == "secret.resolved"]
     assert len(resolved) == 1
     assert resolved[0].data["actorId"] == "env-1"
+    assert "s3cr3t-value-in-resolve" not in str(resolved[0].data)
+
+
+def test_resolve_never_leaks_the_plaintext_value_into_the_audit_event(tmp_path: Path) -> None:
+    """E52-S3-T2: no audit record, of any secret operation, carries the plaintext value."""
+    service = _service(tmp_path)
+    service.create(_ref(), "s3cr3t-value-in-resolve", actor_id="alice")
+    service.rotate(_ref(), "s3cr3t-value-rotated", actor_id="alice")
+    service.resolve_for_injection(_ref(), actor_id="env-1")
+    service.revoke(_ref(), actor_id="alice")
+    envelopes = get_event_bus().replay("t1")
+    for envelope in envelopes:
+        assert "s3cr3t-value-in-resolve" not in str(envelope.data)
+        assert "s3cr3t-value-rotated" not in str(envelope.data)
+
+
+class _UnreachableStore:
+    """A store double whose connection always fails, simulating a down backend (E52-S3-T3)."""
+
+    def connect(self):  # noqa: ANN201 - test double
+        raise ConnectionError("backend unavailable")
+
+
+def test_resolve_fails_closed_when_the_backend_is_unreachable() -> None:
+    """E52-S3-T3: an unreachable store must deny resolution, never fall back to empty."""
+    settings = Settings(
+        _env_file=None,  # type: ignore[call-arg]
+        autodev_secret_encryption_key="test-only-key-material",
+    )
+    service = SecretService(store=SecretStore(store=_UnreachableStore()), settings=settings)
+    with pytest.raises(ConnectionError):
+        service.resolve_for_injection(_ref(), actor_id="env-1")
 
 
 def test_get_metadata_never_carries_a_value(tmp_path: Path) -> None:
