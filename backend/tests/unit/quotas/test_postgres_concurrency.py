@@ -1,11 +1,15 @@
-"""Real multi-connection PostgreSQL concurrency proof for QuotaStore (E51-S2/S3/S4).
+"""Real multi-connection PostgreSQL concurrency proof for QuotaStore (E51-S4).
 
 Every test here opens genuinely independent connections against a real
 PostgreSQL database (threads for same-process concurrency, separate OS
 processes for the lease-acquisition cross-process check E51-S4-T2 calls
 for, so the invariant is shown to come from the database's row locking, not
-from anything held in one Python process). Skips automatically unless
-``AUTODEV_TEST_POSTGRES_URL`` is set, mirroring
+from anything held in one Python process). Together these are the
+"concurrent consumption against a fixed quota, concurrent lease
+acquisition, concurrent reservation commit" suite E51-S4-T1 asks for, plus
+the cross-process check (T2); T3 (the docstring correction) lives in
+``backend/quotas/store.py``'s own module docstring. Skips automatically
+unless ``AUTODEV_TEST_POSTGRES_URL`` is set, mirroring
 ``backend/tests/unit/persistence/test_backup_restore.py``'s existing
 convention -- CI wiring for a real PostgreSQL service lands in E57.
 
@@ -20,9 +24,12 @@ differently-tenanted test run.
 from __future__ import annotations
 
 import os
+import threading
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 
 import pytest
+
+from backend.quotas.contracts import RunBudgetLimits, TenantQuotaPolicy
 
 _POSTGRES_URL = os.environ.get("AUTODEV_TEST_POSTGRES_URL", "")
 
@@ -159,3 +166,74 @@ def test_expired_lease_is_reclaimed_by_exactly_one_concurrent_caller() -> None:
 
     assert outcomes.count(True) == 1
     assert _store().count_active_leases(tenant_id) == 1
+
+
+def test_concurrent_usage_accounting_never_exceeds_the_quota() -> None:
+    """20 threads each add 1 unit against a limit of 10 -- exactly 10 are granted, never more (E51-S4-T1)."""
+    tenant_id = _tenant()
+    limit = 10
+    attempts = 20
+
+    def _consume(_: int) -> bool:
+        store = _store()
+        result = store.record_monthly_usage(
+            tenant_id=tenant_id,
+            resource="monthly_tokens",
+            delta=1,
+            window_key="concurrency-test",
+            limit=limit,
+            warning_ratio_basis_points=8_000,
+        )
+        return result.granted
+
+    with ThreadPoolExecutor(max_workers=attempts) as pool:
+        outcomes = list(pool.map(_consume, range(attempts)))
+
+    final_used = _store().usage_snapshot(tenant_id, "monthly_tokens", "concurrency-test")
+    assert outcomes.count(True) == limit
+    assert final_used == limit
+
+
+def test_upsert_policy_compare_and_swap_serializes_under_real_postgres_concurrency() -> None:
+    """Racing compare-and-swap writers against real PostgreSQL: only one wins per version (E51-S4-T1)."""
+    tenant_id = _tenant()
+    base = TenantQuotaPolicy(
+        tenant_id=tenant_id,
+        max_concurrent_runs=1,
+        max_storage_bytes=1000,
+        monthly_token_limit=1000,
+        monthly_cost_microusd=1000,
+        requests_per_second=1,
+        default_run_budget=RunBudgetLimits(),
+    )
+    first = _store().upsert_policy(base)
+    lock = threading.Lock()
+    successes: list[int] = []
+
+    def _swap(index: int) -> None:
+        store = _store()
+        try:
+            updated = store.upsert_policy(
+                TenantQuotaPolicy(
+                    tenant_id=tenant_id,
+                    max_concurrent_runs=index + 2,
+                    max_storage_bytes=1000,
+                    monthly_token_limit=1000,
+                    monthly_cost_microusd=1000,
+                    requests_per_second=1,
+                    default_run_budget=RunBudgetLimits(),
+                ),
+                expected_version=first.version,
+            )
+            with lock:
+                successes.append(updated.version)
+        except ValueError:
+            pass
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(_swap, range(8)))
+
+    assert len(successes) == 1
+    final = _store().get_policy(tenant_id)
+    assert final is not None
+    assert final.version == first.version + 1
