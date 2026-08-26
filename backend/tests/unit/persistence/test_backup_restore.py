@@ -32,6 +32,7 @@ from backend.persistence.backup import (
 from backend.persistence.sqlite_adapter import SQLiteStore
 from backend.persistence.sqlite_adapter.plan_store import SQLitePlanStore
 from backend.plans.step_state import StepApprovalStore
+from backend.tests.postgres_gate import REQUIRE_MINIO_ENV, REQUIRE_POSTGRES_ENV, require_mark
 
 _POSTGRES_URL = os.environ.get("AUTODEV_TEST_POSTGRES_URL", "")
 _MINIO_ENDPOINT = os.environ.get("AUTODEV_TEST_MINIO_ENDPOINT", "")
@@ -264,8 +265,9 @@ def test_backup_fails_when_sqlite_database_missing(tmp_path: Path) -> None:
         manager.backup(tmp_path / "backup")
 
 
-@pytest.mark.skipif(
-    not _POSTGRES_URL or shutil.which("pg_dump") is None,
+@require_mark(
+    bool(_POSTGRES_URL) and shutil.which("pg_dump") is not None,
+    require_env=REQUIRE_POSTGRES_ENV,
     reason="requires AUTODEV_TEST_POSTGRES_URL and pg_dump/pg_restore on PATH",
 )
 def test_postgres_backup_restore_round_trip(tmp_path: Path) -> None:
@@ -292,8 +294,9 @@ def test_postgres_backup_fails_closed_without_tooling(tmp_path: Path) -> None:
         manager.backup(tmp_path / "backup")
 
 
-@pytest.mark.skipif(
-    not _MINIO_ENDPOINT,
+@require_mark(
+    bool(_MINIO_ENDPOINT),
+    require_env=REQUIRE_MINIO_ENV,
     reason="requires AUTODEV_TEST_MINIO_ENDPOINT (and MinIO credentials env)",
 )
 def test_minio_artifact_mirror_round_trip(tmp_path: Path) -> None:

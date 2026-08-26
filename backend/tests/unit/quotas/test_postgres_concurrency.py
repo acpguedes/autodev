@@ -30,13 +30,16 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 import pytest
 
 from backend.quotas.contracts import RunBudgetLimits, TenantQuotaPolicy
+from backend.tests.postgres_gate import REQUIRE_POSTGRES_ENV, require_mark
 
 _POSTGRES_URL = os.environ.get("AUTODEV_TEST_POSTGRES_URL", "")
 
 pytestmark = [
     pytest.mark.slow,
-    pytest.mark.skipif(
-        not _POSTGRES_URL, reason="requires AUTODEV_TEST_POSTGRES_URL (a real PostgreSQL, E51)"
+    require_mark(
+        bool(_POSTGRES_URL),
+        require_env=REQUIRE_POSTGRES_ENV,
+        reason="requires AUTODEV_TEST_POSTGRES_URL (a real PostgreSQL, E51)",
     ),
 ]
 
