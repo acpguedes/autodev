@@ -15,6 +15,7 @@ from typing import Any
 from backend.auth.contracts import AccessAuditRecord, AuthMethod, AuthSessionRecord, Role, ServiceCredentialRecord
 from backend.auth.migrations import auth_store_statements
 from backend.auth.roles import normalize_scopes
+from backend.persistence import contract
 from backend.persistence.database import get_store
 
 
@@ -409,12 +410,11 @@ class AuthStore:
     @property
     def _is_postgres(self) -> bool:
         """Whether the backing store is a PostgreSQL database."""
-        url = str(getattr(self._store, "database_url", ""))
-        return url.startswith(("postgresql://", "postgres://"))
+        return contract.is_postgres(getattr(self._store, "database_url", ""))
 
     def _sql(self, template: str) -> str:
         """Substitute the dialect placeholder into a SQL template."""
-        return template.format(p="%s" if self._is_postgres else "?")
+        return contract.sql(template, self._is_postgres)
 
     def _connect(self) -> Any:
         """Return this thread's cached store connection, creating it once."""
@@ -440,8 +440,7 @@ class AuthStore:
 
     def _begin_write(self, conn: Any) -> None:
         """Start a write transaction eagerly on SQLite."""
-        if not self._is_postgres:
-            conn.execute("BEGIN IMMEDIATE")
+        contract.begin_write(conn, self._is_postgres)
 
     def _ensure_schema(self) -> None:
         """Create the Auth Store tables if they do not exist."""

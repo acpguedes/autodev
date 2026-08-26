@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from backend.persistence import contract
 from backend.plugins.events import PluginEvent
 
 
@@ -44,23 +45,10 @@ class PluginStore:
             manifest_json: Parsed manifest document.
             reason: Human-readable reason for the current state, if any.
         """
-        if self._is_postgres:
-            sql = """
-                INSERT INTO plugins (id, version, state, manifest_path, manifest_json, reason, updated_at)
-                VALUES (%s, %s, %s, %s, %s::jsonb, %s, CURRENT_TIMESTAMP)
-                ON CONFLICT(id) DO UPDATE SET
-                    version = EXCLUDED.version,
-                    state = EXCLUDED.state,
-                    manifest_path = EXCLUDED.manifest_path,
-                    manifest_json = EXCLUDED.manifest_json,
-                    reason = EXCLUDED.reason,
-                    updated_at = CURRENT_TIMESTAMP
+        statement = contract.sql(
             """
-            params = (plugin_id, version, state, manifest_path, json.dumps(manifest_json), reason)
-        else:
-            sql = """
                 INSERT INTO plugins (id, version, state, manifest_path, manifest_json, reason, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                VALUES ({p}, {p}, {p}, {p}, {p}{jsonb}, {p}, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
                     version = excluded.version,
                     state = excluded.state,
@@ -68,15 +56,17 @@ class PluginStore:
                     manifest_json = excluded.manifest_json,
                     reason = excluded.reason,
                     updated_at = CURRENT_TIMESTAMP
-            """
-            params = (plugin_id, version, state, manifest_path, json.dumps(manifest_json), reason)
+            """,
+            self._is_postgres,
+        )
+        params = (plugin_id, version, state, manifest_path, json.dumps(manifest_json), reason)
         with self._store.connect() as conn:
-            conn.execute(sql, params)
+            conn.execute(statement, params)
             conn.commit()
 
     def get_plugin(self, plugin_id: str) -> dict[str, Any] | None:
         """Fetch a plugin's registration record, or ``None`` if not registered."""
-        placeholder = "%s" if self._is_postgres else "?"
+        placeholder = contract.placeholder(self._is_postgres)
         with self._store.connect() as conn:
             row = conn.execute(
                 f"SELECT * FROM plugins WHERE id = {placeholder}",
@@ -97,25 +87,22 @@ class PluginStore:
 
     def delete_plugin(self, plugin_id: str) -> None:
         """Delete a plugin's registration record."""
-        placeholder = "%s" if self._is_postgres else "?"
+        placeholder = contract.placeholder(self._is_postgres)
         with self._store.connect() as conn:
             conn.execute(f"DELETE FROM plugins WHERE id = {placeholder}", (plugin_id,))
             conn.commit()
 
     def append_event(self, event: PluginEvent) -> None:
         """Persist a plugin lifecycle event."""
-        if self._is_postgres:
-            sql = """
-                INSERT INTO plugin_events (event_name, plugin_id, payload_json)
-                VALUES (%s, %s, %s::jsonb)
+        statement = contract.sql(
             """
-        else:
-            sql = """
                 INSERT INTO plugin_events (event_name, plugin_id, payload_json)
-                VALUES (?, ?, ?)
-            """
+                VALUES ({p}, {p}, {p}{jsonb})
+            """,
+            self._is_postgres,
+        )
         with self._store.connect() as conn:
-            conn.execute(sql, (event.name, event.plugin_id, json.dumps(event.payload)))
+            conn.execute(statement, (event.name, event.plugin_id, json.dumps(event.payload)))
             conn.commit()
 
     def list_events(self) -> list[PluginEvent]:
@@ -129,7 +116,7 @@ class PluginStore:
     @property
     def _is_postgres(self) -> bool:
         """Whether the backing store is a PostgreSQL database."""
-        return str(getattr(self._store, "database_url", "")).startswith(("postgresql://", "postgres://"))
+        return contract.is_postgres(getattr(self._store, "database_url", ""))
 
     def _decode_plugin(self, row: Any) -> dict[str, Any] | None:
         """Decode a database row into a plugin record dict, or ``None`` if ``row`` is ``None``."""

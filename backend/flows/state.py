@@ -26,6 +26,7 @@ from backend.flows.records import (
     decode_step,
 )
 from backend.flows.schema_sql import flow_state_statements
+from backend.persistence import contract
 from backend.persistence.database import get_store
 
 class FlowRunStore:
@@ -73,8 +74,7 @@ class FlowRunStore:
         Args:
             conn: Connection returned by :meth:`_connect`.
         """
-        if not self._is_postgres:
-            conn.execute("BEGIN IMMEDIATE")
+        contract.begin_write(conn, self._is_postgres)
 
     # ------------------------------------------------------------------ runs
 
@@ -454,8 +454,7 @@ class FlowRunStore:
     @property
     def _is_postgres(self) -> bool:
         """Whether the backing store is a PostgreSQL database."""
-        url = str(getattr(self._store, "database_url", ""))
-        return url.startswith(("postgresql://", "postgres://"))
+        return contract.is_postgres(getattr(self._store, "database_url", ""))
 
     def _sql(self, template: str) -> str:
         """Substitute the dialect placeholder into a SQL template.
@@ -466,7 +465,7 @@ class FlowRunStore:
         Returns:
             The SQL with dialect-appropriate placeholders.
         """
-        return template.format(p="%s" if self._is_postgres else "?")
+        return contract.sql(template, self._is_postgres)
 
     def _ensure_schema(self) -> None:
         """Create the flow run/step/event tables if they do not exist."""

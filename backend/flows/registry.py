@@ -15,6 +15,7 @@ from packaging.version import Version
 
 from backend.flows.manifest import validate_flow_manifest
 from backend.flows.model import FlowManifest, version_in_range
+from backend.persistence import contract
 from backend.persistence.database import get_store
 
 
@@ -45,24 +46,18 @@ class FlowRegistry:
         Returns:
             The registered manifest, unchanged.
         """
-        if self._is_postgres:
-            sql = """
-                INSERT INTO flow_registry (flow_id, version, manifest_json, updated_at)
-                VALUES (%s, %s, %s::jsonb, CURRENT_TIMESTAMP)
-                ON CONFLICT(flow_id, version) DO UPDATE SET
-                    manifest_json = EXCLUDED.manifest_json,
-                    updated_at = CURRENT_TIMESTAMP
+        statement = contract.sql(
             """
-        else:
-            sql = """
                 INSERT INTO flow_registry (flow_id, version, manifest_json, updated_at)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                VALUES ({p}, {p}, {p}{jsonb}, CURRENT_TIMESTAMP)
                 ON CONFLICT(flow_id, version) DO UPDATE SET
                     manifest_json = excluded.manifest_json,
                     updated_at = CURRENT_TIMESTAMP
-            """
+            """,
+            self._is_postgres,
+        )
         with self._store.connect() as conn:
-            conn.execute(sql, (manifest.id, manifest.version, json.dumps(manifest.raw)))
+            conn.execute(statement, (manifest.id, manifest.version, json.dumps(manifest.raw)))
             conn.commit()
         return manifest
 
@@ -114,7 +109,7 @@ class FlowRegistry:
         Returns:
             Validated manifests, ordered by flow id then version.
         """
-        placeholder = "%s" if self._is_postgres else "?"
+        placeholder = contract.placeholder(self._is_postgres)
         base = "SELECT manifest_json FROM flow_registry"
         with self._store.connect() as conn:
             if flow_id is None:
@@ -166,35 +161,24 @@ class FlowRegistry:
     @property
     def _is_postgres(self) -> bool:
         """Whether the backing store is a PostgreSQL database."""
-        url = str(getattr(self._store, "database_url", ""))
-        return url.startswith(("postgresql://", "postgres://"))
+        return contract.is_postgres(getattr(self._store, "database_url", ""))
 
     def _ensure_schema(self) -> None:
         """Create the ``flow_registry`` table if it does not exist."""
-        if self._is_postgres:
-            sql = """
-                CREATE TABLE IF NOT EXISTS flow_registry (
-                    flow_id TEXT NOT NULL,
-                    version TEXT NOT NULL,
-                    manifest_json JSONB NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY(flow_id, version)
-                )
-            """
-        else:
-            sql = """
-                CREATE TABLE IF NOT EXISTS flow_registry (
-                    flow_id TEXT NOT NULL,
-                    version TEXT NOT NULL,
-                    manifest_json TEXT NOT NULL,
-                    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    PRIMARY KEY(flow_id, version)
-                )
-            """
+        json_type = contract.json_column_type(self._is_postgres)
+        time_type = contract.timestamp_column_type(self._is_postgres)
+        statement = f"""
+            CREATE TABLE IF NOT EXISTS flow_registry (
+                flow_id TEXT NOT NULL,
+                version TEXT NOT NULL,
+                manifest_json {json_type} NOT NULL,
+                created_at {time_type} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at {time_type} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY(flow_id, version)
+            )
+        """
         with self._store.connect() as conn:
-            conn.execute(sql)
+            conn.execute(statement)
             conn.commit()
 
 
