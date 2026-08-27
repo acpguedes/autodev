@@ -8,6 +8,7 @@ Needs a real destination PostgreSQL database; skips automatically unless
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Iterator
 
 import pytest
 
@@ -36,7 +37,7 @@ pytestmark = [
 
 
 @pytest.fixture(autouse=True)
-def _writable_artifact_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _writable_artifact_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Point the ambient artifact store at a writable tmp directory (see E58-S3's test module)."""
     from backend.config.settings import reset_settings_cache
 
@@ -47,7 +48,7 @@ def _writable_artifact_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 
 
 @pytest.fixture
-def empty_postgres() -> str:
+def empty_postgres() -> Iterator[str]:
     """Yield a fresh, empty PostgreSQL database URL, dropped after the test."""
     admin_url = _POSTGRES_URL
     assert admin_url is not None
@@ -123,6 +124,7 @@ def test_full_rerun_after_completion_is_a_no_op(tmp_path: Path, empty_postgres: 
 
     second = run_migration(f"sqlite:///{db_path}", empty_postgres, confirm_nonempty_destination=True)
     assert second.safe_to_cut_over, second.reconciliation
+    assert second.reconciliation is not None
 
     by_table = {t.table: t for t in second.reconciliation.tables}
     assert by_table["sessions"].source_count == by_table["sessions"].dest_count == 1

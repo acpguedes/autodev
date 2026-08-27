@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import Iterator
 
 import pytest
 
@@ -38,7 +39,7 @@ pytestmark = [
 
 
 @pytest.fixture(autouse=True)
-def _writable_artifact_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def _writable_artifact_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Point the ambient artifact store at a writable tmp directory.
 
     ``run_migration`` looks up the artifact store via
@@ -56,7 +57,7 @@ def _writable_artifact_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 
 
 @pytest.fixture
-def empty_postgres() -> str:
+def empty_postgres() -> Iterator[str]:
     """Yield a fresh, empty PostgreSQL database URL, dropped after the test."""
     admin_url = _POSTGRES_URL
     assert admin_url is not None

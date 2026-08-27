@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from typing import Iterator
 
 import pytest
 
@@ -40,7 +41,7 @@ pytestmark = [
 
 
 @pytest.fixture
-def empty_postgres() -> str:
+def empty_postgres() -> Iterator[str]:
     """Yield a fresh, empty PostgreSQL database URL, dropped after the test."""
     admin_url = _POSTGRES_URL
     assert admin_url is not None
@@ -128,6 +129,7 @@ def test_copy_preserves_identity_and_row_counts(tmp_path: Path, empty_postgres: 
         row = conn.execute("SELECT id, goal FROM sessions WHERE id = %s", ("sess-a",)).fetchone()
         assert row == ("sess-a", "tenant a's session")
         count = conn.execute("SELECT COUNT(*) FROM messages WHERE session_id = %s", ("sess-a",)).fetchone()
+        assert count is not None
         assert count[0] == 2
         conn.rollback()
     finally:
@@ -218,7 +220,7 @@ def test_copy_coerces_sqlite_integer_booleans_to_postgres_boolean(
 
     conn = psycopg.connect(empty_postgres)
     try:
-        rows = dict(
+        rows: dict[str, bool] = dict(
             conn.execute(
                 "SELECT snapshot_id, promoted FROM score_snapshot_promotions ORDER BY snapshot_id"
             ).fetchall()
@@ -256,4 +258,5 @@ def test_copy_is_idempotent_on_rerun(tmp_path: Path, empty_postgres: str) -> Non
     finally:
         conn.close()
 
+    assert count is not None
     assert count[0] == 1  # no duplicate row from the second run
