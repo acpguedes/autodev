@@ -14,6 +14,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from backend.persistence.sqlite_to_postgres.tables import TABLE_COPY_ORDER
+from backend.persistence.tenancy import DEFAULT_TENANT_ID
+
 
 @dataclass(frozen=True)
 class SourceColumn:
@@ -43,12 +46,21 @@ class DestColumn:
             (``column_default`` starts with ``nextval(``) — such a column's
             sequence must be advanced past the migrated maximum after the
             copy (E58-S2-T2).
+        is_timestamp: Whether the column's data type is
+            ``timestamp with[out] time zone`` — reconciliation
+            (:mod:`backend.persistence.sqlite_to_postgres.reconcile`) parses
+            such a column's value on both sides into a timezone-aware
+            ``datetime`` before hashing, since SQLite stores it as text (in
+            one of two formats depending on whether it was set by
+            ``CURRENT_TIMESTAMP`` or application code) and PostgreSQL
+            returns a ``datetime.datetime`` object.
     """
 
     name: str
     is_jsonb: bool
     is_boolean: bool
     is_serial: bool
+    is_timestamp: bool = False
 
 
 def source_table_names(conn: Any) -> list[str]:
@@ -131,6 +143,7 @@ def dest_columns(conn: Any, table: str) -> dict[str, DestColumn]:
             is_jsonb=(row[1] == "jsonb"),
             is_boolean=(row[1] == "boolean"),
             is_serial=bool(row[2] and str(row[2]).startswith("nextval(")),
+            is_timestamp=row[1] in ("timestamp with time zone", "timestamp without time zone"),
         )
         for row in rows
     }
@@ -181,9 +194,42 @@ def source_row_count(conn: Any, table: str) -> int:
     return int(row[0])
 
 
+def collect_source_tenants(conn: Any) -> set[str]:
+    """Collect every distinct ``tenant_id`` value present in the source database.
+
+    Any read of a destination table under Row-Level Security must be scoped
+    to a real tenant first: a ``FORCE``d table hides every row from a plain,
+    unscoped ``SELECT`` (the connecting role is the table owner, which
+    ``FORCE`` deliberately does not exempt from RLS) -- an unscoped read
+    would silently see zero rows even when the table is fully populated.
+    Both :mod:`backend.persistence.sqlite_to_postgres.preflight` (the
+    "destination already has data" check) and
+    :mod:`backend.persistence.sqlite_to_postgres.reconcile` (the
+    destination-side row read) need this same tenant set for that reason.
+
+    Args:
+        conn: Open source ``sqlite3.Connection``.
+
+    Returns:
+        Every tenant id found in a tenant-scoped source table, plus
+        :data:`~backend.persistence.tenancy.DEFAULT_TENANT_ID`.
+    """
+    tenants = {DEFAULT_TENANT_ID}
+    for table in TABLE_COPY_ORDER:
+        if not source_table_exists(conn, table):
+            continue
+        columns = {c.name for c in source_columns(conn, table)}
+        if "tenant_id" not in columns:
+            continue
+        rows = conn.execute(f"SELECT DISTINCT tenant_id FROM {table}").fetchall()  # noqa: S608 - trusted table name
+        tenants.update(row[0] for row in rows if row[0])
+    return tenants
+
+
 __all__ = [
     "DestColumn",
     "SourceColumn",
+    "collect_source_tenants",
     "dest_columns",
     "dest_row_count",
     "dest_table_exists",
