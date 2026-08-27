@@ -9,6 +9,7 @@ for the design decisions this package implements.
 
 from __future__ import annotations
 
+from backend.persistence.sqlite_to_postgres.copy import TableCopyResult, copy_all_tables, copy_table
 from backend.persistence.sqlite_to_postgres.plan import MigrationPlan, TablePlan, build_dry_run_plan
 from backend.persistence.sqlite_to_postgres.preflight import PreflightReport, run_preflight
 from backend.persistence.sqlite_to_postgres.tables import TABLE_COPY_ORDER
@@ -17,7 +18,10 @@ __all__ = [
     "MigrationPlan",
     "PreflightReport",
     "TABLE_COPY_ORDER",
+    "TableCopyResult",
     "TablePlan",
     "build_dry_run_plan",
+    "copy_all_tables",
+    "copy_table",
     "run_preflight",
 ]

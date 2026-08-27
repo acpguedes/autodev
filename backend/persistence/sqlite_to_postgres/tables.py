@@ -34,7 +34,13 @@ VERSIONED_STORE_TABLES: tuple[str, ...] = (
     "score_snapshots",
     "score_snapshot_promotions",
     "code_chunks",
-    "code_embeddings",
+    # "code_embeddings" is deliberately excluded: it exists only in
+    # backend/persistence/migrations/postgres_versions.py, not in the
+    # SQLite migration list (backend/persistence/migrations/versions.py) --
+    # vector search is PostgreSQL/pgvector-only, so a SQLite source can
+    # never have embeddings to migrate. Regenerating embeddings from the
+    # migrated code_chunks rows, if wanted, is a post-migration operator
+    # step, out of E58's scope.
     "plan_documents",
     "plan_approvals",
     "plan_step_state",
@@ -73,9 +79,8 @@ SELF_MANAGED_TABLES: tuple[str, ...] = (
 #: Full copy order: every table this migrator knows how to move, in an order
 #: that satisfies every foreign key enforced in the schema (``runs`` ->
 #: ``sessions``; ``run_steps`` -> ``runs``; ``messages`` -> ``sessions``,
-#: ``runs``; ``code_embeddings`` -> ``code_chunks``; ``plan_step_state`` ->
-#: ``plan_documents``). Tables with no enforced FK are placed next to the
-#: table they are conceptually part of.
+#: ``runs``; ``plan_step_state`` -> ``plan_documents``). Tables with no
+#: enforced FK are placed next to the table they are conceptually part of.
 TABLE_COPY_ORDER: tuple[str, ...] = VERSIONED_STORE_TABLES + SELF_MANAGED_TABLES
 
 #: SQLite-internal tables that are never part of the migrated data, even
