@@ -28,7 +28,11 @@ def open_source_connection(sqlite_url: str) -> sqlite3.Connection:
     Returns:
         A raw ``sqlite3.Connection`` with row access by index (no
         ``row_factory`` override, matching :func:`PRAGMA table_info` /
-        ``SELECT *`` positional order used throughout this package).
+        ``SELECT *`` positional order used throughout this package) and
+        ``isolation_level=None`` (autocommit), so callers that need a
+        consistent snapshot across many reads (:mod:`backend.persistence.sqlite_to_postgres.copy`)
+        can issue an explicit ``BEGIN``/``ROLLBACK`` without Python's
+        ``sqlite3`` module's implicit transaction handling interfering.
 
     Raises:
         FileNotFoundError: If the resolved database file does not exist.
@@ -36,7 +40,9 @@ def open_source_connection(sqlite_url: str) -> sqlite3.Connection:
     path = _resolve_db_path(sqlite_url)
     if not path.exists():
         raise FileNotFoundError(f"source SQLite database not found: {path}")
-    return sqlite3.connect(path)
+    conn = sqlite3.connect(path)
+    conn.isolation_level = None
+    return conn
 
 
 def open_dest_connection(postgres_url: str) -> Any:

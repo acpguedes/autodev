@@ -18,8 +18,14 @@ from backend.persistence.sqlite_to_postgres.connections import (
     open_source_connection,
     redact_url,
 )
-from backend.persistence.sqlite_to_postgres.introspect import source_table_names
+from backend.persistence.sqlite_to_postgres.introspect import (
+    dest_columns,
+    source_columns,
+    source_table_exists,
+    source_table_names,
+)
 from backend.persistence.sqlite_to_postgres.tables import IGNORED_SQLITE_TABLES, TABLE_COPY_ORDER
+from backend.persistence.tenancy import DEFAULT_TENANT_ID, set_postgres_tenant
 from backend.plans.step_state import legacy_step_state_db_path
 
 #: (namespace, known-migration-count) pairs the versioned SQLite migration
@@ -142,17 +148,52 @@ def _check_table_inventory(conn: Any, errors: list[str]) -> tuple[str, ...]:
     return unknown
 
 
-def _check_destination(conn: Any, errors: list[str]) -> bool:
+def _collect_source_tenants(conn: Any) -> set[str]:
+    """Collect every distinct ``tenant_id`` value present in the source database.
+
+    Needed so :func:`_check_destination` can scope its reads to real
+    tenants: Row-Level Security on a ``FORCE``d destination table hides
+    every row from a plain, unscoped ``SELECT`` (the connecting role is the
+    table owner, which ``FORCE`` deliberately does not exempt) -- an
+    unscoped emptiness check would silently report "empty" even when the
+    destination is populated (found running this module's tests against a
+    correctly non-superuser role, see ``backend/tests/persistence_contract/backends.py``'s
+    ``POSTGRES_ADMIN_URL_ENV`` docstring for the same class of mistake).
+
+    Args:
+        conn: Open source ``sqlite3.Connection``.
+
+    Returns:
+        Every tenant id found in a tenant-scoped source table, plus
+        :data:`~backend.persistence.tenancy.DEFAULT_TENANT_ID`.
+    """
+    tenants = {DEFAULT_TENANT_ID}
+    for table in TABLE_COPY_ORDER:
+        if not source_table_exists(conn, table):
+            continue
+        columns = {c.name for c in source_columns(conn, table)}
+        if "tenant_id" not in columns:
+            continue
+        rows = conn.execute(f"SELECT DISTINCT tenant_id FROM {table}").fetchall()  # noqa: S608 - trusted table name
+        tenants.update(row[0] for row in rows if row[0])
+    return tenants
+
+
+def _check_destination(conn: Any, source_tenants: set[str], errors: list[str]) -> bool:
     """Check destination reachability and whether it already has data.
 
     Args:
         conn: Open destination psycopg connection.
+        source_tenants: Tenants to check tenant-scoped tables under (see
+            :func:`_collect_source_tenants`) -- an unscoped read would miss
+            every row on a Row-Level-Security-protected table.
         errors: Unused for now (reserved for reachability failures raised as
             exceptions upstream); kept for signature symmetry.
 
     Returns:
         Whether any known table exists in the destination and has at least
-        one row.
+        one row visible under any of *source_tenants*, or (for tables with
+        no ``tenant_id`` column, hence no RLS) at all.
     """
     del errors
     existing_tables = {
@@ -164,9 +205,17 @@ def _check_destination(conn: Any, errors: list[str]) -> bool:
         ).fetchall()
     }
     for table in existing_tables:
-        row = conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone()  # noqa: S608 - trusted table name
-        if row is not None:
-            return True
+        dest_cols = dest_columns(conn, table)
+        if "tenant_id" not in dest_cols:
+            row = conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone()  # noqa: S608 - trusted table name
+            if row is not None:
+                return True
+            continue
+        for tenant_id in source_tenants:
+            set_postgres_tenant(conn, tenant_id)
+            row = conn.execute(f"SELECT 1 FROM {table} LIMIT 1").fetchone()  # noqa: S608 - trusted table name
+            if row is not None:
+                return True
     return False
 
 
@@ -212,6 +261,7 @@ def run_preflight(
     warnings: list[str] = []
     source_versions: dict[str, tuple[int, int]] = {}
     unknown_tables: tuple[str, ...] = ()
+    source_tenants: set[str] = {DEFAULT_TENANT_ID}
     destination_has_data = False
     vector_available = True
 
@@ -228,6 +278,7 @@ def run_preflight(
         try:
             source_versions = _check_source_schema_versions(source_conn, errors)
             unknown_tables = _check_table_inventory(source_conn, errors)
+            source_tenants = _collect_source_tenants(source_conn)
         finally:
             source_conn.close()
 
@@ -240,7 +291,7 @@ def run_preflight(
 
     if dest_conn is not None:
         try:
-            destination_has_data = _check_destination(dest_conn, errors)
+            destination_has_data = _check_destination(dest_conn, source_tenants, errors)
             vector_available = _check_vector_extension(dest_conn)
         finally:
             dest_conn.close()
