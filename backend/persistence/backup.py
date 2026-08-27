@@ -22,13 +22,22 @@ and a SHA-256 digest per copied file, enabling integrity verification before
 any restore (see ``docs/v2_platform/runbooks/e8_restore_runbook.md``).
 
 Both the SQLite and PostgreSQL components are whole-database snapshots, so
-they need no per-table entry in the manifest: every domain store sharing the
-configured ``DATABASE_URL`` is covered automatically, including
-``plan_step_state`` (:class:`~backend.plans.step_state.StepApprovalStore`,
-E55-S1) now that it lives in that same physical database rather than a
-standalone SQLite file invisible to this module (see
+every domain store sharing the configured ``DATABASE_URL`` is covered
+automatically, including ``plan_step_state``
+(:class:`~backend.plans.step_state.StepApprovalStore`, E55-S1) now that it
+lives in that same physical database rather than a standalone SQLite file
+invisible to this module (see
 ``backend/tests/unit/persistence/test_backup_restore.py``'s
 ``test_sqlite_backup_restore_round_trip_covers_plan_step_state``).
+
+For PostgreSQL, "whole-database" is verified rather than assumed (E59-S1):
+after ``pg_dump`` runs, every base table in the ``public`` schema is
+enumerated via ``information_schema`` and diffed against the dump's own
+table of contents (``pg_restore --list``); a live table absent from the
+dump fails the backup closed instead of shipping a manifest that silently
+omits data. The pgvector extension version and its vector indexes are
+recorded in the manifest too, so a restore target lacking the extension is
+rejected before ``pg_restore`` runs rather than mid-restore.
 
 CLI usage (exits non-zero on any failure)::
 
@@ -143,6 +152,146 @@ def _postgres_cli_connection(database_url: str) -> tuple[str, dict[str, str]]:
     if parsed.password is not None:
         environment["PGPASSWORD"] = unquote(parsed.password)
     return safe_url, environment
+
+
+def _postgres_connect(connection_url: str) -> Any:
+    """Open a psycopg connection, failing closed if psycopg is unavailable.
+
+    Args:
+        connection_url: A ``postgresql://``/``postgres://`` connection URL.
+
+    Returns:
+        A new, open psycopg connection.
+
+    Raises:
+        BackupError: If the ``psycopg`` package is not installed.
+    """
+    try:
+        import psycopg  # type: ignore[import-untyped]
+    except ImportError as exc:  # pragma: no cover - exercised when optional dep missing
+        raise BackupError(
+            "psycopg is required to inspect PostgreSQL for backup coverage"
+        ) from exc
+    return psycopg.connect(connection_url)
+
+
+def _live_postgres_tables(connection_url: str) -> list[str]:
+    """Enumerate base tables in the ``public`` schema of a live database.
+
+    Args:
+        connection_url: A ``postgresql://``/``postgres://`` connection URL
+            for the database being backed up (an admin connection that can
+            see every table regardless of row-level security).
+
+    Returns:
+        Sorted table names.
+    """
+    with _postgres_connect(connection_url) as conn:
+        rows = conn.execute(
+            "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+            "ORDER BY tablename"
+        ).fetchall()
+    return [row[0] for row in rows]
+
+
+def _postgres_vector_extension_state(connection_url: str) -> dict[str, Any] | None:
+    """Record the pgvector extension version and its vector indexes.
+
+    Args:
+        connection_url: Admin connection URL for the database being backed
+            up.
+
+    Returns:
+        ``{"version": ..., "indexes": [...]}`` if the ``vector`` extension is
+        installed, or ``None`` if it is not.
+    """
+    with _postgres_connect(connection_url) as conn:
+        row = conn.execute(
+            "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
+        ).fetchone()
+        if row is None:
+            return None
+        index_rows = conn.execute(
+            "SELECT indexname FROM pg_indexes WHERE schemaname = 'public' "
+            "AND (indexdef ILIKE '%%USING hnsw%%' OR indexdef ILIKE '%%USING ivfflat%%') "
+            "ORDER BY indexname"
+        ).fetchall()
+    return {"version": row[0], "indexes": [r[0] for r in index_rows]}
+
+
+def _dumped_postgres_tables(pg_restore: str, dump_path: Path) -> list[str]:
+    """Enumerate ``public`` schema tables captured in a ``pg_dump`` archive.
+
+    Args:
+        pg_restore: Path to the ``pg_restore`` executable.
+        dump_path: Custom-format dump produced by ``pg_dump``.
+
+    Returns:
+        Sorted table names present in the archive's table of contents.
+
+    Raises:
+        BackupError: If ``pg_restore --list`` exits non-zero.
+    """
+    result = subprocess.run(
+        [pg_restore, "--list", str(dump_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise BackupError(f"pg_restore --list failed: {result.stderr.strip()}")
+    tables: set[str] = set()
+    for line in result.stdout.splitlines():
+        if line.startswith(";") or not line.strip():
+            continue
+        parts = line.split()
+        # A schema-definition entry looks like:
+        #   <id>; <catalogid> <oid> TABLE public <name> <owner>
+        # ("TABLE DATA" entries have "DATA" at parts[4], never "public",
+        # so this excludes them without a separate branch.)
+        if len(parts) >= 6 and parts[3] == "TABLE" and parts[4] == "public":
+            tables.add(parts[5])
+    return sorted(tables)
+
+
+def _missing_postgres_tables(
+    live_tables: Iterable[str], dumped_tables: Iterable[str]
+) -> list[str]:
+    """Return live tables absent from a dump's table of contents.
+
+    Pure diff, independently testable from the ``pg_dump``/``pg_restore``
+    subprocess plumbing around it.
+
+    Args:
+        live_tables: Tables enumerated from the live database.
+        dumped_tables: Tables enumerated from the dump's table of contents.
+
+    Returns:
+        Sorted table names present in ``live_tables`` but not
+        ``dumped_tables``.
+    """
+    return sorted(set(live_tables) - set(dumped_tables))
+
+
+def _target_vector_extension_available(connection_url: str) -> bool:
+    """Check whether the restore target's server ships the pgvector extension.
+
+    A genuinely clean restore target has not yet *created* the extension,
+    so this checks what the server has *available* to create (the dump's own
+    ``CREATE EXTENSION`` handles creation), not ``pg_extension``.
+
+    Args:
+        connection_url: Admin connection URL for the restore target.
+
+    Returns:
+        ``True`` if the server can create the ``vector`` extension.
+    """
+    with _postgres_connect(connection_url) as conn:
+        row = conn.execute(
+            "SELECT default_version FROM pg_available_extensions "
+            "WHERE name = 'vector'"
+        ).fetchone()
+    return row is not None
 
 
 def _utcnow_iso() -> str:
@@ -364,11 +513,32 @@ class BackupManager:
         )
         if result.returncode != 0:
             raise BackupError(f"pg_dump failed: {result.stderr.strip()}")
+
+        pg_restore = shutil.which("pg_restore")
+        if pg_restore is None:
+            raise BackupError(
+                "PostgreSQL backup coverage verification requires pg_restore, "
+                "which is not available"
+            )
+        connection_url = self.postgres_admin_url or self.database_url
+        live_tables = _live_postgres_tables(connection_url)
+        dumped_tables = _dumped_postgres_tables(pg_restore, dump_path)
+        missing = _missing_postgres_tables(live_tables, dumped_tables)
+        if missing:
+            raise BackupError(
+                "postgres backup is missing table(s) not captured by "
+                f"pg_dump: {', '.join(missing)}"
+            )
+        extension = _postgres_vector_extension_state(connection_url)
+
         manifest["components"]["postgres"] = {
             "status": "completed",
             "file": POSTGRES_DUMP_FILENAME,
             "sha256": _sha256_file(dump_path),
             "size_bytes": dump_path.stat().st_size,
+            "tables": dumped_tables,
+            "table_count": len(dumped_tables),
+            "extension": extension,
         }
         return ComponentResult("postgres", "completed")
 
@@ -635,6 +805,15 @@ class BackupManager:
                 "backup contains a PostgreSQL dump but DATABASE_URL is not "
                 "postgresql://"
             )
+        extension = spec.get("extension")
+        if extension is not None:
+            connection_url = self.postgres_admin_url or self.database_url
+            if not _target_vector_extension_available(connection_url):
+                raise BackupError(
+                    "backup requires the PostgreSQL 'vector' extension "
+                    f"(version {extension['version']}) but the restore "
+                    "target's server does not have it available"
+                )
         dump_path = source / spec["file"]
         safe_url, environment = _postgres_cli_connection(
             self.postgres_admin_url or self.database_url
