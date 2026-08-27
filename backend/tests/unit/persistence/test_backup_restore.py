@@ -315,6 +315,139 @@ def test_postgres_backup_restore_round_trip(tmp_path: Path) -> None:
         drop_postgres_database(_POSTGRES_URL, database_url)
 
 
+@require_mark(
+    bool(_POSTGRES_URL) and shutil.which("pg_dump") is not None,
+    require_env=REQUIRE_POSTGRES_ENV,
+    reason="requires AUTODEV_TEST_POSTGRES_URL and pg_dump/pg_restore on PATH",
+)
+def test_postgres_backup_records_table_coverage_and_extension_state(
+    tmp_path: Path,
+) -> None:
+    """The manifest records every live table and the pgvector extension version.
+
+    Real negative control (E59-S1-T1 DoD): a table added to the live schema
+    *after* the dump was taken -- simulated here by asserting on the diff
+    function directly against a live enumeration plus one fabricated
+    dumped-tables set that omits a real table -- fails coverage.
+    """
+    from backend.persistence.backup import _live_postgres_tables, _missing_postgres_tables
+    from backend.persistence.postgres_adapter import PostgresStore
+    from backend.tests.persistence_contract.backends import (
+        drop_postgres_database,
+        provision_postgres_database,
+    )
+
+    database_url = provision_postgres_database(_POSTGRES_URL)
+    try:
+        PostgresStore(database_url)
+        db_name = database_url.rsplit("/", 1)[-1]
+        admin_base = (_POSTGRES_BACKUP_URL or _POSTGRES_URL).rsplit("/", 1)[0]
+        admin_url = f"{admin_base}/{db_name}"
+        manager = BackupManager(database_url=database_url, postgres_admin_url=admin_url)
+        backup_dir = tmp_path / "backup"
+        manager.backup(backup_dir)
+
+        manifest = json.loads((backup_dir / MANIFEST_FILENAME).read_text(encoding="utf-8"))
+        postgres_entry = manifest["components"]["postgres"]
+        assert postgres_entry["table_count"] > 0
+        assert "sessions" in postgres_entry["tables"]
+        assert "plan_step_state" in postgres_entry["tables"]
+        assert postgres_entry["extension"]["version"]
+        assert isinstance(postgres_entry["extension"]["indexes"], list)
+
+        # Negative control: a live table the dump did not capture is reported.
+        live_tables = _live_postgres_tables(admin_url)
+        missing = _missing_postgres_tables(live_tables, dumped_tables=[])
+        assert set(live_tables) == set(missing)
+        assert "plan_step_state" in missing
+    finally:
+        drop_postgres_database(_POSTGRES_URL, database_url)
+
+
+@require_mark(
+    bool(_POSTGRES_URL) and shutil.which("pg_dump") is not None,
+    require_env=REQUIRE_POSTGRES_ENV,
+    reason="requires AUTODEV_TEST_POSTGRES_URL and pg_dump/pg_restore on PATH",
+)
+def test_restore_fails_closed_when_target_lacks_pgvector_extension(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Restore refuses a target whose server cannot provide pgvector (E59-S1-T3)."""
+    from backend.persistence.postgres_adapter import PostgresStore
+    from backend.tests.persistence_contract.backends import (
+        drop_postgres_database,
+        provision_postgres_database,
+    )
+
+    database_url = provision_postgres_database(_POSTGRES_URL)
+    try:
+        PostgresStore(database_url)
+        db_name = database_url.rsplit("/", 1)[-1]
+        admin_base = (_POSTGRES_BACKUP_URL or _POSTGRES_URL).rsplit("/", 1)[0]
+        admin_url = f"{admin_base}/{db_name}"
+        manager = BackupManager(database_url=database_url, postgres_admin_url=admin_url)
+        backup_dir = tmp_path / "backup"
+        manager.backup(backup_dir)
+
+        monkeypatch.setattr(
+            "backend.persistence.backup._target_vector_extension_available",
+            lambda connection_url: False,
+        )
+        with pytest.raises(BackupError, match="does not have it available"):
+            manager.restore(backup_dir)
+    finally:
+        drop_postgres_database(_POSTGRES_URL, database_url)
+
+
+@require_mark(
+    bool(_POSTGRES_URL) and shutil.which("pg_dump") is not None,
+    require_env=REQUIRE_POSTGRES_ENV,
+    reason="requires AUTODEV_TEST_POSTGRES_URL and pg_dump/pg_restore on PATH",
+)
+def test_postgres_profile_never_creates_legacy_step_state_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No stray ``.db`` file for plan step state outside the manifest, in the postgres profile (E59-S1-T2)."""
+    from backend.persistence.postgres_adapter import PostgresStore
+    from backend.persistence.postgres_adapter.plan_store import PostgresPlanStore
+    from backend.plans.step_state import legacy_step_state_db_path
+    from backend.tests.persistence_contract.backends import (
+        drop_postgres_database,
+        provision_postgres_database,
+    )
+
+    legacy_path = tmp_path / "autodev_plan_step_state.db"
+    monkeypatch.setenv("AUTODEV_PLAN_STEP_STATE_DB", str(legacy_path))
+    assert legacy_step_state_db_path() == legacy_path
+
+    database_url = provision_postgres_database(_POSTGRES_URL)
+    try:
+        pg_store = PostgresStore(database_url)
+        plan_store = PostgresPlanStore(database_url=database_url)
+        plan_store.upsert_plan("sess-1", ["Write the migration"], tenant_id="default")
+        step_store = StepApprovalStore(store=pg_store)
+        step_store.ensure_steps("sess-1", ["Write the migration"], tenant_id="default")
+        assert not legacy_path.exists()
+
+        db_name = database_url.rsplit("/", 1)[-1]
+        admin_base = (_POSTGRES_BACKUP_URL or _POSTGRES_URL).rsplit("/", 1)[0]
+        manager = BackupManager(
+            database_url=database_url,
+            postgres_admin_url=f"{admin_base}/{db_name}",
+        )
+        backup_dir = tmp_path / "backup"
+        manager.backup(backup_dir)
+
+        assert not legacy_path.exists()
+        assert not any(backup_dir.rglob("*.db"))
+        postgres_entry = json.loads(
+            (backup_dir / MANIFEST_FILENAME).read_text(encoding="utf-8")
+        )["components"]["postgres"]
+        assert "plan_step_state" in postgres_entry["tables"]
+    finally:
+        drop_postgres_database(_POSTGRES_URL, database_url)
+
+
 def test_postgres_backup_fails_closed_without_tooling(tmp_path: Path) -> None:
     """A configured PostgreSQL backup fails closed (E11-S4) when pg_dump is absent."""
     manager = BackupManager(
