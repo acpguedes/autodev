@@ -71,7 +71,7 @@ neither.
 | ADR-023 | Execution Failure Classification Taxonomy | Accepted | E46 | 2026-08-21 |
 | ADR-024 | pgvector Runtime Image and Extension Provisioning | Accepted | E48 | 2026-08-21 |
 | ADR-025 | SQL Persistence Boundary and Dialect Abstraction Scope | Accepted | E49 | 2026-08-21 |
-| ADR-026 | SQLite to PostgreSQL Migration and Cutover | Proposed | E58 | 2026-08-21 |
+| ADR-026 | SQLite to PostgreSQL Migration and Cutover | Accepted | E58 | 2026-08-27 |
 
 > Update this table whenever an ADR or RFC is added or changes status. This index,
 > together with `docs/v2_platform/progress.md`, is the fastest way to see which
