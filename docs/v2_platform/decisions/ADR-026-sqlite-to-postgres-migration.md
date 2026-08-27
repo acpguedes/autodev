@@ -1,7 +1,7 @@
 # ADR-026: SQLite to PostgreSQL Migration and Cutover
 
-- **Status:** Proposed
-- **Date:** 2026-08-21
+- **Status:** Accepted
+- **Date:** 2026-08-21 (accepted 2026-08-27)
 - **Authors:** AutoDev platform team
 - **Related epic:** E58
 - **Supersedes/Relates to:** ADR-001 (PostgreSQL as default production state
@@ -153,3 +153,7 @@ reconciliation passes and cutover completes.
 - `docs/v2_platform/phases/e58_sqlite_to_postgres_migration.md`
 - `docs/v2_platform/phases/e55_plan_step_state_postgres.md` (E55-S3)
 - `docs/v2_platform/postgres_production_completeness.md`
+- `backend/cli_plugins/database.py`; `backend/persistence/sqlite_to_postgres/`
+  (implementation)
+- `docs/v2_platform/runbooks/e58_sqlite_to_postgres_cutover.md` (cutover
+  runbook, E58-S4-T2)
