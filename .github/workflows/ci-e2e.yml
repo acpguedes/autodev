@@ -7,12 +7,14 @@ on:
       - "backend/**"
       - "frontend/**"
       - "tests/**"
+      - "scripts/**"
       - ".github/workflows/ci-e2e.yml"
   pull_request:
     paths:
       - "backend/**"
       - "frontend/**"
       - "tests/**"
+      - "scripts/**"
       - ".github/workflows/ci-e2e.yml"
 
 concurrency:
@@ -80,3 +82,175 @@ jobs:
       - name: Kill backend
         if: always()
         run: pkill -f "uvicorn backend.api.main" || true
+
+  # Real `prod`-profile end-to-end (E57-S3) plus backup/restore (E57-S4):
+  # boots the actual prod profile against real PostgreSQL/Redis/MinIO (the
+  # boot itself, under real validate_profile/validate_auth_readiness, is
+  # S3-T1's proof), exercises one real API flow -- session create/read,
+  # two-tenant RLS both directions, and a real vector query through hybrid
+  # retrieval (S3-T2) -- then backs up, wipes, and restores the database and
+  # proves the restored environment still serves the pre-backup data
+  # (S4-T1/T2). E57-S3-T3 (concurrency invariants against the real stack) is
+  # covered by ci-backend.yml's backend-tests-postgres leg running the
+  # E51-E55 concurrency suites, not by this job.
+  #
+  # Deliberately out of scope: a full multi-step plan/approve/execute task
+  # run through the stub LLM's agent orchestration -- see
+  # scripts/ci_prod_e2e_smoke.py's module docstring for why.
+  prod-e2e:
+    runs-on: ubuntu-latest
+    env:
+      # See ci-backend.yml's backend-tests-postgres job for why these are
+      # inlined per-run expressions rather than a generated secret.
+      AUTODEV_PG_SUPERUSER_PASSWORD: ci-e2e-superuser-${{ github.run_id }}-${{ github.run_attempt }}
+      AUTODEV_PG_TEST_ROLE_PASSWORD: ci-e2e-test-role-${{ github.run_id }}-${{ github.run_attempt }}
+      AUTODEV_MINIO_ROOT_USER: ci-e2e-minio-${{ github.run_id }}-${{ github.run_attempt }}
+      AUTODEV_MINIO_ROOT_PASSWORD: ci-e2e-minio-pw-${{ github.run_id }}-${{ github.run_attempt }}
+      # The full `prod`-profile environment (ADR-018/validate_profile),
+      # available to every step below without repeating it per-step.
+      AUTODEV_PROFILE: prod
+      DATABASE_URL: postgresql://ci_test:ci-e2e-test-role-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/autodev_e2e
+      # ci_test deliberately lacks BYPASSRLS (E56-S3-T2), so backup/restore
+      # (E57-S4) needs a separate connection that can pg_dump a table with
+      # FORCE ROW LEVEL SECURITY (E50-S4) -- the bootstrap superuser role.
+      AUTODEV_BACKUP_DATABASE_URL: postgresql://autodev:ci-e2e-superuser-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/autodev_e2e
+      LLM_PROVIDER: stub
+      AUTODEV_JOB_BACKEND: redis
+      AUTODEV_EVENT_BUS: redis
+      AUTODEV_REDIS_URL: redis://localhost:6379/0
+      STORAGE_BACKEND: s3
+      AUTODEV_MINIO_ENDPOINT: localhost:9000
+      AUTODEV_MINIO_ACCESS_KEY: ci-e2e-minio-${{ github.run_id }}-${{ github.run_attempt }}
+      AUTODEV_MINIO_SECRET_KEY: ci-e2e-minio-pw-${{ github.run_id }}-${{ github.run_attempt }}
+      AUTODEV_CONFIG_PATH: /tmp/e2e-autodev.config.json
+      AUTODEV_BACKUP_STATUS_PATH: /tmp/e2e-backup-status.json
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.3-pg16
+        env:
+          POSTGRES_DB: autodev
+          POSTGRES_USER: autodev
+          POSTGRES_PASSWORD: ci-e2e-superuser-${{ github.run_id }}-${{ github.run_attempt }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autodev -d autodev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+
+      - name: Install PostgreSQL client tools (psql, pg_dump, pg_restore)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio \
+            -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER="$AUTODEV_MINIO_ROOT_USER" \
+            -e MINIO_ROOT_PASSWORD="$AUTODEV_MINIO_ROOT_PASSWORD" \
+            minio/minio:RELEASE.2025-04-22T22-12-26Z server /data --console-address ":9001"
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9000/minio/health/live && exit 0
+            sleep 1
+          done
+          echo "MinIO did not become healthy in time" >&2
+          docker logs minio || true
+          exit 1
+
+      - name: Provision the non-superuser role, pgvector, and the e2e database
+        env:
+          PGPASSWORD: ${{ env.AUTODEV_PG_SUPERUSER_PASSWORD }}
+        run: |
+          psql -h localhost -U autodev -d autodev -c \
+            "CREATE ROLE ci_test LOGIN CREATEDB PASSWORD '${AUTODEV_PG_TEST_ROLE_PASSWORD}';"
+          psql -h localhost -U autodev -d template1 -c "CREATE EXTENSION IF NOT EXISTS vector;"
+          PGPASSWORD="${AUTODEV_PG_TEST_ROLE_PASSWORD}" psql -h localhost -U ci_test -d autodev -c \
+            "CREATE DATABASE autodev_e2e;"
+
+      - name: Mint two tenants' service credentials (E57-S3-T2)
+        run: |
+          python scripts/ci_prod_e2e_mint_credentials.py "$DATABASE_URL" "$GITHUB_ENV"
+
+      - name: Set a quota policy for each tenant (ADR-019 fail-closed default)
+        run: |
+          for t in "$AUTODEV_E2E_TENANT_A" "$AUTODEV_E2E_TENANT_B"; do
+            python -m backend.cli quotas set "$t" \
+              --max-concurrent-runs 10 --max-storage-bytes 1000000000 \
+              --monthly-token-limit 1000000 --monthly-cost-microusd 1000000000 \
+              --requests-per-second 100
+          done
+
+      - name: Start the backend in the real prod profile (E57-S3-T1)
+        run: nohup python -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8000 > backend.log 2>&1 &
+
+      - name: Wait for the backend to become healthy
+        run: curl -sf --retry 20 --retry-delay 2 --retry-connrefused http://127.0.0.1:8000/health
+
+      - name: Run the prod E2E smoke checks (E57-S3-T2)
+        run: python scripts/ci_prod_e2e_smoke.py "http://127.0.0.1:8000" "$DATABASE_URL"
+
+      - name: Stop the backend before backup/restore
+        run: pkill -f "uvicorn backend.api.main" || true
+
+      - name: Back up the database and artifacts (E57-S4-T1)
+        run: python -m backend.persistence.backup backup --out /tmp/e2e-backup
+
+      - name: Wipe the database (drop and recreate empty)
+        env:
+          PGPASSWORD: ${{ env.AUTODEV_PG_TEST_ROLE_PASSWORD }}
+        run: |
+          psql -h localhost -U ci_test -d autodev -c "DROP DATABASE autodev_e2e;"
+          psql -h localhost -U ci_test -d autodev -c "CREATE DATABASE autodev_e2e;"
+
+      - name: Restore from backup (E57-S4-T1)
+        run: python -m backend.persistence.backup restore --from /tmp/e2e-backup
+
+      - name: Restart the backend against the restored database
+        run: nohup python -m uvicorn backend.api.main:app --host 127.0.0.1 --port 8000 > backend-restored.log 2>&1 &
+
+      - name: Wait for the restored backend to become healthy
+        run: curl -sf --retry 20 --retry-delay 2 --retry-connrefused http://127.0.0.1:8000/health
+
+      - name: Run the post-restore smoke check (E57-S4-T2)
+        run: python scripts/ci_prod_e2e_smoke.py "http://127.0.0.1:8000" "$DATABASE_URL" --post-restore
+
+      - name: Diagnostics on failure (E57-S4-T3)
+        if: failure()
+        env:
+          PGPASSWORD: ${{ env.AUTODEV_PG_TEST_ROLE_PASSWORD }}
+        run: |
+          echo "--- backend.log ---"; cat backend.log 2>/dev/null || true
+          echo "--- backend-restored.log ---"; cat backend-restored.log 2>/dev/null || true
+          echo "--- minio log ---"; docker logs minio 2>&1 || true
+          echo "--- postgres schema_version ---"
+          psql -h localhost -U ci_test -d autodev_e2e -c \
+            "SELECT namespace, version FROM schema_version;" || true
+
+      - name: Stop backend and MinIO
+        if: always()
+        run: |
+          pkill -f "uvicorn backend.api.main" || true
+          docker rm -f minio || true

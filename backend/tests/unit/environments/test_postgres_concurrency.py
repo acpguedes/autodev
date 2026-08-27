@@ -22,13 +22,16 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from backend.environments.store import EnvironmentRecord
+from backend.tests.postgres_gate import REQUIRE_POSTGRES_ENV, require_mark
 
 _POSTGRES_URL = os.environ.get("AUTODEV_TEST_POSTGRES_URL", "")
 
 pytestmark = [
     pytest.mark.slow,
-    pytest.mark.skipif(
-        not _POSTGRES_URL, reason="requires AUTODEV_TEST_POSTGRES_URL (a real PostgreSQL, E54)"
+    require_mark(
+        bool(_POSTGRES_URL),
+        require_env=REQUIRE_POSTGRES_ENV,
+        reason="requires AUTODEV_TEST_POSTGRES_URL (a real PostgreSQL, E54)",
     ),
 ]
 
@@ -160,14 +163,18 @@ def test_crash_recovery_a_second_instance_reclaims_an_orphaned_environment() -> 
     teardown() -- the durable record is the only trace of the environment,
     exactly as it would be after a real crash. A second, genuinely separate
     OS process then runs the same sweep a healthy replica would run and
-    reclaims it, and the tenant's concurrency count returns to a correct
-    (zero) value once it has (E54-S3-T3).
+    reclaims it, transitioning the row from "active" to "orphaned"
+    (E54-S3-T3). ``count_active`` only counts non-expired active rows
+    (``backend/tests/unit/environments/test_store.py::
+    test_count_active_only_counts_active_unexpired``), so it already reads
+    zero for this already-expired record both before and after the claim;
+    the claim's proof is the status transition itself, asserted below.
     """
     tenant_id = _tenant()
     store = _store()
     environment_id = f"{tenant_id}-crashed-env"
     store.create_environment(_record(tenant_id, environment_id, expires_in_seconds=-10))
-    assert store.count_active(tenant_id) == 1
+    assert store.count_active(tenant_id) == 0
 
     before = datetime.now(timezone.utc).isoformat()
     attempts = 8

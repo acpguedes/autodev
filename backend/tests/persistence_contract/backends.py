@@ -17,6 +17,8 @@ from typing import Iterator
 
 import pytest
 
+from backend.tests.postgres_gate import REQUIRE_POSTGRES_ENV
+
 #: Environment variable naming the *admin* PostgreSQL URL used to create and
 #: drop per-test databases. Mirrors the convention already used by
 #: ``backend/tests/unit/{quotas,secret_store,execution,environments,plans}/test_postgres_concurrency.py``,
@@ -115,6 +117,9 @@ def backend(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Backend]
 
     The PostgreSQL branch is an explicit, named skip when
     ``AUTODEV_TEST_POSTGRES_URL`` is unset (S1-T2) -- never a silent pass.
+    On CI's PostgreSQL leg (``AUTODEV_REQUIRE_POSTGRES`` set), the same
+    missing-URL condition fails the test instead, so a broken service
+    container turns the leg red rather than quietly skipping (E57-S2-T2).
     """
     if request.param == "sqlite":
         yield sqlite_backend(tmp_path)
@@ -122,6 +127,8 @@ def backend(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Backend]
 
     admin_url = postgres_admin_url()
     if admin_url is None:
+        if os.environ.get(REQUIRE_POSTGRES_ENV):
+            pytest.fail(POSTGRES_SKIP_REASON, pytrace=False)
         pytest.skip(POSTGRES_SKIP_REASON)
     database_url = provision_postgres_database(admin_url)
     try:

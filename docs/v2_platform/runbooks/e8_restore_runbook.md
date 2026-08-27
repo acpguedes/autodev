@@ -87,15 +87,26 @@ The command verifies the manifest first and exits `!= 0` on any failure.
 
 ### 4.2 PostgreSQL State Store
 
-- Restored via `pg_restore --clean --if-exists --no-owner
+- Restored via `pg_restore --clean --if-exists
   --dbname=<password-free URL> state_store.pgdump`, with the password passed
-  separately through `PGPASSWORD`.
+  separately through `PGPASSWORD`. Ownership from the dump is preserved
+  (`--no-owner` is deliberately not passed) so restored objects come back
+  owned by the app's own role, not whatever role ran the restore — see
+  `AUTODEV_BACKUP_DATABASE_URL` below.
 - The component is skipped only when the manifest has no PostgreSQL dump to
   begin with. If the manifest *does* contain a completed PostgreSQL dump,
   `pg_restore` must be on `PATH` and the database reachable — a missing
   `pg_restore` tool or an unreachable/non-PostgreSQL `DATABASE_URL` fails the
   restore closed (E11-S4) instead of silently skipping a component the
   backup actually captured.
+- **RLS-scoped tables (E50-S4) need a maintenance connection.**
+  `code_chunks`/`code_embeddings` are created with `FORCE ROW LEVEL
+  SECURITY`, so a whole-database `pg_dump`/`pg_restore` needs a connection
+  that bypasses RLS (superuser or `BYPASSRLS`) — the app's own
+  `DATABASE_URL` role deliberately does not have that privilege (E56-S3-T2).
+  Set `AUTODEV_BACKUP_DATABASE_URL` to a separate maintenance connection on
+  the same database/role-set (E57-S4); when unset, backup/restore reuse
+  `DATABASE_URL` and fail closed against an RLS-forced deployment.
 
 ### 4.3 Artifact Store
 

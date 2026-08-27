@@ -29,8 +29,16 @@ def _iso(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat()
 
 
-def _parse_iso(value: str) -> datetime:
-    """Parse an ISO-8601 string back into a timezone-aware ``datetime``."""
+def _parse_iso(value: str | datetime) -> datetime:
+    """Parse a row's timestamp value into a timezone-aware ``datetime``.
+
+    SQLite's ``TEXT`` timestamp columns come back as ``str``, but psycopg
+    deserializes PostgreSQL's ``TIMESTAMPTZ`` columns
+    (``auth_store_statements``) directly into ``datetime`` objects -- accept
+    either rather than assuming the SQLite shape (E57).
+    """
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
     parsed = datetime.fromisoformat(value)
     return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 

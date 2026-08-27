@@ -218,31 +218,36 @@ found — it is a named gap, not presumed resolved.
 | # | Criterion (summary) | Status | Evidence |
 | --- | --- | --- | --- |
 | 1 | Real plan→code→patch→validate→evaluate flow with RBAC, fail-closed budgets, end-to-end traces | **Partial** | Each component has isolated evidence — RBAC (`backend/tests/unit/security/`, ADR-018), fail-closed budgets (E14-S2 `backend/execution/policy.py` + E11-S3 quotas), traces (`test_orchestrator_agent_step_emits_correlated_span`), real execution (E14-S1..S4). **No single composite test** covers the five steps within one execution — that is exactly the object of `docs/v2_platform/beta_acceptance_flow.md` (E35-S2), which is also not a new automated test, it is the executable checklist that composes this evidence. |
-| 2 | Hybrid retrieval p95 < 300 ms and recall baseline | **Open** | `phases/e7_context_rag.md` line 178 already states: "unverified without a live [environment]". The harness exists (`backend/repository/retrieval/benchmark.py`, `scripts/benchmark_retrieval.py --max-p95-ms --min-recall`), but there is no recorded run against a live environment proving the target. |
+| 2 | Hybrid retrieval p95 < 300 ms and recall baseline | **Open** | `phases/e7_context_rag.md` line 178 already states: "unverified without a live [environment]". The harness exists (`backend/repository/retrieval/benchmark.py`, `scripts/benchmark_retrieval.py --max-p95-ms --min-recall`), but there is no recorded run against a live environment proving the target. E57's `prod-e2e` job now proves the vector path executes for real against PostgreSQL + pgvector on every pull request (criterion 13) — a live environment for this benchmark to eventually run against — but does not itself measure p95 or recall, which stays out of E57's scope by design. |
 | 3 | Run streaming starts < 1 s | **Open** | `backend/tests/unit/api/test_runs_stream_v2.py` covers functional correctness (backlog, resume, heartbeat, disconnection) but no test measures a numeric latency bound. |
 | 4 | Every extension point has a green contract test; quality gates block merge | **Met** | `backend/tests/contract/test_extension_point_coverage.py`; `ci-backend.yml` (`lint-typecheck` + `patch-validation` gates, E12-S4) |
 | 5 | UI WCAG 2.2 AA on key screens; flow editor with round-trip | **Partial** | Round-trip: `frontend/lib/flow/yaml.ts` + E17-S6 (**Met**). WCAG: per-component coverage via Storybook-axe in E15/E17 (`frontend/**/*.stories.tsx`), but **no consolidated per-screen WCAG 2.2 AA audit** exists — the E19 visual-parity audit (proposed, not planned) would be the natural vehicle for this. |
-| 6 | Backup/restore validated (RPO ≤ 5 min, RTO ≤ 30 min) in staging | **Open** | `phases/e8_persistence_data.md` lines 203–205: "No staging environment" — validation done via a documented execution procedure (`runbooks/e8_restore_runbook.md`), not in real staging. |
+| 6 | Backup/restore validated (RPO ≤ 5 min, RTO ≤ 30 min) in staging | **Partial** | `.github/workflows/ci-e2e.yml`'s `prod-e2e` job now runs a real backup → wipe → restore round trip against PostgreSQL + MinIO on every pull request (E57-S4), with a post-restore smoke test proving the restored environment serves real data — not merely a documented procedure. Still open: this is CI, not a persistent staging environment, and no run has recorded RPO/RTO against the stated targets. |
 | 7 | v2 design language + E15 app shell adopted | **Met** | E15 Done (4/4); `docs/v2_platform/phases/e15_design_language_shell.md` |
 | 8 | `/v2` API parity (E16) | **Met** | E16 Done (4/4); `docs/v2_platform/phases/e16_redesign_api_enablement.md` |
 | 9 | Control Center screens (E17) | **Met** | E17 Done (6/6); `docs/v2_platform/phases/e17_control_center_screens.md` |
 | 10 | Isolated execution fail-closed by default, audited decision (E32) | **Met** | `backend/environments/` (`EnvironmentBackend`, `UnavailableBackend`), `environment.instance.*`/`environment.access.*` event catalog, `docs/environments/beta_isolation.md`, ADR-013 Accepted |
 | 11 | No secret in cleartext; audited leak fixture (E33) | **Met** | `backend/secret_store/redaction.py`, `secret.leak.suspected` event, `docs/security/secrets.md`, ADR-014 Accepted |
 | 12 | Clean-environment install verified; upgrade preserves data (E34) | **Met** | `scripts/verify_clean_install.sh`, `backend/ops/version.py`, `MigrationRunner.run_pending` (`SchemaVersionMismatchError`), `docs/execution/cli-install.md`, `docs/execution/upgrade.md`, ADR-015 Accepted |
-| 13 | `prod` boots from empty on PostgreSQL 16 + pgvector and serves a real vector query | **Open** | `backend/persistence/migrations/postgres_versions.py:253` runs `CREATE EXTENSION IF NOT EXISTS vector`; `infrastructure/docker-compose.yml:116` ships stock `postgres:16-alpine`, which does not bundle it — PG migration 4 cannot succeed on the shipped stack. No recorded from-empty `prod` bring-up. Added 2026-08-21 (E48). |
-| 14 | SQLite and PostgreSQL pass the same functional contract | **Open** | 13 tables have no PostgreSQL migration (zero matches in `postgres_versions.py`) and 5 stores refuse or divert on a PostgreSQL URL (G9, G10). No contract suite compares backends; `backend/sdk/testing.py:30` pins SQLite via the `DurableStore = SQLiteStore` alias (`persistence/database.py:23`). Added 2026-08-21 (E49-E56). |
-| 15 | Every pull request runs a real `prod`-profile E2E | **Open** | No `services:` block in any workflow under `.github/workflows/`; `backend/tests/unit/persistence/test_postgres_store.py:73-92` monkeypatches `sys.modules["psycopg"]`. Mocked connections are not PostgreSQL evidence. Added 2026-08-21 (E57). |
+| 13 | `prod` boots from empty on PostgreSQL 16 + pgvector and serves a real vector query | **Met** | `.github/workflows/ci-e2e.yml`'s `prod-e2e` job (E57-S3) boots the real `prod` profile against a freshly provisioned `pgvector/pgvector:0.8.3-pg16` database on every pull request — `validate_profile`/`validate_auth_readiness` enforcement is the boot itself — and `scripts/ci_prod_e2e_smoke.py` queries `/v2/context/retrieve?mode=vector` against a seeded chunk, asserting a real result. |
+| 14 | SQLite and PostgreSQL pass the same functional contract | **Met** | `.github/workflows/ci-backend.yml`'s `backend-tests-postgres` job (E57-S2) runs the full `backend/tests/persistence_contract` suite — both backend parameters — against real PostgreSQL on every pull request, with `AUTODEV_REQUIRE_POSTGRES=1` so a broken service fails the leg instead of the `postgres` parameter silently skipping. |
+| 15 | Every pull request runs a real `prod`-profile E2E | **Met** | `.github/workflows/ci-e2e.yml`'s `prod-e2e` job (E57-S3/S4): real `prod` profile boot, a session create/read flow, two-tenant RLS both directions, a real vector query, and a backup/restore round trip with a post-restore smoke test — all against real PostgreSQL, Redis, and MinIO service containers. |
 
-**Honest summary**: 7 of 15 criteria **Met** (4, 7, 8, 9, 10, 11, 12), 2
-**Partial** (1 and 5 — real but incomplete evidence), 6 **Open** (2, 3, 6,
-13, 14, 15 — no verification evidence, only tooling/documentation to
-verify). Criteria 13-15 were added 2026-08-21 by the E48-E60 PostgreSQL
-Production Completeness program
+**Honest summary**: 10 of 15 criteria **Met** (4, 7, 8, 9, 10, 11, 12, 13,
+14, 15), 3 **Partial** (1 and 5 — real but incomplete evidence; 6 — a real
+CI round trip now exists but no persistent staging environment or measured
+RPO/RTO), 2 **Open** (2, 3 — no verification evidence, only tooling/
+documentation to verify). Criteria 13-15 were added
+2026-08-21 by the E48-E60 PostgreSQL Production Completeness program
 (`postgres_production_completeness.md`); they correspond to gaps G9-G13
-above and are named against verified file:line evidence, not presumed.
-This is not the "complete" gate — it is
+above and were closed 2026-08-26 by E57 against verified CI-run evidence,
+not presumed. This is not the "complete" gate — it is
 the **measurable** gate: each
 remaining gap is named with its exact cause, not hidden behind
-a checked box. Closing 2 and 6 requires a live environment (staging /
-a populated retrieval dataset) that is out of scope for E35 (E35
-audits and maps evidence; it does not own staging infrastructure).
+a checked box. Closing 2 fully requires a live environment with a
+populated retrieval dataset to benchmark against (E57 provides the live
+environment; the benchmark run itself stays out of scope). Closing 6 fully
+requires a persistent staging environment with measured RPO/RTO, which is
+out of scope for E35 (E35 audits and maps evidence; it does not own
+staging infrastructure) and for E57 (CI wiring, not staging
+infrastructure).

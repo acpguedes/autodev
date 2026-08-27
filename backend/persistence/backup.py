@@ -203,15 +203,28 @@ class BackupManager:
             URLs enable the PostgreSQL component.
         artifact_store: Artifact store whose objects should be mirrored, or
             ``None`` to skip the artifact component.
+        postgres_admin_url: Optional separate ``postgresql://`` connection
+            used only for the ``pg_dump``/``pg_restore`` invocation, in place
+            of ``database_url``. RLS-scoped tables (``code_chunks``,
+            ``code_embeddings``, E50-S4) are created with ``FORCE ROW LEVEL
+            SECURITY``, so a whole-database dump needs a connection that
+            bypasses RLS (superuser or ``BYPASSRLS``); the app's own
+            ``DATABASE_URL`` role deliberately does not have that privilege
+            (E56-S3-T2 found that granting it makes RLS isolation tests pass
+            vacuously). Falls back to ``database_url`` when unset, which
+            reproduces that failure against an RLS-forced deployment -- set
+            this to a maintenance connection to fix it.
     """
 
     def __init__(
         self,
         database_url: str = "",
         artifact_store: ArtifactStore | None = None,
+        postgres_admin_url: str = "",
     ) -> None:
         self.database_url = (database_url or "").strip()
         self.artifact_store = artifact_store
+        self.postgres_admin_url = (postgres_admin_url or "").strip()
 
     # ------------------------------------------------------------------
     # Backup
@@ -334,7 +347,9 @@ class BackupManager:
                 "PostgreSQL backup is configured but pg_dump is not available"
             )
         dump_path = target / POSTGRES_DUMP_FILENAME
-        safe_url, environment = _postgres_cli_connection(self.database_url)
+        safe_url, environment = _postgres_cli_connection(
+            self.postgres_admin_url or self.database_url
+        )
         result = subprocess.run(
             [
                 pg_dump,
@@ -585,6 +600,13 @@ class BackupManager:
         of silently skipping the restore of a component the backup actually
         captured.
 
+        Deliberately omits ``--no-owner``: restored objects keep the
+        ownership recorded in the dump (E57-S4 found the hard way that
+        stripping it, combined with a ``postgres_admin_url`` distinct from
+        the app's own role, leaves the app unable to read or write anything
+        it just restored -- the tables end up owned by the connecting admin
+        role instead of the app's own).
+
         Args:
             source: Backup directory.
             spec: ``postgres`` component manifest entry.
@@ -614,13 +636,14 @@ class BackupManager:
                 "postgresql://"
             )
         dump_path = source / spec["file"]
-        safe_url, environment = _postgres_cli_connection(self.database_url)
+        safe_url, environment = _postgres_cli_connection(
+            self.postgres_admin_url or self.database_url
+        )
         result = subprocess.run(
             [
                 pg_restore,
                 "--clean",
                 "--if-exists",
-                "--no-owner",
                 f"--dbname={safe_url}",
                 str(dump_path),
             ],
@@ -722,6 +745,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         manager = BackupManager(
             database_url=settings.database_url,
             artifact_store=get_artifact_store(settings),
+            postgres_admin_url=settings.autodev_backup_database_url,
         )
         if args.command == "backup":
             # Only success after every configured component completes is

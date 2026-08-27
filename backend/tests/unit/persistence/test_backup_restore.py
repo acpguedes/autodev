@@ -32,8 +32,16 @@ from backend.persistence.backup import (
 from backend.persistence.sqlite_adapter import SQLiteStore
 from backend.persistence.sqlite_adapter.plan_store import SQLitePlanStore
 from backend.plans.step_state import StepApprovalStore
+from backend.tests.postgres_gate import REQUIRE_MINIO_ENV, REQUIRE_POSTGRES_ENV, require_mark
 
 _POSTGRES_URL = os.environ.get("AUTODEV_TEST_POSTGRES_URL", "")
+#: Separate connection that bypasses RLS (superuser or BYPASSRLS), for the
+#: pg_dump/pg_restore round trip. AUTODEV_TEST_POSTGRES_URL's role
+#: deliberately does not have that privilege (E56-S3-T2), and RLS-scoped
+#: tables are FORCE ROW LEVEL SECURITY (E50-S4), so a whole-database dump
+#: needs this separate maintenance connection -- see
+#: backend.persistence.backup.BackupManager's postgres_admin_url.
+_POSTGRES_BACKUP_URL = os.environ.get("AUTODEV_TEST_POSTGRES_BACKUP_URL", "")
 _MINIO_ENDPOINT = os.environ.get("AUTODEV_TEST_MINIO_ENDPOINT", "")
 
 
@@ -264,21 +272,47 @@ def test_backup_fails_when_sqlite_database_missing(tmp_path: Path) -> None:
         manager.backup(tmp_path / "backup")
 
 
-@pytest.mark.skipif(
-    not _POSTGRES_URL or shutil.which("pg_dump") is None,
+@require_mark(
+    bool(_POSTGRES_URL) and shutil.which("pg_dump") is not None,
+    require_env=REQUIRE_POSTGRES_ENV,
     reason="requires AUTODEV_TEST_POSTGRES_URL and pg_dump/pg_restore on PATH",
 )
 def test_postgres_backup_restore_round_trip(tmp_path: Path) -> None:
-    """pg_dump → pg_restore round trip against a disposable database."""
-    manager = BackupManager(database_url=_POSTGRES_URL)
-    backup_dir = tmp_path / "backup"
-    report = manager.backup(backup_dir)
-    statuses = {c.name: c.status for c in report.components}
-    assert statuses["postgres"] == "completed"
-    manager.verify(backup_dir)
-    restore_report = manager.restore(backup_dir)
-    restore_statuses = {c.name: c.status for c in restore_report.components}
-    assert restore_statuses["postgres"] == "completed"
+    """pg_dump → pg_restore round trip against a disposable database.
+
+    Provisions its own throwaway database rather than running against the
+    shared AUTODEV_TEST_POSTGRES_URL database directly: pg_restore's
+    ``--clean`` recreates every table it touches, which would strip
+    ci_test's privileges on ``schema_version`` and everything else out from
+    under the test_postgres_concurrency.py files that depend on that shared
+    database staying up for the duration of the CI run (E57 found this the
+    hard way -- see the epic's PR history).
+    """
+    from backend.persistence.postgres_adapter import PostgresStore
+    from backend.tests.persistence_contract.backends import (
+        drop_postgres_database,
+        provision_postgres_database,
+    )
+
+    database_url = provision_postgres_database(_POSTGRES_URL)
+    try:
+        PostgresStore(database_url)  # apply migrations, including FORCE RLS
+        db_name = database_url.rsplit("/", 1)[-1]
+        admin_base = (_POSTGRES_BACKUP_URL or _POSTGRES_URL).rsplit("/", 1)[0]
+        manager = BackupManager(
+            database_url=database_url,
+            postgres_admin_url=f"{admin_base}/{db_name}",
+        )
+        backup_dir = tmp_path / "backup"
+        report = manager.backup(backup_dir)
+        statuses = {c.name: c.status for c in report.components}
+        assert statuses["postgres"] == "completed"
+        manager.verify(backup_dir)
+        restore_report = manager.restore(backup_dir)
+        restore_statuses = {c.name: c.status for c in restore_report.components}
+        assert restore_statuses["postgres"] == "completed"
+    finally:
+        drop_postgres_database(_POSTGRES_URL, database_url)
 
 
 def test_postgres_backup_fails_closed_without_tooling(tmp_path: Path) -> None:
@@ -292,8 +326,9 @@ def test_postgres_backup_fails_closed_without_tooling(tmp_path: Path) -> None:
         manager.backup(tmp_path / "backup")
 
 
-@pytest.mark.skipif(
-    not _MINIO_ENDPOINT,
+@require_mark(
+    bool(_MINIO_ENDPOINT),
+    require_env=REQUIRE_MINIO_ENV,
     reason="requires AUTODEV_TEST_MINIO_ENDPOINT (and MinIO credentials env)",
 )
 def test_minio_artifact_mirror_round_trip(tmp_path: Path) -> None:

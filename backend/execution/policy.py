@@ -194,6 +194,25 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _iso(value: Any) -> Any:
+    """Normalize a possibly-``datetime`` row value to an ISO-8601 string.
+
+    SQLite returns ``TEXT`` timestamp columns as plain strings, but psycopg
+    deserializes PostgreSQL's ``TIMESTAMPTZ`` columns into ``datetime``
+    objects -- without this, :class:`PendingDecision`'s ``str``-typed
+    timestamp fields (compared as strings in
+    :meth:`~backend.execution.decisions.DecisionService._maybe_expire`)
+    would silently hold a different type per backend (E57).
+
+    Args:
+        value: A row value, either already a string/``None`` or a ``datetime``.
+
+    Returns:
+        *value* unchanged, or its ISO-8601 string form if it was a ``datetime``.
+    """
+    return value.isoformat() if isinstance(value, datetime) else value
+
+
 #: Column order for a full ``pending_action_decisions`` row, shared by every
 #: ``SELECT`` that reads a whole row and by :meth:`PolicyStore._row_to_decision`
 #: -- explicit rather than ``SELECT *`` so positional indexing (required for
@@ -661,10 +680,10 @@ class PolicyStore:
             category=PolicyCategory(row[5]),
             prompt=row[6],
             status=DecisionStatus(row[7]),
-            created_at=row[8],
-            expires_at=row[9],
+            created_at=_iso(row[8]),
+            expires_at=_iso(row[9]),
             decided_by=row[10],
-            decided_at=row[11],
+            decided_at=_iso(row[11]),
             pattern=row[12],
         )
 

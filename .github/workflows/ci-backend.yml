@@ -117,6 +117,10 @@ jobs:
           trivyignores: .trivyignore.yaml
           timeout: 3m
 
+  # "local" matrix leg (E57-S2-T1): SQLite, the coverage gate, and the
+  # existing required-check name (CONTRIBUTING.md, branch protection on
+  # `main`) -- unchanged from before E57 so this stays the one check every
+  # branch-protection rule already knows about.
   backend-tests:
     runs-on: ubuntu-latest
     steps:
@@ -156,3 +160,171 @@ jobs:
             coverage_summary.md
           retention-days: 14
           if-no-files-found: warn
+
+  # "prod" matrix leg (E57-S1/S2/S3): real PostgreSQL 16 + pgvector, Redis,
+  # and MinIO. Runs every test the `backend-tests` leg runs plus the ones
+  # marked `slow` (the E51-E55 real-connection concurrency proofs and the
+  # PostgreSQL/MinIO backup-restore round trips) that only mean anything
+  # against a live service. No `--cov-fail-under` here: `backend-tests` is
+  # the coverage gate (E57-S2 risk register -- "decide coverage aggregation
+  # across legs" -- decided as SQLite-only, since this leg's job is proving
+  # the PostgreSQL/Redis/MinIO paths execute for real, not re-measuring
+  # coverage of code the other leg already covers).
+  backend-tests-postgres:
+    runs-on: ubuntu-latest
+    env:
+      # Service container `env:` is evaluated before any step in this job
+      # runs, so these can't come from a step output; the run id/attempt
+      # make each value unique per CI run without checking a static
+      # credential into the workflow (no sample passwords in docs extends
+      # to workflow files, per the E57 epic doc).
+      AUTODEV_PG_SUPERUSER_PASSWORD: ci-superuser-${{ github.run_id }}-${{ github.run_attempt }}
+      AUTODEV_PG_TEST_ROLE_PASSWORD: ci-test-role-${{ github.run_id }}-${{ github.run_attempt }}
+      AUTODEV_MINIO_ROOT_USER: ci-minio-${{ github.run_id }}-${{ github.run_attempt }}
+      AUTODEV_MINIO_ROOT_PASSWORD: ci-minio-pw-${{ github.run_id }}-${{ github.run_attempt }}
+    services:
+      postgres:
+        # Same pinned pgvector image as infrastructure/docker-compose.yml
+        # (E48-S1, ADR-024) so CI and Compose cannot drift apart.
+        #
+        # POSTGRES_PASSWORD is inlined here (not `${{ env.* }}`) because a
+        # `services:` container's own `env:` block does not have the job's
+        # `env` context available -- only `github`/`needs`/`vars`/`secrets`/
+        # `inputs`/`matrix`/`strategy` -- it is evaluated before any step
+        # (where `env.AUTODEV_PG_SUPERUSER_PASSWORD` below is used) runs.
+        image: pgvector/pgvector:0.8.3-pg16
+        env:
+          POSTGRES_DB: autodev
+          POSTGRES_USER: autodev
+          POSTGRES_PASSWORD: ci-superuser-${{ github.run_id }}-${{ github.run_attempt }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U autodev -d autodev"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+
+      - name: Install PostgreSQL client tools (psql, pg_dump, pg_restore)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Start MinIO
+        # GitHub Actions `services:` containers cannot override the image's
+        # command, and the official MinIO image needs `server /data ...` as
+        # its command -- so it starts as a plain `docker run`, mirroring
+        # infrastructure/docker-compose.yml's own minio service (same
+        # pinned image), instead of as a `services:` entry.
+        run: |
+          docker run -d --name minio \
+            -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER="$AUTODEV_MINIO_ROOT_USER" \
+            -e MINIO_ROOT_PASSWORD="$AUTODEV_MINIO_ROOT_PASSWORD" \
+            minio/minio:RELEASE.2025-04-22T22-12-26Z server /data --console-address ":9001"
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9000/minio/health/live && exit 0
+            sleep 1
+          done
+          echo "MinIO did not become healthy in time" >&2
+          docker logs minio || true
+          exit 1
+
+      - name: Provision the non-superuser test role and the pgvector extension
+        env:
+          PGPASSWORD: ${{ env.AUTODEV_PG_SUPERUSER_PASSWORD }}
+        run: |
+          psql -h localhost -U autodev -d autodev -c \
+            "CREATE ROLE ci_test LOGIN CREATEDB PASSWORD '${AUTODEV_PG_TEST_ROLE_PASSWORD}';"
+          # A non-superuser role only gets CREATE on the public schema of a
+          # database it owns -- i.e. one it creates itself via CREATEDB --
+          # and can never install pgvector into such a database (RLS tests
+          # require a non-superuser connection, backend/tests/persistence_
+          # contract/backends.py), so install pgvector into template1: every
+          # later CREATE DATABASE, by any role, inherits it from there. The
+          # bootstrap `autodev` database itself predates that (created by
+          # the postgres image's own initdb, before this step ran) and does
+          # not retroactively inherit template1, so it needs the same
+          # extension installed directly too -- AUTODEV_TEST_POSTGRES_URL
+          # below points at it, and so does every
+          # test_postgres_concurrency.py file that connects to it directly
+          # rather than provisioning its own throwaway database, so ci_test
+          # also needs an explicit grant on its public schema (PostgreSQL 15+
+          # no longer grants that to every role by default).
+          psql -h localhost -U autodev -d template1 -c "CREATE EXTENSION IF NOT EXISTS vector;"
+          psql -h localhost -U autodev -d autodev -c "CREATE EXTENSION IF NOT EXISTS vector;"
+          psql -h localhost -U autodev -d autodev -c "GRANT CREATE ON SCHEMA public TO ci_test;"
+
+      - name: Apply migrations to an empty PostgreSQL database (E57-S1-T2/T3)
+        env:
+          AUTODEV_TEST_POSTGRES_URL: postgresql://ci_test:${{ env.AUTODEV_PG_TEST_ROLE_PASSWORD }}@localhost:5432/autodev
+        run: python scripts/ci_migrations_check.py "$AUTODEV_TEST_POSTGRES_URL"
+
+      - name: Pre-migrate the shared PostgreSQL database used by AUTODEV_TEST_POSTGRES_URL
+        # backend/tests/unit/{quotas,secret_store,execution,environments,
+        # plans}/test_postgres_concurrency.py deliberately build PostgresStore
+        # against the *shared* AUTODEV_TEST_POSTGRES_URL database (not a
+        # throwaway one -- unlike the contract suite's `backend` fixture),
+        # each construction self-migrating. Under -n auto, multiple xdist
+        # workers can each start one of those files at nearly the same
+        # moment, all racing PostgresStore's first-ever `CREATE TABLE IF NOT
+        # EXISTS schema_version` on an empty database -- a genuine DDL race,
+        # reproduced locally (concurrent `CREATE TABLE IF NOT EXISTS`
+        # duplicate-key errors on `pg_type`). One serial construction here,
+        # before pytest starts, leaves the schema already in place, which is
+        # race-free for every later (re-)migration.
+        env:
+          AUTODEV_TEST_POSTGRES_URL: postgresql://ci_test:${{ env.AUTODEV_PG_TEST_ROLE_PASSWORD }}@localhost:5432/autodev
+        run: |
+          python -c "
+          import sys; sys.path.insert(0, '.')
+          from backend.persistence.postgres_adapter import PostgresStore
+          import os
+          PostgresStore(os.environ['AUTODEV_TEST_POSTGRES_URL'])
+          print('pre-migrated', os.environ['AUTODEV_TEST_POSTGRES_URL'])
+          "
+
+      - name: Run backend test suite against real PostgreSQL, Redis, and MinIO (E57-S2)
+        env:
+          AUTODEV_TEST_POSTGRES_URL: postgresql://ci_test:${{ env.AUTODEV_PG_TEST_ROLE_PASSWORD }}@localhost:5432/autodev
+          # ci_test deliberately lacks BYPASSRLS (E56-S3-T2), so the backup
+          # round-trip test needs a separate connection that can pg_dump a
+          # table with FORCE ROW LEVEL SECURITY (E50-S4) -- the bootstrap
+          # superuser role, same one used to provision ci_test above.
+          AUTODEV_TEST_POSTGRES_BACKUP_URL: postgresql://autodev:${{ env.AUTODEV_PG_SUPERUSER_PASSWORD }}@localhost:5432/autodev
+          AUTODEV_REQUIRE_POSTGRES: "1"
+          AUTODEV_TEST_MINIO_ENDPOINT: "localhost:9000"
+          AUTODEV_TEST_MINIO_ACCESS_KEY: ${{ env.AUTODEV_MINIO_ROOT_USER }}
+          AUTODEV_TEST_MINIO_SECRET_KEY: ${{ env.AUTODEV_MINIO_ROOT_PASSWORD }}
+          AUTODEV_REQUIRE_MINIO: "1"
+          AUTODEV_REDIS_URL: "redis://localhost:6379/0"
+        run: python -m pytest tests backend/tests -q -n auto
+
+      - name: Show MinIO log on failure
+        if: failure()
+        run: docker logs minio || true
+
+      - name: Stop MinIO
+        if: always()
+        run: docker rm -f minio || true

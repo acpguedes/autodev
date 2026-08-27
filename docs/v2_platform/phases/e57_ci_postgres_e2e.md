@@ -3,7 +3,7 @@
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35 and E41-E47: added after initial Beta
 completion, before the wave is signed off).
-**Status:** Not started · **Stories:** 0/4
+**Status:** Done · **Stories:** 4/4
 **Depends on:** E48 (a pgvector-capable runtime), E56 (the contract suite CI
 must run), E50-E55 (the behavior the E2E exercises)
 **Enables:** every claim this program makes to be continuously verified
