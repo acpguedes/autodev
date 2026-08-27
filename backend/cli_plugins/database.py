@@ -23,9 +23,10 @@ import argparse
 import json
 import sys
 from dataclasses import asdict
+from pathlib import Path
 
 from backend.persistence.sqlite_to_postgres.plan import MigrationPlan, build_dry_run_plan
-from backend.persistence.sqlite_to_postgres.preflight import run_preflight
+from backend.persistence.sqlite_to_postgres.runner import run_migration
 
 
 def _plan_to_dict(plan: MigrationPlan) -> dict:
@@ -38,6 +39,10 @@ def _plan_to_dict(plan: MigrationPlan) -> dict:
     }
 
 
+def _print_progress(table: str, rows_copied: int) -> None:
+    print(f"  {table}: {rows_copied} rows copied", file=sys.stderr)
+
+
 def _handle_migrate(args: argparse.Namespace) -> int:
     if args.dry_run:
         plan = build_dry_run_plan(
@@ -48,20 +53,17 @@ def _handle_migrate(args: argparse.Namespace) -> int:
         print(json.dumps(_plan_to_dict(plan), indent=2))
         return 0 if plan.preflight.passed else 1
 
-    preflight = run_preflight(
-        args.source, args.dest, confirm_nonempty_destination=args.confirm_nonempty_destination
+    result = run_migration(
+        args.source,
+        args.dest,
+        confirm_nonempty_destination=args.confirm_nonempty_destination,
+        report_path=Path(args.report) if args.report else None,
+        on_progress=_print_progress,
     )
-    if not preflight.passed:
-        print(json.dumps(asdict(preflight), indent=2), file=sys.stderr)
+    print(json.dumps(result.as_dict(), indent=2))
+    if not result.preflight.passed:
         return 1
-
-    print(
-        "error: full migration (E58-S2/S3/S4: ordered copy, reconciliation, "
-        "resumption) is not yet implemented — only --dry-run and preflight "
-        "are available so far.",
-        file=sys.stderr,
-    )
-    return 1
+    return 0 if result.safe_to_cut_over else 1
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[type-arg]
@@ -90,5 +92,11 @@ def register(subparsers: argparse._SubParsersAction) -> None:  # type: ignore[ty
         "--confirm-nonempty-destination",
         action="store_true",
         help="Proceed even though the destination already contains data.",
+    )
+    migrate_parser.add_argument(
+        "--report",
+        default=None,
+        help="Path to persist the full migration/reconciliation report as JSON "
+        "(ignored with --dry-run). Never contains a raw connection string.",
     )
     migrate_parser.set_defaults(handler=_handle_migrate)
