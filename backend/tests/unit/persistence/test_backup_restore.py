@@ -35,6 +35,13 @@ from backend.plans.step_state import StepApprovalStore
 from backend.tests.postgres_gate import REQUIRE_MINIO_ENV, REQUIRE_POSTGRES_ENV, require_mark
 
 _POSTGRES_URL = os.environ.get("AUTODEV_TEST_POSTGRES_URL", "")
+#: Separate connection that bypasses RLS (superuser or BYPASSRLS), for the
+#: pg_dump/pg_restore round trip. AUTODEV_TEST_POSTGRES_URL's role
+#: deliberately does not have that privilege (E56-S3-T2), and RLS-scoped
+#: tables are FORCE ROW LEVEL SECURITY (E50-S4), so a whole-database dump
+#: needs this separate maintenance connection -- see
+#: backend.persistence.backup.BackupManager's postgres_admin_url.
+_POSTGRES_BACKUP_URL = os.environ.get("AUTODEV_TEST_POSTGRES_BACKUP_URL", "")
 _MINIO_ENDPOINT = os.environ.get("AUTODEV_TEST_MINIO_ENDPOINT", "")
 
 
@@ -272,7 +279,9 @@ def test_backup_fails_when_sqlite_database_missing(tmp_path: Path) -> None:
 )
 def test_postgres_backup_restore_round_trip(tmp_path: Path) -> None:
     """pg_dump → pg_restore round trip against a disposable database."""
-    manager = BackupManager(database_url=_POSTGRES_URL)
+    manager = BackupManager(
+        database_url=_POSTGRES_URL, postgres_admin_url=_POSTGRES_BACKUP_URL
+    )
     backup_dir = tmp_path / "backup"
     report = manager.backup(backup_dir)
     statuses = {c.name: c.status for c in report.components}

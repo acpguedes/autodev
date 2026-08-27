@@ -110,6 +110,10 @@ jobs:
       # available to every step below without repeating it per-step.
       AUTODEV_PROFILE: prod
       DATABASE_URL: postgresql://ci_test:ci-e2e-test-role-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/autodev_e2e
+      # ci_test deliberately lacks BYPASSRLS (E56-S3-T2), so backup/restore
+      # (E57-S4) needs a separate connection that can pg_dump a table with
+      # FORCE ROW LEVEL SECURITY (E50-S4) -- the bootstrap superuser role.
+      AUTODEV_BACKUP_DATABASE_URL: postgresql://autodev:ci-e2e-superuser-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/autodev_e2e
       LLM_PROVIDER: stub
       AUTODEV_JOB_BACKEND: redis
       AUTODEV_EVENT_BUS: redis

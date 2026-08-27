@@ -33,6 +33,7 @@ _SECRET_FIELDS = {
 
 _CREDENTIAL_URL_FIELDS = {
     "database_url",
+    "autodev_backup_database_url",
     "autodev_redis_url",
 }
 
@@ -82,6 +83,13 @@ class Settings(BaseSettings):
 
     # --- persistence ---
     database_url: str = "sqlite:///./autodev.db"
+    # Optional separate PostgreSQL connection used only by
+    # backend.persistence.backup for pg_dump/pg_restore (E57-S4). RLS-scoped
+    # tables are created with FORCE ROW LEVEL SECURITY, so a whole-database
+    # dump needs a connection that bypasses RLS; the app's own DATABASE_URL
+    # role deliberately does not (E56-S3-T2). Falls back to DATABASE_URL when
+    # unset. See backend.persistence.backup.BackupManager.
+    autodev_backup_database_url: str = ""
 
     # --- LLM ---
     llm_provider: str = "stub"

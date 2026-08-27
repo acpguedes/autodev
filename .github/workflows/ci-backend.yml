@@ -308,6 +308,11 @@ jobs:
       - name: Run backend test suite against real PostgreSQL, Redis, and MinIO (E57-S2)
         env:
           AUTODEV_TEST_POSTGRES_URL: postgresql://ci_test:${{ env.AUTODEV_PG_TEST_ROLE_PASSWORD }}@localhost:5432/autodev
+          # ci_test deliberately lacks BYPASSRLS (E56-S3-T2), so the backup
+          # round-trip test needs a separate connection that can pg_dump a
+          # table with FORCE ROW LEVEL SECURITY (E50-S4) -- the bootstrap
+          # superuser role, same one used to provision ci_test above.
+          AUTODEV_TEST_POSTGRES_BACKUP_URL: postgresql://autodev:${{ env.AUTODEV_PG_SUPERUSER_PASSWORD }}@localhost:5432/autodev
           AUTODEV_REQUIRE_POSTGRES: "1"
           AUTODEV_TEST_MINIO_ENDPOINT: "localhost:9000"
           AUTODEV_TEST_MINIO_ACCESS_KEY: ${{ env.AUTODEV_MINIO_ROOT_USER }}
