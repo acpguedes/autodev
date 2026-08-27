@@ -3,7 +3,7 @@
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35 and E41-E47: added after initial Beta
 completion, before the wave is signed off).
-**Status:** Not started · **Stories:** 0/4
+**Status:** Done · **Stories:** 4/4
 **Depends on:** E50 (destination schema), E51-E55 (both backends behave
 identically), E57 (a real PostgreSQL to migrate into, in CI)
 **Enables:** existing local-first installations to be promoted to production
