@@ -278,18 +278,41 @@ def test_backup_fails_when_sqlite_database_missing(tmp_path: Path) -> None:
     reason="requires AUTODEV_TEST_POSTGRES_URL and pg_dump/pg_restore on PATH",
 )
 def test_postgres_backup_restore_round_trip(tmp_path: Path) -> None:
-    """pg_dump → pg_restore round trip against a disposable database."""
-    manager = BackupManager(
-        database_url=_POSTGRES_URL, postgres_admin_url=_POSTGRES_BACKUP_URL
+    """pg_dump → pg_restore round trip against a disposable database.
+
+    Provisions its own throwaway database rather than running against the
+    shared AUTODEV_TEST_POSTGRES_URL database directly: pg_restore's
+    ``--clean`` recreates every table it touches, which would strip
+    ci_test's privileges on ``schema_version`` and everything else out from
+    under the test_postgres_concurrency.py files that depend on that shared
+    database staying up for the duration of the CI run (E57 found this the
+    hard way -- see the epic's PR history).
+    """
+    from backend.persistence.postgres_adapter import PostgresStore
+    from backend.tests.persistence_contract.backends import (
+        drop_postgres_database,
+        provision_postgres_database,
     )
-    backup_dir = tmp_path / "backup"
-    report = manager.backup(backup_dir)
-    statuses = {c.name: c.status for c in report.components}
-    assert statuses["postgres"] == "completed"
-    manager.verify(backup_dir)
-    restore_report = manager.restore(backup_dir)
-    restore_statuses = {c.name: c.status for c in restore_report.components}
-    assert restore_statuses["postgres"] == "completed"
+
+    database_url = provision_postgres_database(_POSTGRES_URL)
+    try:
+        PostgresStore(database_url)  # apply migrations, including FORCE RLS
+        db_name = database_url.rsplit("/", 1)[-1]
+        admin_base = (_POSTGRES_BACKUP_URL or _POSTGRES_URL).rsplit("/", 1)[0]
+        manager = BackupManager(
+            database_url=database_url,
+            postgres_admin_url=f"{admin_base}/{db_name}",
+        )
+        backup_dir = tmp_path / "backup"
+        report = manager.backup(backup_dir)
+        statuses = {c.name: c.status for c in report.components}
+        assert statuses["postgres"] == "completed"
+        manager.verify(backup_dir)
+        restore_report = manager.restore(backup_dir)
+        restore_statuses = {c.name: c.status for c in restore_report.components}
+        assert restore_statuses["postgres"] == "completed"
+    finally:
+        drop_postgres_database(_POSTGRES_URL, database_url)
 
 
 def test_postgres_backup_fails_closed_without_tooling(tmp_path: Path) -> None:

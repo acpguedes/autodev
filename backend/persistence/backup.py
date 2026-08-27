@@ -600,6 +600,13 @@ class BackupManager:
         of silently skipping the restore of a component the backup actually
         captured.
 
+        Deliberately omits ``--no-owner``: restored objects keep the
+        ownership recorded in the dump (E57-S4 found the hard way that
+        stripping it, combined with a ``postgres_admin_url`` distinct from
+        the app's own role, leaves the app unable to read or write anything
+        it just restored -- the tables end up owned by the connecting admin
+        role instead of the app's own).
+
         Args:
             source: Backup directory.
             spec: ``postgres`` component manifest entry.
@@ -637,7 +644,6 @@ class BackupManager:
                 pg_restore,
                 "--clean",
                 "--if-exists",
-                "--no-owner",
                 f"--dbname={safe_url}",
                 str(dump_path),
             ],

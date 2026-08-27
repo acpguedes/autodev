@@ -41,6 +41,12 @@ python -m backend.persistence.backup backup --out /backups/autodev/$(date +%Y%m%
   local-first SQLite install) is reported `skipped`. A component that *is*
   configured but whose CLI tool (`pg_dump`) is missing fails the whole
   backup closed instead — see `docs/v2_platform/runbooks/e8_restore_runbook.md`.
+- **RLS-scoped tables need a maintenance connection (E57-S4).** The app's own
+  `DATABASE_URL` role deliberately cannot bypass Row-Level Security
+  (E56-S3-T2), so a whole-database `pg_dump`/`pg_restore` against a
+  PostgreSQL deployment needs `AUTODEV_BACKUP_DATABASE_URL` set to a
+  separate superuser/`BYPASSRLS` connection on the same database — see
+  `docs/v2_platform/runbooks/e8_restore_runbook.md` §4.2.
 - Every attempt, success or failure, is durably recorded at
   `AUTODEV_BACKUP_STATUS_PATH` (default `.autodev/backup-status.json`,
   owner-only `0600`, sanitized — no exception text or secret material) and

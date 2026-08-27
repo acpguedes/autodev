@@ -504,9 +504,16 @@ def test_backup_report_skipped_property_filters_by_status(tmp_path: Path) -> Non
 class _FakeSettings:
     """Stand-in for :class:`backend.config.settings.Settings` used by ``main()``."""
 
-    def __init__(self, database_url: str, *, backup_status_path: str = "") -> None:
+    def __init__(
+        self,
+        database_url: str,
+        *,
+        backup_status_path: str = "",
+        backup_database_url: str = "",
+    ) -> None:
         self.database_url = database_url
         self.autodev_backup_status_path = backup_status_path
+        self.autodev_backup_database_url = backup_database_url
 
 
 def test_main_backup_command_success(
