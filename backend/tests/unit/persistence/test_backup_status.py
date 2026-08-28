@@ -29,8 +29,21 @@ def test_record_first_success(tmp_path: Path) -> None:
         last_success_timestamp=moment.timestamp(),
         consecutive_failures=0,
         last_result="success",
+        last_duration_seconds=None,
     )
     assert store.read() == status
+
+
+def test_record_persists_duration(tmp_path: Path) -> None:
+    """A timed attempt's duration round-trips through read() (E59-S3-T2)."""
+    store = BackupStatusStore(tmp_path / "backup-status.json")
+
+    status = store.record(success=True, duration_seconds=1.5)
+
+    assert status.last_duration_seconds == 1.5
+    read_back = store.read()
+    assert read_back is not None
+    assert read_back.last_duration_seconds == 1.5
 
 
 def test_record_failure_preserves_previous_success_timestamp(tmp_path: Path) -> None:
@@ -95,6 +108,7 @@ def test_repeated_writes_produce_valid_atomic_json(tmp_path: Path) -> None:
         "last_success_timestamp",
         "consecutive_failures",
         "last_result",
+        "last_duration_seconds",
     }
 
 
@@ -126,6 +140,7 @@ def test_persisted_status_contains_no_exception_text_or_secret_material(
         "last_success_timestamp",
         "consecutive_failures",
         "last_result",
+        "last_duration_seconds",
     }
     assert "Error" not in raw
     assert "Traceback" not in raw

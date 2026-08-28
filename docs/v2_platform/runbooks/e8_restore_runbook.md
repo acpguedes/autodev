@@ -24,6 +24,16 @@ Every backup directory is self-describing:
 plus size for every copied file. **Never restore from a backup that fails
 verification** (§3).
 
+**PostgreSQL coverage (E59-S1).** The `postgres` manifest component also
+carries `tables` (every live `public`-schema table `pg_dump`'s own table of
+contents was verified to capture — `BackupManager` fails the backup closed
+if any live table is missing, so this list is never a lie), `table_count`,
+and `extension` (`{"version": ..., "indexes": [...]}` for the pgvector
+extension, or `null` if it is not installed). Restore checks `extension`
+against the target server's `pg_available_extensions` before invoking
+`pg_restore`, refusing a target that cannot provide pgvector rather than
+leaving a half-restored database.
+
 ## 2. Taking a backup (scheduled)
 
 ```bash
@@ -50,8 +60,16 @@ python -m backend.persistence.backup backup --out /backups/autodev/$(date +%Y%m%
   text) and exposed as Prometheus gauges through the E11-S1 meter:
   `autodev_backup_last_attempt_timestamp_seconds`,
   `autodev_backup_last_success_timestamp_seconds`,
-  `autodev_backup_consecutive_failures`, `autodev_backup_last_result`. See
-  `docs/ops/observability.md` and the alert rules in §6.
+  `autodev_backup_consecutive_failures`, `autodev_backup_last_result`,
+  `autodev_backup_last_duration_seconds`. See `docs/ops/observability.md`
+  and the alert rules in §6.
+- **RPO mechanism (ADR-027, E59-S3).** RPO ≤ 5 min is met by this schedule
+  of complete logical snapshots, not continuous WAL archiving/PITR — a
+  deliberate, documented deviation from reference §13.9 for the Beta
+  deployment topology. The real worst-case RPO is the schedule interval
+  *plus* the measured backup duration
+  (`autodev_backup_last_duration_seconds`), not the interval alone; see
+  ADR-027 for the reopening condition.
 
 ## 3. Pre-restore integrity checklist
 
@@ -118,15 +136,32 @@ The command verifies the manifest first and exits `!= 0` on any failure.
 
 ## 5. Post-restore verification and RTO check
 
-1. Start the backend and run the smoke checks:
+1. Start the backend and run the smoke checks — all four surfaces E59-S2
+   requires, not merely that the restore command exited zero:
    - sessions/runs/messages visible for a known tenant;
-   - a known artifact downloads and its SHA-256 matches the manifest entry.
+   - a known secret resolves to its original plaintext through
+     `SecretService.resolve_for_injection`, not just that its metadata
+     survived;
+   - a known artifact downloads and its SHA-256 matches the manifest entry;
+   - a vector query against the restored HNSW index returns the expected,
+     tenant-scoped result.
 2. Run the automated round-trip test against the restored environment:
-   `pytest backend/tests/unit/persistence/test_backup_restore.py -q`.
+   `pytest backend/tests/unit/persistence/test_backup_restore.py -q`, or
+   trigger `.github/workflows/ci-e2e.yml`'s `prod-e2e` job
+   (`workflow_dispatch`) for the full real-service drill.
 3. **RTO verification:** record wall-clock time from "incident declared" to
    "post-restore checks green". The drill MUST complete in <= 30 min.
    Record the measured time in the incident/drill log. If the drill exceeds
    30 min, open a corrective task against E8-S4.
+   - **Measured (E59-S2-T3):** a local drill against
+     `pgvector/pgvector:0.8.3-pg16` plus fresh Redis/MinIO containers, with
+     a minimal seeded dataset, measured backup ≈ 1.5 s and a full
+     clean-environment restore (database dropped/recreated, MinIO container
+     replaced) with all four post-restore checks passing in ≈ 10.9 s —
+     both far inside target. `.github/workflows/ci-e2e.yml`'s `prod-e2e`
+     job now measures and records its own RTO on every run (job summary +
+     the `backup-drill-rto` build artifact); trust that number for the
+     deployment's real data volume over this illustrative local figure.
 
 ## 6. Backup-failure alerting
 
@@ -142,14 +177,19 @@ The command verifies the manifest first and exits `!= 0` on any failure.
   Alertmanager. See `docs/v2_platform/runbooks/e11_incident_response.md` for
   the response procedure linked from each alert's `runbook_url`.
 
-## 7. Periodic restore drill (E8-S4-T3)
+## 7. Periodic restore drill (E8-S4-T3, E59-S2-T3)
 
 `backend/tests/unit/persistence/test_backup_restore.py` implements seed →
 backup → wipe → restore → integrity asserts, with PostgreSQL and MinIO
-variants that skip automatically when those services are unavailable. Run it
-on every CI run and, additionally, as a scheduled (at least weekly) job
-against staging-equivalent PostgreSQL + MinIO to keep the restore path
-proven. The quarterly incident-response drill in
+variants that skip automatically when those services are unavailable; it
+runs on every CI run.
+
+`.github/workflows/ci-e2e.yml`'s `prod-e2e` job runs the full real-service
+drill (§4-§5's procedure, against real PostgreSQL/Redis/MinIO) on every pull
+request **and on a daily schedule** (`cron`, plus `workflow_dispatch` for an
+on-demand run) — no longer only on code changes — closing the "no
+persistent staging environment" gap this drill previously depended on a
+push/PR to exercise. The quarterly incident-response drill in
 `docs/v2_platform/runbooks/e11_incident_response.md` exercises this runbook
 end to end, including the RTO measurement in §5.
 

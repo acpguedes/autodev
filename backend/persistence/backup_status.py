@@ -33,6 +33,11 @@ class BackupStatus:
     last_success_timestamp: float | None
     consecutive_failures: int
     last_result: Literal["success", "failure"]
+    #: Wall-clock duration of the most recent attempt, in seconds. Feeds the
+    #: RPO worst-case-data-loss-window calculation (schedule interval +
+    #: backup duration, E59-S3-T2) with a measured number instead of an
+    #: assumption; ``None`` for records written before this field existed.
+    last_duration_seconds: float | None = None
 
 
 class BackupStatusStore:
@@ -68,6 +73,11 @@ class BackupStatusStore:
                 ),
                 consecutive_failures=int(data["consecutive_failures"]),
                 last_result=data["last_result"],
+                last_duration_seconds=(
+                    float(data["last_duration_seconds"])
+                    if data.get("last_duration_seconds") is not None
+                    else None
+                ),
             )
         except (json.JSONDecodeError, KeyError, TypeError, ValueError):
             return None
@@ -77,12 +87,14 @@ class BackupStatusStore:
         *,
         success: bool,
         occurred_at: datetime | None = None,
+        duration_seconds: float | None = None,
     ) -> BackupStatus:
         """Atomically record a sanitized backup outcome.
 
         Args:
             success: Whether the backup attempt succeeded.
             occurred_at: When the attempt occurred; defaults to now (UTC).
+            duration_seconds: Wall-clock duration of the attempt, if timed.
 
         Returns:
             The newly persisted status.
@@ -96,6 +108,7 @@ class BackupStatusStore:
                 last_success_timestamp=timestamp,
                 consecutive_failures=0,
                 last_result="success",
+                last_duration_seconds=duration_seconds,
             )
         else:
             status = BackupStatus(
@@ -107,6 +120,7 @@ class BackupStatusStore:
                     previous.consecutive_failures + 1 if previous else 1
                 ),
                 last_result="failure",
+                last_duration_seconds=duration_seconds,
             )
         self._write(status)
         return status

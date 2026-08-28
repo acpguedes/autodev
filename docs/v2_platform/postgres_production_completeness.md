@@ -306,6 +306,7 @@ ADR-013/014/015 precedent:
 | [ADR-024](decisions/ADR-024-pgvector-runtime-image.md) | pgvector Runtime Image and Extension Provisioning | E48 | Which runtime ships; how the extension is provisioned; managed-provider posture |
 | [ADR-025](decisions/ADR-025-sql-persistence-boundary.md) | SQL Persistence Boundary and Dialect Abstraction Scope | E49 | The boundary rule; the dialect surface; the no-ORM stance |
 | [ADR-026](decisions/ADR-026-sqlite-to-postgres-migration.md) | SQLite to PostgreSQL Migration and Cutover | E58 | One-way migration; cutover policy; no permanent dual-write |
+| [ADR-027](decisions/ADR-027-backup-rpo-periodic-base-backups.md) | RPO via Periodic Base Backups, Not Continuous WAL Archiving | E59 | RPO met by 5-minute logical snapshots, not PITR, for the Beta topology |
 
 Existing decisions this program implements rather than revisits: **ADR-001**
 (PostgreSQL as default production state store), **ADR-010** (`tenant_id` +
@@ -313,9 +314,10 @@ RLS), **ADR-011** (pgvector HNSW), **ADR-014** (secret store format),
 **ADR-019** (quotas and run budgets), **ADR-022** (execution policy engine),
 **ADR-013** (isolation backend).
 
-One decision is deferred by design: if E59-S3-T1 chooses to meet RPO with
-frequent base backups rather than the continuous WAL archiving reference
-§13.9 specifies, that deviation needs its own ADR at that time.
+That deferred decision resolved: E59-S3-T1 met RPO with frequent (5-minute)
+base backups rather than the continuous WAL archiving reference §13.9
+specifies, recorded as a deliberate deviation in
+[ADR-027](decisions/ADR-027-backup-rpo-periodic-base-backups.md).
 
 ## 9. General risks
 
