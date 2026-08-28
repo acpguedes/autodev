@@ -18,6 +18,22 @@ for real, over HTTP, against real PostgreSQL/Redis/MinIO:
   the seeded content comes back -- and that it does *not* come back for the
   other tenant (RLS on the vector path too).
 
+``--post-restore`` additionally proves the three other functional checks
+E59-S2-T2 requires of a clean-environment restore -- not merely that the
+restore command exited zero:
+
+* secret resolution: the pre-backup run creates a real secret over
+  ``POST /v2/secrets``; post-restore, its metadata is still listed over
+  ``GET /v2/secrets`` and :meth:`~backend.secret_store.service.SecretService.resolve_for_injection`
+  still decrypts it to the original plaintext -- proving the encrypted
+  value and the encryption key configuration both survived the round trip;
+* artifact resolution: the pre-backup run writes one object through the
+  public artifact-store API used elsewhere in this repository
+  (:mod:`backend.persistence.backup`); post-restore, the same object is
+  read back byte-for-byte;
+* the vector query is rerun post-restore (not just structurally verified)
+  to prove the HNSW index is usable, not merely present, after restore.
+
 Deliberately not attempted here: a full multi-step plan/approve/execute
 task run through the stub LLM's agent orchestration -- that is separate,
 substantial new test surface (an "analyze" trigger, task derivation, a
@@ -62,6 +78,14 @@ from backend.repository.indexing import index  # noqa: E402
 _SEED_QUERY_TEXT = "def autodev_e57_vector_probe(): return 'e57-hybrid-retrieval-proof'"
 _SESSION_GOAL = "E57 prod E2E: session flow proof"
 _SESSION_GOAL_TENANT_B = "E57 prod E2E: session flow proof (tenant B)"
+
+#: Fixed (non-random) secret/artifact identifiers so the post-restore run,
+#: a separate process, can recompute them without inter-process state.
+_SECRET_PROJECT = "e59-drill"
+_SECRET_NAME = "backup-restore-probe"
+_SECRET_VALUE = "e59-backup-drill-secret-value"
+_ARTIFACT_OBJECT_SUFFIX = "e59-drill/probe.log"
+_ARTIFACT_PAYLOAD = b"e59-backup-drill-artifact-probe"
 
 
 def _wait_for_health(client: httpx.Client, *, timeout_s: float = 60.0) -> None:
@@ -160,6 +184,65 @@ def _check_vector_query(client: httpx.Client) -> None:
     print("[smoke] real vector query through hybrid retrieval, tenant-scoped: OK")
 
 
+def _create_secret_over_api(client: httpx.Client, key: str) -> None:
+    """Create the drill secret over ``POST /v2/secrets`` (real API path)."""
+    response = client.post(
+        "/v2/secrets",
+        json={"project": _SECRET_PROJECT, "name": _SECRET_NAME, "value": _SECRET_VALUE},
+        headers=_auth_headers(key),
+    )
+    assert response.status_code == 201, response.text
+    print("[smoke] created drill secret over POST /v2/secrets")
+
+
+def _write_artifact_probe(tenant_id: str) -> None:
+    """Write one object through the public artifact-store API (E59-S2-T2)."""
+    from backend.artifacts.store import ArtifactKind, get_artifact_store
+    from backend.config.settings import get_settings
+
+    store = get_artifact_store(get_settings())
+    object_key = f"{tenant_id}/{_ARTIFACT_OBJECT_SUFFIX}"
+    store.put_artifact(ArtifactKind.LOG, object_key, _ARTIFACT_PAYLOAD)
+    print(f"[smoke] wrote artifact probe {object_key!r}")
+
+
+def _check_secret_resolution(client: httpx.Client, key: str, tenant_id: str) -> None:
+    """Post-restore: the drill secret's metadata and plaintext both survive (E59-S2-T2)."""
+    from backend.config.settings import get_settings
+    from backend.secret_store.contracts import SecretReference
+    from backend.secret_store.service import SecretService
+
+    listed = client.get("/v2/secrets", params={"project": _SECRET_PROJECT}, headers=_auth_headers(key))
+    assert listed.status_code == 200, listed.text
+    names = [s["name"] for s in listed.json()["secrets"]]
+    assert _SECRET_NAME in names, f"drill secret metadata did not survive restore: {names}"
+
+    service = SecretService(settings=get_settings())
+    reference = SecretReference(tenant_id=tenant_id, project=_SECRET_PROJECT, name=_SECRET_NAME)
+    handle = service.resolve_for_injection(reference, actor_id="e59-backup-drill")
+    assert handle.value == _SECRET_VALUE, "restored secret decrypted to the wrong plaintext"
+    print("[smoke] post-restore secret resolution (metadata + decrypted value): OK")
+
+
+def _check_artifact_resolution(tenant_id: str) -> None:
+    """Post-restore: the drill artifact reads back byte-for-byte (E59-S2-T2).
+
+    Resolves ``ArtifactKind.LOG``'s bucket purely via the public API -- the
+    same positional-pairing technique
+    :mod:`backend.persistence.backup` uses -- rather than importing the
+    store's private kind-to-bucket table.
+    """
+    from backend.artifacts.store import ArtifactKind, all_bucket_names, get_artifact_store
+    from backend.config.settings import get_settings
+
+    store = get_artifact_store(get_settings())
+    bucket = dict(zip(ArtifactKind, all_bucket_names()))[ArtifactKind.LOG]
+    object_key = f"{tenant_id}/{_ARTIFACT_OBJECT_SUFFIX}"
+    payload = store.get_artifact(bucket, object_key)
+    assert payload == _ARTIFACT_PAYLOAD, "drill artifact did not survive restore byte-for-byte"
+    print(f"[smoke] post-restore artifact resolution ({bucket}/{object_key}): OK")
+
+
 def _check_post_restore_listing(client: httpx.Client) -> None:
     """List sessions as each tenant; assert the pre-backup session survived the restore."""
     key_a = os.environ["AUTODEV_E2E_TENANT_A_KEY"]
@@ -197,6 +280,8 @@ def main(argv: list[str] | None = None) -> int:
         print("usage: ci_prod_e2e_smoke.py <base_url> <database_url> [--post-restore]", file=sys.stderr)
         return 2
     base_url, database_url = positional
+    tenant_a = os.environ["AUTODEV_E2E_TENANT_A"]
+    key_a = os.environ["AUTODEV_E2E_TENANT_A_KEY"]
 
     with httpx.Client(base_url=base_url, timeout=30.0) as client:
         _wait_for_health(client)
@@ -204,11 +289,15 @@ def main(argv: list[str] | None = None) -> int:
 
         if post_restore:
             _check_post_restore_listing(client)
+            _check_secret_resolution(client, key_a, tenant_a)
+            _check_artifact_resolution(tenant_a)
+            _check_vector_query(client)
         else:
             _check_session_flow_and_cross_tenant_rls(client)
-            tenant_a = os.environ["AUTODEV_E2E_TENANT_A"]
             _seed_vector_chunk(database_url, tenant_a)
             _check_vector_query(client)
+            _create_secret_over_api(client, key_a)
+            _write_artifact_probe(tenant_a)
 
     print("[smoke] OK: all prod E2E checks passed")
     return 0

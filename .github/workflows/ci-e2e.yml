@@ -16,6 +16,13 @@ on:
       - "tests/**"
       - "scripts/**"
       - ".github/workflows/ci-e2e.yml"
+  # Runs the backup/restore drill (E59-S2-T3) at least daily regardless of
+  # code changes, closing "no persistent staging environment" from
+  # beta_gap_analysis.md criterion 6 with a recurring, not merely on-demand,
+  # proof -- workflow_dispatch lets an operator also run it manually.
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -106,6 +113,13 @@ jobs:
       AUTODEV_PG_TEST_ROLE_PASSWORD: ci-e2e-test-role-${{ github.run_id }}-${{ github.run_attempt }}
       AUTODEV_MINIO_ROOT_USER: ci-e2e-minio-${{ github.run_id }}-${{ github.run_attempt }}
       AUTODEV_MINIO_ROOT_PASSWORD: ci-e2e-minio-pw-${{ github.run_id }}-${{ github.run_attempt }}
+      # Unset, AUTODEV_SECRET_ENCRYPTION_KEY derives a fresh per-process
+      # ephemeral key (docs/security/secrets.md) -- fine for a single
+      # process, but this job stops and restarts the backend across the
+      # backup/restore round trip (E57-S4/E59-S2), so a persisted value is
+      # required for the post-restore secret-resolution check (E59-S2-T2)
+      # to prove anything rather than fail by construction.
+      AUTODEV_SECRET_ENCRYPTION_KEY: ci-e2e-secret-key-${{ github.run_id }}-${{ github.run_attempt }}
       # The full `prod`-profile environment (ADR-018/validate_profile),
       # available to every step below without repeating it per-step.
       AUTODEV_PROFILE: prod
@@ -218,14 +232,32 @@ jobs:
       - name: Back up the database and artifacts (E57-S4-T1)
         run: python -m backend.persistence.backup backup --out /tmp/e2e-backup
 
-      - name: Wipe the database (drop and recreate empty)
+      - name: "Disaster: wipe the database and the artifact store (E59-S2-T1)"
         env:
           PGPASSWORD: ${{ env.AUTODEV_PG_TEST_ROLE_PASSWORD }}
         run: |
+          echo "RTO_T0=$(date +%s)" >> "$GITHUB_ENV"
           psql -h localhost -U ci_test -d autodev -c "DROP DATABASE autodev_e2e;"
           psql -h localhost -U ci_test -d autodev -c "CREATE DATABASE autodev_e2e;"
+          # A genuinely fresh MinIO container -- no pre-existing bucket or
+          # volume left from the pre-backup run (E59-S2-T1's "no staging
+          # environment left behind" requirement, not just an emptied
+          # database).
+          docker rm -f minio
+          docker run -d --name minio \
+            -p 9000:9000 -p 9001:9001 \
+            -e MINIO_ROOT_USER="$AUTODEV_MINIO_ROOT_USER" \
+            -e MINIO_ROOT_PASSWORD="$AUTODEV_MINIO_ROOT_PASSWORD" \
+            minio/minio:RELEASE.2025-04-22T22-12-26Z server /data --console-address ":9001"
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9000/minio/health/live && exit 0
+            sleep 1
+          done
+          echo "MinIO did not become healthy in time" >&2
+          docker logs minio || true
+          exit 1
 
-      - name: Restore from backup (E57-S4-T1)
+      - name: Restore into the clean environment (E57-S4-T1, E59-S2-T1)
         run: python -m backend.persistence.backup restore --from /tmp/e2e-backup
 
       - name: Restart the backend against the restored database
@@ -234,8 +266,23 @@ jobs:
       - name: Wait for the restored backend to become healthy
         run: curl -sf --retry 20 --retry-delay 2 --retry-connrefused http://127.0.0.1:8000/health
 
-      - name: Run the post-restore smoke check (E57-S4-T2)
+      - name: Run the post-restore smoke check (E57-S4-T2, E59-S2-T2)
         run: python scripts/ci_prod_e2e_smoke.py "http://127.0.0.1:8000" "$DATABASE_URL" --post-restore
+
+      - name: Record measured RTO (E59-S2-T3)
+        run: |
+          RTO_SECONDS=$(( $(date +%s) - RTO_T0 ))
+          echo "Measured RTO: ${RTO_SECONDS}s (target: <= 1800s / 30min)" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "{\"rto_seconds\": $RTO_SECONDS, \"measured_at\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\", \"run_id\": \"${{ github.run_id }}\"}" > /tmp/e2e-rto.json
+
+      - name: Upload RTO measurement
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-drill-rto
+          path: /tmp/e2e-rto.json
+          retention-days: 90
+          if-no-files-found: ignore
 
       - name: Diagnostics on failure (E57-S4-T3)
         if: failure()

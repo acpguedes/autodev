@@ -60,6 +60,26 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _ts(value: Any) -> Optional[str]:
+    """Normalize a timestamp column value to ISO-8601 text, or ``None``.
+
+    SQLite stores ``created_at``/``rotated_at``/``revoked_at`` as the TEXT
+    :func:`_now` wrote; PostgreSQL's ``TIMESTAMPTZ`` columns instead come
+    back from psycopg as native :class:`datetime.datetime` objects, which
+    :class:`~backend.secret_store.contracts.SecretMetadata` (``str | None``)
+    cannot hold as-is -- the same normalization
+    ``backend.persistence.postgres_adapter`` already applies to its own
+    timestamp columns.
+
+    Args:
+        value: Raw column value (``str``, ``datetime``, or ``None``).
+
+    Returns:
+        ``None`` if ``value`` is ``None``; otherwise its string form.
+    """
+    return None if value is None else str(value)
+
+
 class SecretStore:
     """Durable store for scoped, versioned secret ciphertext, on either backend."""
 
@@ -151,9 +171,9 @@ class SecretStore:
             version=row[0],
             status=SecretStatus(row[1]),
             backend_kind=SecretBackendKind(row[2]),
-            created_at=row[4],
-            rotated_at=row[5],
-            revoked_at=row[6],
+            created_at=_ts(row[4]) or "",
+            rotated_at=_ts(row[5]),
+            revoked_at=_ts(row[6]),
         )
 
     # ------------------------------------------------------------- writes
@@ -420,9 +440,9 @@ class SecretStore:
                 version=row[3],
                 status=SecretStatus(row[4]),
                 backend_kind=SecretBackendKind(row[5]),
-                created_at=row[6],
-                rotated_at=row[7],
-                revoked_at=row[8],
+                created_at=_ts(row[6]) or "",
+                rotated_at=_ts(row[7]),
+                revoked_at=_ts(row[8]),
             )
             for row in rows
         ]
