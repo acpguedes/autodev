@@ -88,6 +88,36 @@ def test_concurrent_retries_of_the_same_idempotency_key_create_no_extra_version(
     assert listed[0].version == 2
 
 
+def test_timestamps_are_normalized_to_strings_not_native_datetimes() -> None:
+    """``created_at``/``rotated_at`` are ISO-8601 ``str``, not psycopg's native ``datetime`` (E59-S2 regression).
+
+    PostgreSQL's ``TIMESTAMPTZ`` columns come back from psycopg as
+    :class:`datetime.datetime` objects; :class:`SecretMetadata` declares
+    ``str | None``. Before this fix, ``GET /v2/secrets`` and
+    ``POST /v2/secrets`` 500'd against a real PostgreSQL-backed deployment
+    the moment either serialized a fetched row through the API's
+    ``createdAt: str`` response model -- found via the E59 backup/restore
+    drill's real ``POST /v2/secrets`` call, not by inspection.
+    """
+    reference = _reference()
+    store = _store()
+    created = store.create(reference, "v0")
+    assert isinstance(created.created_at, str)
+    assert created.rotated_at is None
+
+    rotated = store.rotate(reference, "v1")
+    assert isinstance(rotated.created_at, str)
+    assert rotated.rotated_at is None  # the new active version, not the superseded one
+
+    fetched = store.get_metadata(reference)
+    assert fetched is not None
+    assert isinstance(fetched.created_at, str)
+
+    listed = store.list_metadata(reference.tenant_id)
+    assert len(listed) == 1
+    assert isinstance(listed[0].created_at, str)
+
+
 def test_concurrent_create_and_rotate_never_produce_two_active_versions() -> None:
     """A create racing rotations of an already-created secret cannot duplicate the active row (E52-S2-T2)."""
     reference = _reference()
