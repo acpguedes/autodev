@@ -59,6 +59,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import time
 from typing import Any, Iterable, Sequence
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
@@ -929,13 +930,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "backup":
             # Only success after every configured component completes is
             # recorded as a success; any BackupError/OSError below records
-            # failure before propagating to the outer handler.
+            # failure before propagating to the outer handler. Duration is
+            # timed either way, feeding the RPO worst-case calculation
+            # (schedule interval + backup duration, E59-S3-T2) with a
+            # measured number.
+            started = time.monotonic()
             try:
                 report = manager.backup(args.out)
             except (BackupError, OSError):
-                status_store.record(success=False)
+                status_store.record(
+                    success=False, duration_seconds=time.monotonic() - started
+                )
                 raise
-            status_store.record(success=True)
+            status_store.record(
+                success=True, duration_seconds=time.monotonic() - started
+            )
         else:
             report = manager.restore(args.source)
         for component in report.components:

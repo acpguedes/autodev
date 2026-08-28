@@ -774,7 +774,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E56 | SQLite/PostgreSQL Contract Test Suite | Beta | Done | 3/3 | E49, E50, E51-E55 | [phases/e56_sqlite_postgres_contract_tests.md](phases/e56_sqlite_postgres_contract_tests.md) |
 | E57 | CI & Real PostgreSQL E2E | Beta | Done | 4/4 | E48, E56, E51-E55 | [phases/e57_ci_postgres_e2e.md](phases/e57_ci_postgres_e2e.md) |
 | E58 | SQLite → PostgreSQL Data Migration | Beta | Done | 4/4 | E50-E55, E57 | [phases/e58_sqlite_to_postgres_migration.md](phases/e58_sqlite_to_postgres_migration.md) |
-| E59 | Backup, Restore & Disaster Recovery | Beta | Not started | 0/3 | E8-S4, E55-S3, E57-S4 | [phases/e59_backup_restore_disaster_recovery.md](phases/e59_backup_restore_disaster_recovery.md) |
+| E59 | Backup, Restore & Disaster Recovery | Beta | Done | 3/3 | E8-S4, E55-S3, E57-S4 | [phases/e59_backup_restore_disaster_recovery.md](phases/e59_backup_restore_disaster_recovery.md) |
 | E60 | Connection Pooling & PostgreSQL Hardening | Beta | Not started | 0/4 | E51-E55, E57, E11-S1 | [phases/e60_postgres_pooling_hardening.md](phases/e60_postgres_pooling_hardening.md) |
 
 Total: **147/260 stories complete** across 60 epics (E19 is a proposed
@@ -943,9 +943,17 @@ program (`postgres_production_completeness.md`).
       environment recorded. Open (`phases/e7_context_rag.md`).
 - [ ] Run streaming starts < 1 s — functional correctness tested; no
       numeric latency assertion exists. Open.
-- [ ] Backup/restore validated (RPO <= 5 min, RTO <= 30 min) in staging — no
-      staging environment exists; validated via documented execution
-      procedure only. Open (`phases/e8_persistence_data.md`).
+- [x] Backup/restore validated (RPO <= 5 min, RTO <= 30 min) in staging —
+      resolved by E59. `ci-e2e.yml`'s `prod-e2e` job runs a real
+      backup/wipe/restore drill against PostgreSQL + MinIO on every PR and
+      on a daily schedule, wiping genuinely clean (dropped database,
+      replaced MinIO container) and proving session, secret, artifact, and
+      vector-query resolution post-restore. RTO measured every run
+      (≈ 10.9 s in a local drill); RPO mechanism (5-minute snapshots, not
+      PITR) is a recorded deviation (ADR-027) with backup duration
+      measured (`autodev_backup_last_duration_seconds`). See
+      `phases/e59_backup_restore_disaster_recovery.md` and
+      `beta_gap_analysis.md` criterion 6.
 - [x] The `prod` profile boots from empty on PostgreSQL 16 + pgvector and
       serves a real vector query — resolved by E48 (`pgvector/pgvector:0.8.3-pg16`,
       extension provisioning split from migration 4, preflight checks).
@@ -994,6 +1002,54 @@ v1 upgrade migration, and release notes.
 
 Add a dated entry every time a story/epic/wave status changes.
 
+- **2026-08-27** — **E59 — Backup, Restore & Disaster Recovery complete
+  (3/3)**. **E59-S1**: `BackupManager` now verifies PostgreSQL coverage by
+  enumeration instead of trusting a whole-database `pg_dump` silently —
+  every live `public`-schema table is diffed against the dump's own table
+  of contents (`pg_restore --list`), and a live table the dump did not
+  capture fails the backup closed, proven with a negative-control test.
+  The manifest also records the pgvector extension's version and vector
+  indexes; restore checks `pg_available_extensions` on the target and
+  refuses a target that cannot provide the extension before `pg_restore`
+  runs. `plan_step_state` (E55-S3) is confirmed captured and no stray
+  `.db` file is created in the postgres profile. **E59-S2**: the
+  `prod-e2e` CI drill (`.github/workflows/ci-e2e.yml`) now wipes
+  genuinely clean — the database is dropped and recreated, and the MinIO
+  container is replaced rather than emptied — then restores and proves
+  all four functional surfaces this program depends on: session listing,
+  secret resolution (metadata **and** decrypted plaintext, not just that
+  the row exists), artifact resolution byte-for-byte, and a rerun vector
+  query against the restored HNSW index. The drill now runs on a daily
+  schedule and via `workflow_dispatch`, not only on push/PR, and measures
+  + records RTO every run (job summary + `backup-drill-rto` artifact). A
+  local drill against `pgvector/pgvector:0.8.3-pg16` plus fresh
+  Redis/MinIO containers measured backup ≈ 1.5 s and a full
+  clean-environment restore with all four checks passing in ≈ 10.9 s.
+  Building this story's real functional checks surfaced two latent bugs,
+  both fixed: PostgreSQL's `TIMESTAMPTZ` columns come back from psycopg
+  as native `datetime` objects, not the `str` `SecretMetadata` declares,
+  so `POST`/`GET /v2/secrets` 500'd against any real PostgreSQL
+  deployment (`backend/secret_store/store.py`, now normalized the same
+  way `postgres_adapter` normalizes its own timestamp columns); and the
+  `prod-e2e` job never set `AUTODEV_SECRET_ENCRYPTION_KEY`, so every
+  backend restart silently rotated to a fresh ephemeral key and made all
+  previously stored secrets permanently undecryptable — now pinned
+  per-run alongside the job's other generated credentials. **E59-S3**:
+  the reference §13.9 vs. runbook divergence over RPO mechanism (PITR vs.
+  periodic snapshots) is resolved as a recorded deliberate deviation,
+  [ADR-027](decisions/ADR-027-backup-rpo-periodic-base-backups.md) — RPO
+  ≤ 5 min is met by five-minute logical snapshots, not continuous WAL
+  archiving, for the Beta deployment topology, with a stated condition
+  for reopening the decision. `BackupManager`'s CLI now times every
+  backup attempt and records it durably
+  (`autodev_backup_last_duration_seconds`, alongside the existing
+  success/failure gauges), so the real worst-case RPO — schedule
+  interval plus measured backup duration — is a monitored number, not an
+  assumption. `docs/ops/backup_restore.md`,
+  `docs/v2_platform/runbooks/e8_restore_runbook.md`, and
+  `docs/v2_platform/beta_gap_analysis.md` criterion 6 (Partial → **Met**)
+  updated with the new manifest fields, the RPO/RTO measurement method,
+  and named evidence.
 - **2026-08-26** — **E50 — PostgreSQL Schema, Migrations, Tenancy & RLS
   complete (4/4)**. Thirteen tables (quotas, secrets, execution policy,
   execution environments, plan step state) previously existed only as

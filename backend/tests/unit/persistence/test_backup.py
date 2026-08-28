@@ -612,6 +612,8 @@ def test_main_backup_command_success(
     status = BackupStatusStore(status_path).read()
     assert status is not None
     assert status.last_result == "success"
+    assert status.last_duration_seconds is not None
+    assert status.last_duration_seconds >= 0
 
 
 def test_main_restore_command_success(
@@ -684,6 +686,7 @@ def test_main_records_backup_failure_in_status_store(
     assert status is not None
     assert status.last_result == "failure"
     assert status.consecutive_failures == 1
+    assert status.last_duration_seconds is not None
 
 
 def test_main_verify_command_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
