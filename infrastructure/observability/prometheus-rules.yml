@@ -49,3 +49,27 @@ groups:
           summary: AutoDev backup attempt failed
           description: One or more consecutive backup attempts failed; inspect tooling and storage immediately.
           runbook_url: https://github.com/acpguedes/autodev/blob/main/docs/v2_platform/runbooks/e11_incident_response.md#backup-failing
+
+  - name: autodev-e60-postgres-pooling
+    rules:
+      - alert: AutoDevPostgresPoolSaturated
+        expr: autodev_postgres_pool_stat{stat="pool_available"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: postgres-pool
+        annotations:
+          summary: AutoDev PostgreSQL connection pool has no available connections
+          description: The process-local PostgreSQL connection pool has reported zero available connections for 2 minutes; requests are queuing for a checkout instead of failing fast (E60-S4).
+          runbook_url: https://github.com/acpguedes/autodev/blob/main/docs/v2_platform/runbooks/e11_incident_response.md#postgres-pool-saturated
+
+      - alert: AutoDevPostgresDeadlockRateRising
+        expr: increase(autodev_postgres_transient_error_count_total{error_type="PostgresDeadlockError"}[5m]) > 5
+        for: 1m
+        labels:
+          severity: warning
+          service: postgres-pool
+        annotations:
+          summary: AutoDev PostgreSQL deadlock rate is rising
+          description: More than 5 deadlock victims were classified in the last 5 minutes; a lock-ordering defect is likely (E60-S4).
+          runbook_url: https://github.com/acpguedes/autodev/blob/main/docs/v2_platform/runbooks/e11_incident_response.md#postgres-deadlock-rate-rising

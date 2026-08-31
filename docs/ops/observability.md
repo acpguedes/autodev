@@ -107,6 +107,9 @@ Metrics (`backend/observability/metrics.py`, all `autodev.*` unless noted):
 | `autodev.agent.quality_ratio` | histogram | Agent evaluation score. |
 | `autodev.queue.jobs` | observable gauge | `state` (pending/running). |
 | `autodev.worker.utilization` | observable gauge | Fraction of workers busy. |
+| `autodev.postgres.pool.wait_duration` | histogram | `outcome` (granted/timeout) — no tenant dimension (E60-S4). |
+| `autodev.postgres.transient_error.count` | counter | `error_type` (deadlock/serialization_failure) — no tenant dimension (E60-S4). |
+| `autodev.postgres.pool.stat` | observable gauge | `stat` — the pool implementation's own fixed counter names (`pool_min`, `pool_max`, `pool_available`, `requests_waiting`, ...) (E60-S4). |
 
 Recording rules in `infrastructure/observability/prometheus-rules.yml` derive
 `autodev:http_error_ratio:rate5m` and `autodev:http_latency_p95_seconds:rate5m`
@@ -123,6 +126,12 @@ ever carries a run id, trace id, span id, step id, raw filesystem path,
 prompt, or payload; those stay on spans and logs only, which Prometheus never
 ingests. This bounds label cardinality to the number of tenants, flows,
 agents, statuses, and error codes in play, not the number of runs.
+
+The three `autodev.postgres.*` instruments (E60-S4) additionally carry no
+tenant label at all: pool checkouts and deadlock/serialization classification
+are process-wide, not tenant-scoped, so per-tenant volumes never belong on
+them (per-tenant PostgreSQL activity, if ever needed, would have to come from
+an aggregate, not a label).
 
 ## Trace exemplar navigation
 
@@ -204,7 +213,7 @@ backend uses a named Docker volume; `make observability-down` never adds
 `infrastructure/observability/grafana/dashboards/autodev-overview.json`
 (auto-provisioned by
 `infrastructure/observability/grafana/provisioning/dashboards/dashboards.yaml`)
-ships ten panels:
+ships thirteen panels:
 
 | Panel | Query |
 | --- | --- |
@@ -218,6 +227,9 @@ ships ten panels:
 | Agent Quality | `sum(autodev_agent_quality_ratio_sum) by (autodev_agent_id) / clamp_min(sum(autodev_agent_quality_ratio_count) by (autodev_agent_id), 1)` |
 | Queue Depth | `autodev_queue_jobs{state="pending"}` |
 | Worker Utilization | `autodev_worker_utilization` |
+| Postgres Pool Available Connections | `autodev_postgres_pool_stat{stat="pool_available"}` |
+| Postgres Pool Wait p95 | `histogram_quantile(0.95, sum by (le, outcome) (rate(autodev_postgres_pool_wait_duration_bucket[5m])))` |
+| Postgres Deadlock Rate | `sum(rate(autodev_postgres_transient_error_count_total{error_type="PostgresDeadlockError"}[5m]))` |
 
 ## Expected failure modes
 

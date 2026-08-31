@@ -56,6 +56,20 @@ def get_store() -> "SQLiteStore | PostgresStore":
     return _store_cache
 
 
+def get_cached_store() -> "SQLiteStore | PostgresStore | None":
+    """Return the process-wide store if one is already constructed, without constructing one.
+
+    Readiness (E60-S4-T2) uses this to report live PostgreSQL pool
+    saturation without the side effect of building a pool (and dialing the
+    database) merely because something asked for it.
+
+    Returns:
+        The cached store, or ``None`` if :func:`get_store` has not been
+        called yet in this process.
+    """
+    return _store_cache
+
+
 def reset_store_cache() -> None:
     """Clear the cached store, closing any owned PostgreSQL pool first."""
     global _store_cache

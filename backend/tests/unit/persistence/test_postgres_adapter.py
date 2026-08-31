@@ -21,6 +21,7 @@ fetch queues meant for CRUD assertions.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -721,6 +722,39 @@ def test_postgres_pool_applies_session_timeout_guards(monkeypatch: pytest.Monkey
         "SET idle_in_transaction_session_timeout = 54321",
     ]
     assert scripted_conn.configure_commits == 1
+
+
+def test_postgres_pool_connect_records_wait_metric_for_grant_and_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every checkout reports its wait outcome to the metric sink (E60-S4-T1)."""
+    install_scripted_psycopg(monkeypatch)
+    monkeypatch.setattr(PostgresStore, "_run_migrations", lambda self, conn: None)
+    monkeypatch.setattr(
+        "backend.persistence.postgres_adapter.store.provision_vector_extension",
+        lambda conn: None,
+    )
+    recorded: list[bool] = []
+    monkeypatch.setattr(
+        "backend.observability.metrics.get_metric_sink",
+        lambda: SimpleNamespace(
+            record_postgres_pool_wait=lambda *, duration_seconds, timed_out: recorded.append(
+                timed_out
+            )
+        ),
+    )
+    store = PostgresStore(
+        database_url="postgresql://test/db",
+        pool_config=postgres_adapter.PostgresPoolConfig(min_size=0, max_size=1, timeout_seconds=0.1),
+    )
+    recorded.clear()  # drop the construction-time checkout
+
+    with store.connect():
+        with pytest.raises(postgres_adapter.PostgresPoolExhaustedError):
+            with store.connect():
+                pass
+
+    assert recorded == [False, True]
 
 
 def test_postgres_pool_exhaustion_is_typed(monkeypatch: pytest.MonkeyPatch) -> None:

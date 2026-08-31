@@ -240,6 +240,37 @@ def _pgvector_readiness_checks(database_url: str) -> list[DiagnosticCheck]:
         conn.close()
 
 
+def _check_postgres_pool_health() -> DiagnosticCheck:
+    """Reflect the live PostgreSQL connection pool's saturation in readiness (E60-S4-T2).
+
+    Reads the process-wide store's own pool stats via
+    :func:`~backend.persistence.database.get_cached_store` -- never
+    constructing a pool as a side effect of a readiness probe -- because
+    pool exhaustion is a client-side wait-queue condition a fresh probe
+    connection could still open around; only the pool's own bookkeeping
+    shows it, which is exactly why an orchestrator watching only request
+    latency cannot see saturation coming.
+    """
+    from backend.persistence.database import get_cached_store
+
+    store = get_cached_store()
+    if store is None:
+        return DiagnosticCheck("postgres_pool", "ok", "pool not yet initialized")
+    pool_stats = getattr(store, "pool_stats", None)
+    if pool_stats is None:
+        return DiagnosticCheck("postgres_pool", "ok", "not applicable to this store")
+    stats = pool_stats()
+    available = stats.get("pool_available")
+    waiting = stats.get("requests_waiting", 0)
+    if available is not None and available <= 0 and waiting:
+        return DiagnosticCheck(
+            "postgres_pool",
+            "fail",
+            f"connection pool saturated: 0 connections available, {waiting} requests waiting",
+        )
+    return DiagnosticCheck("postgres_pool", "ok", f"available={available} waiting={waiting}")
+
+
 def _check_storage_backend(
     storage_backend: str, artifact_dir: str, minio_endpoint: str
 ) -> DiagnosticCheck:
@@ -297,6 +328,7 @@ def run_diagnostics() -> tuple[DiagnosticCheck, ...]:
     checks.append(database_check)
     if database_check.status == "ok" and _is_postgres_database_url(settings.database_url):
         checks.extend(_pgvector_readiness_checks(settings.database_url))
+        checks.append(_check_postgres_pool_health())
     checks.append(
         _check_storage_backend(
             settings.storage_backend, settings.autodev_artifact_dir, settings.autodev_minio_endpoint

@@ -96,21 +96,37 @@ def test_deadlock_is_produced_and_classified_distinctly() -> None:
     assert isinstance(classified, PostgresDeadlockError)
 
 
+def _lock_rows_no_sync(table: str, first_id: int, second_id: int) -> bool:
+    """Lock two rows in order without barrier synchronization (a plain, uncontended retry attempt)."""
+    with _connect() as conn:
+        conn.execute(f"SELECT id FROM {table} WHERE id = %s FOR UPDATE", (first_id,))
+        conn.execute(f"SELECT id FROM {table} WHERE id = %s FOR UPDATE", (second_id,))
+        conn.commit()
+    return True
+
+
 def test_deadlock_victim_recovers_via_bounded_retry() -> None:
     """Wrapped in :func:`run_with_postgres_retry`, the deadlock victim's retry succeeds (E60-S3-T2)."""
     table = _deadlock_table()
     barrier = threading.Barrier(2)
     retry_config = PostgresRetryConfig(max_attempts=3, base_delay_seconds=0.05)
+    first_call_done = {"a": False, "b": False}
 
-    def _attempt(first_id: int, second_id: int) -> bool:
-        return run_with_postgres_retry(
-            lambda: _lock_rows_in_order(table, first_id, second_id, barrier),
-            config=retry_config,
-        )
+    def _attempt(key: str, first_id: int, second_id: int) -> bool:
+        def operation() -> bool:
+            # Only the first attempt on each side rendezvous at the barrier
+            # to force the initial deadlock; once one side has committed and
+            # released its locks, a retry needs no further synchronization.
+            if not first_call_done[key]:
+                first_call_done[key] = True
+                return _lock_rows_in_order(table, first_id, second_id, barrier)
+            return _lock_rows_no_sync(table, first_id, second_id)
+
+        return run_with_postgres_retry(operation, config=retry_config)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        future_a = pool.submit(_attempt, 1, 2)
-        future_b = pool.submit(_attempt, 2, 1)
+        future_a = pool.submit(_attempt, "a", 1, 2)
+        future_b = pool.submit(_attempt, "b", 2, 1)
         assert future_a.result(timeout=10) is True
         assert future_b.result(timeout=10) is True
 

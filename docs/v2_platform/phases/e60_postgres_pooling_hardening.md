@@ -182,7 +182,8 @@ Subtasks:
 - `E60-S4-T3`: `EXPLAIN ANALYZE` review of the hot query paths — including
   the tenant-first indexes from E50 and the pending-decision and expiry
   queries from E53 — plus a minimum load test establishing explicit limits
-  and SLOs.
+  and SLOs. Evidence:
+  [e60_s4_query_plans_and_load_test.md](../e60_s4_query_plans_and_load_test.md).
 
 | Criterion | Detail |
 | --- | --- |
