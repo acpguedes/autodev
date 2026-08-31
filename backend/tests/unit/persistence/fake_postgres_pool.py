@@ -28,6 +28,7 @@ class FakeConnectionPool:
         min_size: int,
         max_size: int,
         timeout: float,
+        configure: Callable[[Any], None] | None = None,
         open: bool,
     ) -> None:
         """Record pool construction args and create one reusable connection."""
@@ -36,6 +37,7 @@ class FakeConnectionPool:
         self.min_size = min_size
         self.max_size = max_size
         self.timeout = timeout
+        self.configure = configure
         self.open = open
         self.connection_calls: list[float | None] = []
         self.closed = False
@@ -105,6 +107,8 @@ def install_fake_postgres_modules(
         def __init__(self, *args: Any, **kwargs: Any) -> None:
             super().__init__(*args, **kwargs)
             self.conn = new_connection()
+            if self.configure is not None:
+                self.configure(self.conn)
 
     monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(connect=connect))
     monkeypatch.setitem(

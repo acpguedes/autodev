@@ -93,6 +93,7 @@ class ScriptedConnection:
         self.executed_many: list[tuple[str, list[Any]]] = []
         self.commits = 0
         self.reset_commits = 0
+        self.configure_commits = 0
         self.rollbacks = 0
         self.active_checkouts = 0
         self.closed = False
@@ -121,13 +122,20 @@ class ScriptedConnection:
 
     @property
     def application_executed(self) -> list[tuple[str, Any]]:
-        """Statements issued by application code, excluding pool cleanup."""
-        return [(sql, params) for sql, params in self.executed if sql != "RESET app.tenant_id"]
+        """Statements issued by application code, excluding pool/connection plumbing."""
+        return [
+            (sql, params)
+            for sql, params in self.executed
+            if sql != "RESET app.tenant_id" and not sql.startswith("SET ")
+        ]
 
     def commit(self) -> None:
         """Record that a commit occurred."""
-        if self.executed and self.executed[-1][0] == "RESET app.tenant_id":
+        last_sql = self.executed[-1][0] if self.executed else ""
+        if last_sql == "RESET app.tenant_id":
             self.reset_commits += 1
+        elif last_sql.startswith("SET "):
+            self.configure_commits += 1
         else:
             self.commits += 1
 
@@ -686,6 +694,33 @@ def test_postgres_store_uses_configured_pool_bounds(monkeypatch: pytest.MonkeyPa
     assert pool.timeout == 0.25
     store.create_session(session_id="s1", goal="g", plan=[], artifacts={})
     assert pool.connection_calls[-1] == 0.25
+
+
+def test_postgres_pool_applies_session_timeout_guards(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each newly opened pooled connection gets its session timeout guards set once (E60-S3-T1)."""
+    scripted_conn = install_scripted_psycopg(monkeypatch)
+    monkeypatch.setattr(PostgresStore, "_run_migrations", lambda self, conn: None)
+    monkeypatch.setattr(
+        "backend.persistence.postgres_adapter.store.provision_vector_extension",
+        lambda conn: None,
+    )
+
+    PostgresStore(
+        database_url="postgresql://test/db",
+        pool_config=postgres_adapter.PostgresPoolConfig(
+            statement_timeout_ms=12_345,
+            lock_timeout_ms=6_789,
+            idle_in_transaction_session_timeout_ms=54_321,
+        ),
+    )
+
+    configured = [sql for sql, _ in scripted_conn.executed if sql.startswith("SET ")]
+    assert configured == [
+        "SET statement_timeout = 12345",
+        "SET lock_timeout = 6789",
+        "SET idle_in_transaction_session_timeout = 54321",
+    ]
+    assert scripted_conn.configure_commits == 1
 
 
 def test_postgres_pool_exhaustion_is_typed(monkeypatch: pytest.MonkeyPatch) -> None:
