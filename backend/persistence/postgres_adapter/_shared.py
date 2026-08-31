@@ -245,17 +245,26 @@ class PostgresConnectionManager:
             PostgresPoolExhaustedError: If the pool cannot satisfy the request
                 within the configured timeout.
         """
+        from backend.observability.metrics import get_metric_sink  # noqa: PLC0415
+
         pool = self._ensure_pool()
+        started_at = time.monotonic()
         try:
             connection_manager = pool.connection(timeout=self.config.timeout_seconds)
             conn = connection_manager.__enter__()
         except Exception as exc:  # noqa: BLE001 - pool implementations raise optional-package classes
             if _is_pool_timeout(exc):
+                get_metric_sink().record_postgres_pool_wait(
+                    duration_seconds=time.monotonic() - started_at, timed_out=True
+                )
                 raise PostgresPoolExhaustedError(
                     "PostgreSQL connection pool exhausted; no connection became "
                     f"available within {self.config.timeout_seconds:g}s"
                 ) from exc
             raise
+        get_metric_sink().record_postgres_pool_wait(
+            duration_seconds=time.monotonic() - started_at, timed_out=False
+        )
         return PooledPostgresConnection(connection_manager, conn)
 
     def close(self) -> None:
@@ -377,6 +386,8 @@ def run_with_postgres_retry(
         Exception: Any non-retryable exception, raised immediately without
             retrying.
     """
+    from backend.observability.metrics import get_metric_sink  # noqa: PLC0415
+
     retry_config = config or PostgresRetryConfig()
     attempt = 0
     while True:
@@ -387,6 +398,9 @@ def run_with_postgres_retry(
             classified = classify_postgres_error(exc)
             if classified is None:
                 raise
+            get_metric_sink().record_postgres_transient_error(
+                error_type=classified.__class__.__name__
+            )
             if attempt >= retry_config.max_attempts:
                 raise classified from exc
             sleep(retry_config.base_delay_seconds * (2 ** (attempt - 1)))

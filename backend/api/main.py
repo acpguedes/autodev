@@ -50,6 +50,7 @@ from backend.llm.composition import reset_model_composition_cache
 from backend.llm.factory import get_chat_model
 from backend.observability.backup_metrics import register_backup_observables
 from backend.observability.quota_metrics import register_quota_observables
+from backend.persistence.database import get_cached_store
 from backend.quotas.service import QuotaService
 from backend.observability.runtime import (
     configure_observability,
@@ -224,6 +225,19 @@ def get_repository_intelligence() -> RepositoryIntelligenceService:
     return RepositoryIntelligenceService(project_root=Path(runtime_config.repository.project_root))
 
 
+def _postgres_pool_stats() -> Dict[str, int]:
+    """Return the process-wide store's live pool stats, or ``{}`` when not applicable.
+
+    Reads whatever store is already cached without constructing one (E60-S4-T1):
+    a scrape before the pool exists, or against SQLite, simply yields no
+    observations rather than building a PostgreSQL pool as a side effect of
+    metrics collection.
+    """
+    store = get_cached_store()
+    pool_stats = getattr(store, "pool_stats", None)
+    return pool_stats() if pool_stats is not None else {}
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """Initialize application services and always shut down observability."""
@@ -249,6 +263,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             backend=settings.autodev_job_backend,
             callback=queue.stats,
         )
+        runtime.metric_sink.observe_postgres_pool(callback=_postgres_pool_stats)
         yield
     finally:
         if queue is not None:

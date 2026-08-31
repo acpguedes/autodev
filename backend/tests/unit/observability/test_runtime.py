@@ -350,6 +350,15 @@ def test_metric_sink_records_exact_instruments_and_bounded_dimensions() -> None:
                 busy_workers=1,
             ),
         )
+        capture.runtime.metric_sink.record_postgres_pool_wait(
+            duration_seconds=0.02, timed_out=False
+        )
+        capture.runtime.metric_sink.record_postgres_transient_error(
+            error_type="PostgresDeadlockError"
+        )
+        capture.runtime.metric_sink.observe_postgres_pool(
+            callback=lambda: {"pool_available": 3, "requests_waiting": 0}
+        )
         metrics_data = capture.metric_reader.get_metrics_data()
 
     assert metrics_data is not None
@@ -372,6 +381,9 @@ def test_metric_sink_records_exact_instruments_and_bounded_dimensions() -> None:
         "autodev.agent.quality_ratio",
         "autodev.queue.jobs",
         "autodev.worker.utilization",
+        "autodev.postgres.pool.wait_duration",
+        "autodev.postgres.transient_error.count",
+        "autodev.postgres.pool.stat",
     }
     http_point = by_name["http.server.request.duration"].data.data_points[0]
     assert http_point.attributes == {
@@ -381,11 +393,21 @@ def test_metric_sink_records_exact_instruments_and_bounded_dimensions() -> None:
     }
     assert http_point.exemplars
     assert http_point.exemplars[0].trace_id
+    pool_wait_point = by_name["autodev.postgres.pool.wait_duration"].data.data_points[0]
+    assert pool_wait_point.attributes == {"outcome": "granted"}
+    transient_error_point = by_name["autodev.postgres.transient_error.count"].data.data_points[0]
+    assert transient_error_point.attributes == {"error_type": "PostgresDeadlockError"}
+    pool_stat_points = {
+        point.attributes["stat"]: point.value
+        for point in by_name["autodev.postgres.pool.stat"].data.data_points
+    }
+    assert pool_stat_points == {"pool_available": 3, "requests_waiting": 0}
     for metric in metrics:
         for point in metric.data.data_points:
             attributes = point.attributes or {}
             assert "trace_id" not in attributes
             assert "run_id" not in attributes
+            assert "tenant_id" not in attributes
 
 
 def test_disabled_runtime_installs_no_export_processors() -> None:

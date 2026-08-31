@@ -131,3 +131,32 @@ def test_pool_retry_config_from_settings_reads_configured_values() -> None:
     config = pool_retry_config_from_settings(settings)
     assert config.max_attempts == 5
     assert config.base_delay_seconds == 0.2
+
+
+def test_run_with_postgres_retry_records_a_transient_error_metric_per_classified_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Each classified retry attempt reports its error type to the metric sink (E60-S4-T1)."""
+    recorded: list[str] = []
+    fake_sink = SimpleNamespace(
+        record_postgres_transient_error=lambda *, error_type: recorded.append(error_type)
+    )
+    monkeypatch.setattr(
+        "backend.observability.metrics.get_metric_sink", lambda: fake_sink
+    )
+    attempts = {"count": 0}
+
+    def operation() -> str:
+        attempts["count"] += 1
+        if attempts["count"] < 3:
+            raise _psycopg_error("40P01" if attempts["count"] == 1 else "40001")
+        return "ok"
+
+    result = run_with_postgres_retry(
+        operation,
+        config=PostgresRetryConfig(max_attempts=3, base_delay_seconds=0.001),
+        sleep=lambda _seconds: None,
+    )
+
+    assert result == "ok"
+    assert recorded == ["PostgresDeadlockError", "PostgresSerializationFailureError"]

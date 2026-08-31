@@ -31,13 +31,15 @@ def test_backup_alerts_are_actionable() -> None:
         if "alert" in rule
     }
 
-    assert {
+    backup_alert_names = {
         "AutoDevBackupNeverSucceeded",
         "AutoDevBackupStale",
         "AutoDevBackupFailing",
-    } <= alerts.keys()
+    }
+    assert backup_alert_names <= alerts.keys()
 
-    for alert in alerts.values():
+    for name in backup_alert_names:
+        alert = alerts[name]
         assert alert["labels"]["severity"] in {"warning", "critical"}
         assert alert["labels"]["service"] == "backup"
         assert alert["annotations"]["summary"]
@@ -46,6 +48,31 @@ def test_backup_alerts_are_actionable() -> None:
 
     assert "> 300" in alerts["AutoDevBackupStale"]["expr"]
     assert "> 0" in alerts["AutoDevBackupFailing"]["expr"]
+
+
+def test_postgres_pool_alerts_are_actionable() -> None:
+    """Every E60-S4 PostgreSQL pooling alert is scoped, owned, documented, and links a runbook."""
+    rules = yaml.safe_load(_RULES.read_text(encoding="utf-8"))
+    alerts = {
+        rule["alert"]: rule
+        for group in rules["groups"]
+        for rule in group["rules"]
+        if "alert" in rule
+    }
+
+    postgres_pool_alert_names = {
+        "AutoDevPostgresPoolSaturated",
+        "AutoDevPostgresDeadlockRateRising",
+    }
+    assert postgres_pool_alert_names <= alerts.keys()
+
+    for name in postgres_pool_alert_names:
+        alert = alerts[name]
+        assert alert["labels"]["severity"] in {"warning", "critical"}
+        assert alert["labels"]["service"] == "postgres-pool"
+        assert alert["annotations"]["summary"]
+        assert alert["annotations"]["description"]
+        assert alert["annotations"]["runbook_url"].startswith("https://")
 
 
 def test_backup_stale_alert_fires_after_a_single_missed_five_minute_rpo() -> None:
