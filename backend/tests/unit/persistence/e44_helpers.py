@@ -50,7 +50,13 @@ class StatementCounter:
 
 
 def data_statements(conn: ScriptedConnection) -> list[str]:
-    """Return a scripted connection's statements minus tenant-scoping ``set_config`` calls.
+    """Return a scripted connection's statements minus tenant-scoping and pool plumbing.
+
+    Excludes tenant-scoping ``set_config`` calls, the pool's one-time session
+    timeout guards (``SET statement_timeout``/``lock_timeout``/
+    ``idle_in_transaction_session_timeout``, E60-S3-T1), and the tenant reset
+    issued when a pooled connection is returned (``RESET app.tenant_id``,
+    E60-S2) -- none of which are the data access these tests measure.
 
     Args:
         conn: The scripted psycopg connection to read.
@@ -58,7 +64,11 @@ def data_statements(conn: ScriptedConnection) -> list[str]:
     Returns:
         The executed SQL statements that represent real data access.
     """
-    return [sql for sql, _ in conn.executed if "set_config" not in sql]
+    return [
+        sql
+        for sql, _ in conn.executed
+        if "set_config" not in sql and sql != "RESET app.tenant_id" and not sql.startswith("SET ")
+    ]
 
 
 def rows_written(target: SQLiteStore, action: Callable[[], Any]) -> int:
