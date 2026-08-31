@@ -29,6 +29,8 @@ from backend.persistence.backup import (
     BackupManager,
     BackupReport,
     ComponentResult,
+    _dumped_postgres_tables,
+    _missing_postgres_tables,
     main,
 )
 from backend.persistence.backup_status import BackupStatusStore
@@ -53,9 +55,10 @@ def _make_sqlite_db(path: Path) -> None:
 class _FakeCompletedProcess:
     """Minimal stand-in for :class:`subprocess.CompletedProcess`."""
 
-    def __init__(self, returncode: int, stderr: str = "") -> None:
+    def __init__(self, returncode: int, stderr: str = "", stdout: str = "") -> None:
         self.returncode = returncode
         self.stderr = stderr
+        self.stdout = stdout
 
 
 # _backup_postgres
@@ -119,9 +122,22 @@ def test_backup_postgres_completed_writes_manifest_entry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A successful ``pg_dump`` run records a completed component with digest."""
-    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/pg_dump")
+    monkeypatch.setattr("shutil.which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(
+        "backend.persistence.backup._live_postgres_tables",
+        lambda connection_url: ["sessions"],
+    )
+    monkeypatch.setattr(
+        "backend.persistence.backup._postgres_vector_extension_state",
+        lambda connection_url: {"version": "0.8.0", "indexes": ["code_embeddings_hnsw"]},
+    )
 
     def fake_run(cmd: list[str], **kwargs: Any) -> _FakeCompletedProcess:
+        if "--list" in cmd:
+            return _FakeCompletedProcess(
+                returncode=0,
+                stdout="1; 1259 16400 TABLE public sessions autodev\n",
+            )
         for arg in cmd:
             if arg.startswith("--file="):
                 Path(arg.removeprefix("--file=")).write_bytes(b"dump-bytes")
@@ -136,6 +152,9 @@ def test_backup_postgres_completed_writes_manifest_entry(
     entry = manifest["components"]["postgres"]
     assert entry["size_bytes"] == len(b"dump-bytes")
     assert entry["sha256"] == __import__("hashlib").sha256(b"dump-bytes").hexdigest()
+    assert entry["tables"] == ["sessions"]
+    assert entry["table_count"] == 1
+    assert entry["extension"] == {"version": "0.8.0", "indexes": ["code_embeddings_hnsw"]}
 
 
 def test_backup_postgres_raises_on_pg_dump_failure(
@@ -150,6 +169,57 @@ def test_backup_postgres_raises_on_pg_dump_failure(
     manager = BackupManager(database_url="postgresql://autodev@localhost/autodev")
     with pytest.raises(BackupError, match="pg_dump failed: connection refused"):
         manager._backup_postgres(tmp_path, {"components": {}})
+
+
+# _missing_postgres_tables / _dumped_postgres_tables (E59-S1-T1)
+
+
+def test_missing_postgres_tables_is_empty_when_dump_covers_every_live_table() -> None:
+    """No coverage gap when every live table appears in the dump's TOC."""
+    assert _missing_postgres_tables(["sessions", "runs"], ["runs", "sessions"]) == []
+
+
+def test_missing_postgres_tables_reports_a_deliberately_added_uncovered_table() -> None:
+    """Negative control: a live table absent from the dump TOC is reported."""
+    assert _missing_postgres_tables(
+        ["sessions", "runs", "plan_step_state"], ["sessions", "runs"]
+    ) == ["plan_step_state"]
+
+
+def test_dumped_postgres_tables_parses_toc_and_ignores_table_data_entries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """TOC parsing extracts ``public`` schema table names, skipping ``TABLE DATA``, comments, and other schemas."""
+    toc = "\n".join(
+        [
+            ";",
+            "; Archive created at 2026-01-01 00:00:00 UTC",
+            ";     dbname: autodev",
+            "3283; 1259 16584 TABLE public code_chunks autodev",
+            "3284; 1259 16590 TABLE public code_embeddings autodev",
+            "3285; 1259 16600 TABLE internal audit_log autodev",
+            "3450; 0 16584 TABLE DATA public code_chunks autodev",
+            "",
+        ]
+    )
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda cmd, **kw: _FakeCompletedProcess(returncode=0, stdout=toc),
+    )
+    tables = _dumped_postgres_tables("/usr/bin/pg_restore", tmp_path / "dump.pgdump")
+    assert tables == ["code_chunks", "code_embeddings"]
+
+
+def test_dumped_postgres_tables_raises_when_pg_restore_list_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A non-zero ``pg_restore --list`` exit code raises ``BackupError``."""
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda cmd, **kw: _FakeCompletedProcess(returncode=1, stderr="not an archive"),
+    )
+    with pytest.raises(BackupError, match="pg_restore --list failed: not an archive"):
+        _dumped_postgres_tables("/usr/bin/pg_restore", tmp_path / "dump.pgdump")
 
 
 # _restore_postgres
@@ -542,6 +612,8 @@ def test_main_backup_command_success(
     status = BackupStatusStore(status_path).read()
     assert status is not None
     assert status.last_result == "success"
+    assert status.last_duration_seconds is not None
+    assert status.last_duration_seconds >= 0
 
 
 def test_main_restore_command_success(
@@ -614,6 +686,7 @@ def test_main_records_backup_failure_in_status_store(
     assert status is not None
     assert status.last_result == "failure"
     assert status.consecutive_failures == 1
+    assert status.last_duration_seconds is not None
 
 
 def test_main_verify_command_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

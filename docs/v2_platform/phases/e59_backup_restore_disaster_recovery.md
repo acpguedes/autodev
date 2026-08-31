@@ -3,7 +3,7 @@
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35 and E41-E47: added after initial Beta
 completion, before the wave is signed off).
-**Status:** Not started · **Stories:** 0/3
+**Status:** Done · **Stories:** 3/3
 **Depends on:** E8-S4 (`BackupManager`, manifest, RPO/RTO targets), E55-S3
 (step state inside the state store), E58 (PostgreSQL as the live source),
 E57-S4 (automated restore in CI)
@@ -244,12 +244,42 @@ Observability:
 
 ## Exit evidence
 
-1. Coverage assertion output, including the negative control.
-2. Clean-environment restore output with measured RTO.
-3. Post-restore functional check output: request, secret, artifact, vector
-   query.
-4. Measured RPO with the method stated.
-5. Updated runbooks, and an ADR if the PITR deviation was chosen.
+1. **Coverage assertion, including the negative control.**
+   `backend/tests/unit/persistence/test_backup.py::test_missing_postgres_tables_reports_a_deliberately_added_uncovered_table`
+   (pure diff negative control) and
+   `backend/tests/unit/persistence/test_backup_restore.py::test_postgres_backup_records_table_coverage_and_extension_state`
+   (real PostgreSQL: manifest records live tables + pgvector version/indexes).
+2. **Clean-environment restore output with measured RTO.**
+   `.github/workflows/ci-e2e.yml`'s `prod-e2e` job wipes the database
+   (drop + recreate) and replaces the MinIO container, restores, and
+   records RTO to the job summary and the `backup-drill-rto` artifact on
+   every PR and daily schedule run. A local drill (real
+   `pgvector/pgvector:0.8.3-pg16` + fresh Redis/MinIO) measured RTO
+   ≈ 10.9 s end to end.
+3. **Post-restore functional check output: request, secret, artifact,
+   vector query.** `scripts/ci_prod_e2e_smoke.py --post-restore` checks all
+   four in one run:
+   ```
+   [smoke] server is healthy
+   [smoke] post-restore session listing for both tenants: OK
+   [smoke] post-restore secret resolution (metadata + decrypted value): OK
+   [smoke] post-restore artifact resolution (logs/<tenant>/e59-drill/probe.log): OK
+   [smoke] real vector query through hybrid retrieval, tenant-scoped: OK
+   ```
+   (from the local drill referenced above).
+4. **Measured RPO with the method stated.** RPO = schedule interval (5 min)
+   + measured backup duration, per ADR-027; duration is timed by
+   `backend/persistence/backup.py`'s CLI and recorded durably
+   (`autodev_backup_last_duration_seconds`, `backend/persistence/backup_status.py`).
+   Local drill measured backup duration ≈ 1.5 s for a minimal seeded
+   dataset — negligible against the 5-minute interval; production
+   deployments should read the live gauge for their own data volume.
+5. **Updated runbooks, and an ADR** (the deviation was chosen — reference
+   §13.9's PITR mechanism is not implemented for the Beta topology):
+   [ADR-027](decisions/ADR-027-backup-rpo-periodic-base-backups.md),
+   `docs/ops/backup_restore.md`,
+   `docs/v2_platform/runbooks/e8_restore_runbook.md`,
+   `docs/v2_platform/beta_gap_analysis.md` criterion 6 (Partial → Met).
 
 ## Affected documents and code
 

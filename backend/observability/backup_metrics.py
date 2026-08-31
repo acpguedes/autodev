@@ -72,6 +72,16 @@ def register_backup_observables(
         callbacks=[value("last_result")],
         description="Latest backup result, one for success and zero for failure",
     )
+    meter.create_observable_gauge(
+        "autodev_backup_last_duration_seconds",
+        callbacks=[value("last_duration_seconds")],
+        description=(
+            "Wall-clock duration of the latest backup attempt -- monitor "
+            "against the backup schedule interval for the RPO worst-case "
+            "window (E59-S3-T2)"
+        ),
+        unit="s",
+    )
 
 
 __all__ = ["register_backup_observables"]

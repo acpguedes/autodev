@@ -44,7 +44,7 @@ def test_backup_gauges_report_recorded_status(tmp_path: Path) -> None:
     """Every documented gauge reports the durable status store's latest values."""
     status_store = BackupStatusStore(tmp_path / "backup-status.json")
     moment = datetime(2026, 8, 15, 12, 0, 0, tzinfo=timezone.utc)
-    status_store.record(success=True, occurred_at=moment)
+    status_store.record(success=True, occurred_at=moment, duration_seconds=2.5)
 
     with capture_observability() as capture:
         register_backup_observables(
@@ -63,6 +63,9 @@ def test_backup_gauges_report_recorded_status(tmp_path: Path) -> None:
     ) == [moment.timestamp()]
     assert _gauge_values(metrics_data, "autodev_backup_consecutive_failures") == [0]
     assert _gauge_values(metrics_data, "autodev_backup_last_result") == [1]
+    assert _gauge_values(
+        metrics_data, "autodev_backup_last_duration_seconds"
+    ) == [2.5]
 
 
 def test_backup_gauge_reports_failure_as_zero(tmp_path: Path) -> None:
