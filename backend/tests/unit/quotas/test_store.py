@@ -6,9 +6,11 @@ import dataclasses
 import threading
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from backend.persistence.postgres_adapter import PostgresRetryConfig
 from backend.quotas.contracts import RunBudgetLimits, TenantQuotaPolicy, usd_to_micros
 from backend.quotas.store import QuotaStore
 
@@ -358,3 +360,42 @@ class TestMonthlyUsage:
         )
         assert result.granted is True
         assert result.used == 900
+
+
+def _fake_postgres_error(sqlstate: str) -> Exception:
+    """Build a fake psycopg-style error carrying ``diag.sqlstate``."""
+    exc = RuntimeError("simulated transient error")
+    exc.diag = SimpleNamespace(sqlstate=sqlstate)  # type: ignore[attr-defined]
+    return exc
+
+
+class TestCriticalSectionRetry:
+    """``_run_critical_section`` retries transient PostgreSQL errors, never on SQLite (E60-S3-T2)."""
+
+    def test_retries_deadlock_on_postgres_and_returns_eventual_result(self) -> None:
+        fake_store = SimpleNamespace(connect=lambda: None, database_url="postgresql://x/y")
+        quota_store = QuotaStore(
+            store=fake_store,
+            retry_config=PostgresRetryConfig(max_attempts=3, base_delay_seconds=0.001),
+        )
+        attempts = {"count": 0}
+
+        def operation() -> str:
+            attempts["count"] += 1
+            if attempts["count"] < 2:
+                raise _fake_postgres_error("40P01")
+            return "granted"
+
+        assert quota_store._run_critical_section(operation) == "granted"
+        assert attempts["count"] == 2
+
+    def test_never_retries_on_sqlite(self, store: QuotaStore) -> None:
+        attempts = {"count": 0}
+
+        def operation() -> None:
+            attempts["count"] += 1
+            raise RuntimeError("sqlite write lock contention")
+
+        with pytest.raises(RuntimeError):
+            store._run_critical_section(operation)
+        assert attempts["count"] == 1

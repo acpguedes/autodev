@@ -26,10 +26,16 @@ from __future__ import annotations
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional, TypeVar
 
+from backend.config.settings import get_settings
 from backend.persistence import contract
 from backend.persistence.database import get_store
+from backend.persistence.postgres_adapter import (
+    PostgresRetryConfig,
+    pool_retry_config_from_settings,
+    run_with_postgres_retry,
+)
 from backend.persistence.tenancy import set_postgres_tenant
 from backend.quotas._time import iso as _iso
 from backend.quotas._time import normalize as _normalize_timestamp
@@ -45,6 +51,9 @@ from backend.quotas.contracts import (
 )
 
 
+_T = TypeVar("_T")
+
+
 def _now() -> str:
     """Return the current UTC timestamp in ISO-8601 form."""
     return datetime.now(timezone.utc).isoformat()
@@ -53,7 +62,13 @@ def _now() -> str:
 class QuotaStore:
     """Durable store for tenant quota policy, usage, leases, and reservations."""
 
-    def __init__(self, db_path: Optional[Path] = None, *, store: Any = None) -> None:
+    def __init__(
+        self,
+        db_path: Optional[Path] = None,
+        *,
+        store: Any = None,
+        retry_config: PostgresRetryConfig | None = None,
+    ) -> None:
         """Open the store against an explicit SQLite file, an injected store, or the configured one.
 
         Args:
@@ -69,6 +84,9 @@ class QuotaStore:
                 Defaults to the process-wide configured store
                 (:func:`backend.persistence.database.get_store`) when neither
                 is given -- the path production takes.
+            retry_config: Bounded retry configuration for PostgreSQL
+                deadlock/serialization-failure transient errors (E60-S3-T2).
+                Defaults to application settings; unused on SQLite.
 
         Raises:
             TypeError: If the resolved store does not expose ``connect()``.
@@ -80,6 +98,7 @@ class QuotaStore:
         self._store = store or get_store()
         if not hasattr(self._store, "connect"):
             raise TypeError("QuotaStore requires a durable store with connect()")
+        self._retry_config = retry_config or pool_retry_config_from_settings(get_settings())
 
     # --------------------------------------------------------------- helpers
 
@@ -91,6 +110,25 @@ class QuotaStore:
     def _sql(self, template: str) -> str:
         """Substitute this store's dialect placeholder/cast into a SQL template."""
         return contract.sql(template, self._is_postgres)
+
+    def _run_critical_section(self, operation: Callable[[], _T]) -> _T:
+        """Run one advisory-lock-guarded transaction, retrying transient PostgreSQL errors.
+
+        A no-op passthrough on SQLite, whose ``BEGIN IMMEDIATE`` write lock
+        (:meth:`_begin_write`) has no deadlock/serialization-failure concept
+        to retry (E60-S3-T2).
+
+        Args:
+            operation: Zero-argument callable that opens its own connection,
+                runs one transaction to completion, and commits or rolls
+                back before returning.
+
+        Returns:
+            *operation*'s return value.
+        """
+        if not self._is_postgres:
+            return operation()
+        return run_with_postgres_retry(operation, config=self._retry_config)
 
     def _connect(self) -> Any:
         """Open a fresh connection from the backing store."""
@@ -193,39 +231,42 @@ class QuotaStore:
             ValueError: If ``expected_version`` does not match the current
                 stored version.
         """
-        with self._connect() as conn:
-            self._scope(conn, policy.tenant_id)
-            self._begin_write(conn)
-            self._lock_tenant_for_write(conn, policy.tenant_id)
-            row = conn.execute(
-                self._sql(
-                    "SELECT version FROM tenant_quota_policies WHERE tenant_id = {p}"
-                    + self._for_update()
-                ),
-                (policy.tenant_id,),
-            ).fetchone()
-            current_version = row[0] if row is not None else 0
-            if expected_version is not None and expected_version != current_version:
-                conn.rollback()
-                raise ValueError(
-                    f"expected_version {expected_version} does not match stored "
-                    f"version {current_version} for tenant {policy.tenant_id!r}"
+        def _attempt() -> None:
+            with self._connect() as conn:
+                self._scope(conn, policy.tenant_id)
+                self._begin_write(conn)
+                self._lock_tenant_for_write(conn, policy.tenant_id)
+                row = conn.execute(
+                    self._sql(
+                        "SELECT version FROM tenant_quota_policies WHERE tenant_id = {p}"
+                        + self._for_update()
+                    ),
+                    (policy.tenant_id,),
+                ).fetchone()
+                current_version = row[0] if row is not None else 0
+                if expected_version is not None and expected_version != current_version:
+                    conn.rollback()
+                    raise ValueError(
+                        f"expected_version {expected_version} does not match stored "
+                        f"version {current_version} for tenant {policy.tenant_id!r}"
+                    )
+                next_version = current_version + 1
+                conn.execute(
+                    self._sql(
+                        """
+                        INSERT INTO tenant_quota_policies (tenant_id, policy_json, version, updated_at)
+                        VALUES ({p}, {p}{jsonb}, {p}, {p})
+                        ON CONFLICT (tenant_id) DO UPDATE SET
+                            policy_json = excluded.policy_json,
+                            version = excluded.version,
+                            updated_at = excluded.updated_at
+                        """
+                    ),
+                    (policy.tenant_id, policy_to_json(policy), next_version, _now()),
                 )
-            next_version = current_version + 1
-            conn.execute(
-                self._sql(
-                    """
-                    INSERT INTO tenant_quota_policies (tenant_id, policy_json, version, updated_at)
-                    VALUES ({p}, {p}{jsonb}, {p}, {p})
-                    ON CONFLICT (tenant_id) DO UPDATE SET
-                        policy_json = excluded.policy_json,
-                        version = excluded.version,
-                        updated_at = excluded.updated_at
-                    """
-                ),
-                (policy.tenant_id, policy_to_json(policy), next_version, _now()),
-            )
-            conn.commit()
+                conn.commit()
+
+        self._run_critical_section(_attempt)
         stored = self.get_policy(policy.tenant_id)
         assert stored is not None
         return stored
@@ -252,52 +293,56 @@ class QuotaStore:
         """
         now = time.time()
         expires_at = _now_plus(lease_seconds)
-        with self._connect() as conn:
-            self._scope(conn, tenant_id)
-            self._begin_write(conn)
-            self._lock_tenant_for_write(conn, tenant_id)
-            existing = conn.execute(
-                self._sql(
-                    "SELECT expires_at, released_at FROM run_leases WHERE run_id = {p}"
-                    + self._for_update()
-                ),
-                (run_id,),
-            ).fetchone()
-            if existing is not None and existing[1] is None and (
-                _parse_iso(existing[0]) > now
-            ):
-                conn.commit()
-                return LeaseResult(
-                    granted=True, resumed=True, expires_at=_normalize_timestamp(existing[0])
+
+        def _attempt() -> LeaseResult:
+            with self._connect() as conn:
+                self._scope(conn, tenant_id)
+                self._begin_write(conn)
+                self._lock_tenant_for_write(conn, tenant_id)
+                existing = conn.execute(
+                    self._sql(
+                        "SELECT expires_at, released_at FROM run_leases WHERE run_id = {p}"
+                        + self._for_update()
+                    ),
+                    (run_id,),
+                ).fetchone()
+                if existing is not None and existing[1] is None and (
+                    _parse_iso(existing[0]) > now
+                ):
+                    conn.commit()
+                    return LeaseResult(
+                        granted=True, resumed=True, expires_at=_normalize_timestamp(existing[0])
+                    )
+
+                active = conn.execute(
+                    self._sql(
+                        "SELECT COUNT(*) FROM run_leases WHERE tenant_id = {p} "
+                        "AND released_at IS NULL AND run_id != {p} AND expires_at > {p}"
+                    ),
+                    (tenant_id, run_id, _iso(now)),
+                ).fetchone()[0]
+                if active >= max_concurrent_runs:
+                    conn.rollback()
+                    return LeaseResult(granted=False, resumed=False, expires_at=None)
+
+                conn.execute(
+                    self._sql(
+                        """
+                        INSERT INTO run_leases (run_id, tenant_id, acquired_at, expires_at, released_at)
+                        VALUES ({p}, {p}, {p}, {p}, NULL)
+                        ON CONFLICT (run_id) DO UPDATE SET
+                            tenant_id = excluded.tenant_id,
+                            acquired_at = excluded.acquired_at,
+                            expires_at = excluded.expires_at,
+                            released_at = NULL
+                        """
+                    ),
+                    (run_id, tenant_id, _iso(now), expires_at),
                 )
+                conn.commit()
+                return LeaseResult(granted=True, resumed=False, expires_at=expires_at)
 
-            active = conn.execute(
-                self._sql(
-                    "SELECT COUNT(*) FROM run_leases WHERE tenant_id = {p} "
-                    "AND released_at IS NULL AND run_id != {p} AND expires_at > {p}"
-                ),
-                (tenant_id, run_id, _iso(now)),
-            ).fetchone()[0]
-            if active >= max_concurrent_runs:
-                conn.rollback()
-                return LeaseResult(granted=False, resumed=False, expires_at=None)
-
-            conn.execute(
-                self._sql(
-                    """
-                    INSERT INTO run_leases (run_id, tenant_id, acquired_at, expires_at, released_at)
-                    VALUES ({p}, {p}, {p}, {p}, NULL)
-                    ON CONFLICT (run_id) DO UPDATE SET
-                        tenant_id = excluded.tenant_id,
-                        acquired_at = excluded.acquired_at,
-                        expires_at = excluded.expires_at,
-                        released_at = NULL
-                    """
-                ),
-                (run_id, tenant_id, _iso(now), expires_at),
-            )
-            conn.commit()
-            return LeaseResult(granted=True, resumed=False, expires_at=expires_at)
+        return self._run_critical_section(_attempt)
 
     def heartbeat_run_lease(self, *, tenant_id: str, run_id: str, lease_seconds: int) -> bool:
         """Extend an active lease's expiry; a no-op if already released/expired.
@@ -365,53 +410,56 @@ class QuotaStore:
         Returns:
             The reservation outcome.
         """
-        with self._connect() as conn:
-            self._scope(conn, tenant_id)
-            self._begin_write(conn)
-            self._lock_tenant_for_write(conn, tenant_id)
-            existing = conn.execute(
-                self._sql(
-                    "SELECT status FROM storage_reservations WHERE reservation_id = {p}"
-                    + self._for_update()
-                ),
-                (idempotency_key,),
-            ).fetchone()
-            if existing is not None:
-                conn.commit()
-                granted = existing[0] != "denied"
-                return ReservationResult(
-                    granted=granted, reservation_id=idempotency_key if granted else None
-                )
+        def _attempt() -> ReservationResult:
+            with self._connect() as conn:
+                self._scope(conn, tenant_id)
+                self._begin_write(conn)
+                self._lock_tenant_for_write(conn, tenant_id)
+                existing = conn.execute(
+                    self._sql(
+                        "SELECT status FROM storage_reservations WHERE reservation_id = {p}"
+                        + self._for_update()
+                    ),
+                    (idempotency_key,),
+                ).fetchone()
+                if existing is not None:
+                    conn.commit()
+                    granted = existing[0] != "denied"
+                    return ReservationResult(
+                        granted=granted, reservation_id=idempotency_key if granted else None
+                    )
 
-            held = conn.execute(
-                self._sql(
-                    "SELECT COALESCE(SUM(bytes), 0) FROM storage_reservations "
-                    "WHERE tenant_id = {p} AND status IN ('reserved', 'committed')"
-                ),
-                (tenant_id,),
-            ).fetchone()[0]
-            if held + bytes_requested > max_storage_bytes:
+                held = conn.execute(
+                    self._sql(
+                        "SELECT COALESCE(SUM(bytes), 0) FROM storage_reservations "
+                        "WHERE tenant_id = {p} AND status IN ('reserved', 'committed')"
+                    ),
+                    (tenant_id,),
+                ).fetchone()[0]
+                if held + bytes_requested > max_storage_bytes:
+                    conn.execute(
+                        self._sql(
+                            "INSERT INTO storage_reservations "
+                            "(reservation_id, tenant_id, bytes, status, created_at) "
+                            "VALUES ({p}, {p}, {p}, 'denied', {p})"
+                        ),
+                        (idempotency_key, tenant_id, bytes_requested, _now()),
+                    )
+                    conn.commit()
+                    return ReservationResult(granted=False, reservation_id=None)
+
                 conn.execute(
                     self._sql(
                         "INSERT INTO storage_reservations "
                         "(reservation_id, tenant_id, bytes, status, created_at) "
-                        "VALUES ({p}, {p}, {p}, 'denied', {p})"
+                        "VALUES ({p}, {p}, {p}, 'reserved', {p})"
                     ),
                     (idempotency_key, tenant_id, bytes_requested, _now()),
                 )
                 conn.commit()
-                return ReservationResult(granted=False, reservation_id=None)
+                return ReservationResult(granted=True, reservation_id=idempotency_key)
 
-            conn.execute(
-                self._sql(
-                    "INSERT INTO storage_reservations "
-                    "(reservation_id, tenant_id, bytes, status, created_at) "
-                    "VALUES ({p}, {p}, {p}, 'reserved', {p})"
-                ),
-                (idempotency_key, tenant_id, bytes_requested, _now()),
-            )
-            conn.commit()
-            return ReservationResult(granted=True, reservation_id=idempotency_key)
+        return self._run_critical_section(_attempt)
 
     def commit_storage_reservation(
         self, *, tenant_id: str, reservation_id: str, actual_bytes: int
@@ -487,26 +535,29 @@ class QuotaStore:
             if self._is_postgres
             else "(credential_id, window_start)"
         )
-        with self._connect() as conn:
-            self._scope(conn, tenant_id)
-            self._begin_write(conn)
-            conn.execute(
-                self._sql(
-                    "INSERT INTO request_rate_buckets (tenant_id, credential_id, window_start, count) "
-                    "VALUES ({p}, {p}, {p}, 0) ON CONFLICT " + conflict_columns + " DO NOTHING"
-                ),
-                (tenant_id, credential_id, window_start),
-            )
-            cursor = conn.execute(
-                self._sql(
-                    "UPDATE request_rate_buckets SET count = count + 1 "
-                    "WHERE tenant_id = {p} AND credential_id = {p} AND window_start = {p} "
-                    "AND count < {p}"
-                ),
-                (tenant_id, credential_id, window_start, requests_per_second),
-            )
-            conn.commit()
-            return cursor.rowcount > 0
+        def _attempt() -> bool:
+            with self._connect() as conn:
+                self._scope(conn, tenant_id)
+                self._begin_write(conn)
+                conn.execute(
+                    self._sql(
+                        "INSERT INTO request_rate_buckets (tenant_id, credential_id, window_start, count) "
+                        "VALUES ({p}, {p}, {p}, 0) ON CONFLICT " + conflict_columns + " DO NOTHING"
+                    ),
+                    (tenant_id, credential_id, window_start),
+                )
+                cursor = conn.execute(
+                    self._sql(
+                        "UPDATE request_rate_buckets SET count = count + 1 "
+                        "WHERE tenant_id = {p} AND credential_id = {p} AND window_start = {p} "
+                        "AND count < {p}"
+                    ),
+                    (tenant_id, credential_id, window_start, requests_per_second),
+                )
+                conn.commit()
+                return cursor.rowcount > 0
+
+        return self._run_critical_section(_attempt)
 
     # ------------------------------------------------------ monthly usage
 
@@ -546,48 +597,52 @@ class QuotaStore:
             The recording outcome.
         """
         threshold = limit * warning_ratio_basis_points
-        with self._connect() as conn:
-            self._scope(conn, tenant_id)
-            self._begin_write(conn)
-            conn.execute(
-                self._sql(
-                    "INSERT INTO tenant_usage_windows "
-                    "(tenant_id, resource, window_key, used, warned) VALUES ({p}, {p}, {p}, 0, 0) "
-                    "ON CONFLICT (tenant_id, resource, window_key) DO NOTHING"
-                ),
-                (tenant_id, resource, window_key),
-            )
-            row = conn.execute(
-                self._sql(
-                    "UPDATE tenant_usage_windows SET "
-                    "used = used + {p}, "
-                    "warned = CASE WHEN warned = 1 THEN 1 "
-                    "WHEN (used + {p}) * 10000 >= {p} THEN 1 ELSE 0 END "
-                    "WHERE tenant_id = {p} AND resource = {p} AND window_key = {p} "
-                    "AND used + {p} <= {p} "
-                    "RETURNING used"
-                ),
-                (delta, delta, threshold, tenant_id, resource, window_key, delta, limit),
-            ).fetchone()
-            if row is None:
-                current = conn.execute(
+
+        def _attempt() -> UsageResult:
+            with self._connect() as conn:
+                self._scope(conn, tenant_id)
+                self._begin_write(conn)
+                conn.execute(
                     self._sql(
-                        "SELECT used FROM tenant_usage_windows "
-                        "WHERE tenant_id = {p} AND resource = {p} AND window_key = {p}"
+                        "INSERT INTO tenant_usage_windows "
+                        "(tenant_id, resource, window_key, used, warned) VALUES ({p}, {p}, {p}, 0, 0) "
+                        "ON CONFLICT (tenant_id, resource, window_key) DO NOTHING"
                     ),
                     (tenant_id, resource, window_key),
-                ).fetchone()[0]
+                )
+                row = conn.execute(
+                    self._sql(
+                        "UPDATE tenant_usage_windows SET "
+                        "used = used + {p}, "
+                        "warned = CASE WHEN warned = 1 THEN 1 "
+                        "WHEN (used + {p}) * 10000 >= {p} THEN 1 ELSE 0 END "
+                        "WHERE tenant_id = {p} AND resource = {p} AND window_key = {p} "
+                        "AND used + {p} <= {p} "
+                        "RETURNING used"
+                    ),
+                    (delta, delta, threshold, tenant_id, resource, window_key, delta, limit),
+                ).fetchone()
+                if row is None:
+                    current = conn.execute(
+                        self._sql(
+                            "SELECT used FROM tenant_usage_windows "
+                            "WHERE tenant_id = {p} AND resource = {p} AND window_key = {p}"
+                        ),
+                        (tenant_id, resource, window_key),
+                    ).fetchone()[0]
+                    conn.commit()
+                    return UsageResult(
+                        granted=False, used=int(current), limit=limit, crossed_warning=False
+                    )
+                new_used = int(row[0])
+                old_used = new_used - delta
+                crossed_warning = old_used * 10_000 < threshold <= new_used * 10_000
                 conn.commit()
                 return UsageResult(
-                    granted=False, used=int(current), limit=limit, crossed_warning=False
+                    granted=True, used=new_used, limit=limit, crossed_warning=crossed_warning
                 )
-            new_used = int(row[0])
-            old_used = new_used - delta
-            crossed_warning = old_used * 10_000 < threshold <= new_used * 10_000
-            conn.commit()
-            return UsageResult(
-                granted=True, used=new_used, limit=limit, crossed_warning=crossed_warning
-            )
+
+        return self._run_critical_section(_attempt)
 
     def usage_snapshot(self, tenant_id: str, resource: str, window_key: str) -> int:
         """Return a tenant's currently recorded usage for one resource/window."""
