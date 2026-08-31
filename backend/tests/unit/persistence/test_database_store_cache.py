@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 
 from backend.config.settings import reset_settings_cache
@@ -15,7 +17,7 @@ from backend.tests.unit.persistence.test_postgres_adapter import ScriptedConnect
 
 
 @pytest.fixture(autouse=True)
-def clean_store_cache() -> None:
+def clean_store_cache() -> Iterator[None]:
     """Reset the process store cache around each test."""
     reset_settings_cache()
     reset_store_cache()

@@ -398,7 +398,7 @@ def test_metric_sink_records_exact_instruments_and_bounded_dimensions() -> None:
     transient_error_point = by_name["autodev.postgres.transient_error.count"].data.data_points[0]
     assert transient_error_point.attributes == {"error_type": "PostgresDeadlockError"}
     pool_stat_points = {
-        point.attributes["stat"]: point.value
+        (point.attributes or {})["stat"]: getattr(point, "value", None)
         for point in by_name["autodev.postgres.pool.stat"].data.data_points
     }
     assert pool_stat_points == {"pool_available": 3, "requests_waiting": 0}
