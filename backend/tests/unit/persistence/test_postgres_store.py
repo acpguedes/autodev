@@ -92,6 +92,9 @@ class FakeConnection:
         """Increment the commit counter."""
         self.commits += 1
 
+    def rollback(self) -> None:
+        """No-op rollback for pool-reset parity."""
+
 
 def install_fake_psycopg(
     monkeypatch: pytest.MonkeyPatch,

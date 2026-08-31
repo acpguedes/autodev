@@ -154,22 +154,22 @@ class QuotaStore:
         Returns:
             Tenant ids, in no particular order.
         """
-        conn = self._connect()
-        rows = conn.execute(
-            self._sql("SELECT tenant_id FROM tenant_quota_policies")
-        ).fetchall()
+        with self._connect() as conn:
+            rows = conn.execute(
+                self._sql("SELECT tenant_id FROM tenant_quota_policies")
+            ).fetchall()
         return [row[0] for row in rows]
 
     def get_policy(self, tenant_id: str) -> Optional[TenantQuotaPolicy]:
         """Fetch a tenant's durable quota policy, or ``None`` if unconfigured."""
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        row = conn.execute(
-            self._sql(
-                "SELECT policy_json, version FROM tenant_quota_policies WHERE tenant_id = {p}"
-            ),
-            (tenant_id,),
-        ).fetchone()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            row = conn.execute(
+                self._sql(
+                    "SELECT policy_json, version FROM tenant_quota_policies WHERE tenant_id = {p}"
+                ),
+                (tenant_id,),
+            ).fetchone()
         if row is None:
             return None
         return policy_from_json(tenant_id, row[0], row[1])
@@ -311,41 +311,41 @@ class QuotaStore:
             ``True`` if an active lease was extended.
         """
         expires_at = _now_plus(lease_seconds)
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        cursor = conn.execute(
-            self._sql(
-                "UPDATE run_leases SET expires_at = {p} "
-                "WHERE run_id = {p} AND released_at IS NULL"
-            ),
-            (expires_at, run_id),
-        )
-        conn.commit()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            cursor = conn.execute(
+                self._sql(
+                    "UPDATE run_leases SET expires_at = {p} "
+                    "WHERE run_id = {p} AND released_at IS NULL"
+                ),
+                (expires_at, run_id),
+            )
+            conn.commit()
         return cursor.rowcount > 0
 
     def release_run_lease(self, *, tenant_id: str, run_id: str) -> None:
         """Release a run's concurrency lease, freeing its tenant's slot."""
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        conn.execute(
-            self._sql(
-                "UPDATE run_leases SET released_at = {p} WHERE run_id = {p} AND released_at IS NULL"
-            ),
-            (_now(), run_id),
-        )
-        conn.commit()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            conn.execute(
+                self._sql(
+                    "UPDATE run_leases SET released_at = {p} WHERE run_id = {p} AND released_at IS NULL"
+                ),
+                (_now(), run_id),
+            )
+            conn.commit()
 
     def count_active_leases(self, tenant_id: str) -> int:
         """Return the tenant's current active (non-expired, non-released) lease count."""
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        row = conn.execute(
-            self._sql(
-                "SELECT COUNT(*) FROM run_leases WHERE tenant_id = {p} "
-                "AND released_at IS NULL AND expires_at > {p}"
-            ),
-            (tenant_id, _now()),
-        ).fetchone()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            row = conn.execute(
+                self._sql(
+                    "SELECT COUNT(*) FROM run_leases WHERE tenant_id = {p} "
+                    "AND released_at IS NULL AND expires_at > {p}"
+                ),
+                (tenant_id, _now()),
+            ).fetchone()
         return int(row[0])
 
     # --------------------------------------------------- storage reserve
@@ -423,16 +423,16 @@ class QuotaStore:
         no row, so a retried or duplicate commit is a safe no-op rather than
         a double-commit.
         """
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        conn.execute(
-            self._sql(
-                "UPDATE storage_reservations SET status = 'committed', bytes = {p} "
-                "WHERE reservation_id = {p} AND status = 'reserved'"
-            ),
-            (actual_bytes, reservation_id),
-        )
-        conn.commit()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            conn.execute(
+                self._sql(
+                    "UPDATE storage_reservations SET status = 'committed', bytes = {p} "
+                    "WHERE reservation_id = {p} AND status = 'reserved'"
+                ),
+                (actual_bytes, reservation_id),
+            )
+            conn.commit()
 
     def release_storage_reservation(self, *, tenant_id: str, reservation_id: str) -> None:
         """Release a reservation that will never be committed (failed write).
@@ -441,28 +441,28 @@ class QuotaStore:
         still-``reserved`` row is affected, so a duplicate release cannot
         double-refund capacity already committed or already released.
         """
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        conn.execute(
-            self._sql(
-                "UPDATE storage_reservations SET status = 'released' "
-                "WHERE reservation_id = {p} AND status = 'reserved'"
-            ),
-            (reservation_id,),
-        )
-        conn.commit()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            conn.execute(
+                self._sql(
+                    "UPDATE storage_reservations SET status = 'released' "
+                    "WHERE reservation_id = {p} AND status = 'reserved'"
+                ),
+                (reservation_id,),
+            )
+            conn.commit()
 
     def storage_used(self, tenant_id: str) -> int:
         """Return a tenant's currently held (reserved + committed) storage bytes."""
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        row = conn.execute(
-            self._sql(
-                "SELECT COALESCE(SUM(bytes), 0) FROM storage_reservations "
-                "WHERE tenant_id = {p} AND status IN ('reserved', 'committed')"
-            ),
-            (tenant_id,),
-        ).fetchone()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            row = conn.execute(
+                self._sql(
+                    "SELECT COALESCE(SUM(bytes), 0) FROM storage_reservations "
+                    "WHERE tenant_id = {p} AND status IN ('reserved', 'committed')"
+                ),
+                (tenant_id,),
+            ).fetchone()
         return int(row[0])
 
     # ------------------------------------------------------- rate limit
@@ -591,15 +591,15 @@ class QuotaStore:
 
     def usage_snapshot(self, tenant_id: str, resource: str, window_key: str) -> int:
         """Return a tenant's currently recorded usage for one resource/window."""
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        row = conn.execute(
-            self._sql(
-                "SELECT used FROM tenant_usage_windows "
-                "WHERE tenant_id = {p} AND resource = {p} AND window_key = {p}"
-            ),
-            (tenant_id, resource, window_key),
-        ).fetchone()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            row = conn.execute(
+                self._sql(
+                    "SELECT used FROM tenant_usage_windows "
+                    "WHERE tenant_id = {p} AND resource = {p} AND window_key = {p}"
+                ),
+                (tenant_id, resource, window_key),
+            ).fetchone()
         return int(row[0]) if row is not None else 0
 
 
