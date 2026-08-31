@@ -348,15 +348,15 @@ class StepApprovalStore:
         Returns:
             The tracked steps; empty if none have been seeded yet.
         """
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        rows = conn.execute(
-            self._sql(
-                f"SELECT {_ROW_COLUMNS} FROM plan_step_state "
-                "WHERE tenant_id = {p} AND session_id = {p} ORDER BY step_index"
-            ),
-            (tenant_id, session_id),
-        ).fetchall()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            rows = conn.execute(
+                self._sql(
+                    f"SELECT {_ROW_COLUMNS} FROM plan_step_state "
+                    "WHERE tenant_id = {p} AND session_id = {p} ORDER BY step_index"
+                ),
+                (tenant_id, session_id),
+            ).fetchall()
         return [_row_to_record(row) for row in rows]
 
     def get_step(
@@ -372,15 +372,15 @@ class StepApprovalStore:
         Returns:
             The step record, or ``None`` if not tracked.
         """
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        row = conn.execute(
-            self._sql(
-                f"SELECT {_ROW_COLUMNS} FROM plan_step_state "
-                "WHERE tenant_id = {p} AND session_id = {p} AND step_index = {p}"
-            ),
-            (tenant_id, session_id, step_index),
-        ).fetchone()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            row = conn.execute(
+                self._sql(
+                    f"SELECT {_ROW_COLUMNS} FROM plan_step_state "
+                    "WHERE tenant_id = {p} AND session_id = {p} AND step_index = {p}"
+                ),
+                (tenant_id, session_id, step_index),
+            ).fetchone()
         return _row_to_record(row) if row is not None else None
 
     # ------------------------------------------------------------ writes

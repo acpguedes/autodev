@@ -377,9 +377,9 @@ class SecretStore:
             SecretRevokedError: If the latest version was revoked -- fails
                 closed rather than falling back to an older active version.
         """
-        conn = self._connect()
-        self._scope(conn, reference.tenant_id)
-        row = self._latest_row(conn, reference)
+        with self._connect() as conn:
+            self._scope(conn, reference.tenant_id)
+            row = self._latest_row(conn, reference)
         if row is None:
             raise SecretNotFoundError(reference)
         metadata = self._row_to_metadata(reference, row)
@@ -389,9 +389,9 @@ class SecretStore:
 
     def get_metadata(self, reference: SecretReference) -> Optional[SecretMetadata]:
         """Return a secret's latest version's metadata, or ``None`` if unknown."""
-        conn = self._connect()
-        self._scope(conn, reference.tenant_id)
-        row = self._latest_row(conn, reference)
+        with self._connect() as conn:
+            self._scope(conn, reference.tenant_id)
+            row = self._latest_row(conn, reference)
         return self._row_to_metadata(reference, row) if row is not None else None
 
     def list_metadata(self, tenant_id: str, *, project: Optional[str] = None) -> list[SecretMetadata]:
@@ -405,35 +405,35 @@ class SecretStore:
             Latest-version metadata, one entry per distinct
             ``(project, name)``, in no particular order.
         """
-        conn = self._connect()
-        self._scope(conn, tenant_id)
         columns = "s.tenant_id, s.project, s.name, s.version, s.status, s.backend_kind, s.created_at, s.rotated_at, s.revoked_at"
-        if project is not None:
-            rows = conn.execute(
-                self._sql(
-                    f"SELECT {columns} FROM secrets s "
-                    "INNER JOIN ("
-                    "  SELECT tenant_id, project, name, MAX(version) AS max_version "
-                    "  FROM secrets WHERE tenant_id = {p} AND project = {p} "
-                    "  GROUP BY tenant_id, project, name"
-                    ") latest ON s.tenant_id = latest.tenant_id AND s.project = latest.project "
-                    "  AND s.name = latest.name AND s.version = latest.max_version"
-                ),
-                (tenant_id, project),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                self._sql(
-                    f"SELECT {columns} FROM secrets s "
-                    "INNER JOIN ("
-                    "  SELECT tenant_id, project, name, MAX(version) AS max_version "
-                    "  FROM secrets WHERE tenant_id = {p} "
-                    "  GROUP BY tenant_id, project, name"
-                    ") latest ON s.tenant_id = latest.tenant_id AND s.project = latest.project "
-                    "  AND s.name = latest.name AND s.version = latest.max_version"
-                ),
-                (tenant_id,),
-            ).fetchall()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            if project is not None:
+                rows = conn.execute(
+                    self._sql(
+                        f"SELECT {columns} FROM secrets s "
+                        "INNER JOIN ("
+                        "  SELECT tenant_id, project, name, MAX(version) AS max_version "
+                        "  FROM secrets WHERE tenant_id = {p} AND project = {p} "
+                        "  GROUP BY tenant_id, project, name"
+                        ") latest ON s.tenant_id = latest.tenant_id AND s.project = latest.project "
+                        "  AND s.name = latest.name AND s.version = latest.max_version"
+                    ),
+                    (tenant_id, project),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    self._sql(
+                        f"SELECT {columns} FROM secrets s "
+                        "INNER JOIN ("
+                        "  SELECT tenant_id, project, name, MAX(version) AS max_version "
+                        "  FROM secrets WHERE tenant_id = {p} "
+                        "  GROUP BY tenant_id, project, name"
+                        ") latest ON s.tenant_id = latest.tenant_id AND s.project = latest.project "
+                        "  AND s.name = latest.name AND s.version = latest.max_version"
+                    ),
+                    (tenant_id,),
+                ).fetchall()
         return [
             SecretMetadata(
                 reference=SecretReference(tenant_id=row[0], project=row[1], name=row[2]),

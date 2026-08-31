@@ -13,6 +13,8 @@ this document via its `runbook_url` annotation.
 | `AutoDevBackupNeverSucceeded` | critical | Platform on-call | §3.1 |
 | `AutoDevBackupStale` | critical | Platform on-call | §3.2 |
 | `AutoDevBackupFailing` | warning | Platform on-call | §3.3 |
+| `AutoDevPostgresPoolSaturated` | critical | Platform on-call | §3.4 |
+| `AutoDevPostgresDeadlockRateRising` | warning | Platform on-call | §3.5 |
 | Suspected sandbox escape / unexpected command execution | critical | Security on-call | §4 |
 | Suspected malicious or misbehaving plugin | critical | Security on-call | §5 |
 
@@ -89,6 +91,55 @@ an RPO breach — but do not wait for it to become one.
    `python -m backend.persistence.backup backup --out /tmp/incident-backup`.
 3. Common causes: disk full at the backup target, expired/rotated database
    credentials, `pg_dump`/`pg_restore` version mismatch against the server.
+
+### Postgres pool saturated
+
+`AutoDevPostgresPoolSaturated` — `autodev_postgres_pool_stat{stat="pool_available"} == 0`
+fired for 2 minutes: the process-local PostgreSQL connection pool
+(`backend.persistence.postgres_adapter.PostgresConnectionManager`, E60-S1)
+has no free connections; requests are queuing for a checkout instead of
+failing fast, which presents to callers as rising latency, not an obvious
+error.
+
+1. Check `/readiness` — its `postgres_pool` check (E60-S4-T2) reports the
+   same saturation independently of Prometheus scrape timing:
+   `curl -s http://<backend-host>:8000/readiness | jq '.checks[] | select(.name=="postgres_pool")'`.
+2. Confirm whether this is load (genuine concurrent demand exceeding
+   `AUTODEV_POSTGRES_POOL_MAX_SIZE`) or a leak (connections checked out and
+   never returned): query `autodev_postgres_pool_stat{stat="requests_waiting"}`
+   over time — a steadily climbing value under flat request volume points to
+   a leak, not load.
+3. Short-term mitigation: raise `AUTODEV_POSTGRES_POOL_MAX_SIZE` (bounded by
+   the PostgreSQL server's own `max_connections`) and restart the backend.
+4. If a leak is suspected, check for a code path that borrows a connection
+   via `store.connect()` without a `with` block or without calling `.close()`
+   on the returned `PooledPostgresConnection` — see
+   `docs/architecture/v2_platform_reference.md`'s persistence section.
+
+### Postgres deadlock rate rising
+
+`AutoDevPostgresDeadlockRateRising` — more than 5 deadlock victims classified
+(`autodev_postgres_transient_error_count_total{error_type="PostgresDeadlockError"}`,
+E60-S3-T3) in a 5-minute window: PostgreSQL's own deadlock detector is firing
+more often than isolated contention would explain, which points to a
+lock-ordering defect rather than normal concurrency.
+
+1. Confirm current impact: bounded retry (E60-S3-T2) means most callers
+   still succeed, so this is a leading indicator, not necessarily an
+   ongoing outage — check application error rates before escalating
+   severity.
+2. Query PostgreSQL's own log or `pg_stat_activity` during the window for the
+   two conflicting lock-acquisition orders (`deadlock detected` log entries
+   include both transactions' held/waited-for locks).
+3. Cross-reference with recent deploys touching E51-E55 stores' write paths
+   (`backend/quotas/store.py`, `backend/execution/policy.py`,
+   `backend/environments/store.py`, ...) for a new code path that acquires
+   the advisory lock (`_lock_tenant_for_write`) and a row lock
+   (`SELECT ... FOR UPDATE`) in a different order than existing call sites.
+4. If retries are also being exhausted (`PostgresDeadlockError` propagating
+   to callers, not just being recorded), raise
+   `AUTODEV_POSTGRES_RETRY_MAX_ATTEMPTS` as a stopgap while the lock-ordering
+   defect is fixed.
 
 ## 4. Sandbox containment
 

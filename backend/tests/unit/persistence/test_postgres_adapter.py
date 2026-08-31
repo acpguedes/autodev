@@ -21,7 +21,6 @@ fetch queues meant for CRUD assertions.
 from __future__ import annotations
 
 import json
-import sys
 from types import SimpleNamespace
 from typing import Any
 
@@ -29,6 +28,10 @@ import pytest
 
 from backend.persistence import postgres_adapter
 from backend.persistence.postgres_adapter import PostgresPlanStore, PostgresStore
+from backend.tests.unit.persistence.fake_postgres_pool import (
+    FakeConnectionPool,
+    install_fake_postgres_modules,
+)
 from backend.plans.models import ApprovalRecord, PlanDocument, PlanStatus
 
 
@@ -90,15 +93,22 @@ class ScriptedConnection:
         self.executed: list[tuple[str, Any]] = []
         self.executed_many: list[tuple[str, list[Any]]] = []
         self.commits = 0
+        self.reset_commits = 0
+        self.configure_commits = 0
+        self.rollbacks = 0
+        self.active_checkouts = 0
+        self.closed = False
         self.fetchone_queue: list[Any] = []
         self.fetchall_queue: list[list[Any]] = []
 
     def __enter__(self) -> "ScriptedConnection":
         """Support ``with self.connect() as conn:`` usage."""
+        self.active_checkouts += 1
         return self
 
     def __exit__(self, *_exc: object) -> None:
-        """No-op cleanup; nothing to release."""
+        """Release one fake pool checkout."""
+        self.active_checkouts -= 1
         return None
 
     def cursor(self) -> ScriptedCursor:
@@ -111,28 +121,41 @@ class ScriptedConnection:
         cursor.execute(sql, params)
         return cursor
 
+    @property
+    def application_executed(self) -> list[tuple[str, Any]]:
+        """Statements issued by application code, excluding pool/connection plumbing."""
+        return [
+            (sql, params)
+            for sql, params in self.executed
+            if sql != "RESET app.tenant_id" and not sql.startswith("SET ")
+        ]
+
     def commit(self) -> None:
         """Record that a commit occurred."""
-        self.commits += 1
+        last_sql = self.executed[-1][0] if self.executed else ""
+        if last_sql == "RESET app.tenant_id":
+            self.reset_commits += 1
+        elif last_sql.startswith("SET "):
+            self.configure_commits += 1
+        else:
+            self.commits += 1
+
+    def rollback(self) -> None:
+        """Record that a rollback occurred."""
+        self.rollbacks += 1
 
 
 def install_scripted_psycopg(monkeypatch: pytest.MonkeyPatch) -> ScriptedConnection:
-    """Install a fake ``psycopg`` module whose ``connect()`` returns a shared connection.
+    """Install fake ``psycopg`` and ``psycopg_pool`` modules.
 
     Args:
         monkeypatch: The active pytest monkeypatch fixture.
 
     Returns:
-        The single :class:`ScriptedConnection` instance every ``connect()``
-        call will return.
+        The single :class:`ScriptedConnection` instance used by the fake pool.
     """
     conn = ScriptedConnection()
-
-    def connect(database_url: str) -> ScriptedConnection:
-        assert database_url.startswith("postgresql://")
-        return conn
-
-    monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(connect=connect))
+    install_fake_postgres_modules(monkeypatch, connection_factory=lambda: conn)
     return conn
 
 
@@ -172,7 +195,7 @@ def test_create_session_inserts_expected_row(store: PostgresStore, scripted_conn
     store.create_session(
         session_id="s1", goal="build it", plan=["a", "b"], artifacts={"k": "v"}, tenant_id="t1"
     )
-    sql, params = scripted_conn.executed[-1]
+    sql, params = scripted_conn.application_executed[-1]
     assert "INSERT INTO sessions" in sql
     assert params == ("s1", "build it", json.dumps(["a", "b"]), json.dumps({"k": "v"}), "t1")
     assert scripted_conn.commits == 1
@@ -219,7 +242,7 @@ def test_update_session_artifacts_issues_update(
 ) -> None:
     """update_session_artifacts issues an UPDATE with JSON-encoded artifacts."""
     store.update_session_artifacts("s1", {"new": True})
-    sql, params = scripted_conn.executed[-1]
+    sql, params = scripted_conn.application_executed[-1]
     assert "UPDATE sessions SET artifacts_json" in sql
     assert params == (json.dumps({"new": True}), "s1")
     assert scripted_conn.commits == 1
@@ -413,7 +436,7 @@ def test_create_eval_result_defaults_gate_passed_true(
 ) -> None:
     """create_eval_result defaults gate_passed to True when no gate.passed is present."""
     store.create_eval_result(eval_id="e1", eval_version="v1", run_id="r1", document={})
-    sql, params = scripted_conn.executed[-1]
+    sql, params = scripted_conn.application_executed[-1]
     assert "INSERT INTO eval_results" in sql
     assert params[4] is True
 
@@ -425,7 +448,7 @@ def test_create_eval_result_explicit_gate_failed(
     store.create_eval_result(
         eval_id="e1", eval_version="v1", run_id="r1", document={"gate": {"passed": False}, "mode": "online"}
     )
-    sql, params = scripted_conn.executed[-1]
+    sql, params = scripted_conn.application_executed[-1]
     assert params[4] is False
     assert params[3] == "online"
 
@@ -445,7 +468,7 @@ def test_list_eval_results_with_version_uses_versioned_sql(
     """list_eval_results filters by eval_version when one is provided."""
     scripted_conn.fetchall_queue.append([(json.dumps({"a": 1}),)])
     result = store.list_eval_results("e1", eval_version="v1")
-    sql, params = scripted_conn.executed[-1]
+    sql, params = scripted_conn.application_executed[-1]
     assert "eval_version = %s" in sql
     assert params == ("e1", "v1")
     assert result == [{"a": 1}]
@@ -457,7 +480,7 @@ def test_list_eval_results_without_version_omits_version_filter(
     """list_eval_results omits the version filter when eval_version is None."""
     scripted_conn.fetchall_queue.append([])
     store.list_eval_results("e1")
-    sql, params = scripted_conn.executed[-1]
+    sql, params = scripted_conn.application_executed[-1]
     assert "eval_version" not in sql
     assert params == ("e1",)
 
@@ -470,7 +493,7 @@ def test_list_eval_results_without_version_omits_version_filter(
 def test_create_score_snapshot_inserts_row(store: PostgresStore, scripted_conn: ScriptedConnection) -> None:
     """create_score_snapshot issues a parameterized INSERT."""
     store.create_score_snapshot(snapshot_id="ss1", sample_count=10, document={"m": 1})
-    sql, params = scripted_conn.executed[-1]
+    sql, params = scripted_conn.application_executed[-1]
     assert "INSERT INTO score_snapshots" in sql
     assert params == ("ss1", 10, json.dumps({"m": 1}), "default")
 
@@ -488,7 +511,7 @@ def test_list_score_snapshots_uses_limit_param(store: PostgresStore, scripted_co
     """list_score_snapshots passes the limit through as a query parameter."""
     scripted_conn.fetchall_queue.append([(json.dumps({"m": 1}),)])
     result = store.list_score_snapshots(limit=5)
-    sql, params = scripted_conn.executed[-1]
+    sql, params = scripted_conn.application_executed[-1]
     assert "LIMIT %s" in sql
     assert params == (5,)
     assert result == [{"m": 1}]
@@ -504,7 +527,7 @@ def test_record_snapshot_promotion_inserts_row(store: PostgresStore, scripted_co
         reason="better",
         decided_at="2024-01-01",
     )
-    sql, params = scripted_conn.executed[-1]
+    sql, params = scripted_conn.application_executed[-1]
     assert "INSERT INTO score_snapshot_promotions" in sql
     assert params == ("p1", "ss1", "ss0", True, "better", "2024-01-01")
 
@@ -555,7 +578,7 @@ def test_upsert_plan_inserts_with_draft_status(
 ) -> None:
     """upsert_plan issues an upsert with the steps JSON-encoded and status hardcoded to draft."""
     plan_store.upsert_plan("s1", ["step1", "step2"])
-    sql, params = scripted_conn.executed[-1]
+    sql, params = scripted_conn.application_executed[-1]
     assert "INSERT INTO plan_documents" in sql
     assert params[0] == "s1"
     assert params[1] == json.dumps(["step1", "step2"])
@@ -576,7 +599,7 @@ def test_get_plan_none_and_found(plan_store: PostgresPlanStore, scripted_conn: S
 def test_set_status_issues_update(plan_store: PostgresPlanStore, scripted_conn: ScriptedConnection) -> None:
     """set_status issues an UPDATE with the new status and a timestamp."""
     plan_store.set_status("s1", PlanStatus.APPROVED)
-    sql, params = scripted_conn.executed[-1]
+    sql, params = scripted_conn.application_executed[-1]
     assert "UPDATE plan_documents SET status" in sql
     assert params[0] == "approved"
     assert params[2] == "s1"
@@ -635,12 +658,189 @@ def test_database_url_fallback_chain(
     monkeypatch.setattr(PostgresPlanStore, "_run_migrations", lambda self, conn: None)
 
     monkeypatch.setenv("DATABASE_URL", "postgresql://from-env/db")
-    explicit = PostgresPlanStore(database_url="postgresql://explicit/db")
+    pool_config = postgres_adapter.PostgresPoolConfig()
+    explicit = PostgresPlanStore(database_url="postgresql://explicit/db", pool_config=pool_config)
     assert explicit.database_url == "postgresql://explicit/db"
 
-    from_env = PostgresPlanStore()
+    from_env = PostgresPlanStore(pool_config=pool_config)
     assert from_env.database_url == "postgresql://from-env/db"
 
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    default = PostgresPlanStore()
+    default = PostgresPlanStore(pool_config=pool_config)
     assert default.database_url == postgres_adapter._DEFAULT_DATABASE_URL
+
+
+def test_postgres_store_uses_configured_pool_bounds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PostgresStore connects through a psycopg_pool with configured bounds."""
+    install_scripted_psycopg(monkeypatch)
+    monkeypatch.setattr(PostgresStore, "_run_migrations", lambda self, conn: None)
+    monkeypatch.setattr(
+        "backend.persistence.postgres_adapter.store.provision_vector_extension",
+        lambda conn: None,
+    )
+
+    store = PostgresStore(
+        database_url="postgresql://test/db",
+        pool_config=postgres_adapter.PostgresPoolConfig(
+            min_size=2,
+            max_size=3,
+            timeout_seconds=0.25,
+        ),
+    )
+
+    pool = FakeConnectionPool.instances[-1]
+    assert pool.conninfo == "postgresql://test/db"
+    assert pool.min_size == 2
+    assert pool.max_size == 3
+    assert pool.timeout == 0.25
+    store.create_session(session_id="s1", goal="g", plan=[], artifacts={})
+    assert pool.connection_calls[-1] == 0.25
+
+
+def test_postgres_pool_applies_session_timeout_guards(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Each newly opened pooled connection gets its session timeout guards set once (E60-S3-T1)."""
+    scripted_conn = install_scripted_psycopg(monkeypatch)
+    monkeypatch.setattr(PostgresStore, "_run_migrations", lambda self, conn: None)
+    monkeypatch.setattr(
+        "backend.persistence.postgres_adapter.store.provision_vector_extension",
+        lambda conn: None,
+    )
+
+    PostgresStore(
+        database_url="postgresql://test/db",
+        pool_config=postgres_adapter.PostgresPoolConfig(
+            statement_timeout_ms=12_345,
+            lock_timeout_ms=6_789,
+            idle_in_transaction_session_timeout_ms=54_321,
+        ),
+    )
+
+    configured = [sql for sql, _ in scripted_conn.executed if sql.startswith("SET ")]
+    assert configured == [
+        "SET statement_timeout = 12345",
+        "SET lock_timeout = 6789",
+        "SET idle_in_transaction_session_timeout = 54321",
+    ]
+    assert scripted_conn.configure_commits == 1
+
+
+def test_postgres_pool_connect_records_wait_metric_for_grant_and_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every checkout reports its wait outcome to the metric sink (E60-S4-T1)."""
+    install_scripted_psycopg(monkeypatch)
+    monkeypatch.setattr(PostgresStore, "_run_migrations", lambda self, conn: None)
+    monkeypatch.setattr(
+        "backend.persistence.postgres_adapter.store.provision_vector_extension",
+        lambda conn: None,
+    )
+    recorded: list[bool] = []
+    monkeypatch.setattr(
+        "backend.observability.metrics.get_metric_sink",
+        lambda: SimpleNamespace(
+            record_postgres_pool_wait=lambda *, duration_seconds, timed_out: recorded.append(
+                timed_out
+            )
+        ),
+    )
+    store = PostgresStore(
+        database_url="postgresql://test/db",
+        pool_config=postgres_adapter.PostgresPoolConfig(min_size=0, max_size=1, timeout_seconds=0.1),
+    )
+    recorded.clear()  # drop the construction-time checkout
+
+    with store.connect():
+        with pytest.raises(postgres_adapter.PostgresPoolExhaustedError):
+            with store.connect():
+                pass
+
+    assert recorded == [False, True]
+
+
+def test_postgres_pool_exhaustion_is_typed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A saturated pool raises the backend-agnostic E60 typed exhaustion error."""
+    install_scripted_psycopg(monkeypatch)
+    monkeypatch.setattr(PostgresStore, "_run_migrations", lambda self, conn: None)
+    monkeypatch.setattr(
+        "backend.persistence.postgres_adapter.store.provision_vector_extension",
+        lambda conn: None,
+    )
+    store = PostgresStore(
+        database_url="postgresql://test/db",
+        pool_config=postgres_adapter.PostgresPoolConfig(
+            min_size=0,
+            max_size=1,
+            timeout_seconds=0.1,
+        ),
+    )
+
+    with store.connect():
+        with pytest.raises(postgres_adapter.PostgresPoolExhaustedError, match="pool exhausted"):
+            with store.connect():
+                pass
+
+
+def test_postgres_pool_resets_connection_state_before_reuse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Returned pooled connections rollback and clear tenant session state before reuse."""
+    scripted_conn = install_scripted_psycopg(monkeypatch)
+    monkeypatch.setattr(PostgresStore, "_run_migrations", lambda self, conn: None)
+    monkeypatch.setattr(
+        "backend.persistence.postgres_adapter.store.provision_vector_extension",
+        lambda conn: None,
+    )
+    store = PostgresStore(
+        database_url="postgresql://test/db",
+        pool_config=postgres_adapter.PostgresPoolConfig(max_size=1),
+    )
+    scripted_conn.executed.clear()
+    scripted_conn.commits = 0
+    scripted_conn.reset_commits = 0
+    scripted_conn.rollbacks = 0
+
+    with store.connect() as conn:
+        conn.execute("SELECT set_config('app.tenant_id', %s, false)", ("tenant-a",))
+
+    assert scripted_conn.rollbacks == 1
+    assert ("RESET app.tenant_id", None) in scripted_conn.executed
+    assert scripted_conn.reset_commits == 1
+    with store.connect() as conn:
+        conn.execute("SELECT 1")
+
+    assert scripted_conn.active_checkouts == 0
+    assert scripted_conn.rollbacks == 2
+
+
+def test_postgres_store_close_closes_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Closing the store closes the underlying PostgreSQL connection pool."""
+    install_scripted_psycopg(monkeypatch)
+    monkeypatch.setattr(PostgresStore, "_run_migrations", lambda self, conn: None)
+    monkeypatch.setattr(
+        "backend.persistence.postgres_adapter.store.provision_vector_extension",
+        lambda conn: None,
+    )
+    store = PostgresStore(database_url="postgresql://test/db")
+    pool = FakeConnectionPool.instances[-1]
+
+    store.close()
+
+    assert pool.closed is True
+    assert pool.conn.closed is True
+
+
+def test_postgres_plan_store_uses_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PostgresPlanStore shares the pooled connection contract."""
+    install_scripted_psycopg(monkeypatch)
+    monkeypatch.setattr(PostgresPlanStore, "_run_migrations", lambda self, conn: None)
+
+    store = PostgresPlanStore(
+        database_url="postgresql://plans/db",
+        pool_config=postgres_adapter.PostgresPoolConfig(max_size=2),
+    )
+    pool = FakeConnectionPool.instances[-1]
+
+    store.upsert_plan("s1", ["step"], tenant_id="tenant-a")
+
+    assert pool.conninfo == "postgresql://plans/db"
+    assert pool.connection_calls[-1] == 5.0

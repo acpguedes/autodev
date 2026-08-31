@@ -173,6 +173,9 @@ def test_dashboard_contains_required_operational_panels_and_normalized_queries()
         "Agent Quality",
         "Queue Depth",
         "Worker Utilization",
+        "Postgres Pool Available Connections",
+        "Postgres Pool Wait p95",
+        "Postgres Deadlock Rate",
     }
 
     assert set(panels) == required_titles
@@ -190,6 +193,9 @@ def test_dashboard_contains_required_operational_panels_and_normalized_queries()
         "autodev_agent_quality_ratio_sum",
         "autodev_queue_jobs",
         "autodev_worker_utilization",
+        "autodev_postgres_pool_stat",
+        "autodev_postgres_pool_wait_duration_bucket",
+        "autodev_postgres_transient_error_count_total",
     ):
         assert metric in queries
     assert "autodev_agent" in queries

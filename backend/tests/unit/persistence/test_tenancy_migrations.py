@@ -67,22 +67,17 @@ class FakeConnection:
     def commit(self) -> None:
         self.commits += 1
 
+    def rollback(self) -> None:
+        pass
+
 
 def install_fake_psycopg(monkeypatch: pytest.MonkeyPatch) -> list[FakeConnection]:
-    """Patch ``sys.modules['psycopg']`` with a fake module recording connections made."""
-    import sys
-    from types import SimpleNamespace
+    """Patch ``sys.modules['psycopg']`` and ``psycopg_pool`` with fakes."""
+    from backend.tests.unit.persistence.fake_postgres_pool import (  # noqa: PLC0415
+        install_fake_postgres_modules,
+    )
 
-    connections: list[FakeConnection] = []
-
-    def connect(database_url: str) -> FakeConnection:
-        assert database_url.startswith("postgresql://")
-        conn = FakeConnection()
-        connections.append(conn)
-        return conn
-
-    monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(connect=connect))
-    return connections
+    return install_fake_postgres_modules(monkeypatch, connection_factory=FakeConnection)
 
 
 def _columns(conn: sqlite3.Connection, table: str) -> set[str]:
@@ -429,6 +424,37 @@ def test_postgres_plan_tables_migration_rollback_drops_policy_and_column() -> No
 # ---------------------------------------------------------------------------
 
 
+def _application_statements(conn: FakeConnection) -> list[tuple[str, object]]:
+    """Return non-migration, non-pool-reset statements from a fake PostgreSQL connection."""
+    return [
+        (sql, params)
+        for sql, params in conn.executed
+        if sql != "RESET app.tenant_id"
+        and "pg_extension" not in sql
+        and "schema_version" not in sql
+        and "CREATE TABLE" not in sql
+        and "ALTER TABLE" not in sql
+        and "CREATE POLICY" not in sql
+        and "ROW LEVEL SECURITY" not in sql
+        and "CREATE INDEX" not in sql
+    ]
+
+
+def _statement_pairs(
+    conn: FakeConnection,
+    *,
+    tenant_id: str,
+    sql_fragment: str,
+) -> list[tuple[tuple[str, object], tuple[str, object]]]:
+    """Return tenant-scope/application-statement pairs from one connection log."""
+    statements = _application_statements(conn)
+    pairs: list[tuple[tuple[str, object], tuple[str, object]]] = []
+    for index, (sql, params) in enumerate(statements[:-1]):
+        if "set_config" in sql and params == (tenant_id,):
+            pairs.append(((sql, params), statements[index + 1]))
+    return [pair for pair in pairs if sql_fragment in pair[1][0]]
+
+
 def test_postgres_store_create_session_scopes_tenant_before_insert(monkeypatch: pytest.MonkeyPatch) -> None:
     """``create_session`` calls ``set_postgres_tenant`` with the passed tenant before inserting.
 
@@ -443,10 +469,9 @@ def test_postgres_store_create_session_scopes_tenant_before_insert(monkeypatch: 
     store.create_session(session_id="s1", goal="g", plan=[], artifacts={}, tenant_id="acme")
 
     conn = connections[-1]
-    set_tenant_sql, set_tenant_params = conn.executed[0]
-    assert "set_config" in set_tenant_sql
-    assert set_tenant_params == ("acme",)
-    insert_sql, insert_params = conn.executed[1]
+    pairs = _statement_pairs(conn, tenant_id="acme", sql_fragment="INSERT INTO sessions")
+    assert pairs
+    insert_sql, insert_params = pairs[-1][1]
     assert "INSERT INTO sessions" in insert_sql
     assert cast(Sequence[object], insert_params)[-1] == "acme"
 
@@ -464,10 +489,9 @@ def test_postgres_store_list_run_steps_scopes_tenant_and_joins_runs(monkeypatch:
     store.list_run_steps("run-1", tenant_id="acme")
 
     conn = connections[-1]
-    set_tenant_sql, set_tenant_params = conn.executed[0]
-    assert "set_config" in set_tenant_sql
-    assert set_tenant_params == ("acme",)
-    query_sql, _query_params = conn.executed[1]
+    pairs = _statement_pairs(conn, tenant_id="acme", sql_fragment="FROM run_steps")
+    assert pairs
+    query_sql, _query_params = pairs[-1][1]
     assert "FROM run_steps" in query_sql
     assert "JOIN runs" in query_sql
 
@@ -487,10 +511,13 @@ def test_postgres_store_get_active_score_snapshot_joins_score_snapshots(
     store.get_active_score_snapshot("policy-1", tenant_id="acme")
 
     conn = connections[-1]
-    set_tenant_sql, set_tenant_params = conn.executed[0]
-    assert "set_config" in set_tenant_sql
-    assert set_tenant_params == ("acme",)
-    query_sql, _query_params = conn.executed[1]
+    pairs = _statement_pairs(
+        conn,
+        tenant_id="acme",
+        sql_fragment="FROM score_snapshot_promotions",
+    )
+    assert pairs
+    query_sql, _query_params = pairs[-1][1]
     assert "FROM score_snapshot_promotions" in query_sql
     assert "JOIN score_snapshots" in query_sql
 
@@ -503,10 +530,9 @@ def test_postgres_plan_store_upsert_plan_scopes_tenant_before_insert(monkeypatch
     store.upsert_plan("s1", ["step1"], tenant_id="acme")
 
     conn = connections[-1]
-    set_tenant_sql, set_tenant_params = conn.executed[0]
-    assert "set_config" in set_tenant_sql
-    assert set_tenant_params == ("acme",)
-    insert_sql, insert_params = conn.executed[1]
+    pairs = _statement_pairs(conn, tenant_id="acme", sql_fragment="INSERT INTO plan_documents")
+    assert pairs
+    insert_sql, insert_params = pairs[-1][1]
     assert "INSERT INTO plan_documents" in insert_sql
     assert cast(Sequence[object], insert_params)[-1] == "acme"
 
@@ -518,12 +544,12 @@ def test_postgres_plan_store_approve_scopes_tenant_on_both_writes(monkeypatch: p
 
     store.approve("s1", actor="alice", tenant_id="acme")
 
-    # Last two connections opened correspond to set_status then _append_approval.
-    status_conn, approval_conn = connections[-2], connections[-1]
-    assert status_conn.executed[0][1] == ("acme",)
-    assert "UPDATE plan_documents" in status_conn.executed[1][0]
-    assert approval_conn.executed[0][1] == ("acme",)
-    insert_sql, insert_params = approval_conn.executed[1]
+    conn = connections[-1]
+    status_pairs = _statement_pairs(conn, tenant_id="acme", sql_fragment="UPDATE plan_documents")
+    approval_pairs = _statement_pairs(conn, tenant_id="acme", sql_fragment="INSERT INTO plan_approvals")
+    assert status_pairs
+    assert approval_pairs
+    insert_sql, insert_params = approval_pairs[-1][1]
     assert "INSERT INTO plan_approvals" in insert_sql
     assert cast(Sequence[object], insert_params)[-1] == "acme"
 

@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from backend.config.settings import Settings, get_settings
 from backend.persistence.migrations import MigrationRunner
 from backend.persistence.migrations.postgres_versions import POSTGRES_STORE_MIGRATIONS
 from backend.persistence.postgres_adapter._shared import (
     _DEFAULT_DATABASE_URL,
-    _connect,
+    PostgresConnectionManager,
+    PostgresPoolConfig,
+    pool_config_from_settings,
 )
 from backend.persistence.postgres_adapter.eval_scoring import _EvalScoringMixin
 from backend.persistence.postgres_adapter.messages import _MessagesMixin
@@ -26,20 +29,44 @@ class PostgresStore(_SessionsMixin, _RunsMixin, _MessagesMixin, _EvalScoringMixi
     ``_ConnectionOwner``; only this class provides the real ``connect()``.
     """
 
-    def __init__(self, database_url: str = _DEFAULT_DATABASE_URL) -> None:
+    def __init__(
+        self,
+        database_url: str = _DEFAULT_DATABASE_URL,
+        *,
+        pool_config: PostgresPoolConfig | None = None,
+        connection_manager: PostgresConnectionManager | None = None,
+        settings: Settings | None = None,
+    ) -> None:
         """Initialize the store and apply its migrations.
 
         Args:
             database_url: PostgreSQL connection URL.
+            pool_config: Optional explicit pool configuration.
+            connection_manager: Optional injected manager used by tests.
+            settings: Settings source for the default pool configuration.
         """
         self.database_url = database_url
+        if pool_config is None and connection_manager is None:
+            pool_config = pool_config_from_settings(settings or get_settings())
+        self._connection_manager = connection_manager or PostgresConnectionManager(
+            database_url,
+            pool_config,
+        )
         with self.connect() as conn:
             provision_vector_extension(conn)
             self._run_migrations(conn)
 
     def connect(self) -> Any:
-        """Open a new connection to this store's database."""
-        return _connect(self.database_url)
+        """Borrow a connection from this store's bounded PostgreSQL pool."""
+        return self._connection_manager.connect()
+
+    def close(self) -> None:
+        """Close this store's PostgreSQL connection pool."""
+        self._connection_manager.close()
+
+    def pool_stats(self) -> dict[str, int]:
+        """Return current pool statistics for diagnostics and metrics."""
+        return self._connection_manager.stats()
 
     def _run_migrations(self, conn: Any) -> None:
         """Apply this store's versioned migrations via the shared runner.

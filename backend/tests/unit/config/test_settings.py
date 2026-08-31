@@ -27,6 +27,14 @@ def clean_settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "AUTODEV_MINIO_ENDPOINT",
         "AUTODEV_MINIO_ACCESS_KEY",
         "AUTODEV_MINIO_SECRET_KEY",
+        "AUTODEV_POSTGRES_POOL_MIN_SIZE",
+        "AUTODEV_POSTGRES_POOL_MAX_SIZE",
+        "AUTODEV_POSTGRES_POOL_TIMEOUT_SECONDS",
+        "AUTODEV_POSTGRES_STATEMENT_TIMEOUT_MS",
+        "AUTODEV_POSTGRES_LOCK_TIMEOUT_MS",
+        "AUTODEV_POSTGRES_IDLE_IN_TRANSACTION_SESSION_TIMEOUT_MS",
+        "AUTODEV_POSTGRES_RETRY_MAX_ATTEMPTS",
+        "AUTODEV_POSTGRES_RETRY_BASE_DELAY_SECONDS",
     ):
         monkeypatch.delenv(name, raising=False)
     reset_settings_cache()
@@ -73,6 +81,54 @@ def test_prod_profile_accepts_explicit_postgres_redis_and_s3() -> None:
     assert settings.autodev_job_backend == "redis"
     assert settings.autodev_event_bus == "redis"
     assert settings.storage_backend == "s3"
+
+
+def test_postgres_pool_settings_have_safe_defaults_and_env_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PostgreSQL pool bounds are configurable through typed env vars."""
+    monkeypatch.setenv("AUTODEV_POSTGRES_POOL_MIN_SIZE", "2")
+    monkeypatch.setenv("AUTODEV_POSTGRES_POOL_MAX_SIZE", "12")
+    monkeypatch.setenv("AUTODEV_POSTGRES_POOL_TIMEOUT_SECONDS", "1.5")
+
+    settings = Settings()
+
+    assert settings.autodev_postgres_pool_min_size == 2
+    assert settings.autodev_postgres_pool_max_size == 12
+    assert settings.autodev_postgres_pool_timeout_seconds == 1.5
+
+
+def test_postgres_session_timeout_and_retry_settings_have_safe_defaults_and_env_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Session timeout guards and retry bounds are configurable through typed env vars (E60-S3)."""
+    settings = Settings()
+    assert settings.autodev_postgres_statement_timeout_ms == 30_000
+    assert settings.autodev_postgres_lock_timeout_ms == 5_000
+    assert settings.autodev_postgres_idle_in_transaction_session_timeout_ms == 60_000
+    assert settings.autodev_postgres_retry_max_attempts == 3
+    assert settings.autodev_postgres_retry_base_delay_seconds == 0.05
+
+    monkeypatch.setenv("AUTODEV_POSTGRES_STATEMENT_TIMEOUT_MS", "10000")
+    monkeypatch.setenv("AUTODEV_POSTGRES_LOCK_TIMEOUT_MS", "2000")
+    monkeypatch.setenv("AUTODEV_POSTGRES_IDLE_IN_TRANSACTION_SESSION_TIMEOUT_MS", "20000")
+    monkeypatch.setenv("AUTODEV_POSTGRES_RETRY_MAX_ATTEMPTS", "5")
+    monkeypatch.setenv("AUTODEV_POSTGRES_RETRY_BASE_DELAY_SECONDS", "0.25")
+
+    overridden = Settings()
+    assert overridden.autodev_postgres_statement_timeout_ms == 10_000
+    assert overridden.autodev_postgres_lock_timeout_ms == 2_000
+    assert overridden.autodev_postgres_idle_in_transaction_session_timeout_ms == 20_000
+    assert overridden.autodev_postgres_retry_max_attempts == 5
+    assert overridden.autodev_postgres_retry_base_delay_seconds == 0.25
+
+
+def test_postgres_pool_min_size_cannot_exceed_max_size() -> None:
+    """Pool configuration rejects an impossible min/max pair."""
+    with pytest.raises(ValidationError) as excinfo:
+        Settings(autodev_postgres_pool_min_size=6, autodev_postgres_pool_max_size=5)
+
+    assert "AUTODEV_POSTGRES_POOL_MIN_SIZE cannot exceed" in str(excinfo.value)
 
 
 def test_prod_profile_rejects_invalid_redis_url() -> None:

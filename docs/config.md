@@ -214,6 +214,14 @@ expire.
 | `AUTODEV_PROFILE` | `local` | Selects `local` or `prod` validation rules. |
 | `AUTODEV_SETTINGS_FILE` | empty | Optional flat JSON settings file loaded below env vars. |
 | `DATABASE_URL` | `sqlite:///./autodev.db` | State store connection URL. |
+| `AUTODEV_POSTGRES_POOL_MIN_SIZE` | `1` | Minimum connections the process-local PostgreSQL pool keeps open (E60-S1). |
+| `AUTODEV_POSTGRES_POOL_MAX_SIZE` | `10` | Maximum concurrent checked-out/open PostgreSQL connections (E60-S1). |
+| `AUTODEV_POSTGRES_POOL_TIMEOUT_SECONDS` | `5.0` | Maximum wait for a pooled connection before raising a typed pool-exhaustion error (E60-S1). |
+| `AUTODEV_POSTGRES_STATEMENT_TIMEOUT_MS` | `30000` | Per-session `statement_timeout`; a query running longer is canceled (SQLSTATE `57014`). `0` disables it (E60-S3). |
+| `AUTODEV_POSTGRES_LOCK_TIMEOUT_MS` | `5000` | Per-session `lock_timeout`; a stuck lock wait aborts (SQLSTATE `55P03`). `0` disables it (E60-S3). |
+| `AUTODEV_POSTGRES_IDLE_IN_TRANSACTION_SESSION_TIMEOUT_MS` | `60000` | Per-session `idle_in_transaction_session_timeout`; an abandoned open transaction is terminated (SQLSTATE `25P03`). `0` disables it (E60-S3). |
+| `AUTODEV_POSTGRES_RETRY_MAX_ATTEMPTS` | `3` | Bounded retry attempts for transient PostgreSQL deadlock/serialization-failure errors around advisory-lock-guarded writes (E60-S3). |
+| `AUTODEV_POSTGRES_RETRY_BASE_DELAY_SECONDS` | `0.05` | Base exponential-backoff delay between retry attempts (E60-S3). |
 | `LLM_PROVIDER` | `stub` | `stub`, `openai`, or `ollama`. |
 | `LLM_MODEL` | empty | Global default model for the provider-neutral gateway. Empty means no global default: agents must then select their own model, or the run fails explicitly. See [Model Gateway](agents/model_gateway.md). |
 | `OPENAI_API_KEY` | empty | Required when `LLM_PROVIDER=openai`. |

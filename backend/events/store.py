@@ -93,48 +93,45 @@ class EventStore:
             The :class:`StoredEvent` with its assigned sequence.
         """
         stored_at = utcnow_iso()
-        conn = self._connect()
         try:
-            self._begin_write(conn)
-            row = conn.execute(
-                self._sql(
-                    "SELECT COALESCE(MAX(sequence), 0) FROM events "
-                    "WHERE partition_key = {p}"
-                ),
-                (envelope.partitionKey,),
-            ).fetchone()
-            sequence = int(row[0] if not hasattr(row, "keys") else list(row)[0]) + 1
-            conn.execute(
-                self._sql(
-                    """
-                    INSERT INTO events (
-                        event_id, tenant_id, partition_key, sequence, type,
-                        occurred_at, trace_id, subject_json, data_json,
-                        schema_version, stored_at
-                    ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
-                    """
-                ),
-                (
-                    envelope.eventId,
-                    envelope.tenantId,
-                    envelope.partitionKey,
-                    sequence,
-                    envelope.type,
-                    envelope.occurredAt.isoformat(),
-                    envelope.traceId,
-                    json.dumps(envelope.subject),
-                    json.dumps(envelope.data),
-                    envelope.schemaVersion,
-                    stored_at,
-                ),
-            )
-            self._upsert_projection(conn, envelope, sequence, stored_at)
-            conn.commit()
+            with self._connect() as conn:
+                self._begin_write(conn)
+                row = conn.execute(
+                    self._sql(
+                        "SELECT COALESCE(MAX(sequence), 0) FROM events "
+                        "WHERE partition_key = {p}"
+                    ),
+                    (envelope.partitionKey,),
+                ).fetchone()
+                sequence = int(row[0] if not hasattr(row, "keys") else list(row)[0]) + 1
+                conn.execute(
+                    self._sql(
+                        """
+                        INSERT INTO events (
+                            event_id, tenant_id, partition_key, sequence, type,
+                            occurred_at, trace_id, subject_json, data_json,
+                            schema_version, stored_at
+                        ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
+                        """
+                    ),
+                    (
+                        envelope.eventId,
+                        envelope.tenantId,
+                        envelope.partitionKey,
+                        sequence,
+                        envelope.type,
+                        envelope.occurredAt.isoformat(),
+                        envelope.traceId,
+                        json.dumps(envelope.subject),
+                        json.dumps(envelope.data),
+                        envelope.schemaVersion,
+                        stored_at,
+                    ),
+                )
+                self._upsert_projection(conn, envelope, sequence, stored_at)
+                conn.commit()
         except Exception:
-            try:
-                conn.rollback()
-            finally:
-                self._drop_connection()
+            self._drop_connection()
             raise
         return StoredEvent(sequence=sequence, envelope=envelope, stored_at=stored_at)
 
@@ -235,7 +232,8 @@ class EventStore:
         params: tuple[Any, ...] = (partition_key, after_sequence or 0)
         if tenant_id is not None:
             params = (*params, tenant_id)
-        rows = self._connect().execute(sql, params).fetchall()
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
         return [decode_event(row) for row in rows]
 
     def get_projection(self, partition_key: str) -> EventProjection | None:
@@ -252,7 +250,8 @@ class EventStore:
             "last_event_type, last_event_at, counts_json, updated_at "
             "FROM event_projections WHERE partition_key = {p}"
         )
-        row = self._connect().execute(sql, (partition_key,)).fetchone()
+        with self._connect() as conn:
+            row = conn.execute(sql, (partition_key,)).fetchone()
         return decode_projection(row) if row is not None else None
 
     def list_projections(
@@ -282,7 +281,8 @@ class EventStore:
             f"FROM event_projections{where} "
             "ORDER BY updated_at DESC, partition_key"
         )
-        rows = self._connect().execute(sql, tuple(params)).fetchall()
+        with self._connect() as conn:
+            rows = conn.execute(sql, tuple(params)).fetchall()
         return [decode_projection(row) for row in rows]
 
     # -------------------------------------------------------- reconstruction
@@ -403,17 +403,14 @@ class EventStore:
                 "{terminal}", ", ".join("{p}" for _ in sorted(TERMINAL_STATUSES))
             )
         )
-        conn = self._connect()
         try:
-            self._begin_write(conn)
-            cursor = conn.execute(sql, (cutoff_iso, *sorted(TERMINAL_STATUSES)))
-            deleted = int(cursor.rowcount if cursor.rowcount is not None else 0)
-            conn.commit()
+            with self._connect() as conn:
+                self._begin_write(conn)
+                cursor = conn.execute(sql, (cutoff_iso, *sorted(TERMINAL_STATUSES)))
+                deleted = int(cursor.rowcount if cursor.rowcount is not None else 0)
+                conn.commit()
         except Exception:
-            try:
-                conn.rollback()
-            finally:
-                self._drop_connection()
+            self._drop_connection()
             raise
         return deleted
 
@@ -436,26 +433,24 @@ class EventStore:
         return contract.sql(template, self._is_postgres)
 
     def _connect(self) -> Any:
-        """Return this thread's cached store connection, creating it once.
+        """Return a connection, caching only SQLite's thread-bound raw handle.
 
-        Appends happen on every published event, so paying a connection
-        open (plus SQLite's WAL pragma, a write) per event would dominate
-        the append cost by orders of magnitude and violate the story's
-        fast-append CNF. Each thread therefore opens one connection lazily
-        and reuses it; SQLite connections are not shareable across threads
-        (``check_same_thread``), which is why the cache is per-thread
-        rather than per-store.
+        Appends happen on every published event, so paying SQLite's WAL pragma
+        setup on every append would dominate local append cost. PostgreSQL
+        connection reuse is owned by the process pool instead, so callers never
+        pin a borrowed pooled connection in thread-local state.
 
         Returns:
             A DB-API connection from the underlying store.
         """
+        if self._is_postgres:
+            return self._store.connect()
         conn = getattr(self._local, "conn", None)
         if conn is None:
             conn = self._store.connect()
-            if not self._is_postgres:
-                conn.execute("PRAGMA busy_timeout=15000")
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA busy_timeout=15000")
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
             self._local.conn = conn
         return conn
 
@@ -489,10 +484,10 @@ class EventStore:
 
     def _ensure_schema(self) -> None:
         """Create the event-store tables if they do not exist."""
-        conn = self._connect()
-        for statement in event_store_statements(self._is_postgres):
-            conn.execute(statement)
-        conn.commit()
+        with self._connect() as conn:
+            for statement in event_store_statements(self._is_postgres):
+                conn.execute(statement)
+            conn.commit()
 
 
 __all__ = [

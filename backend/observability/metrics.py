@@ -153,6 +153,37 @@ class MetricSink(Protocol):
             callback: Function returning the latest queue snapshot.
         """
 
+    def record_postgres_pool_wait(
+        self, *, duration_seconds: float, timed_out: bool
+    ) -> None:
+        """Record one PostgreSQL connection-pool checkout wait (E60-S4).
+
+        Args:
+            duration_seconds: Time spent waiting for a pooled connection.
+            timed_out: Whether the wait ended in
+                :class:`~backend.persistence.postgres_adapter.PostgresPoolExhaustedError`
+                rather than a granted connection.
+        """
+
+    def record_postgres_transient_error(self, *, error_type: str) -> None:
+        """Record one classified transient PostgreSQL error (E60-S4).
+
+        Args:
+            error_type: Stable classification, e.g. ``"deadlock"`` or
+                ``"serialization_failure"`` -- never a raw driver message.
+        """
+
+    def observe_postgres_pool(
+        self, *, callback: Callable[[], dict[str, int]]
+    ) -> None:
+        """Register the process's PostgreSQL pool-stats callback for observable gauges (E60-S4).
+
+        Args:
+            callback: Function returning the latest
+                :meth:`~backend.persistence.postgres_adapter.PostgresConnectionManager.stats`
+                mapping.
+        """
+
 
 class NoopMetricSink:
     """Metric sink used when OpenTelemetry is disabled."""
@@ -225,6 +256,19 @@ class NoopMetricSink:
     ) -> None:
         """Discard a queue observation callback."""
 
+    def record_postgres_pool_wait(
+        self, *, duration_seconds: float, timed_out: bool
+    ) -> None:
+        """Discard one pool-wait measurement."""
+
+    def record_postgres_transient_error(self, *, error_type: str) -> None:
+        """Discard one transient-error classification."""
+
+    def observe_postgres_pool(
+        self, *, callback: Callable[[], dict[str, int]]
+    ) -> None:
+        """Discard a pool-stats observation callback."""
+
 
 class OtelMetricSink:
     """OpenTelemetry implementation of the stable application metric sink."""
@@ -266,6 +310,18 @@ class OtelMetricSink:
             "autodev.worker.utilization",
             callbacks=[self._observe_worker_utilization],
             unit="1",
+        )
+        self._postgres_pool_wait = meter.create_histogram(
+            "autodev.postgres.pool.wait_duration", unit="s"
+        )
+        self._postgres_transient_error_count = meter.create_counter(
+            "autodev.postgres.transient_error.count", unit="{error}"
+        )
+        self._postgres_pool_callback: Callable[[], dict[str, int]] | None = None
+        meter.create_observable_gauge(
+            "autodev.postgres.pool.stat",
+            callbacks=[self._observe_postgres_pool],
+            unit="{connection}",
         )
 
     @staticmethod
@@ -426,6 +482,38 @@ class OtelMetricSink:
                 snapshot.busy_workers / snapshot.workers if snapshot.workers else 0.0
             )
             yield Observation(value, {"backend": backend})
+
+    def record_postgres_pool_wait(
+        self, *, duration_seconds: float, timed_out: bool
+    ) -> None:
+        """Record one PostgreSQL connection-pool checkout wait."""
+        self._postgres_pool_wait.record(
+            duration_seconds,
+            {"outcome": "timeout" if timed_out else "granted"},
+        )
+
+    def record_postgres_transient_error(self, *, error_type: str) -> None:
+        """Record one classified transient PostgreSQL error."""
+        self._postgres_transient_error_count.add(1, {"error_type": self._safe(error_type)})
+
+    def observe_postgres_pool(
+        self, *, callback: Callable[[], dict[str, int]]
+    ) -> None:
+        """Register or replace the process's PostgreSQL pool-stats callback."""
+        self._postgres_pool_callback = callback
+
+    def _observe_postgres_pool(self, _: object) -> Iterable[Observation]:
+        """Read the registered pool-stats callback, one observation per stat.
+
+        Stat names are the pool implementation's own fixed counter keys
+        (``pool_min``, ``pool_max``, ``pool_available``,
+        ``requests_waiting``, ...) -- a bounded, schema-defined set, never
+        tenant or request data.
+        """
+        if self._postgres_pool_callback is None:
+            return
+        for stat, value in self._postgres_pool_callback().items():
+            yield Observation(value, {"stat": stat})
 
 
 _metric_sink: MetricSink = NoopMetricSink()

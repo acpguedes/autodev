@@ -12,13 +12,16 @@ import pytest
 
 from backend.config.settings import reset_settings_cache
 from backend.ops.doctor import diagnostics_ok, run_diagnostics
+from backend.persistence.database import reset_store_cache
 
 
 @pytest.fixture(autouse=True)
 def _reset_settings() -> Iterator[None]:
     reset_settings_cache()
+    reset_store_cache()
     yield
     reset_settings_cache()
+    reset_store_cache()
 
 
 def test_run_diagnostics_all_pass_in_local_profile(
@@ -187,6 +190,7 @@ def test_pgvector_checks_run_for_postgres_prod_profile_when_healthy(
         "pgvector_extension_present",
         "pgvector_extension_usable",
         "pgvector_hnsw_index",
+        "postgres_pool",
         "storage_backend",
     ]
     assert diagnostics_ok(checks)
@@ -273,3 +277,63 @@ def test_pgvector_hnsw_index_check_fails_when_index_invalid(
     check = next(c for c in checks if c.name == "pgvector_hnsw_index")
     assert check.status == "fail"
     assert "not valid" in check.detail
+
+
+# --- E60-S4-T2: PostgreSQL pool saturation reflected in readiness ----------
+
+
+def test_postgres_pool_health_ok_when_pool_not_yet_initialized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Before anything has built a store, the pool check reports ok rather than building one."""
+    _set_prod_postgres_env(monkeypatch)
+    install_fake_doctor_psycopg(monkeypatch)
+    reset_settings_cache()
+
+    checks = run_diagnostics()
+
+    check = next(c for c in checks if c.name == "postgres_pool")
+    assert check.status == "ok"
+    assert "not yet initialized" in check.detail
+
+
+def test_postgres_pool_health_ok_when_pool_has_headroom(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pool with available connections and no waiters reports ok."""
+    _set_prod_postgres_env(monkeypatch)
+    install_fake_doctor_psycopg(monkeypatch)
+    monkeypatch.setattr(
+        "backend.persistence.database.get_cached_store",
+        lambda: SimpleNamespace(
+            pool_stats=lambda: {"pool_available": 3, "requests_waiting": 0}
+        ),
+    )
+    reset_settings_cache()
+
+    checks = run_diagnostics()
+
+    check = next(c for c in checks if c.name == "postgres_pool")
+    assert check.status == "ok"
+
+
+def test_postgres_pool_health_fails_when_pool_saturated(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Zero available connections with requests waiting fails the pool check (E60-S4-T2)."""
+    _set_prod_postgres_env(monkeypatch)
+    install_fake_doctor_psycopg(monkeypatch)
+    monkeypatch.setattr(
+        "backend.persistence.database.get_cached_store",
+        lambda: SimpleNamespace(
+            pool_stats=lambda: {"pool_available": 0, "requests_waiting": 4}
+        ),
+    )
+    reset_settings_cache()
+
+    checks = run_diagnostics()
+
+    check = next(c for c in checks if c.name == "postgres_pool")
+    assert check.status == "fail"
+    assert "saturated" in check.detail
+    assert not diagnostics_ok(checks)

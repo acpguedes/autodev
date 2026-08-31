@@ -775,7 +775,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E57 | CI & Real PostgreSQL E2E | Beta | Done | 4/4 | E48, E56, E51-E55 | [phases/e57_ci_postgres_e2e.md](phases/e57_ci_postgres_e2e.md) |
 | E58 | SQLite → PostgreSQL Data Migration | Beta | Done | 4/4 | E50-E55, E57 | [phases/e58_sqlite_to_postgres_migration.md](phases/e58_sqlite_to_postgres_migration.md) |
 | E59 | Backup, Restore & Disaster Recovery | Beta | Done | 3/3 | E8-S4, E55-S3, E57-S4 | [phases/e59_backup_restore_disaster_recovery.md](phases/e59_backup_restore_disaster_recovery.md) |
-| E60 | Connection Pooling & PostgreSQL Hardening | Beta | Not started | 0/4 | E51-E55, E57, E11-S1 | [phases/e60_postgres_pooling_hardening.md](phases/e60_postgres_pooling_hardening.md) |
+| E60 | Connection Pooling & PostgreSQL Hardening | Beta | Done | 4/4 | E51-E55, E57, E11-S1 | [phases/e60_postgres_pooling_hardening.md](phases/e60_postgres_pooling_hardening.md) |
 
 Total: **147/260 stories complete** across 60 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).

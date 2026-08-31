@@ -83,6 +83,22 @@ class Settings(BaseSettings):
 
     # --- persistence ---
     database_url: str = "sqlite:///./autodev.db"
+    autodev_postgres_pool_min_size: int = Field(default=1, ge=0)
+    autodev_postgres_pool_max_size: int = Field(default=10, ge=1)
+    autodev_postgres_pool_timeout_seconds: float = Field(default=5.0, gt=0)
+    # Per-connection session guards (E60-S3-T1). Defaults are chosen well
+    # above the row-lock critical sections in E51-E55 (advisory-lock-guarded
+    # writes measured in single-digit milliseconds), so they only fire on a
+    # genuinely stuck query/lock/transaction, not on legitimate contention.
+    # ``0`` disables a given guard (PostgreSQL's own convention).
+    autodev_postgres_statement_timeout_ms: int = Field(default=30_000, ge=0)
+    autodev_postgres_lock_timeout_ms: int = Field(default=5_000, ge=0)
+    autodev_postgres_idle_in_transaction_session_timeout_ms: int = Field(default=60_000, ge=0)
+    # Bounded retry for transient, safe-to-retry PostgreSQL errors (serialization
+    # failures and deadlock victims) around advisory-lock-guarded critical
+    # sections (E60-S3-T2).
+    autodev_postgres_retry_max_attempts: int = Field(default=3, ge=1)
+    autodev_postgres_retry_base_delay_seconds: float = Field(default=0.05, gt=0)
     # Optional separate PostgreSQL connection used only by
     # backend.persistence.backup for pg_dump/pg_restore (E57-S4). RLS-scoped
     # tables are created with FORCE ROW LEVEL SECURITY, so a whole-database
@@ -332,6 +348,12 @@ class Settings(BaseSettings):
 
         if provider == "openai" and not self.openai_api_key.strip():
             errors.append("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
+
+        if self.autodev_postgres_pool_min_size > self.autodev_postgres_pool_max_size:
+            errors.append(
+                "AUTODEV_POSTGRES_POOL_MIN_SIZE cannot exceed "
+                "AUTODEV_POSTGRES_POOL_MAX_SIZE"
+            )
 
         if self.autodev_profile == "local":
             if not self.database_url.startswith("sqlite://"):

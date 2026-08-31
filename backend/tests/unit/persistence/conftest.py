@@ -33,4 +33,10 @@ def pg_store(monkeypatch: pytest.MonkeyPatch, pg_conn: ScriptedConnection) -> Po
         "backend.persistence.postgres_adapter.store.provision_vector_extension",
         lambda conn: None,
     )
-    return PostgresStore(database_url="postgresql://test/db")
+    store = PostgresStore(database_url="postgresql://test/db")
+    # Constructing the store checks out one connection, which the pool
+    # configures with its one-time session timeout guards (E60-S3-T1) --
+    # clear that pool-plumbing so every test's own statement-cost
+    # assertions start from a clean slate.
+    pg_conn.executed.clear()
+    return store

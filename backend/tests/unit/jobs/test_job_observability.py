@@ -483,6 +483,9 @@ def test_lifespan_registers_selected_queue_snapshot_with_runtime(
             observed["backend"] = backend
             observed["callback"] = callback
 
+        def observe_postgres_pool(self, *, callback: Callable[[], dict[str, int]]) -> None:
+            """Discard the pool-stats callback; not under test here (E60-S4)."""
+
     runtime = SimpleNamespace(metric_sink=_MetricSink())
     monkeypatch.setattr(api_main, "get_settings", Settings)
     monkeypatch.setattr(api_main, "configure_observability", lambda settings: runtime)

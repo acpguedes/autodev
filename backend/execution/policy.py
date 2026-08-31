@@ -306,25 +306,25 @@ class PolicyStore:
 
     def has_any_rules(self, tenant_id: str) -> bool:
         """Return whether *tenant_id* has at least one stored policy rule."""
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        row = conn.execute(
-            self._sql("SELECT 1 FROM execution_policy_rules WHERE tenant_id = {p} LIMIT 1"),
-            (tenant_id,),
-        ).fetchone()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            row = conn.execute(
+                self._sql("SELECT 1 FROM execution_policy_rules WHERE tenant_id = {p} LIMIT 1"),
+                (tenant_id,),
+            ).fetchone()
         return row is not None
 
     def list_rules(self, tenant_id: str) -> list[PolicyRule]:
         """Return every stored policy rule for *tenant_id*."""
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        rows = conn.execute(
-            self._sql(
-                "SELECT category, effect, scope_kind, scope_id, pattern "
-                "FROM execution_policy_rules WHERE tenant_id = {p}"
-            ),
-            (tenant_id,),
-        ).fetchall()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            rows = conn.execute(
+                self._sql(
+                    "SELECT category, effect, scope_kind, scope_id, pattern "
+                    "FROM execution_policy_rules WHERE tenant_id = {p}"
+                ),
+                (tenant_id,),
+            ).fetchall()
         return [
             PolicyRule(
                 category=PolicyCategory(row[0]),
@@ -366,15 +366,15 @@ class PolicyStore:
 
     def list_dynamic_permissions(self, tenant_id: str) -> list[tuple[str, PolicyRule]]:
         """Return every dynamic permission for *tenant_id* as ``(id, rule)`` pairs."""
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        rows = conn.execute(
-            self._sql(
-                "SELECT permission_id, category, scope_kind, scope_id, pattern "
-                "FROM execution_dynamic_permissions WHERE tenant_id = {p}"
-            ),
-            (tenant_id,),
-        ).fetchall()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            rows = conn.execute(
+                self._sql(
+                    "SELECT permission_id, category, scope_kind, scope_id, pattern "
+                    "FROM execution_dynamic_permissions WHERE tenant_id = {p}"
+                ),
+                (tenant_id,),
+            ).fetchall()
         return [
             (
                 row[0],
@@ -539,15 +539,15 @@ class PolicyStore:
                 PostgreSQL (:meth:`_scope`) -- a decision belonging to
                 another tenant is indistinguishable from a nonexistent one.
         """
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        row = conn.execute(
-            self._sql(
-                f"SELECT {_PENDING_DECISION_COLUMNS} FROM pending_action_decisions "
-                "WHERE decision_id = {p} AND tenant_id = {p}"
-            ),
-            (decision_id, tenant_id),
-        ).fetchone()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            row = conn.execute(
+                self._sql(
+                    f"SELECT {_PENDING_DECISION_COLUMNS} FROM pending_action_decisions "
+                    "WHERE decision_id = {p} AND tenant_id = {p}"
+                ),
+                (decision_id, tenant_id),
+            ).fetchone()
         return self._row_to_decision(row) if row is not None else None
 
     def get_decision_for_task(
@@ -561,29 +561,29 @@ class PolicyStore:
             tenant_id: Caller's tenant, scoping the lookup the same way
                 :meth:`get_pending_decision` does.
         """
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        row = conn.execute(
-            self._sql(
-                f"SELECT {_PENDING_DECISION_COLUMNS} FROM pending_action_decisions "
-                "WHERE tenant_id = {p} AND run_id = {p} AND task_id = {p} "
-                "ORDER BY created_at DESC LIMIT 1"
-            ),
-            (tenant_id, run_id, task_id),
-        ).fetchone()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            row = conn.execute(
+                self._sql(
+                    f"SELECT {_PENDING_DECISION_COLUMNS} FROM pending_action_decisions "
+                    "WHERE tenant_id = {p} AND run_id = {p} AND task_id = {p} "
+                    "ORDER BY created_at DESC LIMIT 1"
+                ),
+                (tenant_id, run_id, task_id),
+            ).fetchone()
         return self._row_to_decision(row) if row is not None else None
 
     def list_pending_decisions(self, tenant_id: str) -> list[PendingDecision]:
         """List every still-pending decision for a tenant."""
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        rows = conn.execute(
-            self._sql(
-                f"SELECT {_PENDING_DECISION_COLUMNS} FROM pending_action_decisions "
-                "WHERE tenant_id = {p} AND status = {p}"
-            ),
-            (tenant_id, DecisionStatus.PENDING.value),
-        ).fetchall()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            rows = conn.execute(
+                self._sql(
+                    f"SELECT {_PENDING_DECISION_COLUMNS} FROM pending_action_decisions "
+                    "WHERE tenant_id = {p} AND status = {p}"
+                ),
+                (tenant_id, DecisionStatus.PENDING.value),
+            ).fetchall()
         return [self._row_to_decision(row) for row in rows]
 
     def list_due_pending_decisions(self, *, before: str) -> list[PendingDecision]:
@@ -608,14 +608,14 @@ class PolicyStore:
             before: ISO-8601 cutoff; a decision expiring at or before this
                 instant is due.
         """
-        conn = self._connect()
-        rows = conn.execute(
-            self._sql(
-                f"SELECT {_PENDING_DECISION_COLUMNS} FROM pending_action_decisions "
-                "WHERE status = {p} AND expires_at <= {p}"
-            ),
-            (DecisionStatus.PENDING.value, before),
-        ).fetchall()
+        with self._connect() as conn:
+            rows = conn.execute(
+                self._sql(
+                    f"SELECT {_PENDING_DECISION_COLUMNS} FROM pending_action_decisions "
+                    "WHERE status = {p} AND expires_at <= {p}"
+                ),
+                (DecisionStatus.PENDING.value, before),
+            ).fetchall()
         return [self._row_to_decision(row) for row in rows]
 
     def resolve_pending_decision(
