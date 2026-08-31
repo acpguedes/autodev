@@ -15,6 +15,7 @@ lands in E57.
 from __future__ import annotations
 
 import os
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -33,18 +34,60 @@ pytestmark = [
 ]
 
 
-def _postgres_store():
-    """Build a fresh :class:`~backend.persistence.postgres_adapter.PostgresStore`."""
-    from backend.persistence.postgres_adapter import PostgresStore
+_shared_postgres_store = None
+_shared_postgres_store_lock = threading.Lock()
+_shared_plan_store = None
+_shared_plan_store_lock = threading.Lock()
 
-    return PostgresStore(_POSTGRES_URL)
+
+def _postgres_store():
+    """Return this module's one shared, long-lived :class:`PostgresStore`.
+
+    A bounded ``psycopg_pool.ConnectionPool`` (E60-S1) is eagerly opened and
+    kept alive for the life of a ``PostgresStore``, unlike the bare ad-hoc
+    connection this helper used to hand out -- so every call must share one
+    pool instead of leaking a fresh pool's worth of real server connections
+    per call. ``max_size`` covers this file's largest concurrent scenario
+    with headroom; each thread below still gets its own genuinely
+    independent connection from the pool. Double-checked locking guards
+    first construction: several test threads can call this simultaneously,
+    and two ``PostgresStore()``s racing their own migration runs would
+    otherwise duplicate-key on the schema tables.
+    """
+    global _shared_postgres_store
+    from backend.persistence.postgres_adapter import PostgresPoolConfig, PostgresStore
+
+    if _shared_postgres_store is None:
+        with _shared_postgres_store_lock:
+            if _shared_postgres_store is None:
+                _shared_postgres_store = PostgresStore(
+                    _POSTGRES_URL,
+                    pool_config=PostgresPoolConfig(min_size=1, max_size=32, timeout_seconds=10.0),
+                )
+    return _shared_postgres_store
 
 
 def _step_store():
-    """Build a fresh :class:`StepApprovalStore` over its own PostgreSQL connection."""
+    """Build a fresh :class:`StepApprovalStore` over this module's shared pool."""
     from backend.plans.step_state import StepApprovalStore
 
     return StepApprovalStore(store=_postgres_store())
+
+
+def _plan_store():
+    """Return this module's one shared, long-lived :class:`PostgresPlanStore`."""
+    global _shared_plan_store
+    from backend.persistence.postgres_adapter import PostgresPoolConfig
+    from backend.persistence.postgres_adapter.plan_store import PostgresPlanStore
+
+    if _shared_plan_store is None:
+        with _shared_plan_store_lock:
+            if _shared_plan_store is None:
+                _shared_plan_store = PostgresPlanStore(
+                    database_url=_POSTGRES_URL,
+                    pool_config=PostgresPoolConfig(min_size=1, max_size=32, timeout_seconds=10.0),
+                )
+    return _shared_plan_store
 
 
 def _seeded_session() -> tuple[str, str]:
@@ -55,13 +98,9 @@ def _seeded_session() -> tuple[str, str]:
     """
     import uuid
 
-    from backend.persistence.postgres_adapter.plan_store import PostgresPlanStore
-
     tenant_id = f"e55-concurrency-{uuid.uuid4().hex}"
     session_id = f"session-{uuid.uuid4().hex}"
-    PostgresPlanStore(database_url=_POSTGRES_URL).upsert_plan(
-        session_id, ["Step under test"], tenant_id=tenant_id
-    )
+    _plan_store().upsert_plan(session_id, ["Step under test"], tenant_id=tenant_id)
     _step_store().ensure_steps(session_id, ["Step under test"], tenant_id=tenant_id)
     return tenant_id, session_id
 

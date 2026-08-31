@@ -15,6 +15,7 @@ service lands in E57.
 from __future__ import annotations
 
 import os
+import threading
 import uuid
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -36,12 +37,36 @@ pytestmark = [
 ]
 
 
-def _store():
-    """Build a fresh :class:`EnvironmentStore` over its own PostgreSQL connection."""
-    from backend.environments.store import EnvironmentStore
-    from backend.persistence.postgres_adapter import PostgresStore
+_shared_postgres_store = None
+_shared_postgres_store_lock = threading.Lock()
 
-    return EnvironmentStore(store=PostgresStore(_POSTGRES_URL))
+
+def _store():
+    """Return an :class:`EnvironmentStore` over this module's one shared, long-lived pool.
+
+    A bounded ``psycopg_pool.ConnectionPool`` (E60-S1) is eagerly opened and
+    kept alive for the life of a ``PostgresStore``, unlike the bare ad-hoc
+    connection this helper used to hand out -- so every call must share one
+    ``PostgresStore``/pool instead of leaking a fresh pool's worth of real
+    server connections per call. ``max_size`` covers this file's largest
+    concurrent scenario with headroom; each thread below still gets its own
+    genuinely independent connection from the pool. Double-checked locking
+    guards first construction: several test threads can call this
+    simultaneously, and two ``PostgresStore()``s racing their own migration
+    runs would otherwise duplicate-key on the schema tables.
+    """
+    global _shared_postgres_store
+    from backend.environments.store import EnvironmentStore
+    from backend.persistence.postgres_adapter import PostgresPoolConfig, PostgresStore
+
+    if _shared_postgres_store is None:
+        with _shared_postgres_store_lock:
+            if _shared_postgres_store is None:
+                _shared_postgres_store = PostgresStore(
+                    _POSTGRES_URL,
+                    pool_config=PostgresPoolConfig(min_size=1, max_size=32, timeout_seconds=10.0),
+                )
+    return EnvironmentStore(store=_shared_postgres_store)
 
 
 def _tenant() -> str:
