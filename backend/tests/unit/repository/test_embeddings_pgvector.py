@@ -114,6 +114,9 @@ class FakeConnection:
     def commit(self) -> None:
         self.commits += 1
 
+    def rollback(self) -> None:
+        pass
+
 
 def _install_fake_psycopg(monkeypatch: pytest.MonkeyPatch) -> list[FakeConnection]:
     """Patch ``sys.modules['psycopg']`` and ``psycopg_pool`` with fakes."""

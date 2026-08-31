@@ -116,6 +116,8 @@ class ArtifactPointerStore:
         Args:
             store: Persistence store to use; defaults to the configured store
                 from :func:`backend.persistence.database.get_store`.
+                SQLite handles are cached per thread; PostgreSQL handles are
+                borrowed from the process pool for each operation.
         """
         self._store = store or get_store()
         self._local = threading.local()
@@ -152,44 +154,41 @@ class ArtifactPointerStore:
         record_id = str(uuid.uuid4())
         created_at = utcnow_iso()
         context_json = json.dumps(context or {})
-        conn = self._connect()
         try:
-            conn.execute(
-                self._sql(
-                    """
-                    INSERT INTO artifacts (
-                        id, tenant_id, kind, bucket, object_key, sha256,
-                        size_bytes, content_type, created_at, context
-                    ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
-                    ON CONFLICT (bucket, object_key) DO UPDATE SET
-                        tenant_id = excluded.tenant_id,
-                        kind = excluded.kind,
-                        sha256 = excluded.sha256,
-                        size_bytes = excluded.size_bytes,
-                        content_type = excluded.content_type,
-                        created_at = excluded.created_at,
-                        context = excluded.context
-                    """
-                ),
-                (
-                    record_id,
-                    tenant_id,
-                    str(kind),
-                    pointer.bucket,
-                    pointer.object_key,
-                    pointer.sha256,
-                    pointer.size_bytes,
-                    pointer.content_type,
-                    created_at,
-                    context_json,
-                ),
-            )
-            conn.commit()
+            with self._connect() as conn:
+                conn.execute(
+                    self._sql(
+                        """
+                        INSERT INTO artifacts (
+                            id, tenant_id, kind, bucket, object_key, sha256,
+                            size_bytes, content_type, created_at, context
+                        ) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})
+                        ON CONFLICT (bucket, object_key) DO UPDATE SET
+                            tenant_id = excluded.tenant_id,
+                            kind = excluded.kind,
+                            sha256 = excluded.sha256,
+                            size_bytes = excluded.size_bytes,
+                            content_type = excluded.content_type,
+                            created_at = excluded.created_at,
+                            context = excluded.context
+                        """
+                    ),
+                    (
+                        record_id,
+                        tenant_id,
+                        str(kind),
+                        pointer.bucket,
+                        pointer.object_key,
+                        pointer.sha256,
+                        pointer.size_bytes,
+                        pointer.content_type,
+                        created_at,
+                        context_json,
+                    ),
+                )
+                conn.commit()
         except Exception:
-            try:
-                conn.rollback()
-            finally:
-                self._drop_connection()
+            self._drop_connection()
             raise
         stored = self.find_by_key(pointer.bucket, pointer.object_key, tenant_id=tenant_id)
         if stored is None:  # pragma: no cover - defensive; row was just written
@@ -207,14 +206,15 @@ class ArtifactPointerStore:
             The matching record, or ``None`` when absent or owned by
             another tenant.
         """
-        row = self._connect().execute(
-            self._sql(
-                "SELECT id, tenant_id, kind, bucket, object_key, sha256, size_bytes, "
-                "content_type, created_at, context FROM artifacts "
-                "WHERE id = {p} AND tenant_id = {p}"
-            ),
-            (artifact_id, tenant_id),
-        ).fetchone()
+        with self._connect() as conn:
+            row = conn.execute(
+                self._sql(
+                    "SELECT id, tenant_id, kind, bucket, object_key, sha256, size_bytes, "
+                    "content_type, created_at, context FROM artifacts "
+                    "WHERE id = {p} AND tenant_id = {p}"
+                ),
+                (artifact_id, tenant_id),
+            ).fetchone()
         return self._decode(row) if row is not None else None
 
     def find_by_key(
@@ -235,14 +235,15 @@ class ArtifactPointerStore:
             The matching record, or ``None`` when absent or owned by
             another tenant.
         """
-        row = self._connect().execute(
-            self._sql(
-                "SELECT id, tenant_id, kind, bucket, object_key, sha256, size_bytes, "
-                "content_type, created_at, context FROM artifacts "
-                "WHERE bucket = {p} AND object_key = {p} AND tenant_id = {p}"
-            ),
-            (bucket, object_key, tenant_id),
-        ).fetchone()
+        with self._connect() as conn:
+            row = conn.execute(
+                self._sql(
+                    "SELECT id, tenant_id, kind, bucket, object_key, sha256, size_bytes, "
+                    "content_type, created_at, context FROM artifacts "
+                    "WHERE bucket = {p} AND object_key = {p} AND tenant_id = {p}"
+                ),
+                (bucket, object_key, tenant_id),
+            ).fetchone()
         return self._decode(row) if row is not None else None
 
     def list(
@@ -272,7 +273,8 @@ class ArtifactPointerStore:
             params.append(str(kind))
         sql += " ORDER BY created_at DESC LIMIT {p}"
         params.append(int(limit))
-        rows = self._connect().execute(self._sql(sql), tuple(params)).fetchall()
+        with self._connect() as conn:
+            rows = conn.execute(self._sql(sql), tuple(params)).fetchall()
         return [self._decode(row) for row in rows]
 
     def delete(self, artifact_id: str, *, tenant_id: str = DEFAULT_TENANT_ID) -> bool:
@@ -288,18 +290,15 @@ class ArtifactPointerStore:
         Returns:
             ``True`` when a row was deleted, ``False`` otherwise.
         """
-        conn = self._connect()
         try:
-            cursor = conn.execute(
-                self._sql("DELETE FROM artifacts WHERE id = {p} AND tenant_id = {p}"),
-                (artifact_id, tenant_id),
-            )
-            conn.commit()
+            with self._connect() as conn:
+                cursor = conn.execute(
+                    self._sql("DELETE FROM artifacts WHERE id = {p} AND tenant_id = {p}"),
+                    (artifact_id, tenant_id),
+                )
+                conn.commit()
         except Exception:
-            try:
-                conn.rollback()
-            finally:
-                self._drop_connection()
+            self._drop_connection()
             raise
         return bool(cursor.rowcount)
 
@@ -323,7 +322,8 @@ class ArtifactPointerStore:
         if bucket is not None:
             sql += " WHERE bucket = {p}"
             params = (bucket,)
-        rows = self._connect().execute(self._sql(sql), params).fetchall()
+        with self._connect() as conn:
+            rows = conn.execute(self._sql(sql), params).fetchall()
         return {str(row[0] if not hasattr(row, "keys") else list(row)[0]) for row in rows}
 
     def _decode(self, row: Any) -> StoredArtifact:
@@ -370,21 +370,19 @@ class ArtifactPointerStore:
         return contract.sql(template, self._is_postgres)
 
     def _connect(self) -> Any:
-        """Return this thread's cached store connection, creating it once.
-
-        Mirrors :class:`backend.events.store.EventStore`: SQLite connections
-        are not shareable across threads, so the cache is per-thread.
+        """Return a connection, caching only SQLite's thread-bound raw handle.
 
         Returns:
             A DB-API connection from the underlying store.
         """
+        if self._is_postgres:
+            return self._store.connect()
         conn = getattr(self._local, "conn", None)
         if conn is None:
             conn = self._store.connect()
-            if not self._is_postgres:
-                conn.execute("PRAGMA busy_timeout=15000")
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA busy_timeout=15000")
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
             self._local.conn = conn
         return conn
 
@@ -400,10 +398,10 @@ class ArtifactPointerStore:
 
     def _ensure_schema(self) -> None:
         """Create the artifact-pointer table if it does not exist."""
-        conn = self._connect()
-        for statement in artifact_pointer_statements(self._is_postgres):
-            conn.execute(statement)
-        conn.commit()
+        with self._connect() as conn:
+            for statement in artifact_pointer_statements(self._is_postgres):
+                conn.execute(statement)
+            conn.commit()
 
 
 def persist_artifact(

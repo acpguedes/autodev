@@ -298,15 +298,15 @@ class EnvironmentStore:
 
     def count_active(self, tenant_id: str) -> int:
         """Return the tenant's current active (non-expired, non-torn-down) environment count."""
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        row = conn.execute(
-            self._sql(
-                "SELECT COUNT(*) FROM execution_environments "
-                "WHERE tenant_id = {p} AND status = 'active' AND expires_at > {p}"
-            ),
-            (tenant_id, _now()),
-        ).fetchone()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            row = conn.execute(
+                self._sql(
+                    "SELECT COUNT(*) FROM execution_environments "
+                    "WHERE tenant_id = {p} AND status = 'active' AND expires_at > {p}"
+                ),
+                (tenant_id, _now()),
+            ).fetchone()
         return int(row[0])
 
     def mark_status(
@@ -336,57 +336,57 @@ class EnvironmentStore:
         Returns:
             Whether a row was actually changed.
         """
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        terminal_placeholders = ", ".join(["{p}"] * len(_TERMINAL_STATUSES))
-        cursor = conn.execute(
-            self._sql(
-                "UPDATE execution_environments SET status = {p}, torn_down_at = {p} "
-                "WHERE environment_id = {p} AND tenant_id = {p} "
-                f"AND status NOT IN ({terminal_placeholders})"
-            ),
-            (status, torn_down_at, environment_id, tenant_id, *_TERMINAL_STATUSES),
-        )
-        conn.commit()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            terminal_placeholders = ", ".join(["{p}"] * len(_TERMINAL_STATUSES))
+            cursor = conn.execute(
+                self._sql(
+                    "UPDATE execution_environments SET status = {p}, torn_down_at = {p} "
+                    "WHERE environment_id = {p} AND tenant_id = {p} "
+                    f"AND status NOT IN ({terminal_placeholders})"
+                ),
+                (status, torn_down_at, environment_id, tenant_id, *_TERMINAL_STATUSES),
+            )
+            conn.commit()
         return cursor.rowcount > 0
 
     def get(self, environment_id: str, *, tenant_id: str) -> Optional[EnvironmentRecord]:
         """Fetch one environment record by id, scoped to its owning tenant."""
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        row = conn.execute(
-            self._sql(
-                f"SELECT {_ENV_COLUMNS} FROM execution_environments "
-                "WHERE environment_id = {p} AND tenant_id = {p}"
-            ),
-            (environment_id, tenant_id),
-        ).fetchone()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            row = conn.execute(
+                self._sql(
+                    f"SELECT {_ENV_COLUMNS} FROM execution_environments "
+                    "WHERE environment_id = {p} AND tenant_id = {p}"
+                ),
+                (environment_id, tenant_id),
+            ).fetchone()
         return self._row_to_record(row) if row is not None else None
 
     def list_for_run(self, run_id: str, *, tenant_id: str) -> list[EnvironmentRecord]:
         """List every environment record provisioned for one run (audit, E32-S4-T1)."""
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        rows = conn.execute(
-            self._sql(
-                f"SELECT {_ENV_COLUMNS} FROM execution_environments "
-                "WHERE run_id = {p} AND tenant_id = {p} ORDER BY created_at"
-            ),
-            (run_id, tenant_id),
-        ).fetchall()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            rows = conn.execute(
+                self._sql(
+                    f"SELECT {_ENV_COLUMNS} FROM execution_environments "
+                    "WHERE run_id = {p} AND tenant_id = {p} ORDER BY created_at"
+                ),
+                (run_id, tenant_id),
+            ).fetchall()
         return [self._row_to_record(row) for row in rows]
 
     def list_expired_active(self, tenant_id: str, *, before: str) -> list[EnvironmentRecord]:
         """List one tenant's active environments whose TTL has passed (orphan reaping, E32-S3-T1)."""
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        rows = conn.execute(
-            self._sql(
-                f"SELECT {_ENV_COLUMNS} FROM execution_environments "
-                "WHERE tenant_id = {p} AND status = 'active' AND expires_at <= {p}"
-            ),
-            (tenant_id, before),
-        ).fetchall()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            rows = conn.execute(
+                self._sql(
+                    f"SELECT {_ENV_COLUMNS} FROM execution_environments "
+                    "WHERE tenant_id = {p} AND status = 'active' AND expires_at <= {p}"
+                ),
+                (tenant_id, before),
+            ).fetchall()
         return [self._row_to_record(row) for row in rows]
 
     def claim_expired_active(self, tenant_id: str, *, before: str) -> list[EnvironmentRecord]:
@@ -422,60 +422,60 @@ class EnvironmentStore:
             status and this call's ``torn_down_at`` -- the caller now owns
             tearing down each one's real resources exactly once.
         """
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        self._begin_write(conn)
-        claimed_at = _now()
-        rows = conn.execute(
-            self._sql(
-                "UPDATE execution_environments SET status = 'orphaned', torn_down_at = {p} "
-                "WHERE tenant_id = {p} AND status = 'active' AND expires_at <= {p} "
-                f"RETURNING {_ENV_COLUMNS}"
-            ),
-            (claimed_at, tenant_id, before),
-        ).fetchall()
-        conn.commit()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            self._begin_write(conn)
+            claimed_at = _now()
+            rows = conn.execute(
+                self._sql(
+                    "UPDATE execution_environments SET status = 'orphaned', torn_down_at = {p} "
+                    "WHERE tenant_id = {p} AND status = 'active' AND expires_at <= {p} "
+                    f"RETURNING {_ENV_COLUMNS}"
+                ),
+                (claimed_at, tenant_id, before),
+            ).fetchall()
+            conn.commit()
         return [self._row_to_record(row) for row in rows]
 
     # ------------------------------------------------------------- decisions
 
     def record_decision(self, record: EnvironmentDecisionRecord) -> None:
         """Durably record one policy decision on a provisioned environment."""
-        conn = self._connect()
-        self._scope(conn, record.tenant_id)
-        conn.execute(
-            self._sql(
-                "INSERT INTO execution_environment_decisions "
-                "(decision_id, environment_id, run_id, tenant_id, category, target, allowed, "
-                "reason, decided_at) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})"
-            ),
-            (
-                record.decision_id,
-                record.environment_id,
-                record.run_id,
-                record.tenant_id,
-                record.category,
-                record.target,
-                1 if record.allowed else 0,
-                record.reason,
-                record.decided_at,
-            ),
-        )
-        conn.commit()
+        with self._connect() as conn:
+            self._scope(conn, record.tenant_id)
+            conn.execute(
+                self._sql(
+                    "INSERT INTO execution_environment_decisions "
+                    "(decision_id, environment_id, run_id, tenant_id, category, target, allowed, "
+                    "reason, decided_at) VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})"
+                ),
+                (
+                    record.decision_id,
+                    record.environment_id,
+                    record.run_id,
+                    record.tenant_id,
+                    record.category,
+                    record.target,
+                    1 if record.allowed else 0,
+                    record.reason,
+                    record.decided_at,
+                ),
+            )
+            conn.commit()
 
     def list_decisions_for_run(
         self, run_id: str, *, tenant_id: str
     ) -> list[EnvironmentDecisionRecord]:
         """List every policy decision recorded for one run's environments (audit)."""
-        conn = self._connect()
-        self._scope(conn, tenant_id)
-        rows = conn.execute(
-            self._sql(
-                f"SELECT {_DECISION_COLUMNS} FROM execution_environment_decisions "
-                "WHERE run_id = {p} AND tenant_id = {p} ORDER BY decided_at"
-            ),
-            (run_id, tenant_id),
-        ).fetchall()
+        with self._connect() as conn:
+            self._scope(conn, tenant_id)
+            rows = conn.execute(
+                self._sql(
+                    f"SELECT {_DECISION_COLUMNS} FROM execution_environment_decisions "
+                    "WHERE run_id = {p} AND tenant_id = {p} ORDER BY decided_at"
+                ),
+                (run_id, tenant_id),
+            ).fetchall()
         return [self._row_to_decision(row) for row in rows]
 
 

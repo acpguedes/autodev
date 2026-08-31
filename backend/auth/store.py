@@ -3,7 +3,7 @@
 Follows the same store/dialect conventions as
 :class:`backend.events.store.EventStore`: a shared durable store
 (:func:`backend.persistence.database.get_store`), ``{p}`` placeholder
-substitution, and one lazily-opened connection per thread.
+substitution, and SQLite-only per-thread connection reuse.
 """
 
 from __future__ import annotations
@@ -86,29 +86,29 @@ class AuthStore:
             record: The credential to persist. Its ``secret_hash`` is the
                 only representation of the secret ever stored.
         """
-        conn = self._connect()
         try:
-            self._begin_write(conn)
-            conn.execute(
-                self._sql(
-                    "INSERT INTO service_credentials "
-                    "(key_id, tenant_id, subject, secret_hash, roles, scopes, "
-                    "created_at, expires_at, revoked_at) "
-                    "VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})"
-                ),
-                (
-                    record.key_id,
-                    record.tenant_id,
-                    record.subject,
-                    record.secret_hash,
-                    _encode_roles(record.roles),
-                    _encode_scopes(record.scopes),
-                    _iso(record.created_at),
-                    _iso(record.expires_at),
-                    _iso(record.revoked_at) if record.revoked_at else None,
-                ),
-            )
-            conn.commit()
+            with self._connect() as conn:
+                self._begin_write(conn)
+                conn.execute(
+                    self._sql(
+                        "INSERT INTO service_credentials "
+                        "(key_id, tenant_id, subject, secret_hash, roles, scopes, "
+                        "created_at, expires_at, revoked_at) "
+                        "VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})"
+                    ),
+                    (
+                        record.key_id,
+                        record.tenant_id,
+                        record.subject,
+                        record.secret_hash,
+                        _encode_roles(record.roles),
+                        _encode_scopes(record.scopes),
+                        _iso(record.created_at),
+                        _iso(record.expires_at),
+                        _iso(record.revoked_at) if record.revoked_at else None,
+                    ),
+                )
+                conn.commit()
         except Exception:
             self._drop_connection()
             raise
@@ -122,14 +122,15 @@ class AuthStore:
         Returns:
             The credential, or ``None`` if unknown.
         """
-        row = self._connect().execute(
-            self._sql(
-                "SELECT key_id, tenant_id, subject, secret_hash, roles, scopes, "
-                "created_at, expires_at, revoked_at FROM service_credentials "
-                "WHERE key_id = {p}"
-            ),
-            (key_id,),
-        ).fetchone()
+        with self._connect() as conn:
+            row = conn.execute(
+                self._sql(
+                    "SELECT key_id, tenant_id, subject, secret_hash, roles, scopes, "
+                    "created_at, expires_at, revoked_at FROM service_credentials "
+                    "WHERE key_id = {p}"
+                ),
+                (key_id,),
+            ).fetchone()
         return self._decode_credential(row) if row is not None else None
 
     def list_service_credentials(self, *, tenant_id: str) -> list[ServiceCredentialRecord]:
@@ -141,14 +142,15 @@ class AuthStore:
         Returns:
             The tenant's credentials, most recently created first.
         """
-        rows = self._connect().execute(
-            self._sql(
-                "SELECT key_id, tenant_id, subject, secret_hash, roles, scopes, "
-                "created_at, expires_at, revoked_at FROM service_credentials "
-                "WHERE tenant_id = {p} ORDER BY created_at DESC"
-            ),
-            (tenant_id,),
-        ).fetchall()
+        with self._connect() as conn:
+            rows = conn.execute(
+                self._sql(
+                    "SELECT key_id, tenant_id, subject, secret_hash, roles, scopes, "
+                    "created_at, expires_at, revoked_at FROM service_credentials "
+                    "WHERE tenant_id = {p} ORDER BY created_at DESC"
+                ),
+                (tenant_id,),
+            ).fetchall()
         return [self._decode_credential(row) for row in rows]
 
     def revoke_service_credential(self, *, tenant_id: str, key_id: str) -> bool:
@@ -162,18 +164,18 @@ class AuthStore:
             ``True`` if an active credential was revoked; ``False`` if it did
             not exist, belonged to another tenant, or was already revoked.
         """
-        conn = self._connect()
         try:
-            self._begin_write(conn)
-            cursor = conn.execute(
-                self._sql(
-                    "UPDATE service_credentials SET revoked_at = {p} "
-                    "WHERE key_id = {p} AND tenant_id = {p} AND revoked_at IS NULL"
-                ),
-                (_iso(utcnow()), key_id, tenant_id),
-            )
-            conn.commit()
-            return (cursor.rowcount or 0) > 0
+            with self._connect() as conn:
+                self._begin_write(conn)
+                cursor = conn.execute(
+                    self._sql(
+                        "UPDATE service_credentials SET revoked_at = {p} "
+                        "WHERE key_id = {p} AND tenant_id = {p} AND revoked_at IS NULL"
+                    ),
+                    (_iso(utcnow()), key_id, tenant_id),
+                )
+                conn.commit()
+                return (cursor.rowcount or 0) > 0
         except Exception:
             self._drop_connection()
             raise
@@ -187,13 +189,14 @@ class AuthStore:
         Returns:
             ``True`` if at least one unrevoked, unexpired credential exists.
         """
-        row = self._connect().execute(
-            self._sql(
-                "SELECT 1 FROM service_credentials "
-                "WHERE revoked_at IS NULL AND expires_at > {p} LIMIT 1"
-            ),
-            (_iso(utcnow()),),
-        ).fetchone()
+        with self._connect() as conn:
+            row = conn.execute(
+                self._sql(
+                    "SELECT 1 FROM service_credentials "
+                    "WHERE revoked_at IS NULL AND expires_at > {p} LIMIT 1"
+                ),
+                (_iso(utcnow()),),
+            ).fetchone()
         return row is not None
 
     def _decode_credential(self, row: Any) -> ServiceCredentialRecord:
@@ -220,28 +223,28 @@ class AuthStore:
             record: The session to persist, with its refresh token already
                 Fernet-encrypted.
         """
-        conn = self._connect()
         try:
-            self._begin_write(conn)
-            conn.execute(
-                self._sql(
-                    "INSERT INTO auth_sessions "
-                    "(session_id, tenant_id, subject, roles, "
-                    "encrypted_refresh_token, created_at, expires_at, revoked_at) "
-                    "VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})"
-                ),
-                (
-                    record.session_id,
-                    record.tenant_id,
-                    record.subject,
-                    _encode_roles(record.roles),
-                    record.encrypted_refresh_token,
-                    _iso(record.created_at),
-                    _iso(record.expires_at),
-                    _iso(record.revoked_at) if record.revoked_at else None,
-                ),
-            )
-            conn.commit()
+            with self._connect() as conn:
+                self._begin_write(conn)
+                conn.execute(
+                    self._sql(
+                        "INSERT INTO auth_sessions "
+                        "(session_id, tenant_id, subject, roles, "
+                        "encrypted_refresh_token, created_at, expires_at, revoked_at) "
+                        "VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p})"
+                    ),
+                    (
+                        record.session_id,
+                        record.tenant_id,
+                        record.subject,
+                        _encode_roles(record.roles),
+                        record.encrypted_refresh_token,
+                        _iso(record.created_at),
+                        _iso(record.expires_at),
+                        _iso(record.revoked_at) if record.revoked_at else None,
+                    ),
+                )
+                conn.commit()
         except Exception:
             self._drop_connection()
             raise
@@ -255,14 +258,15 @@ class AuthStore:
         Returns:
             The session, or ``None`` if unknown.
         """
-        row = self._connect().execute(
-            self._sql(
-                "SELECT session_id, tenant_id, subject, roles, "
-                "encrypted_refresh_token, created_at, expires_at, revoked_at "
-                "FROM auth_sessions WHERE session_id = {p}"
-            ),
-            (session_id,),
-        ).fetchone()
+        with self._connect() as conn:
+            row = conn.execute(
+                self._sql(
+                    "SELECT session_id, tenant_id, subject, roles, "
+                    "encrypted_refresh_token, created_at, expires_at, revoked_at "
+                    "FROM auth_sessions WHERE session_id = {p}"
+                ),
+                (session_id,),
+            ).fetchone()
         if row is None:
             return None
         values = list(row)
@@ -286,21 +290,21 @@ class AuthStore:
         Returns:
             ``True`` if an active session was revoked.
         """
-        conn = self._connect()
-        try:
-            self._begin_write(conn)
-            cursor = conn.execute(
-                self._sql(
-                    "UPDATE auth_sessions SET revoked_at = {p} "
-                    "WHERE session_id = {p} AND revoked_at IS NULL"
-                ),
-                (_iso(utcnow()), session_id),
-            )
-            conn.commit()
-            return (cursor.rowcount or 0) > 0
-        except Exception:
-            self._drop_connection()
-            raise
+        with self._connect() as conn:
+            try:
+                self._begin_write(conn)
+                cursor = conn.execute(
+                    self._sql(
+                        "UPDATE auth_sessions SET revoked_at = {p} "
+                        "WHERE session_id = {p} AND revoked_at IS NULL"
+                    ),
+                    (_iso(utcnow()), session_id),
+                )
+                conn.commit()
+                return (cursor.rowcount or 0) > 0
+            except Exception:
+                self._drop_connection()
+                raise
 
     # ------------------------------------------------------- access audit
 
@@ -317,41 +321,41 @@ class AuthStore:
                 allowed request as a hard denial (``503``), so silently
                 swallowing it here would defeat that guarantee.
         """
-        conn = self._connect()
-        try:
-            self._begin_write(conn)
-            conn.execute(
-                self._sql(
-                    "INSERT INTO access_audit "
-                    "(audit_id, occurred_at, tenant_id, subject, auth_method, "
-                    "credential_id, roles, required_scope, resource_type, "
-                    "resource_id, method, route_template, decision, reason, "
-                    "request_id) "
-                    "VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, "
-                    "{p}, {p}, {p}, {p}, {p})"
-                ),
-                (
-                    record.audit_id,
-                    _iso(record.occurred_at),
-                    record.tenant_id,
-                    record.subject,
-                    record.auth_method.value,
-                    record.credential_id,
-                    _encode_roles(record.roles),
-                    record.required_scope,
-                    record.resource_type,
-                    record.resource_id,
-                    record.method,
-                    record.route_template,
-                    record.decision,
-                    record.reason,
-                    record.request_id,
-                ),
-            )
-            conn.commit()
-        except Exception:
-            self._drop_connection()
-            raise
+        with self._connect() as conn:
+            try:
+                self._begin_write(conn)
+                conn.execute(
+                    self._sql(
+                        "INSERT INTO access_audit "
+                        "(audit_id, occurred_at, tenant_id, subject, auth_method, "
+                        "credential_id, roles, required_scope, resource_type, "
+                        "resource_id, method, route_template, decision, reason, "
+                        "request_id) "
+                        "VALUES ({p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, {p}, "
+                        "{p}, {p}, {p}, {p}, {p})"
+                    ),
+                    (
+                        record.audit_id,
+                        _iso(record.occurred_at),
+                        record.tenant_id,
+                        record.subject,
+                        record.auth_method.value,
+                        record.credential_id,
+                        _encode_roles(record.roles),
+                        record.required_scope,
+                        record.resource_type,
+                        record.resource_id,
+                        record.method,
+                        record.route_template,
+                        record.decision,
+                        record.reason,
+                        record.request_id,
+                    ),
+                )
+                conn.commit()
+            except Exception:
+                self._drop_connection()
+                raise
 
     def list_access_audit(
         self, *, tenant_id: str, limit: int, before: datetime | None
@@ -366,30 +370,31 @@ class AuthStore:
         Returns:
             The tenant's audit rows, most recently occurred first.
         """
-        if before is not None:
-            rows = self._connect().execute(
-                self._sql(
-                    "SELECT audit_id, occurred_at, tenant_id, subject, auth_method, "
-                    "credential_id, roles, required_scope, resource_type, "
-                    "resource_id, method, route_template, decision, reason, "
-                    "request_id FROM access_audit "
-                    "WHERE tenant_id = {p} AND occurred_at < {p} "
-                    "ORDER BY occurred_at DESC LIMIT {p}"
-                ),
-                (tenant_id, _iso(before), limit),
-            ).fetchall()
-        else:
-            rows = self._connect().execute(
-                self._sql(
-                    "SELECT audit_id, occurred_at, tenant_id, subject, auth_method, "
-                    "credential_id, roles, required_scope, resource_type, "
-                    "resource_id, method, route_template, decision, reason, "
-                    "request_id FROM access_audit "
-                    "WHERE tenant_id = {p} "
-                    "ORDER BY occurred_at DESC LIMIT {p}"
-                ),
-                (tenant_id, limit),
-            ).fetchall()
+        with self._connect() as conn:
+            if before is not None:
+                rows = conn.execute(
+                    self._sql(
+                        "SELECT audit_id, occurred_at, tenant_id, subject, auth_method, "
+                        "credential_id, roles, required_scope, resource_type, "
+                        "resource_id, method, route_template, decision, reason, "
+                        "request_id FROM access_audit "
+                        "WHERE tenant_id = {p} AND occurred_at < {p} "
+                        "ORDER BY occurred_at DESC LIMIT {p}"
+                    ),
+                    (tenant_id, _iso(before), limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    self._sql(
+                        "SELECT audit_id, occurred_at, tenant_id, subject, auth_method, "
+                        "credential_id, roles, required_scope, resource_type, "
+                        "resource_id, method, route_template, decision, reason, "
+                        "request_id FROM access_audit "
+                        "WHERE tenant_id = {p} "
+                        "ORDER BY occurred_at DESC LIMIT {p}"
+                    ),
+                    (tenant_id, limit),
+                ).fetchall()
         return [self._decode_audit(row) for row in rows]
 
     def _decode_audit(self, row: Any) -> AccessAuditRecord:
@@ -425,14 +430,15 @@ class AuthStore:
         return contract.sql(template, self._is_postgres)
 
     def _connect(self) -> Any:
-        """Return this thread's cached store connection, creating it once."""
+        """Return a connection, caching only SQLite's thread-bound raw handle."""
+        if self._is_postgres:
+            return self._store.connect()
         conn = getattr(self._local, "conn", None)
         if conn is None:
             conn = self._store.connect()
-            if not self._is_postgres:
-                conn.execute("PRAGMA busy_timeout=15000")
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("PRAGMA synchronous=NORMAL")
+            conn.execute("PRAGMA busy_timeout=15000")
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
             self._local.conn = conn
         return conn
 
@@ -452,10 +458,10 @@ class AuthStore:
 
     def _ensure_schema(self) -> None:
         """Create the Auth Store tables if they do not exist."""
-        conn = self._connect()
-        for statement in auth_store_statements(self._is_postgres):
-            conn.execute(statement)
-        conn.commit()
+        with self._connect() as conn:
+            for statement in auth_store_statements(self._is_postgres):
+                conn.execute(statement)
+            conn.commit()
 
 
 __all__ = ["AuthStore", "utcnow"]
