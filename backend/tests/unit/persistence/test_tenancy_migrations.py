@@ -69,20 +69,12 @@ class FakeConnection:
 
 
 def install_fake_psycopg(monkeypatch: pytest.MonkeyPatch) -> list[FakeConnection]:
-    """Patch ``sys.modules['psycopg']`` with a fake module recording connections made."""
-    import sys
-    from types import SimpleNamespace
+    """Patch ``sys.modules['psycopg']`` and ``psycopg_pool`` with fakes."""
+    from backend.tests.unit.persistence.fake_postgres_pool import (  # noqa: PLC0415
+        install_fake_postgres_modules,
+    )
 
-    connections: list[FakeConnection] = []
-
-    def connect(database_url: str) -> FakeConnection:
-        assert database_url.startswith("postgresql://")
-        conn = FakeConnection()
-        connections.append(conn)
-        return conn
-
-    monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(connect=connect))
-    return connections
+    return install_fake_postgres_modules(monkeypatch, connection_factory=FakeConnection)
 
 
 def _columns(conn: sqlite3.Connection, table: str) -> set[str]:

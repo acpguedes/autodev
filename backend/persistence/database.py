@@ -7,7 +7,6 @@ working without change.
 
 from __future__ import annotations
 
-from functools import lru_cache
 from typing import TYPE_CHECKING
 
 from backend.config.settings import get_settings
@@ -33,8 +32,9 @@ DEFAULT_DATABASE_URL = "sqlite:///./autodev.db"
 #: through this alias.
 DurableStore = SQLiteStore
 
+_store_cache: "SQLiteStore | PostgresStore | None" = None
 
-@lru_cache(maxsize=1)
+
 def get_store() -> "SQLiteStore | PostgresStore":
     """Return a cached store keyed off DATABASE_URL.
 
@@ -44,13 +44,23 @@ def get_store() -> "SQLiteStore | PostgresStore":
         A :class:`SQLiteStore` or ``PostgresStore`` instance, depending on
         ``DATABASE_URL``.
     """
-    url = get_settings().database_url
-    if is_postgres(url):
-        from backend.persistence.postgres_adapter import PostgresStore  # noqa: PLC0415
-        return PostgresStore(url)
-    return SQLiteStore(url)
+    global _store_cache
+    if _store_cache is None:
+        url = get_settings().database_url
+        if is_postgres(url):
+            from backend.persistence.postgres_adapter import PostgresStore  # noqa: PLC0415
+
+            _store_cache = PostgresStore(url)
+        else:
+            _store_cache = SQLiteStore(url)
+    return _store_cache
 
 
 def reset_store_cache() -> None:
-    """Clear the cached store, mainly for tests."""
-    get_store.cache_clear()
+    """Clear the cached store, closing any owned PostgreSQL pool first."""
+    global _store_cache
+    store = _store_cache
+    _store_cache = None
+    close = getattr(store, "close", None)
+    if callable(close):
+        close()

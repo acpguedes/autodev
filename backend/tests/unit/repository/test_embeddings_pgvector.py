@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import math
-import sys
-from types import SimpleNamespace
 
 import pytest
 
 from backend.persistence.postgres_adapter import PostgresStore
+from backend.tests.unit.persistence.fake_postgres_pool import install_fake_postgres_modules
 from backend.repository.chunking import chunk_source
 from backend.repository.embeddings.pgvector_store import query_top_k, upsert_embeddings
 from backend.repository.embeddings.provider import DEFAULT_EMBEDDING_DIMENSION, StubEmbeddingProvider
@@ -117,17 +116,8 @@ class FakeConnection:
 
 
 def _install_fake_psycopg(monkeypatch: pytest.MonkeyPatch) -> list[FakeConnection]:
-    """Patch ``sys.modules['psycopg']`` with a fake module recording connections made."""
-    connections: list[FakeConnection] = []
-
-    def connect(database_url: str) -> FakeConnection:
-        assert database_url.startswith("postgresql://")
-        conn = FakeConnection()
-        connections.append(conn)
-        return conn
-
-    monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(connect=connect))
-    return connections
+    """Patch ``sys.modules['psycopg']`` and ``psycopg_pool`` with fakes."""
+    return install_fake_postgres_modules(monkeypatch, connection_factory=FakeConnection)
 
 
 def test_postgres_store_creates_vector_extension_table_and_hnsw_index(
