@@ -6,9 +6,16 @@ import os
 from pathlib import Path
 from typing import Any, Optional
 
+from backend.config.settings import Settings, get_settings
 from backend.persistence.codecs import dumps_json, loads_json, utcnow_iso
 from backend.persistence.migrations.postgres_versions import add_tenant_id_and_rls_to_plan_tables
-from backend.persistence.postgres_adapter._shared import _DEFAULT_DATABASE_URL, _connect, _run_sql
+from backend.persistence.postgres_adapter._shared import (
+    _DEFAULT_DATABASE_URL,
+    PostgresConnectionManager,
+    PostgresPoolConfig,
+    _run_sql,
+    pool_config_from_settings,
+)
 from backend.persistence.tenancy import DEFAULT_TENANT_ID, set_postgres_tenant
 from backend.plans.models import ApprovalRecord, PlanDocument, PlanStatus
 
@@ -16,7 +23,15 @@ from backend.plans.models import ApprovalRecord, PlanDocument, PlanStatus
 class PostgresPlanStore:
     """Postgres-backed plan store."""
 
-    def __init__(self, db_path: Optional[Path] = None, database_url: str = "") -> None:
+    def __init__(
+        self,
+        db_path: Optional[Path] = None,
+        database_url: str = "",
+        *,
+        pool_config: PostgresPoolConfig | None = None,
+        connection_manager: PostgresConnectionManager | None = None,
+        settings: Settings | None = None,
+    ) -> None:
         """Initialize the store and apply its migrations.
 
         Args:
@@ -24,15 +39,32 @@ class PostgresPlanStore:
                 the SQLite plan store.
             database_url: PostgreSQL connection URL; falls back to the
                 ``DATABASE_URL`` env var.
+            pool_config: Optional explicit pool configuration.
+            connection_manager: Optional injected manager used by tests.
+            settings: Settings source for the default pool configuration.
         """
         del db_path
         self.database_url = database_url or os.environ.get("DATABASE_URL", _DEFAULT_DATABASE_URL)
+        if pool_config is None and connection_manager is None:
+            pool_config = pool_config_from_settings(settings or get_settings())
+        self._connection_manager = connection_manager or PostgresConnectionManager(
+            self.database_url,
+            pool_config,
+        )
         with self.connect() as conn:
             self._run_migrations(conn)
 
     def connect(self) -> Any:
-        """Open a new connection to this store's database."""
-        return _connect(self.database_url)
+        """Borrow a connection from this store's bounded PostgreSQL pool."""
+        return self._connection_manager.connect()
+
+    def close(self) -> None:
+        """Close this store's PostgreSQL connection pool."""
+        self._connection_manager.close()
+
+    def pool_stats(self) -> dict[str, int]:
+        """Return current pool statistics for diagnostics and metrics."""
+        return self._connection_manager.stats()
 
     def _run_migrations(self, conn: Any) -> None:
         """Create the plan store's tables, apply tenancy DDL, and record the schema version.

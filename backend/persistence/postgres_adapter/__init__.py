@@ -8,8 +8,20 @@ keeps the same import surface the single-file module previously exposed.
 
 from __future__ import annotations
 
-from backend.persistence.postgres_adapter._shared import _DEFAULT_DATABASE_URL
+from backend.persistence.postgres_adapter._shared import (
+    _DEFAULT_DATABASE_URL,
+    PostgresConnectionManager,
+    PostgresPoolConfig,
+    PostgresPoolExhaustedError,
+)
 from backend.persistence.postgres_adapter.plan_store import PostgresPlanStore
 from backend.persistence.postgres_adapter.store import PostgresStore
 
-__all__ = ["PostgresPlanStore", "PostgresStore", "_DEFAULT_DATABASE_URL"]
+__all__ = [
+    "PostgresConnectionManager",
+    "PostgresPlanStore",
+    "PostgresPoolConfig",
+    "PostgresPoolExhaustedError",
+    "PostgresStore",
+    "_DEFAULT_DATABASE_URL",
+]

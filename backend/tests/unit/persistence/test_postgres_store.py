@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import sys
-from types import SimpleNamespace
-
 import pytest
 
 from backend.persistence.postgres_adapter import PostgresPlanStore, PostgresStore
 from backend.persistence.postgres_adapter.vector_provisioning import VectorExtensionUnavailable
+from backend.tests.unit.persistence.fake_postgres_pool import install_fake_postgres_modules
 
 
 class FakeCursor:
@@ -112,20 +110,13 @@ def install_fake_psycopg(
         The list of fake connections created via ``psycopg.connect``, appended
         to as the code under test connects.
     """
-    connections: list[FakeConnection] = []
-
-    def connect(database_url: str) -> FakeConnection:
-        """Create and record a fake connection for the given (assumed PostgreSQL) URL."""
-        assert database_url.startswith("postgresql://")
-        conn = FakeConnection(
+    return install_fake_postgres_modules(
+        monkeypatch,
+        connection_factory=lambda: FakeConnection(
             pg_extension_installed=pg_extension_installed,
             create_extension_error=create_extension_error,
-        )
-        connections.append(conn)
-        return conn
-
-    monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(connect=connect))
-    return connections
+        ),
+    )
 
 
 def test_postgres_store_runs_core_migrations(monkeypatch: pytest.MonkeyPatch) -> None:

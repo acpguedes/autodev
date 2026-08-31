@@ -83,6 +83,9 @@ class Settings(BaseSettings):
 
     # --- persistence ---
     database_url: str = "sqlite:///./autodev.db"
+    autodev_postgres_pool_min_size: int = Field(default=1, ge=0)
+    autodev_postgres_pool_max_size: int = Field(default=10, ge=1)
+    autodev_postgres_pool_timeout_seconds: float = Field(default=5.0, gt=0)
     # Optional separate PostgreSQL connection used only by
     # backend.persistence.backup for pg_dump/pg_restore (E57-S4). RLS-scoped
     # tables are created with FORCE ROW LEVEL SECURITY, so a whole-database
@@ -332,6 +335,12 @@ class Settings(BaseSettings):
 
         if provider == "openai" and not self.openai_api_key.strip():
             errors.append("OPENAI_API_KEY is required when LLM_PROVIDER=openai")
+
+        if self.autodev_postgres_pool_min_size > self.autodev_postgres_pool_max_size:
+            errors.append(
+                "AUTODEV_POSTGRES_POOL_MIN_SIZE cannot exceed "
+                "AUTODEV_POSTGRES_POOL_MAX_SIZE"
+            )
 
         if self.autodev_profile == "local":
             if not self.database_url.startswith("sqlite://"):

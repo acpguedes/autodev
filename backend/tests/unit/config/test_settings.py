@@ -27,6 +27,9 @@ def clean_settings_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "AUTODEV_MINIO_ENDPOINT",
         "AUTODEV_MINIO_ACCESS_KEY",
         "AUTODEV_MINIO_SECRET_KEY",
+        "AUTODEV_POSTGRES_POOL_MIN_SIZE",
+        "AUTODEV_POSTGRES_POOL_MAX_SIZE",
+        "AUTODEV_POSTGRES_POOL_TIMEOUT_SECONDS",
     ):
         monkeypatch.delenv(name, raising=False)
     reset_settings_cache()
@@ -73,6 +76,29 @@ def test_prod_profile_accepts_explicit_postgres_redis_and_s3() -> None:
     assert settings.autodev_job_backend == "redis"
     assert settings.autodev_event_bus == "redis"
     assert settings.storage_backend == "s3"
+
+
+def test_postgres_pool_settings_have_safe_defaults_and_env_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PostgreSQL pool bounds are configurable through typed env vars."""
+    monkeypatch.setenv("AUTODEV_POSTGRES_POOL_MIN_SIZE", "2")
+    monkeypatch.setenv("AUTODEV_POSTGRES_POOL_MAX_SIZE", "12")
+    monkeypatch.setenv("AUTODEV_POSTGRES_POOL_TIMEOUT_SECONDS", "1.5")
+
+    settings = Settings()
+
+    assert settings.autodev_postgres_pool_min_size == 2
+    assert settings.autodev_postgres_pool_max_size == 12
+    assert settings.autodev_postgres_pool_timeout_seconds == 1.5
+
+
+def test_postgres_pool_min_size_cannot_exceed_max_size() -> None:
+    """Pool configuration rejects an impossible min/max pair."""
+    with pytest.raises(ValidationError) as excinfo:
+        Settings(autodev_postgres_pool_min_size=6, autodev_postgres_pool_max_size=5)
+
+    assert "AUTODEV_POSTGRES_POOL_MIN_SIZE cannot exceed" in str(excinfo.value)
 
 
 def test_prod_profile_rejects_invalid_redis_url() -> None:

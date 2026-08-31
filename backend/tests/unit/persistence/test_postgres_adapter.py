@@ -21,14 +21,16 @@ fetch queues meant for CRUD assertions.
 from __future__ import annotations
 
 import json
-import sys
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from backend.persistence import postgres_adapter
 from backend.persistence.postgres_adapter import PostgresPlanStore, PostgresStore
+from backend.tests.unit.persistence.fake_postgres_pool import (
+    FakeConnectionPool,
+    install_fake_postgres_modules,
+)
 from backend.plans.models import ApprovalRecord, PlanDocument, PlanStatus
 
 
@@ -90,15 +92,19 @@ class ScriptedConnection:
         self.executed: list[tuple[str, Any]] = []
         self.executed_many: list[tuple[str, list[Any]]] = []
         self.commits = 0
+        self.active_checkouts = 0
+        self.closed = False
         self.fetchone_queue: list[Any] = []
         self.fetchall_queue: list[list[Any]] = []
 
     def __enter__(self) -> "ScriptedConnection":
         """Support ``with self.connect() as conn:`` usage."""
+        self.active_checkouts += 1
         return self
 
     def __exit__(self, *_exc: object) -> None:
-        """No-op cleanup; nothing to release."""
+        """Release one fake pool checkout."""
+        self.active_checkouts -= 1
         return None
 
     def cursor(self) -> ScriptedCursor:
@@ -117,22 +123,16 @@ class ScriptedConnection:
 
 
 def install_scripted_psycopg(monkeypatch: pytest.MonkeyPatch) -> ScriptedConnection:
-    """Install a fake ``psycopg`` module whose ``connect()`` returns a shared connection.
+    """Install fake ``psycopg`` and ``psycopg_pool`` modules.
 
     Args:
         monkeypatch: The active pytest monkeypatch fixture.
 
     Returns:
-        The single :class:`ScriptedConnection` instance every ``connect()``
-        call will return.
+        The single :class:`ScriptedConnection` instance used by the fake pool.
     """
     conn = ScriptedConnection()
-
-    def connect(database_url: str) -> ScriptedConnection:
-        assert database_url.startswith("postgresql://")
-        return conn
-
-    monkeypatch.setitem(sys.modules, "psycopg", SimpleNamespace(connect=connect))
+    install_fake_postgres_modules(monkeypatch, connection_factory=lambda: conn)
     return conn
 
 
@@ -635,12 +635,97 @@ def test_database_url_fallback_chain(
     monkeypatch.setattr(PostgresPlanStore, "_run_migrations", lambda self, conn: None)
 
     monkeypatch.setenv("DATABASE_URL", "postgresql://from-env/db")
-    explicit = PostgresPlanStore(database_url="postgresql://explicit/db")
+    pool_config = postgres_adapter.PostgresPoolConfig()
+    explicit = PostgresPlanStore(database_url="postgresql://explicit/db", pool_config=pool_config)
     assert explicit.database_url == "postgresql://explicit/db"
 
-    from_env = PostgresPlanStore()
+    from_env = PostgresPlanStore(pool_config=pool_config)
     assert from_env.database_url == "postgresql://from-env/db"
 
     monkeypatch.delenv("DATABASE_URL", raising=False)
-    default = PostgresPlanStore()
+    default = PostgresPlanStore(pool_config=pool_config)
     assert default.database_url == postgres_adapter._DEFAULT_DATABASE_URL
+
+
+def test_postgres_store_uses_configured_pool_bounds(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PostgresStore connects through a psycopg_pool with configured bounds."""
+    install_scripted_psycopg(monkeypatch)
+    monkeypatch.setattr(PostgresStore, "_run_migrations", lambda self, conn: None)
+    monkeypatch.setattr(
+        "backend.persistence.postgres_adapter.store.provision_vector_extension",
+        lambda conn: None,
+    )
+
+    store = PostgresStore(
+        database_url="postgresql://test/db",
+        pool_config=postgres_adapter.PostgresPoolConfig(
+            min_size=2,
+            max_size=3,
+            timeout_seconds=0.25,
+        ),
+    )
+
+    pool = FakeConnectionPool.instances[-1]
+    assert pool.conninfo == "postgresql://test/db"
+    assert pool.min_size == 2
+    assert pool.max_size == 3
+    assert pool.timeout == 0.25
+    store.create_session(session_id="s1", goal="g", plan=[], artifacts={})
+    assert pool.connection_calls[-1] == 0.25
+
+
+def test_postgres_pool_exhaustion_is_typed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A saturated pool raises the backend-agnostic E60 typed exhaustion error."""
+    install_scripted_psycopg(monkeypatch)
+    monkeypatch.setattr(PostgresStore, "_run_migrations", lambda self, conn: None)
+    monkeypatch.setattr(
+        "backend.persistence.postgres_adapter.store.provision_vector_extension",
+        lambda conn: None,
+    )
+    store = PostgresStore(
+        database_url="postgresql://test/db",
+        pool_config=postgres_adapter.PostgresPoolConfig(
+            min_size=0,
+            max_size=1,
+            timeout_seconds=0.1,
+        ),
+    )
+
+    with store.connect():
+        with pytest.raises(postgres_adapter.PostgresPoolExhaustedError, match="pool exhausted"):
+            with store.connect():
+                pass
+
+
+def test_postgres_store_close_closes_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Closing the store closes the underlying PostgreSQL connection pool."""
+    install_scripted_psycopg(monkeypatch)
+    monkeypatch.setattr(PostgresStore, "_run_migrations", lambda self, conn: None)
+    monkeypatch.setattr(
+        "backend.persistence.postgres_adapter.store.provision_vector_extension",
+        lambda conn: None,
+    )
+    store = PostgresStore(database_url="postgresql://test/db")
+    pool = FakeConnectionPool.instances[-1]
+
+    store.close()
+
+    assert pool.closed is True
+    assert pool.conn.closed is True
+
+
+def test_postgres_plan_store_uses_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PostgresPlanStore shares the pooled connection contract."""
+    install_scripted_psycopg(monkeypatch)
+    monkeypatch.setattr(PostgresPlanStore, "_run_migrations", lambda self, conn: None)
+
+    store = PostgresPlanStore(
+        database_url="postgresql://plans/db",
+        pool_config=postgres_adapter.PostgresPoolConfig(max_size=2),
+    )
+    pool = FakeConnectionPool.instances[-1]
+
+    store.upsert_plan("s1", ["step"], tenant_id="tenant-a")
+
+    assert pool.conninfo == "postgresql://plans/db"
+    assert pool.connection_calls[-1] == 5.0

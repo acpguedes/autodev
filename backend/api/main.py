@@ -70,6 +70,7 @@ from backend.orchestrator.service import (
     SessionSummary,
 )
 from backend.persistence.backup_status import BackupStatusStore
+from backend.persistence.database import reset_store_cache
 from backend.api.routers import include_all_routers
 from backend.repository import RepositoryContext, RepositoryIntelligenceService
 
@@ -256,6 +257,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             # (e.g. a subsequent ``TestClient(app)`` in the same test process)
             # builds a fresh queue rather than reusing this now-closed one.
             _reset_queue_singleton()
+        reset_store_cache()
         shutdown_observability()
 
 
