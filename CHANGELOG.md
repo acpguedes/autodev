@@ -5,8 +5,49 @@ All notable changes to AutoDev Architect are documented here. Format loosely fol
 
 ## [Unreleased]
 
-Nothing yet. Changes land here after the `v2.0-beta` cut and are promoted into a
-version section when the next release is tagged.
+### Planning
+
+- **E61–E66 — Beta-hardening program: flow selection, execution logs, terminal,
+  global install and project context** (2026-09-05, planning only — no
+  implementation). Six epics, 24 planned stories, added after exercising the
+  product end to end. Each defect was verified in code before being recorded:
+  - **No flow selection exists.** No `flow.yaml` ships, `FlowRegistry` is empty
+    until a manifest is POSTed, and there is no selector. The chat path never
+    reaches the Flow Engine: `_compile_graph` builds a strictly linear graph from
+    `OrchestratorConfig.agent_order`, so every turn runs all seven agents
+    including `architect`, whatever the task. A flow manifest cannot declare when
+    it applies. **E63** adds `purpose`/`whenToUse`/`whenNotToUse`/`requires`, a
+    deterministic project-state probe, a two-phase selector whose deterministic
+    gate (not the model) enforces applicability, the first chat→`FlowEngine`
+    path, and two shipped built-in flows.
+  - **The Execution panel restates the chat and is not live.** One half renders
+    the agent's raw LLM text; the other polls after the turn ends and falls back
+    to the planner's task description when no action ran. **E64** removes both,
+    consumes the SSE stream that already exists, adds agent attribution and
+    explicit exit codes, streams stdout/stderr incrementally with redaction proven
+    across chunk boundaries, and introduces a real `read_file` action — because
+    no agent reads a file during a turn today, so read visibility had to be made
+    real rather than synthesised.
+  - **There is no terminal.** No `xterm`, no WebSocket route; `pty` appears only
+    in the plugin import denylist. **E65** adds a host PTY behind a fail-closed
+    `AUTODEV_ENABLE_TERMINAL` (default off), a narrow `/v2/terminal/{id}`
+    WebSocket with an explicitly audited authorization path, and an xterm tab
+    mounted in the shell's panel slot so it survives navigation.
+  - **There is no global install and no project entity.** No `~/.autodev/`; no
+    ancestor-directory search for `.autodev/`; a cwd-relative default database;
+    whole-document configuration with no layering; `make install` never registers
+    the `autodev` console script. **E61** adds `AUTODEV_HOME`, per-field layered
+    configuration and a CI-verified console-script install; **E62** adds project
+    discovery, a `projects` table on both dialects with tenant RLS,
+    `sessions.project_id`, per-session root resolution, and the three no-project
+    paths — with the tested invariant that configuring `.autodev/` in an existing
+    directory changes no file and starts no run.
+  - **E66** composes the eight required validations into one rehearsal, in the
+    E35-S2 form.
+
+  See `docs/v2_platform/phases/e61_global_install_layered_config.md` …
+  `e66_acceptance_delivery.md` and the tracker entry in
+  `docs/v2_platform/progress.md`.
 
 ## [v2.0-beta] — 2026-08-20 — v2 platform, Beta wave
 
