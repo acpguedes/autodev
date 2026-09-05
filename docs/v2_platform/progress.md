@@ -7,7 +7,75 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-08-26 (**E57 complete — 4/4, CI & Real PostgreSQL
+**Last updated:** 2026-09-05 (**Planning-only: added the E61–E66 Beta-hardening
+program — 6 epics, 24 planned stories**. No implementation. Found by running
+the product rather than reading it, and each defect verified in code before
+being written down. **(1) There is no flow selection at all.** No `flow.yaml`
+ships with the product, `FlowRegistry` is empty until someone POSTs a manifest,
+and `grep select_flow|flow_selector|choose_flow` returns nothing — while the
+real product path never touches the Flow Engine: `_compile_graph`
+(`backend/orchestrator/service/graph.py:68-82`) builds a strictly linear graph
+from `OrchestratorConfig.agent_order`, so **every** chat turn runs
+navigator→analyzer→architect→coder→devops→validator→responder, `architect`
+included, whatever was asked. The router that could vary it exists, is tested,
+and says so itself: *"This module is STANDALONE — it is NOT wired into the
+default `/chat` path"* (`backend/orchestrator/routing.py:1-8`); the
+`_infer_run_type` heuristic that feeds it is substring matching where `"doc"`
+matches "docker". A flow manifest cannot even express applicability — it
+carries `name` and `description`, which `docs/flows/spec.md` calls "Display
+metadata". **E63** adds `purpose`/`whenToUse`/`whenNotToUse`/`requires`, a
+deterministic project-state probe feeding the already-modelled but never-
+produced `ContextSignals`, a two-phase selector whose *deterministic gate* —
+not the model — enforces applicability, and the first code path from chat to
+`FlowEngine`, with two built-in flows finally shipped and seeded.
+**(2) The Execution side panel restates the chat and is not live.**
+`RunTimelinePanel`'s `output` during a chat turn is `agent_result.content`, raw
+LLM text (`graph.py:120-125`); `ExecutionConsolePanel` polls `listRuns()` only
+after a turn ends and, for any task that derived no actions
+(planning/analysis/architecture always), falls back to rendering the planner's
+own task description as if it were command output
+(`ExecutionConsolePanel.tsx:75-93`) — even though the live SSE hook and the
+shared transcript formatter E43-S2 built for exactly this already exist and are
+used on `/execution`. Output is also not incremental
+(`subprocess.run(capture_output=True)` on both sandbox paths), no event names
+the originating agent, and the 4000-character cap truncates silently. **E64**
+is mostly deletion, plus `sourceAgent`, chunked output with redaction proven
+across chunk boundaries, and a real `read_file` action — because verification
+showed that **during a chat turn no agent reads a file at all**, so
+`Reading: <path>` had to be made real rather than synthesised from LLM text.
+**(3) There is no terminal.** Zero `xterm`, zero WebSocket route, and `pty`
+appears once — in the plugin import *denylist*. `WS /v2/ws` has been reserved
+in reference §14.4 and never implemented. **E65** builds a host PTY behind a
+fail-closed `AUTODEV_ENABLE_TERMINAL` (default off, `prod` refuses without an
+override), a narrow `/v2/terminal/{id}` WebSocket with an explicitly audited
+authorization path — necessary because `enforce_control_plane_access` touches
+`request.method`, which a `WebSocket` does not have — and an xterm tab mounted
+in `ExecutionPanelSlot` rather than page-owned content, so it survives
+navigation. **(4) There is no global install and no project.** `Path.home()`
+does not appear in the Python source; `.autodev/` exists only as four unrelated
+relative output paths and is never searched for; there is no ancestor-directory
+walk anywhere in `backend/`; the default database is `sqlite:///./autodev.db`,
+relative to the launch directory, so running from elsewhere silently targets a
+different database; `RuntimeConfig` is a whole-document load/save with no
+layering, and `_normalize`'s `strip() or <default>` cannot distinguish `""`
+from unset; `make install` never registers the `autodev` console script; and
+`backend/api/main.py:23` pins `.env` to `parents[2]`, which does not exist under
+the wheel install ADR-015 blessed. **E61** adds `AUTODEV_HOME`, per-field
+layered configuration and a console-script install verified in CI; **E62** adds
+`.autodev/` discovery by ancestor walk, a `projects` table on both dialects with
+tenant RLS, `sessions.project_id`, per-session root resolution at its six
+consumers, and the three no-project paths — with the tested invariant that
+**configuring `.autodev/` in an existing directory changes no file and starts no
+run**. **E66** composes the eight required validations into one rehearsal in the
+E35-S2 form. Decisions taken with the requester: multi-project is real
+multi-project in one backend, not one-project-per-process; the terminal runs a
+host PTY behind a flag, not inside the E32 container; flow selection is a
+deterministic gate plus a constrained model choice, not either alone; and the
+frontend is corrected incrementally — the SSE transport, the shared transcript
+formatter and the panel slot all already exist, so a rebuild would remove none
+of the defects and would cost the parity-tested i18n, the Storybook stories and
+the Playwright suite.)
+Previous entry: 2026-08-26 (**E57 complete — 4/4, CI & Real PostgreSQL
 E2E**, on `epic/e57-ci-postgres-e2e` — closes the structural blind spot the
 epic doc names as this program's root cause: no CI workflow had ever started
 a real PostgreSQL, Redis, or MinIO, so every PostgreSQL code path E48-E56
@@ -560,7 +628,7 @@ order.
    (`templates/dod_checklist.md`) requires (green contract tests, docs updated,
    observability verified, etc.).
 
-## Wave status: Alpha and Beta complete — GA (E13) is next
+## Wave status: Alpha complete; Beta pre-released but not signed off — E61–E66 before GA (E13)
 
 **Current wave: GA.** Both the v2.0-alpha and v2.0-beta waves have exited and
 **`v2.0-beta` is published as a GitHub pre-release** (2026-08-20, targeting
@@ -625,11 +693,18 @@ automated guard blocks a new domain module from opening a database
 connection directly — see the changelog entry and
 [phases/e49_shared_sql_infrastructure.md](phases/e49_shared_sql_infrastructure.md).
 
-**Next:** E13 — Marketplace & GA (0/4, not started), or **E52 —
-SecretStore on PostgreSQL** (0/3, now unblocked — E49 and E50-S1 are both
-done) as the next step in the PostgreSQL Production
-Completeness program. Beyond GA, the planned v2.1 (E20-E25), v2.2
-(E26-E31) and v2.3 (E36-E40) waves are specified but not started.
+**Next:** **E61 — Global Install, AUTODEV_HOME & Layered Configuration**
+(0/4, not started), the root of the new E61–E66 Beta-hardening program. It
+comes before E13 because the four defects that program addresses were found by
+running the product, not by reading it, and three of them make the tool
+unusable outside a repository checkout: the chat path always runs the same
+seven-agent pipeline regardless of intent, the Execution panel restates the
+chat instead of showing real tool events, there is no terminal, and there is
+neither a global install home nor a project entity. Order:
+E61 → E62 → {E63, E65}, with E64 runnable in parallel and E66 closing the
+program. E13 — Marketplace & GA (0/4) follows. Beyond GA, the planned v2.1
+(E20-E25), v2.2 (E26-E31) and v2.3 (E36-E40) waves are specified but not
+started.
 
 ### Accumulated per-epic record
 
@@ -776,9 +851,23 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E58 | SQLite → PostgreSQL Data Migration | Beta | Done | 4/4 | E50-E55, E57 | [phases/e58_sqlite_to_postgres_migration.md](phases/e58_sqlite_to_postgres_migration.md) |
 | E59 | Backup, Restore & Disaster Recovery | Beta | Done | 3/3 | E8-S4, E55-S3, E57-S4 | [phases/e59_backup_restore_disaster_recovery.md](phases/e59_backup_restore_disaster_recovery.md) |
 | E60 | Connection Pooling & PostgreSQL Hardening | Beta | Done | 4/4 | E51-E55, E57, E11-S1 | [phases/e60_postgres_pooling_hardening.md](phases/e60_postgres_pooling_hardening.md) |
+| E61 | Global Install, AUTODEV_HOME & Layered Configuration | Beta | Not started | 0/4 | E34 | [phases/e61_global_install_layered_config.md](phases/e61_global_install_layered_config.md) |
+| E62 | Project Identity, Discovery & Multi-Project Isolation | Beta | Not started | 0/5 | E61-S1/S2, E49, E50, E8-S1 | [phases/e62_project_identity_discovery.md](phases/e62_project_identity_discovery.md) |
+| E63 | Flow Applicability & Task-Intent Execution Routing | Beta | Not started | 0/5 | E62-S1/S3, E3, E5, E2 | [phases/e63_flow_applicability_routing.md](phases/e63_flow_applicability_routing.md) |
+| E64 | Execution Panel: Real Technical Event Stream | Beta | Not started | 0/4 | E42-S1, E43-S2/S3, E41-S3/S4, E33 | [phases/e64_execution_panel_real_events.md](phases/e64_execution_panel_real_events.md) |
+| E65 | Interactive Terminal | Beta | Not started | 0/4 | E62, E11-S2, E15-S2, E32 | [phases/e65_interactive_terminal.md](phases/e65_interactive_terminal.md) |
+| E66 | Acceptance, Evidence & Delivery | Beta | Not started | 0/2 | E61-E65 | [phases/e66_acceptance_delivery.md](phases/e66_acceptance_delivery.md) |
 
-Total: **147/260 stories complete** across 60 epics (E19 is a proposed
+Total: **147/284 stories complete** across 66 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
+
+*(2026-09-05: +24 planned stories from the new E61–E66 Beta-hardening
+program — found by directly exercising the product: every chat turn runs the
+same fixed seven-agent pipeline including `architect`, no `flow.yaml` ships and
+no flow selector exists; the Execution side panel renders LLM text and polls
+instead of streaming; there is no terminal, no `~/.autodev/`, no `.autodev/`
+project marker and no project entity. See
+`phases/e61_global_install_layered_config.md` … `phases/e66_acceptance_delivery.md`.)*
 
 *(2026-07-17: total recomputed from the per-epic Done column — the previous
 "51" predated E15–E18 completion and had drifted; +13 planned stories from
