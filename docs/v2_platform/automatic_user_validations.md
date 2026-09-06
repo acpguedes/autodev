@@ -49,6 +49,19 @@ de mudanças, sem declarar uma hipótese como fato.
 9. O YAML só pode ser editado no campo visível nos casos `F08` e `F09`. Ele não
    pode ser usado para contornar outra jornada.
 10. Nunca exponha credenciais, segredos ou dados alheios nas evidências.
+11. Antes de despachar qualquer caso à Astra, verifique se o ambiente alvo
+    carrega: URL do frontend responde, backend acessível e workspace citado
+    existe. Se houver bloqueio, resolva-o você mesmo por meios não destrutivos
+    e já documentados (por exemplo, `make run`/`make run-backend`/
+    `make run-frontend`) ou instrua o usuário com a ação exata necessária;
+    nunca despache um caso contra um ambiente que não carrega. Não modifique
+    código ou configuração para destravar o ambiente — apenas operações
+    documentadas de start/restart. Registre a verificação e, se houve
+    bloqueio, o que foi feito para destravá-lo.
+12. Execute cada comando de diagnóstico ou orquestração exatamente uma vez;
+    repita apenas quando a tentativa anterior tiver falhado ou o estado do
+    ambiente tiver mudado. Mantenha entradas e saídas trocadas com o ambiente
+    enxutas — capture só o necessário para decidir o próximo passo.
 
 ## 3. Estados, prioridade e classificação
 
@@ -81,6 +94,11 @@ como `bug funcional`, `lacuna de funcionalidade`, `UX`, `observabilidade` ou
 - `S3`: problema visual ou textual menor.
 
 ## 4. Preparação da campanha
+
+Antes de qualquer item abaixo, aplique o princípio 11: confirme que a URL do
+frontend carrega sem erro de conexão, que o backend responde e que o
+workspace citado existe. Resolva bloqueios com meios não destrutivos ou
+instrua o usuário antes de prosseguir.
 
 Antes do primeiro caso, registre:
 

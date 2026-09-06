@@ -42,6 +42,16 @@ Build toward:
 - unreviewable broad rewrites;
 - adding infrastructure complexity without roadmap justification.
 
+### Before UI validation testing
+Before dispatching an Astra user-test run (`docs/v2_platform/automatic_user_validations.md`),
+verify the target environment loads: frontend reachable, backend responding,
+cited workspace present. Resolve blockers yourself with non-destructive,
+already documented start/restart actions, or instruct the user with the exact
+action needed — never modify code or configuration to unblock the
+environment, and never dispatch a case against an environment that fails to
+load. Run each check command once; repeat only on failure, per the
+AGENTS.md operational efficiency policy.
+
 ### v2 platform work
 The v2.0 platform rewrite (plugin core, agent framework, flow engine — epics E0–E13)
 is the active development track; E0–E2 are complete. Before picking up any
