@@ -647,7 +647,7 @@ achados na subseção do caso quando isso melhorar a rastreabilidade.
 - **Instrução Astra:** `Run a harmless command that fails and inspect the final status and error message.`
 - **Pré-condição:** workspace QA e Python disponível.
 - **Procedimento:** peça somente `python -c "raise SystemExit(7)"`, sem correção/repetição.
-- **PASS:** falha e código 7 visíveis quando suportados, sem validação aprovada e com
+- **PASS:** falha e código visíveis quando suportados, sem validação aprovada e com
   próximo passo compreensível.
 - **Coletar:** pedido, comando efetivo, saída/código e estado final.
 - **Impacto:** impede falso sucesso. Python ausente bloqueia o gatilho específico.
