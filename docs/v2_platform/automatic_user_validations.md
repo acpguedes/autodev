@@ -248,6 +248,33 @@ achados na subseção do caso quando isso melhorar a rastreabilidade.
 - **Coletar:** catálogo, item escolhido e editor após a tentativa.
 - **Impacto:** valida continuidade e manutenção. Catálogo vazio é `BLOCKED`.
 
+**Execution `20260906-f02a` (2026-09-06, America/Bahia):**
+
+- Environment: `http://localhost:3000`, base commit `723fd739`, Chromium through
+  Playwright MCP, no authentication, with the catalog precondition documented by
+  the residual F01 QA flows.
+- Result: `BLOCKED` in 1m03s. Astra session
+  `01a074fb-3dd2-7873-8590-8a2ec404da55` could not load the application: the
+  browser showed `This site can’t be reached`, `localhost refused to connect`,
+  and `ERR_CONNECTION_REFUSED`. The catalog, selected item, and editor were
+  therefore not observable, so F02 was not evaluated as product `PASS` or
+  `FAIL`.
+- Reproduction: navigate to `http://localhost:3000`; observe the connection
+  error before any application UI appears. No console, network, API, or source
+  inspection was used, and no separate browser run ID was exposed.
+- Evidence: one structured Astra journey with confidence `1.0`, the exact
+  visible messages above, and the navigation diagnostic `net::ERR_CONNECTION_REFUSED`.
+  No usable application screenshot could be collected because the UI never
+  loaded; the structured evidence is preserved in this Markdown report.
+- Limitation and direction: this is an environment availability blocker, not a
+  confirmed product defect. Make the frontend reachable at the recorded URL,
+  retain at least one registered flow, and rerun the unchanged F02 journey.
+- Batch totals (F02 only): `PASS 0`, `FAIL 0`, `BLOCKED 1`, `NOT_RUN 0`, planned
+  `1`; approval rate is not applicable because `PASS + FAIL = 0`, and executed
+  coverage is `0%` by the catalog formula. No product finding was opened.
+- Residue: no run remains active; no fixture, registry entry, setting, or code
+  was changed. The pre-existing F01 QA flows remain as previously documented.
+
 #### F03 — Editar propriedade de um nó (P1)
 
 - **Instrução Astra:** `Change one node label and confirm that the canvas and inspector agree.`
@@ -637,7 +664,7 @@ registra sequência, feedback, espera, reload e comportamento intermediário;
 | Caso | Estado | Resultado observado | Dinâmica | Evidências | Session/run | Duração | Achado/correção |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | F01 | FAIL | The valid graph saved only as `Untitled flow`; no visible control could set `QA-20260906-f01a-simple`, so named persistence after reload was not testable | Flows → New blank flow → Start → Planner → End → inspect visible controls → Save → unnamed catalog entry → stop | Structured Astra observations and exact UI text recorded in the F01 execution note and `QA-001`; screenshots blank/unusable | RUN `20260906-f01a`; primary session `01a074d5-ed65-7872-90a4-9ef02a570f92` | 2m12s | `QA-001`, open; correction direction only |
-| F02 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| F02 | BLOCKED | UI unavailable at the target URL; catalog selection and editor inspection could not begin | Navigate to target → connection refused before application UI → stop | Exact browser text and structured Astra journey recorded in the F02 execution note; no application screenshot available | RUN `20260906-f02a`; session `01a074fb-3dd2-7873-8590-8a2ec404da55` | 1m03s | Environment availability blocker; make the frontend reachable and rerun unchanged |
 | F03 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | F04 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | F05 | NOT_RUN | Ainda não executado | — | — | — | — | — |
