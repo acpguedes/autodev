@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   listFlowsV2,
-  validateFlowV2,
+  registerFlowV2,
   type FlowCatalogItemV2,
 } from "@/lib/api_v2";
 import { createBlankFlow, SAMPLE_FLOW_YAML } from "@/lib/flow/sample";
@@ -340,10 +340,7 @@ export function FlowEditor({ initialYaml }: FlowEditorProps) {
     toast({ title: "Canvas cleared", description: "All nodes and edges were removed." });
   };
 
-  /**
-   * Save action: gates on local validation, re-checks against the E16 `/v2`
-   * flows endpoint (non-mutating), then exports the canonical YAML.
-   */
+  /** Persists a locally valid manifest and refreshes the flows library. */
   const handleSave = async () => {
     if (!manifest) return;
     if (issueCount > 0) {
@@ -357,23 +354,17 @@ export function FlowEditor({ initialYaml }: FlowEditorProps) {
     }
     setSaving(true);
     try {
-      const result = await validateFlowV2(manifest);
-      if (!result.valid) {
-        toast({
-          title: "Server validation failed",
-          description: result.errors.join("; ") || "The manifest did not pass validation.",
-          variant: "destructive",
-        });
-        return;
-      }
-      downloadFlowYaml(yamlText);
+      await registerFlowV2(manifest);
+      const result = await listFlowsV2();
+      setCatalog(result.flows);
+      setCatalogError(null);
       toast({
-        title: "flow.yaml exported",
-        description: `${manifest.id}@${manifest.version} downloaded.`,
+        title: "Flow saved",
+        description: `${manifest.id}@${manifest.version} registered.`,
       });
     } catch (error) {
       toast({
-        title: "Could not validate flow.yaml",
+        title: "Could not save flow",
         description:
           error instanceof Error ? error.message : "Unexpected error contacting the control plane.",
         variant: "destructive",
@@ -398,6 +389,15 @@ export function FlowEditor({ initialYaml }: FlowEditorProps) {
         <div className="ml-auto flex items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={clearCanvas} disabled={!manifest}>
             Clear
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => downloadFlowYaml(yamlText)}
+            disabled={!manifest}
+          >
+            Export YAML
           </Button>
           <Button type="button" size="sm" onClick={handleSave} disabled={!manifest || saving}>
             {saving ? "Saving…" : "Save"}

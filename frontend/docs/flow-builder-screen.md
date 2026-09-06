@@ -35,11 +35,11 @@ E10-S3 are preserved.
   `maxParallel` for `map`, predicate/guard editing per outgoing edge, edge
   add/remove, and timeout target.
 - **Actions** (`components/flow/FlowEditor.tsx` header): **Clear** (empties
-  the canvas, confirmed by toast) and **Save**. Save gates on local
-  validation (`lib/flow/validate.ts::validateFlow`), then re-checks the
-  manifest server-side with `validateFlowV2` and reports the outcome via
-  toast — invalid manifests resolve with `valid: false` rather than throw,
-  and nothing is persisted by validation alone.
+  the canvas, confirmed by toast), **Export YAML** (downloads the current
+  manifest), and **Save**. Save gates on local
+  validation (`lib/flow/validate.ts::validateFlow`), persists the manifest
+  with `registerFlowV2`, refreshes the flows library, and reports the outcome
+  via toast.
 
 ## API contract (E16)
 

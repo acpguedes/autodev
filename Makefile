@@ -19,7 +19,7 @@ NPM          ?= npm
 VENV         := .venv
 VENV_BIN     := $(VENV)/bin
 PY           := $(VENV_BIN)/python
-PIP          := $(VENV_BIN)/pip
+PIP          := uv $(VENV_BIN)/pip
 FRONTEND_DIR := frontend
 PYTEST_PATHS := tests backend/tests
 
@@ -55,15 +55,17 @@ help: ## Show this help message
 .PHONY: install install-backend install-frontend install-dev venv
 
 $(VENV)/bin/activate:
-	$(PYTHON) -m venv $(VENV)
+	uv venv .venv #$(PYTHON) -m venv $(VENV)
 	$(PIP) install --upgrade pip
 
-venv: $(VENV)/bin/activate ## Create the Python virtualenv (.venv) if missing
+venv: 
+	uv venv .venv
+	source .venv/bin/activate ## Create the Python virtualenv (.venv) if missing
 
 install: install-backend install-frontend ## Install backend + frontend dependencies
 
-install-backend: venv ## Install backend runtime + test dependencies into .venv
-	$(PIP) install -r backend/requirements.txt
+install-backend:  ## Install backend runtime + test dependencies into .venv
+	uv pip install -r backend/requirements.txt
 
 install-frontend: ## Install frontend node dependencies
 	cd $(FRONTEND_DIR) && $(NPM) install

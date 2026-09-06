@@ -7,8 +7,7 @@ import { expect, test } from "playwright/test";
 // the editor loads a built-in sample manifest client-side and the palette's
 // "Agents"/"Flow control" sections never depend on network data, so only
 // the Flows-library listing and the Save action's server round-trip are
-// network-dependent — those are asserted loosely (toast appears, whichever
-// outcome) rather than pinned to a specific backend response.
+// network-dependent.
 
 test("renders the three-column flow builder: palette, canvas, inspector", async ({ page }) => {
   await page.goto("/flows");
@@ -75,19 +74,50 @@ test("Clear empties the canvas", async ({ page }) => {
   await expect(page.getByRole("status")).toContainText("Canvas cleared");
 });
 
-test("Save validates the manifest and reports the outcome via toast", async ({ page }) => {
-  await page.goto("/flows");
+test("Save registers the manifest and refreshes the flows library", async ({ page }) => {
+  let registeredFlow: Record<string, unknown> | null = null;
+  await page.route("**/v2/flows", async (route) => {
+    const request = route.request();
+    if (request.method() === "POST") {
+      registeredFlow = request.postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          schemaVersion: "1",
+          registered: { id: registeredFlow.id, version: registeredFlow.version },
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        schemaVersion: "1",
+        flows: registeredFlow
+          ? [
+              {
+                id: registeredFlow.id,
+                version: registeredFlow.version,
+                name: registeredFlow.name,
+                hostApi: registeredFlow.hostApi,
+                triggers: [],
+              },
+            ]
+          : [],
+      }),
+    });
+  });
 
+  await page.goto("/flows");
+  const palette = page.getByRole("group", { name: "Flow palette" });
+  await palette.getByRole("button", { name: "New blank flow" }).click();
+  await palette.getByRole("button", { name: /^Planner /i }).click();
   await page.getByRole("button", { name: "Save" }).click();
 
-  // Whether the /v2/flows/validate round-trip succeeds (export confirmed)
-  // or fails (backend unavailable / server-side validation error), the
-  // save action always surfaces its outcome as a toast — never a silent
-  // failure. Scoped to the toaster stack (data-testid="toaster") since an
-  // unscoped role=alert query also matches Next.js's (empty) built-in
-  // route announcer, a strict-mode violation.
   const toaster = page.getByTestId("toaster");
-  await expect(toaster).toContainText(
-    /flow\.yaml exported|Could not validate flow\.yaml|Server validation failed/
-  );
+  await expect(toaster).toContainText("Flow saved");
+  await expect(palette).toContainText("Untitled flow");
+  expect(registeredFlow).toMatchObject({ id: "autodev/flow-untitled", version: "0.1.0" });
 });
