@@ -39,6 +39,7 @@
     "provider": {
       "label": "Provedor",
       "healthy": "{{name}} · {{model}}",
+      "stub": "Stub (offline) · {{model}}",
       "unhealthy": "{{name}} indisponível",
       "unconfigured": "Provedor não configurado",
       "loading": "Verificando provedor..."

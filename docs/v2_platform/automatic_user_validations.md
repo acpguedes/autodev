@@ -5,8 +5,9 @@
 > coletar e como registrar resultados e melhorias. Ele não substitui testes
 > unitários, de integração, de acessibilidade, segurança ou desempenho.
 
-**Última atualização:** 2026-09-06 — `U03` executed as `FAIL`; 1 case is
-`PASS`, 3 are `FAIL`, 1 is `BLOCKED`, and 36 remain `NOT_RUN`.
+**Última atualização:** 2026-09-06 — `U03` passed after correction and controlled
+retest; 2 cases are `PASS`, 2 are `FAIL`, 1 is `BLOCKED`, and 36 remain
+`NOT_RUN`.
 
 ## 1. Objetivo e autoridade
 
@@ -763,6 +764,29 @@ achados na subseção do caso quando isso melhorar a rastreabilidade.
   Local frontend and backend processes remained active for delivery work and are
   stopped after documentation is complete.
 
+**Controlled retest `20260906-u03b` (2026-09-06, America/Bahia):**
+
+- Environment: `http://localhost:3000`, correction commit `839d376` content
+  running from the `fix/u03-provider-status` worktree, Chromium through
+  Playwright MCP, viewport not exposed by the structured runner report, and no
+  authentication prompt. Frontend and backend returned HTTP 200; the non-secret
+  operator reference remained provider `stub`, model `gpt-4o-mini`, configured
+  and healthy.
+- Result: `PASS` in 59s. Astra session
+  `01a0760d-aa2c-7172-9728-8d01d0e91b26` observed
+  `Stub (offline) · gpt-4o-mini` in Chat after the brief loading state, then
+  observed `Stub (offline)`, model `gpt-4o-mini`, and runtime status
+  `stub healthy` in Config. Both required surfaces unequivocally distinguished
+  the stub from a live provider and matched the operator reference.
+- Interaction dynamics: open Chat → observe the provider indicator resolve →
+  click Config → compare provider, model, and runtime status → stop. No setting
+  was edited or saved, and no chat message was sent.
+- Evidence limitation: Astra captured both screens, but the runner exposed no
+  persistent screenshot paths. The structured observations, exact visible
+  labels, URL, interaction sequence, session, and result are preserved here.
+- Residue: no product data, settings, fixtures, or runs were created or changed;
+  local frontend and backend processes were stopped after the retest.
+
 #### U04 — Usar painel em tela pequena (P1)
 
 - **Instrução Astra:** `Check Chat and Flows at a narrow viewport and browser zoom of 200%.`
@@ -847,7 +871,7 @@ registra sequência, feedback, espera, reload e comportamento intermediário;
 | P02 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | U01 | BLOCKED | All nine primary screens rendered with correct identity and active navigation; Back worked, but Forward could not be verified with permitted browser controls | Chat → Plans → Patches → Execution → Files → Flows → Sessions → Config → Extensions → Back to Config → `Alt+ArrowRight` had no effect → unsafe alternative rejected before execution → stop | Structured Astra observations, exact URLs/text, and U01 execution note; screenshots had no persistent paths | RUN `20260906-u01a`; session `01a075ed-89bc-7d01-81d2-523dd8db72ad` | 2m14s | `QA-003`, open; correction direction only; Forward limitation is not a product defect |
 | U02 | NOT_RUN | Ainda não executado | — | — | — | — | — |
-| U03 | FAIL | Config identified `Stub (offline)` and `stub healthy`, but Chat retained `Checking provider...` while showing `Healthy`, `stub`, and `gpt-4o-mini` elsewhere | Chat initial state → Config comparison → Chat → wait 3s → conflicting unresolved badge → stop; no settings changed and no message sent | Structured Astra observations, exact visible labels, and U03 execution note; screenshots had no persistent paths | RUN `20260906-u03a`; session `01a07600-4486-7120-81ff-9139ce6e9b0b` | 1m18s | `QA-004`, open; correction direction only |
+| U03 | PASS | After correction, Chat resolved to `Stub (offline) · gpt-4o-mini`; Config showed the same offline stub, model, and `stub healthy` runtime status | Initial FAIL: Chat badge stayed `Checking provider...` → correction `839d376` → controlled retest: Chat indicator resolved → Config comparison → stop; no settings changed and no message sent | Structured Astra observations and exact visible labels for both runs; screenshots had no persistent paths | Initial RUN `20260906-u03a`, session `01a07600-4486-7120-81ff-9139ce6e9b0b`; PASS RUN `20260906-u03b`, session `01a0760d-aa2c-7172-9728-8d01d0e91b26` | 59s retest; 2m17s combined | `QA-004`, resolved in `839d376` and verified by U03b |
 | U04 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | U05 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | U06 | NOT_RUN | Ainda não executado | — | — | — | — | — |
@@ -970,9 +994,12 @@ reproduzido.
 
 ### QA-004 — Resolve and explain stub provider status consistently in Chat
 
+- **Status:** resolved in correction commit `839d376`; verified by controlled
+  retest `20260906-u03b`.
 - **Type/severity:** UX, `S2`.
 - **Related case:** `U03`.
-- **Build/URL:** base commit `374359f`; `http://localhost:3000`.
+- **Build/URL:** initial base commit `374359f`; corrected content committed as
+  `839d376`; `http://localhost:3000`.
 - **Preconditions:** reachable UI and API; operator reference identifies provider
   `stub`, model `gpt-4o-mini`, configured and healthy; no secrets required.
 - **Minimal reproduction:** open Chat → observe provider indicators → click
@@ -987,15 +1014,16 @@ reproduzido.
 - **User impact:** a non-technical first-time user cannot determine whether a
   real model is available or whether responses are simulated by the offline
   stub, weakening confidence in subsequent user-test evidence.
-- **Correction direction:** use the same explicit `Stub (offline)` wording in
-  Chat, resolve or remove stale checking states, and explain that the displayed
-  model name is simulated rather than evidence of a live provider.
-- **Acceptance/retest:** with the known stub configuration, open Config and Chat
-  and verify that both surfaces consistently show the offline/simulated mode,
-  model, and resolved availability without contradictory checking text. No
-  product correction or test-framework change is included in this report.
-- **Evidence:** structured Astra observations and exact visible labels preserved
-  in the U03 execution note; no persistent screenshot path was exposed.
+- **Correction implemented:** Chat now invokes its provider-status lookup and
+  renders a dedicated `Stub (offline) · <model>` label for a healthy stub. The
+  English and pt-BR dictionaries and the existing Chat browser specification
+  cover the explicit offline label.
+- **Acceptance/retest:** passed. With the known stub configuration, Chat resolved
+  to `Stub (offline) · gpt-4o-mini`; Config showed `Stub (offline)`, the same
+  model, and `stub healthy`, without contradictory persistent checking text.
+- **Evidence:** structured Astra observations and exact visible labels from the
+  initial and controlled retest runs are preserved in the U03 execution notes;
+  no persistent screenshot path was exposed.
 
 ## 10. Fechamento do lote e atualização documental
 
@@ -1056,7 +1084,7 @@ o pedido incluir esse escopo.
   result is cited, and delivery validation was limited to documentation diff
   checks.
 
-### Closure — requested U03 batch
+### Initial closure — requested U03 batch
 
 - Final totals for the requested one-case batch: 0 `PASS`, 1 `FAIL`, 0
   `BLOCKED`, 0 `NOT_RUN`; approval rate 0% and executed coverage 100%.
@@ -1067,3 +1095,20 @@ o pedido incluir esse escopo.
 - This delivery changes Markdown documentation only. No product code,
   configuration, fixtures, or automated tests were changed, and no unit,
   integration, end-to-end, or other test framework was executed.
+
+### Closure — U03 correction and controlled retest
+
+- Final U03 result after the requested correction loop: 1 `PASS`, 0 `FAIL`, 0
+  `BLOCKED`, 0 `NOT_RUN`; approval rate 100% and executed coverage 100%.
+- Whole-catalog totals after the retest: 2 `PASS`, 2 `FAIL`, 1 `BLOCKED`, and 36
+  `NOT_RUN`.
+- `QA-004` is resolved by `839d376` and verified by PASS run
+  `20260906-u03b`. One correction/retest loop was used; no second loop was
+  needed.
+- Changed product files: Chat provider-status loading/rendering, en/pt-BR labels,
+  and the existing targeted browser specification. No provider configuration,
+  fixture, or product data changed.
+- Per the explicit user restriction, no unit, integration, end-to-end, or other
+  test framework was executed. Validation consists of `git diff --check`, Next.js
+  compiling the affected Chat route while serving the app, and the independent
+  Astra black-box PASS.

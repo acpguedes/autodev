@@ -127,4 +127,12 @@ test.describe("Chat reopen-as-chat deep link", () => {
     await expect(page.getByText(`Session: ${LATEST.session_id}`)).toBeVisible();
     await expect(chatNotice(page)).toHaveCount(0);
   });
+
+  test("identifies a healthy stub provider as offline", async ({ page }) => {
+    await stubChatWorkspace(page, [LATEST]);
+
+    await page.goto("/");
+
+    await expect(page.getByTitle("Provider")).toHaveText("Stub (offline) · stub-1");
+  });
 });
