@@ -269,11 +269,45 @@ achados na subseção do caso quando isso melhorar a rastreabilidade.
 - Limitation and direction: this is an environment availability blocker, not a
   confirmed product defect. Make the frontend reachable at the recorded URL,
   retain at least one registered flow, and rerun the unchanged F02 journey.
-- Batch totals (F02 only): `PASS 0`, `FAIL 0`, `BLOCKED 1`, `NOT_RUN 0`, planned
-  `1`; approval rate is not applicable because `PASS + FAIL = 0`, and executed
-  coverage is `0%` by the catalog formula. No product finding was opened.
+- Attempt totals: `PASS 0`, `FAIL 0`, `BLOCKED 1`; approval rate and executed
+  coverage were not applicable before a reachable-environment rerun. No product
+  finding was opened from this attempt.
 - Residue: no run remains active; no fixture, registry entry, setting, or code
   was changed. The pre-existing F01 QA flows remain as previously documented.
+
+**Execution `20260906-f02b` (2026-09-06, America/Bahia):**
+
+- Environment: `http://localhost:3000`, base commit `d7b76ea`, backend on
+  `:8000` and frontend on `:3000` started through their documented `make`
+  targets, Chromium through Playwright MCP, 1280×720 capture viewport, and no
+  authentication.
+- Result: `FAIL` in 1m11s. Astra session
+  `01a074ff-2fee-7d33-8052-0f530fca100c` opened Flows and observed `Untitled
+  flow v0.1.0` and `QA-20260906-f01a-simple v0.1.0`. Clicking the QA item and
+  waiting three seconds produced no selection, loading state, success, or error;
+  the editor remained on `autodev/flow-feature-delivery@1.0.0` with its valid
+  badge, so the selected flow's identity, version, and graph could not be
+  confirmed.
+- Reproduction: open the application → Flows → click
+  `QA-20260906-f01a-simple v0.1.0` → wait three seconds → inspect the editor
+  heading and feedback. The unchanged editor snapshot retained nodes `plan`,
+  `code`, `apply-and-validate`, `quality-gate`, `human-review`, `evaluate`, and
+  `escalate`, belonging to the previously displayed flow.
+- Evidence: before/after browser snapshots, exact visible catalog and editor
+  text, and one structured Astra journey with confidence `0.97`; no console,
+  network, API, or source diagnostics were used. No persistent screenshot path
+  or separate browser run ID was exposed.
+- User impact and direction: a first-time user cannot open or maintain a
+  registered flow. Make catalog selection load the chosen identity, version,
+  and graph, and provide explicit open/selection feedback; then rerun unchanged
+  F02. No correction was applied (`QA-002`).
+- Secondary observation: with the Execution panel open, graph nodes were not
+  visually discernible at 1280×720; this did not replace the primary failure.
+- Batch totals (F02 rerun): `PASS 0`, `FAIL 1`, `BLOCKED 0`, `NOT_RUN 0`, planned
+  `1`; approval rate `0%`, executed coverage `100%`. Highest-impact finding:
+  `QA-002` (`S1`); there were no additional confirmed findings.
+- Residue: backend and frontend remain active as requested; no flow, registry
+  entry, setting, or code was changed by the run.
 
 #### F03 — Editar propriedade de um nó (P1)
 
@@ -664,7 +698,7 @@ registra sequência, feedback, espera, reload e comportamento intermediário;
 | Caso | Estado | Resultado observado | Dinâmica | Evidências | Session/run | Duração | Achado/correção |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | F01 | FAIL | The valid graph saved only as `Untitled flow`; no visible control could set `QA-20260906-f01a-simple`, so named persistence after reload was not testable | Flows → New blank flow → Start → Planner → End → inspect visible controls → Save → unnamed catalog entry → stop | Structured Astra observations and exact UI text recorded in the F01 execution note and `QA-001`; screenshots blank/unusable | RUN `20260906-f01a`; primary session `01a074d5-ed65-7872-90a4-9ef02a570f92` | 2m12s | `QA-001`, open; correction direction only |
-| F02 | BLOCKED | UI unavailable at the target URL; catalog selection and editor inspection could not begin | Navigate to target → connection refused before application UI → stop | Exact browser text and structured Astra journey recorded in the F02 execution note; no application screenshot available | RUN `20260906-f02a`; session `01a074fb-3dd2-7873-8590-8a2ec404da55` | 1m03s | Environment availability blocker; make the frontend reachable and rerun unchanged |
+| F02 | FAIL | Catalog contained the QA flow, but clicking it left the editor on `autodev/flow-feature-delivery@1.0.0` without feedback | Flows → select `QA-20260906-f01a-simple v0.1.0` → unchanged editor → wait 3s → unchanged editor → stop | Before/after browser snapshots and exact UI text recorded in the F02 execution note | RUN `20260906-f02b`; session `01a074ff-2fee-7d33-8052-0f530fca100c` | 1m11s | `QA-002`, open; correction direction only |
 | F03 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | F04 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | F05 | NOT_RUN | Ainda não executado | — | — | — | — | — |
@@ -766,6 +800,32 @@ reproduzido.
   build.
 - **Evidence:** structured Astra journey and exact visible messages recorded in
   the F01 execution note; screenshots were blank and excluded as proof.
+
+### QA-002 — Open a registered flow from the catalog
+
+- **Type/severity:** functional bug, `S1`.
+- **Related case:** `F02`.
+- **Build/URL:** base commit `d7b76ea`; `http://localhost:3000`.
+- **Preconditions:** reachable UI and API; catalog containing
+  `QA-20260906-f01a-simple v0.1.0`.
+- **Minimal reproduction:** Flows → click the QA catalog item → wait three
+  seconds → inspect the editor heading and feedback.
+- **Expected:** the editor displays the selected flow's name, version, and
+  corresponding graph.
+- **Observed:** no selection or loading feedback appeared, and the editor stayed
+  on `autodev/flow-feature-delivery@1.0.0`. Reproduced once in one reachable-UI
+  attempt.
+- **User impact:** registered flows cannot be reopened for inspection or
+  maintenance through the visible catalog journey.
+- **Correction direction:** make the catalog item or an explicit Open action
+  load the selected registered version and show selection, loading, success,
+  and failure states.
+- **Acceptance/retest:** select the QA item and confirm its exact identity,
+  version `0.1.0`, and nodes in the editor; rerun F02 on the corrected committed
+  build. No correction was applied in this documentation-only delivery.
+- **Evidence:** structured Astra journey, before/after browser snapshots, and
+  exact visible text recorded in the F02 execution note; no persistent
+  screenshot path was exposed.
 
 ## 10. Fechamento do lote e atualização documental
 
