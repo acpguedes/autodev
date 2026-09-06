@@ -616,8 +616,10 @@ export type FlowValidationResultV2 = {
 /** Result of registering (persisting) a new flow version. */
 export type FlowRegistrationV2 = {
   schemaVersion: string;
-  id: string;
-  version: string;
+  registered: {
+    id: string;
+    version: string;
+  };
 };
 
 /**
