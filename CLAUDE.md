@@ -58,6 +58,8 @@ During execution:
 * Do not reread unchanged files unless existing context is insufficient.
 * Reuse command, test, search, and tool output already obtained.
 * Do not repeat a command unless repository state changed or the previous result was inconclusive.
+* Do not re-run the same command with varying parameters to explore a question (e.g. multiple `gh pr view` calls); pick the precise invocation once, run it, and only repeat on failure.
+* Keep inputs and outputs exchanged with the environment small: request only the data needed for the next decision, and do not paste or echo more than that.
 * Do not use multiple tools to answer the same question without a concrete reason.
 * Avoid speculative refactors, cleanup, or unrelated improvements.
 * Do not create abstractions unless the current change requires them.
@@ -426,23 +428,30 @@ If the tracker says a story is complete but required behavior is demonstrably ab
 
 For requests such as `execute o teste F01 até a PR`:
 
-1. Treat `docs/v2_platform/automatic_user_validations.md` as the canonical test
+1. Verify the environment before dispatching Astra: the frontend URL loads
+   without a connection error, the backend responds, and the cited workspace
+   exists. If blocked, resolve it yourself with non-destructive, already
+   documented actions (`make run`/`make run-backend`/`make run-frontend`) or
+   instruct the user with the exact required action. Never modify code or
+   configuration to unblock the environment, and never dispatch Astra against
+   an environment that does not load.
+2. Treat `docs/v2_platform/automatic_user_validations.md` as the canonical test
    catalog and execution register. Validate the ID and execute only the named
    case unless the user specifies a range or batch.
-2. ALWAYS use the `astra-user-test` skill. Give Astra only the reachable UI
+3. ALWAYS use the `astra-user-test` skill. Give Astra only the reachable UI
    URL, the case's English instruction, visible preconditions/scenario, and
    approved QA fixtures. Never provide source code, repository paths, diffs,
    internal APIs, or implementation details.
-3. Record the installed build, RUN, session/run IDs, duration, observed result,
+4. Record the installed build, RUN, session/run IDs, duration, observed result,
    interaction dynamics, real evidence, limitations, residues, and inferred
    corrections/improvements. Apply the catalog's result semantics exactly.
-4. Do not fix the product during the initial test. After preserving its
+5. Do not fix the product during the initial test. After preserving its
    evidence, follow the skill's bounded fix/retest loop for a confirmed
    implementation defect and record before/after results. Keep aspirational
    functionality gaps as deduplicated backlog unless implementation was
    explicitly requested. Update the validation register and every Markdown
    document contradicted by the observed behavior.
-5. Deliver the documentation through a short-lived branch and PR: commit,
+6. Deliver the documentation through a short-lived branch and PR: commit,
    push, open the PR to `main`, run scope-proportional gates, merge the PR, sync
    local and remote `main`, and delete merged branches. A FAIL or BLOCKED result
    still follows this lifecycle.

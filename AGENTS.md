@@ -91,7 +91,10 @@ precedence over the minimization rules below.
 - Choose up front the smallest check set that proves correctness; consolidate
   equivalent commands and tests into one minimal run.
 - Capture command output once and reuse it. Never re-run a command just to
-  change head/tail/filters/formatting.
+  change head/tail/filters/formatting, or with varying parameters to explore a
+  question (e.g. multiple `gh pr view` calls) — pick the precise invocation
+  once and only repeat it on failure. Keep inputs/outputs traded with the
+  environment small: request only what the next decision needs.
 - No trivial, duplicated, or implementation-echo tests. Do not re-run tests
   without a relevant change, a fix, or justified suspicion of flakiness.
 - On failure, analyze existing evidence first; any re-run must test a concrete
@@ -187,6 +190,13 @@ tracker) before writing code.
   stale, update the tracker instead of re-implementing.
 
 **"execute o teste <ID> até a PR" (for example, "execute o teste F01 até a PR")**:
+- Before dispatching Astra, verify the environment loads: frontend URL
+  reachable without a connection error, backend responding, cited workspace
+  present. If blocked, resolve it yourself with non-destructive, already
+  documented actions (`make run`/`make run-backend`/`make run-frontend`) or
+  instruct the user with the exact required action. Never modify code or
+  configuration to unblock the environment, and never dispatch Astra against
+  an environment that does not load.
 - Treat `docs/v2_platform/automatic_user_validations.md` as the canonical test
   catalog and execution register. Validate that the requested ID exists before
   starting, and execute only that case unless the user names a range or batch.
