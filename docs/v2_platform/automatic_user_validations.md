@@ -5,8 +5,8 @@
 > coletar e como registrar resultados e melhorias. Ele não substitui testes
 > unitários, de integração, de acessibilidade, segurança ou desempenho.
 
-**Última atualização:** 2026-09-06 — `F01` executed as `FAIL`; 1 case is
-`FAIL` and 40 remain `NOT_RUN`.
+**Última atualização:** 2026-09-06 — `U01` executed as `BLOCKED`; 1 case is
+`PASS`, 2 are `FAIL`, 1 is `BLOCKED`, and 37 remain `NOT_RUN`.
 
 ## 1. Objetivo e autoridade
 
@@ -683,6 +683,38 @@ achados na subseção do caso quando isso melhorar a rastreabilidade.
 - **Coletar:** URL, captura e mensagens por tela.
 - **Impacto:** smoke estrutural; não implica funcionamento completo do produto.
 
+**Execution `20260906-u01a` (2026-09-06, America/Bahia):**
+
+- Environment: `http://localhost:3000`, base commit `48ed752`, Chromium through
+  Playwright MCP, viewport not exposed by the structured runner report, and no
+  authentication prompt. Preflight initially found the frontend unavailable;
+  the documented combined `make run` start did not expose port 3000, so the
+  operator restarted the unchanged build with the documented separate
+  `make run-backend` and `make run-frontend` targets. Frontend and backend then
+  returned HTTP 200 and the backend health payload was `{"status":"ok"}`.
+- Result: `BLOCKED` in 2m14s. Astra session
+  `01a075ed-89bc-7d01-81d2-523dd8db72ad` reached all nine primary screens with
+  the correct screen identity, URL, and active sidebar item. No screen was
+  blank and no unhandled error screen appeared. Browser Back returned from
+  Extensions to Config coherently, but browser Forward could not be verified
+  with the permitted controls: `Alt+ArrowRight` had no effect, and an unsafe
+  arbitrary-code attempt was rejected before execution. This is an evidence
+  limitation, not a confirmed product defect.
+- Observed navigation: Chat `/`; Plans `/plans`; Patches `/patches`; Execution
+  `/execution`; Files `/files`; Flows `/flows`; Sessions `/sessions`; Config
+  `/config`; and Extensions `/extensions`. Empty states or guidance were
+  visible where applicable. Plans additionally rendered
+  `Could not load the plan for that session.` while its session field appeared
+  empty; this separate UX finding is recorded as `QA-003`.
+- Evidence limitation: Astra captured each screen during the journey, but the
+  runner exposed no persistent screenshot paths. The structured observations,
+  exact visible text, URLs, interaction sequence, session, and result are
+  preserved here. No browser-specific run id beyond the Astra session was
+  exposed.
+- Residue: no product data, settings, fixtures, or active runs were created or
+  changed. Local frontend and backend processes remained active for delivery
+  work and are stopped after documentation is complete.
+
 #### U02 — Persistir opção não secreta (P1)
 
 - **Instrução Astra:** `Change one non-secret setting, reload, and verify persistence.`
@@ -783,7 +815,7 @@ registra sequência, feedback, espera, reload e comportamento intermediário;
 | E06 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | P01 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | P02 | NOT_RUN | Ainda não executado | — | — | — | — | — |
-| U01 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| U01 | BLOCKED | All nine primary screens rendered with correct identity and active navigation; Back worked, but Forward could not be verified with permitted browser controls | Chat → Plans → Patches → Execution → Files → Flows → Sessions → Config → Extensions → Back to Config → `Alt+ArrowRight` had no effect → unsafe alternative rejected before execution → stop | Structured Astra observations, exact URLs/text, and U01 execution note; screenshots had no persistent paths | RUN `20260906-u01a`; session `01a075ed-89bc-7d01-81d2-523dd8db72ad` | 2m14s | `QA-003`, open; correction direction only; Forward limitation is not a product defect |
 | U02 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | U03 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | U04 | NOT_RUN | Ainda não executado | — | — | — | — | — |
@@ -879,6 +911,33 @@ reproduzido.
   exact visible text recorded in the F02 execution note; no persistent
   screenshot path was exposed.
 
+### QA-003 — Explain automatic plan loading for the active session
+
+- **Type/severity:** UX, `S2`.
+- **Related case:** `U01`.
+- **Build/URL:** base commit `48ed752`; `http://localhost:3000/plans`.
+- **Preconditions:** reachable UI and API; an active Chat session without a
+  loadable plan; the Plans session field appears empty.
+- **Minimal reproduction:** open Chat → click Plans in the visible sidebar →
+  inspect the session field, alert, and empty-state guidance.
+- **Expected:** show neutral plan-selection guidance, or identify the session
+  whose automatic plan lookup failed and explain how to recover.
+- **Observed:** Plans displayed `Could not load the plan for that session.`
+  immediately while the visible session field was empty. Reproduced once in
+  the U01 journey.
+- **User impact:** a first-time user sees an unexplained failed lookup before
+  entering a session id and cannot tell which session was requested.
+- **Correction direction:** expose the automatically selected session in the
+  field or alert, distinguish a missing plan from service errors, and provide a
+  recovery action such as choosing another session or returning to Chat.
+- **Acceptance/retest:** with an active session that has no plan, open Plans and
+  verify that the selected session and recovery path are explicit without a
+  misleading generic error. No product or test-framework changes are included
+  in this documentation-only delivery.
+- **Evidence:** rendered alert, visible empty session field, URL, and structured
+  Astra observations preserved in the U01 execution note; no persistent
+  screenshot path was exposed.
+
 ## 10. Fechamento do lote e atualização documental
 
 Ao concluir um lote:
@@ -921,3 +980,19 @@ o pedido incluir esse escopo.
   recorded above without expanding this case's scope.
 - This delivery changes documentation only. The unsaved in-memory label and
   active services are the only new execution residues described for this run.
+
+### Closure — requested U01 batch
+
+- Final totals for the requested one-case batch: 0 `PASS`, 0 `FAIL`, 1
+  `BLOCKED`, 0 `NOT_RUN`; approval rate is not applicable because no case
+  reached `PASS` or `FAIL`, and executed coverage is 0% under the catalog
+  formula, with 1 blocked case out of 1 planned.
+- Whole-catalog totals after this run: 1 `PASS`, 2 `FAIL`, 1 `BLOCKED`, and 37
+  `NOT_RUN`.
+- `QA-003` remains open as correction direction only. Forward navigation remains
+  unverified because the safe browser controls exposed to Astra could not
+  perform it; this limitation is not classified as a product defect.
+- This delivery changes Markdown documentation only. No product code,
+  configuration, fixtures, or automated tests were changed; no automated test
+  result is cited, and delivery validation was limited to documentation diff
+  checks.
