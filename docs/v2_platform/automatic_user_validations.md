@@ -151,8 +151,8 @@ preserve a evidência e prossiga somente com inspeção segura.
 | ID | Pri. | Área | O que será testado | Objetivo/impacto | Coleta principal | Estado |
 | --- | --- | --- | --- | --- | --- | --- |
 | F01 | P0 | Flows | Criar e persistir flow mínimo | Provar a jornada central de autoria | Canvas, Save, catálogo após reload | FAIL |
-| F02 | P0 | Flows | Abrir flow registrado | Provar reuso e continuidade | Item e editor resultante | NOT_RUN |
-| F03 | P1 | Flows | Editar propriedade de nó | Garantir consistência editor/canvas | Inspector e canvas antes/depois | NOT_RUN |
+| F02 | P0 | Flows | Abrir flow registrado | Provar reuso e continuidade | Item e editor resultante | FAIL |
+| F03 | P1 | Flows | Editar propriedade de nó | Garantir consistência editor/canvas | Inspector e canvas antes/depois | PASS |
 | F04 | P1 | Flows | Renomear nó conectado | Preservar referências do grafo | ID, arestas e Issues | NOT_RUN |
 | F05 | P1 | Flows | Recusar ID duplicado | Evitar grafo ambíguo | Entrada, feedback e valor efetivo | NOT_RUN |
 | F06 | P1 | Flows | Excluir nó conectado | Manter integridade estrutural | Canvas e Issues antes/depois | NOT_RUN |
@@ -317,6 +317,40 @@ achados na subseção do caso quando isso melhorar a rastreabilidade.
 - **PASS:** inspector e canvas concordam; demais propriedades permanecem.
 - **Coletar:** inspector e canvas antes/depois.
 - **Impacto:** detecta divergência entre estado editado e representação visual.
+
+**Execution `20260906-f03a` (2026-09-06, America/Bahia):**
+
+- Environment: `http://localhost:3001`, base commit `551eaf5`, existing backend
+  reachable on `:8000`, frontend started with `make run-frontend`, Chromium
+  through Playwright MCP, and no authentication.
+- Result: `PASS` in 1m59s. Astra session
+  `01a07505-f515-7743-8361-635100b464c5` selected the `plan` agent in
+  `autodev/flow-feature-delivery@1.0.0`, changed only its blank Label field
+  (placeholder `plan`) to `QA revised`, pressed Tab, selected `code`, and
+  returned to the edited node. The canvas and inspector both retained
+  `QA revised`.
+- Preserved properties: node id `plan`, type `agent`, Ref
+  `autodev/agent-planner@>=1.0 <2.0`, blank Model override and Timeout, and the
+  single unguarded outgoing edge to `code`. The flow remained valid and the
+  other canvas nodes and edge summary were unchanged.
+- Evidence: structured before/after Astra observations and one completed
+  journey with confidence `0.98`. The runner's temporary screenshots were
+  removed with its temporary workspace, so no image path is cited. No console,
+  network, API, source, or implementation diagnostics were used.
+- Non-blocking observations: the landing page displayed `Could not load the
+  chat workspace`, and the Flows library displayed
+  `Request failed for v2/flows (404)`. Neither prevented this canvas-editing
+  journey. Save/reload persistence was outside F03 and was not inferred.
+- Execution note: one earlier runner invocation failed before browser or Astra
+  session initialization because of a filesystem restriction; it is not a test
+  attempt or product result.
+- Batch totals: `PASS 1`, `FAIL 0`, `BLOCKED 0`, `NOT_RUN 0`, planned `1`;
+  approval rate `100%` and executed coverage `100%`. No finding or correction
+  was opened.
+- Residue: the unsaved in-memory label `QA revised` remains in the frontend
+  session; no flow was saved, no registry entry or setting was changed, and no
+  product code or automated test was executed after the Astra run. The frontend
+  remains active on `:3001`; the pre-existing backend remains active on `:8000`.
 
 #### F04 — Renomear nó conectado (P1)
 
@@ -699,7 +733,7 @@ registra sequência, feedback, espera, reload e comportamento intermediário;
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | F01 | FAIL | The valid graph saved only as `Untitled flow`; no visible control could set `QA-20260906-f01a-simple`, so named persistence after reload was not testable | Flows → New blank flow → Start → Planner → End → inspect visible controls → Save → unnamed catalog entry → stop | Structured Astra observations and exact UI text recorded in the F01 execution note and `QA-001`; screenshots blank/unusable | RUN `20260906-f01a`; primary session `01a074d5-ed65-7872-90a4-9ef02a570f92` | 2m12s | `QA-001`, open; correction direction only |
 | F02 | FAIL | Catalog contained the QA flow, but clicking it left the editor on `autodev/flow-feature-delivery@1.0.0` without feedback | Flows → select `QA-20260906-f01a-simple v0.1.0` → unchanged editor → wait 3s → unchanged editor → stop | Before/after browser snapshots and exact UI text recorded in the F02 execution note | RUN `20260906-f02b`; session `01a074ff-2fee-7d33-8052-0f530fca100c` | 1m11s | `QA-002`, open; correction direction only |
-| F03 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| F03 | PASS | Canvas and inspector both retained `QA revised`; all other exposed node properties remained unchanged | Select `plan` → record properties → enter Label → Tab → select `code` → reselect edited node → confirm | Structured before/after Astra observations recorded in the F03 execution note; temporary screenshots unavailable after runner cleanup | RUN `20260906-f03a`; session `01a07505-f515-7743-8361-635100b464c5` | 1m59s | — |
 | F04 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | F05 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | F06 | NOT_RUN | Ainda não executado | — | — | — | — | — |
@@ -858,3 +892,14 @@ o pedido incluir esse escopo.
   direction only; no product code or automated test changes are included.
 - No active runs or configuration changes remain. The two disposable local
   flow fixtures listed in the F01 execution note remain as test residue.
+
+### Closure — requested F03 batch
+
+- Final totals for the requested one-case batch: 1 `PASS`, 0 `FAIL`, 0
+  `BLOCKED`, 0 `NOT_RUN`; approval rate 100% and executed coverage 100%.
+- Whole-catalog totals after this run: 1 `PASS`, 2 `FAIL`, and 38 `NOT_RUN`.
+- No defect was inferred from F03 and no correction was applied. The two
+  non-blocking error messages observed outside the tested interaction are
+  recorded above without expanding this case's scope.
+- This delivery changes documentation only. The unsaved in-memory label and
+  active services are the only new execution residues described for this run.
