@@ -5,8 +5,8 @@
 > coletar e como registrar resultados e melhorias. Ele não substitui testes
 > unitários, de integração, de acessibilidade, segurança ou desempenho.
 
-**Última atualização:** 2026-09-06 — catálogo inicial criado com 41 casos;
-todos estão `NOT_RUN`.
+**Última atualização:** 2026-09-06 — `F01` executed as `FAIL`; 1 case is
+`FAIL` and 40 remain `NOT_RUN`.
 
 ## 1. Objetivo e autoridade
 
@@ -150,7 +150,7 @@ preserve a evidência e prossiga somente com inspeção segura.
 
 | ID | Pri. | Área | O que será testado | Objetivo/impacto | Coleta principal | Estado |
 | --- | --- | --- | --- | --- | --- | --- |
-| F01 | P0 | Flows | Criar e persistir flow mínimo | Provar a jornada central de autoria | Canvas, Save, catálogo após reload | NOT_RUN |
+| F01 | P0 | Flows | Criar e persistir flow mínimo | Provar a jornada central de autoria | Canvas, Save, catálogo após reload | FAIL |
 | F02 | P0 | Flows | Abrir flow registrado | Provar reuso e continuidade | Item e editor resultante | NOT_RUN |
 | F03 | P1 | Flows | Editar propriedade de nó | Garantir consistência editor/canvas | Inspector e canvas antes/depois | NOT_RUN |
 | F04 | P1 | Flows | Renomear nó conectado | Preservar referências do grafo | ID, arestas e Issues | NOT_RUN |
@@ -214,6 +214,29 @@ achados na subseção do caso quando isso melhorar a rastreabilidade.
 - **Impacto:** sem persistência e reabertura, autoria de flows não é uma jornada
   utilizável. Se não existir controle visual para nomear, registre lacuna; não use
   YAML como substituto.
+
+**Execution `20260906-f01a` (2026-09-06, America/Bahia):**
+
+- Environment: `http://localhost:3000`, base commit `5a011fe`, Chromium through
+  Playwright MCP, 1280×720 capture viewport, no authentication, and the default
+  stub provider (not material to this persistence-only case).
+- Result: `FAIL` in 2m12s. Astra session
+  `01a074d5-ed65-7872-90a4-9ef02a570f92` created Start → Planner → End, but
+  Save registered `autodev/flow-untitled@0.1.0`; no visible naming control was
+  available. Reload persistence could not be evaluated for the required named
+  artifact.
+- Diagnostic residue: before the documentation-only boundary was clarified, a
+  temporary, uncommitted naming-control experiment was exercised by the exact
+  journey. It passed in 2m07s in Astra session
+  `01a074d9-e495-7f80-bc84-0496637effec`, but the experiment was fully reverted
+  and is not part of this delivery or evidence that the current build passes.
+- Evidence limitation: browser screenshots were blank and are not cited as
+  proof. The structured observations, exact visible text, journey, sessions,
+  and finding are preserved in this Markdown report. No separate browser run id
+  was exposed.
+- Residue: `autodev/flow-untitled@0.1.0` and
+  `autodev/qa-20260906-f01a-simple@0.1.0` remain in the local QA registry; no
+  settings were changed and no run remains active.
 
 #### F02 — Abrir um flow registrado (P0)
 
@@ -613,7 +636,7 @@ registra sequência, feedback, espera, reload e comportamento intermediário;
 
 | Caso | Estado | Resultado observado | Dinâmica | Evidências | Session/run | Duração | Achado/correção |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| F01 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| F01 | FAIL | The valid graph saved only as `Untitled flow`; no visible control could set `QA-20260906-f01a-simple`, so named persistence after reload was not testable | Flows → New blank flow → Start → Planner → End → inspect visible controls → Save → unnamed catalog entry → stop | Structured Astra observations and exact UI text recorded in the F01 execution note and `QA-001`; screenshots blank/unusable | RUN `20260906-f01a`; primary session `01a074d5-ed65-7872-90a4-9ef02a570f92` | 2m12s | `QA-001`, open; correction direction only |
 | F02 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | F03 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | F04 | NOT_RUN | Ainda não executado | — | — | — | — | — |
@@ -691,6 +714,32 @@ candidata até ser executada no build instalado. Por exemplo, persistir e reabri
 flows deve ser confirmado por `F01`/`F02`; antes disso, não registrar como bug
 reproduzido.
 
+### QA-001 — Name and persist a new flow through visible controls
+
+- **Type/severity:** functional bug, `S1`.
+- **Related case:** `F01`.
+- **Build/URL:** base commit `5a011fe`; `http://localhost:3000`.
+- **Preconditions:** reachable UI and API; no test flow open; disposable name
+  `QA-20260906-f01a-simple`.
+- **Minimal reproduction:** Flows → New blank flow → Start → Planner → End →
+  Save.
+- **Expected:** a visible control sets the requested name and the named catalog
+  entry remains after reload.
+- **Observed initially:** no naming control was visible; Save reported
+  `autodev/flow-untitled@0.1.0 registered.` and the catalog displayed
+  `Untitled flow`. Reproduced once in one attempt.
+- **User impact:** the central flow-authoring journey could not create a
+  distinguishable named artifact.
+- **Correction direction:** add a visible Flow name field, derive or request a
+  registry-safe identity without hidden YAML editing, and cover named
+  save/reload behavior in the existing flow-builder E2E test.
+- **Acceptance/retest:** enter the QA name without YAML, save a valid graph,
+  reload, and observe the same named version in the catalog. The finding remains
+  open until that implementation is delivered and F01 passes on its committed
+  build.
+- **Evidence:** structured Astra journey and exact visible messages recorded in
+  the F01 execution note; screenshots were blank and excluded as proof.
+
 ## 10. Fechamento do lote e atualização documental
 
 Ao concluir um lote:
@@ -712,3 +761,13 @@ confirmado pode seguir o ciclo limitado de correção e repetição do mesmo cen
 definido pela skill `astra-user-test`, sempre registrando antes/depois. Lacunas
 aspiracionais viram backlog com critérios de aceite e só são implementadas quando
 o pedido incluir esse escopo.
+
+### Closure — requested F01 batch
+
+- Final totals for the requested one-case batch: 0 `PASS`, 1 `FAIL`, 0
+  `BLOCKED`, 0 `NOT_RUN`; approval rate 0% and executed coverage 100%.
+- Whole-catalog totals: 1 `FAIL` and 40 `NOT_RUN`.
+- `QA-001` remains open. This delivery contains documentation and correction
+  direction only; no product code or automated test changes are included.
+- No active runs or configuration changes remain. The two disposable local
+  flow fixtures listed in the F01 execution note remain as test residue.
