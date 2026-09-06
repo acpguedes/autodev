@@ -422,6 +422,31 @@ If code already implements a supposedly missing story, update the tracker instea
 
 If the tracker says a story is complete but required behavior is demonstrably absent, treat it as a gap and report the inconsistency briefly.
 
+### "execute o teste <ID> até a PR"
+
+For requests such as `execute o teste F01 até a PR`:
+
+1. Treat `docs/v2_platform/automatic_user_validations.md` as the canonical test
+   catalog and execution register. Validate the ID and execute only the named
+   case unless the user specifies a range or batch.
+2. ALWAYS use the `astra-user-test` skill. Give Astra only the reachable UI
+   URL, the case's English instruction, visible preconditions/scenario, and
+   approved QA fixtures. Never provide source code, repository paths, diffs,
+   internal APIs, or implementation details.
+3. Record the installed build, RUN, session/run IDs, duration, observed result,
+   interaction dynamics, real evidence, limitations, residues, and inferred
+   corrections/improvements. Apply the catalog's result semantics exactly.
+4. Do not fix the product during the initial test. After preserving its
+   evidence, follow the skill's bounded fix/retest loop for a confirmed
+   implementation defect and record before/after results. Keep aspirational
+   functionality gaps as deduplicated backlog unless implementation was
+   explicitly requested. Update the validation register and every Markdown
+   document contradicted by the observed behavior.
+5. Deliver the documentation through a short-lived branch and PR: commit,
+   push, open the PR to `main`, run scope-proportional gates, merge the PR, sync
+   local and remote `main`, and delete merged branches. A FAIL or BLOCKED result
+   still follows this lifecycle.
+
 ---
 
 ## Completion criteria

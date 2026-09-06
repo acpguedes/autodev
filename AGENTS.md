@@ -186,7 +186,30 @@ tracker) before writing code.
   but the code contradicts it, flag it; if code exists but the tracker is
   stale, update the tracker instead of re-implementing.
 
-**Completion protocol (applies to both shortcuts).** When the requested slice
+**"execute o teste <ID> até a PR" (for example, "execute o teste F01 até a PR")**:
+- Treat `docs/v2_platform/automatic_user_validations.md` as the canonical test
+  catalog and execution register. Validate that the requested ID exists before
+  starting, and execute only that case unless the user names a range or batch.
+- ALWAYS use the `astra-user-test` skill. Give Astra only the reachable UI URL,
+  the case's English instruction, user-visible preconditions/scenario, and
+  approved QA fixture data; preserve the skill's black-box separation from
+  source code, repository paths, diffs, APIs, and implementation details.
+- Record the real build/commit, RUN, session/run IDs, duration, observed result,
+  interaction dynamics, evidence, limitations, residues, and inferred
+  corrections/improvements. Use PASS/FAIL/BLOCKED/NOT_RUN exactly as defined by
+  the catalog, and never turn missing setup or observability into a product bug.
+- Do not fix the product during the initial test. After its evidence is
+  preserved, follow the skill's bounded fix/retest loop for a confirmed
+  implementation defect and record the before/after results. Keep aspirational
+  functionality gaps as deduplicated backlog unless implementation was
+  explicitly requested. Update the validation register and every Markdown
+  document directly contradicted by the observed behavior.
+- Complete the documentation delivery through a short-lived branch and PR:
+  commit, push, open the PR to `main`, run scope-proportional gates, merge the
+  PR, sync local and remote `main`, and delete merged branches. An honest
+  BLOCKED or FAIL result still receives the same documentation lifecycle.
+
+**Completion protocol (applies to the two implementation shortcuts above).** When the requested slice
 of work is finished and validated:
 1. merge each story branch into the epic branch as it completes (per
    `CONTRIBUTING.md`) and delete the story branch;

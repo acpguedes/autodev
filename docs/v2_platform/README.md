@@ -20,11 +20,12 @@ If anything in this directory ever disagrees with the reference document, **the
 reference document wins** — these are a navigable summary and execution layer on top
 of it, not a replacement.
 
-> Note on language: the reference document is written in pt-BR (its declared scope).
-> The files in this directory are written in English for consistency with the rest of
-> `docs/` and with `AGENTS.md`/`CLAUDE.md`, which is what most contributing agents read
-> first. Epic/story identifiers, manifest field names, and event names are unchanged
-> either way — those are part of the actual contracts, not prose.
+> Note on language: the reference document and
+> `automatic_user_validations.md` are written in pt-BR for their declared audiences.
+> The remaining files in this directory are written in English for consistency with
+> the rest of `docs/` and with `AGENTS.md`/`CLAUDE.md`, which is what most contributing
+> agents read first. Epic/story identifiers, manifest field names, and event names are
+> unchanged either way — those are part of the actual contracts, not prose.
 
 
 ## Planning authority
@@ -59,6 +60,7 @@ reconciled as v2 epics land.
 | File / directory | Purpose |
 | --- | --- |
 | [`progress.md`](progress.md) | Living tracker: which epic/story is Done/In progress/Not started, current wave (Alpha/Beta/GA), wave exit-gate checklists, changelog. **Start here** to see where the rewrite stands. |
+| [`automatic_user_validations.md`](automatic_user_validations.md) | Living frontend acceptance roadmap: 41 user journeys, priorities, evidence requirements, execution results, and inferred corrections or improvements. |
 | [`agent_guide.md`](agent_guide.md) | How to pick up an epic/story: workflow gates (G1-G5), DoR/DoD, ADR/RFC triggers, naming/versioning conventions, and how to keep the tracking docs in sync. **Read this before starting implementation work.** |
 | [`documentation_rebuild.md`](documentation_rebuild.md) | Playbook for rebuilding the rest of the project's documentation (root README, `docs/architecture/*`, `docs/implementation/*`, etc.) as v2 epics and waves land, since this is a full architecture refactor and the old docs will otherwise drift out of sync with the new one. |
 | [`phases/`](phases/) | One file per epic (`E0` through `E40`, with E19 reserved): objective, key result, every story with its subtasks and functional/non-functional/DoR/DoD criteria, dependencies, wave assignment, and what existing v1 code (if any) is a starting point. |

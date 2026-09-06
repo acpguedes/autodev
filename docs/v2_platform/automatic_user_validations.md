@@ -1,0 +1,714 @@
+# Validações de aceitação do usuário
+
+> Roadmap vivo das jornadas de aceitação executadas no frontend do AutoDev.
+> Este documento define o que testar, por que o teste importa, quais evidências
+> coletar e como registrar resultados e melhorias. Ele não substitui testes
+> unitários, de integração, de acessibilidade, segurança ou desempenho.
+
+**Última atualização:** 2026-09-06 — catálogo inicial criado com 41 casos;
+todos estão `NOT_RUN`.
+
+## 1. Objetivo e autoridade
+
+Este roteiro valida o produto pela interface visível, do ponto de vista de uma
+pessoa usuária. Cada conclusão deve estar sustentada por comportamento observado
+na versão instalada e por evidências reais. Inspeção de código pode ajudar a
+investigar um achado depois da campanha, mas nunca substitui a execução do caso.
+
+Este arquivo é a fonte canônica para:
+
+- escopo, prioridade, dependências e critérios dos casos `F01`–`U07`;
+- estado e resultado das execuções;
+- evidências, limitações de comprovação e resíduos de teste;
+- correções ou melhorias inferidas a partir do comportamento observado.
+
+`docs/v2_platform/progress.md` continua sendo a fonte canônica do estado da
+implementação v2. Quando uma validação revelar divergência entre experiência,
+documentação e implementação, atualize os documentos afetados no mesmo conjunto
+de mudanças, sem declarar uma hipótese como fato.
+
+## 2. Princípios de execução
+
+1. Use exclusivamente controles e informações visíveis na UI: cliques,
+   digitação, rolagem, teclado e navegação normal.
+2. Não use shell, APIs diretas, banco, código-fonte, JavaScript injetado, mocks
+   ou edição externa para completar uma jornada.
+3. Faça um caso por vez. Casos de raciocínio independentes usam sessões novas.
+4. Não corrija o produto durante a campanha. Preserve primeiro as evidências e
+   separe observação, impacto e hipótese de causa.
+5. Toast, resposta do agente, botão habilitado ou aparência de sucesso não
+   comprovam persistência, mutação ou execução. Verifique o artefato em `Files`,
+   o diff, o log ou a persistência após reload quando o caso exigir.
+6. Limite cada caso a 5 minutos e casos dependentes de LLM/execução a 10 minutos.
+   Sem progresso verificável, registre `BLOCKED` por timeout de observação; não
+   atribua falha ao backend sem evidência.
+7. Faça no máximo uma repetição controlada para reprodução. Antes de repetir uma
+   mutação, confira se a primeira tentativa já produziu efeito.
+8. Altere apenas fixtures QA descartáveis. Preserve evidências antes de limpar e
+   restaure configurações temporárias pela UI.
+9. O YAML só pode ser editado no campo visível nos casos `F08` e `F09`. Ele não
+   pode ser usado para contornar outra jornada.
+10. Nunca exponha credenciais, segredos ou dados alheios nas evidências.
+
+## 3. Estados, prioridade e classificação
+
+### Estado do caso
+
+| Estado | Semântica |
+| --- | --- |
+| `PASS` | Todos os critérios relevantes foram observados e sustentados por evidências. |
+| `FAIL` | A observação contradiz um critério, inclusive quando falta uma capacidade desejada. |
+| `BLOCKED` | Uma pré-condição está ausente ou não há observabilidade suficiente para comprovar o resultado. |
+| `NOT_RUN` | O caso ainda não foi tentado. Não usar para uma tentativa bloqueada. |
+
+### Prioridade do teste
+
+| Prioridade | Uso |
+| --- | --- |
+| `P0` | Jornada central, autorização, integridade ou comprovação essencial. |
+| `P1` | Robustez, recuperação, consistência ou fricção relevante. |
+| `P2` | Refinamento de experiência e qualidade de uso. |
+
+Prioridade do teste não é severidade do achado. Classifique o achado separadamente
+como `bug funcional`, `lacuna de funcionalidade`, `UX`, `observabilidade` ou
+`ambiente`, com severidade:
+
+- `S0`: execução sem autorização, workspace errado, segredo exposto ou perda
+  grave de dados;
+- `S1`: jornada central impossível ou falso sucesso de execução/persistência;
+- `S2`: comportamento parcial, perda de rascunho ou fricção relevante com
+  alternativa viável;
+- `S3`: problema visual ou textual menor.
+
+## 4. Preparação da campanha
+
+Antes do primeiro caso, registre:
+
+- URL do frontend, commit/build realmente instalado, navegador, viewport,
+  timezone e autenticação;
+- workspace QA descartável com `README.md` conhecido, uma pasta com arquivo de
+  texto e escrita limitada ao escopo do teste;
+- segundo workspace QA vazio para `C06`;
+- provider/modelo reais para raciocínio e execução; se houver stub, registre-o:
+  stub comprova somente a UI, não o comportamento real do agente;
+- modo Approval e planos/runs identificáveis para `E01`–`E03` e `P01`;
+- configurações iniciais, IDs das fixtures e um `RUN` exclusivo contendo apenas
+  letras minúsculas, números e hífens, por exemplo `20260906-a1`.
+
+Dependências: `C04` usa o arquivo de `C03`; `C05` pode usar fixture equivalente;
+`A02` e `A03` dependem de `A01` ou de agente QA preparado. Falha de setup deve
+bloquear os casos dependentes, não virar várias falhas do produto.
+
+## 5. Prompt-base da campanha
+
+Acrescente à instrução somente os casos do lote, com URL, RUN e fixtures
+preenchidos.
+
+```text
+Teste o AutoDev como usuário final, usando exclusivamente a interface visível.
+URL: <URL>
+Versão/build: <versão ou desconhecida>
+RUN: <identificador>
+Workspace autorizado: <workspace QA>
+Casos deste lote: <IDs e especificações deste documento>
+
+Execute um caso por vez e respeite pré-condições, passos e critérios.
+Não use shell, APIs diretas, banco, código-fonte, JavaScript injetado, estado
+interno, mocks ou edição externa. Não corrija o produto durante a campanha.
+
+Antes de agir, registre URL, fixture, sessão/run e estado inicial. Capture
+evidência após a ação e no estado final. Para falhas, registre a mensagem exata
+e os passos mínimos de reprodução. Não infira ações ocultas e não marque PASS
+apenas por toast, resposta do agente ou aparência de botão.
+
+Classifique o caso como PASS, FAIL, BLOCKED ou NOT_RUN. Classifique o achado
+separadamente. Separe observações de hipóteses. Não crie issues nem publique
+mensagens. Entregue resultados por caso, achados deduplicados, correções ou
+melhorias propostas, bloqueios, limitações e resíduos.
+```
+
+## 6. Roadmap e ordem de execução
+
+Lote inicial de alto valor:
+
+`U01 → U03 → F01 → F02 → A01 → C01 → C03 → C04 → C09 → E04`
+
+Depois execute, nesta ordem geral:
+
+1. demais casos de Flows e Extensions;
+2. leitura, escrita e Routing;
+3. revisão, permissões e aprovações;
+4. sessões, acompanhamento e reconexão;
+5. configuração, UX e resiliência.
+
+Se `F01` falhar, continue `F03`–`F11` com flow temporário. Se provider real não
+estiver disponível, continue casos de UI independentes dele. Se uma ação cruzar
+uma aprovação ou atingir workspace incorreto, interrompa mutações relacionadas,
+preserve a evidência e prossiga somente com inspeção segura.
+
+### Catálogo executivo
+
+| ID | Pri. | Área | O que será testado | Objetivo/impacto | Coleta principal | Estado |
+| --- | --- | --- | --- | --- | --- | --- |
+| F01 | P0 | Flows | Criar e persistir flow mínimo | Provar a jornada central de autoria | Canvas, Save, catálogo após reload | NOT_RUN |
+| F02 | P0 | Flows | Abrir flow registrado | Provar reuso e continuidade | Item e editor resultante | NOT_RUN |
+| F03 | P1 | Flows | Editar propriedade de nó | Garantir consistência editor/canvas | Inspector e canvas antes/depois | NOT_RUN |
+| F04 | P1 | Flows | Renomear nó conectado | Preservar referências do grafo | ID, arestas e Issues | NOT_RUN |
+| F05 | P1 | Flows | Recusar ID duplicado | Evitar grafo ambíguo | Entrada, feedback e valor efetivo | NOT_RUN |
+| F06 | P1 | Flows | Excluir nó conectado | Manter integridade estrutural | Canvas e Issues antes/depois | NOT_RUN |
+| F07 | P1 | Flows | Bloquear flow inválido | Evitar falso salvamento | Campo inválido, erro e recuperação | NOT_RUN |
+| F08 | P1 | Flows | Sincronizar visual e YAML | Provar edição bidirecional sem perda | Inspector, YAML e canvas | NOT_RUN |
+| F09 | P1 | Flows | Recuperar YAML inválido | Provar erro seguro e reversível | YAML, Issues e grafo recuperado | NOT_RUN |
+| F10 | P1 | Flows | Pré-visualizar aprovação humana | Tornar destinos de decisão claros | Prompt, opções e destinos | NOT_RUN |
+| F11 | P1 | Flows | Proteger edição não salva | Evitar perda silenciosa | Alteração, aviso e retorno | NOT_RUN |
+| A01 | P0 | Extensions | Criar agente mínimo | Provar autoria e persistência | Formulário, catálogo e detalhe | NOT_RUN |
+| A02 | P1 | Extensions | Editar agente existente | Evitar duplicação e perda de identidade | ID, nome e contagem | NOT_RUN |
+| A03 | P1 | Extensions | Desativar e reativar agente | Provar controle de ciclo de vida | Switch, badge e reloads | NOT_RUN |
+| A04 | P1 | Extensions | Validar formulário obrigatório | Impedir extensão parcial/inválida | Erros e catálogo | NOT_RUN |
+| A05 | P2 | Extensions | Inspecionar catálogo por tipo | Avaliar clareza e consistência | Abas, cartões e detalhes | NOT_RUN |
+| C01 | P0 | Chat | Pedido sem ferramentas | Evitar execução desnecessária | Turno, resposta e timeline | NOT_RUN |
+| C02 | P0 | Chat | Ler arquivo sem modificar | Provar grounding com segurança | Arquivo, resposta, patches/logs | NOT_RUN |
+| C03 | P0 | Chat | Criar exatamente um arquivo | Provar execução e artefato real | Pedido, gates, diff e Files | NOT_RUN |
+| C04 | P0 | Chat | Editar exatamente uma linha | Provar mudança mínima | Diff e conteúdo final | NOT_RUN |
+| C05 | P0 | Routing | Não estruturar uma edição simples | Provar roteamento proporcional | Seleção, justificativa e diff | NOT_RUN |
+| C06 | P1 | Routing | Escolher flow para projeto novo | Provar adequação de planejamento | Workspace, seleção e plano | NOT_RUN |
+| C07 | P1 | Routing | Fallback sem flow específico | Evitar flow alheio | Catálogo, resposta e ações | NOT_RUN |
+| C08 | P1 | Chat | Bloquear envio vazio/duplicado | Evitar turnos inválidos ou duplicados | Composer, histórico e contagem | NOT_RUN |
+| C09 | P0 | Chat | Reabrir conversa persistida | Provar durabilidade da sessão | IDs e histórico antes/depois | NOT_RUN |
+| C10 | P1 | Chat | Isolar duas sessões | Evitar mistura de contexto | IDs, mensagens, planos e runs | NOT_RUN |
+| E01 | P0 | Governança | Respeitar rejeição de passo | Impedir ação rejeitada | Estado, Files e log | NOT_RUN |
+| E02 | P0 | Governança | Aprovar uma vez e retomar | Provar escopo e retomada corretos | Decisão, IDs, log e artefato | NOT_RUN |
+| E03 | P0 | Governança | Negar ação pendente | Impedir efeito e falso sucesso | Decisão, log e Files | NOT_RUN |
+| E04 | P1 | Execution | Acompanhar execução ao vivo | Provar feedback e estado coerentes | Início, meio, fim, IDs e mensagens | NOT_RUN |
+| E05 | P1 | Execution | Reconectar após reload | Provar continuidade sem duplicação | IDs, timeline e artefato | NOT_RUN |
+| E06 | P1 | Execution | Exibir falha sem falso sucesso | Provar propagação de erro | Comando, código, saída e estado | NOT_RUN |
+| P01 | P0 | Patches | Revisar mudança antes de aplicar | Preservar controle humano | Diff, aprovação e original | NOT_RUN |
+| P02 | P0 | Files | Navegar árvore e conteúdo | Provar identidade correta do arquivo | Árvore, caminho e trechos | NOT_RUN |
+| U01 | P0 | Navegação | Abrir telas principais | Detectar quebra estrutural | URL, captura e erro por tela | NOT_RUN |
+| U02 | P1 | Config | Persistir opção não secreta | Provar configuração reversível | Valor original/alterado/restaurado | NOT_RUN |
+| U03 | P0 | Config | Identificar provider real/stub | Evitar evidência enganosa | Indicadores e campos não secretos | NOT_RUN |
+| U04 | P1 | UX | Usar painel em tela estreita/zoom | Garantir acesso aos controles | Viewports, zoom e capturas | NOT_RUN |
+| U05 | P2 | UX | Operar formulário por teclado | Avaliar foco e navegação | Teclas e foco visível | NOT_RUN |
+| U06 | P2 | UX | Alternar tema e idioma | Avaliar legibilidade e tradução | Capturas e strings inconsistentes | NOT_RUN |
+| U07 | P1 | Resiliência | Preservar texto na indisponibilidade | Evitar perda/duplicação na recuperação | Texto, erro e histórico | NOT_RUN |
+
+## 7. Casos detalhados
+
+Em todos os casos, o registro de resultado começa como `NOT_RUN`. Após a
+execução, preencha a linha correspondente na seção 8 e acrescente evidências e
+achados na subseção do caso quando isso melhorar a rastreabilidade.
+
+### Flows
+
+#### F01 — Criar e persistir um flow mínimo (P0)
+
+- **Instrução Astra:** `Create one simple flow using only the visible UI and confirm that it appears in the flows list.`
+- **Pré-condição:** UI acessível; nenhum flow de teste aberto.
+- **Procedimento:** Flows → New blank flow; defina `QA-{RUN}-simple` por controles
+  visuais; adicione Start → agente disponível → End; use Save; procure a entrada;
+  recarregue.
+- **PASS:** nome próprio, grafo válido e entrada persistida no catálogo após
+  reload. Download isolado não satisfaz o caso.
+- **Coletar:** canvas antes de salvar, mensagem posterior, eventual download e
+  catálogo após reload.
+- **Impacto:** sem persistência e reabertura, autoria de flows não é uma jornada
+  utilizável. Se não existir controle visual para nomear, registre lacuna; não use
+  YAML como substituto.
+
+#### F02 — Abrir um flow registrado (P0)
+
+- **Instrução Astra:** `Open one existing flow from the flows list using the UI and inspect its nodes.`
+- **Pré-condição:** catálogo com ao menos um flow registrado.
+- **Procedimento:** selecione o item; procure ação de abrir/editar; confira
+  identidade, versão e nós.
+- **PASS:** o item escolhido abre com nome, versão e grafo correspondentes.
+- **Coletar:** catálogo, item escolhido e editor após a tentativa.
+- **Impacto:** valida continuidade e manutenção. Catálogo vazio é `BLOCKED`.
+
+#### F03 — Editar propriedade de um nó (P1)
+
+- **Instrução Astra:** `Change one node label and confirm that the canvas and inspector agree.`
+- **Pré-condição:** flow temporário com agente no canvas.
+- **Procedimento:** altere Label para `QA revised`; tire o foco; alterne nós.
+- **PASS:** inspector e canvas concordam; demais propriedades permanecem.
+- **Coletar:** inspector e canvas antes/depois.
+- **Impacto:** detecta divergência entre estado editado e representação visual.
+
+#### F04 — Renomear nó conectado (P1)
+
+- **Instrução Astra:** `Rename one connected node and confirm that its connections remain valid.`
+- **Pré-condição:** dois nós conectados.
+- **Procedimento:** renomeie o primeiro ID para `qa-renamed`; examine aresta e Issues.
+- **PASS:** novo ID efetivo, ligação preservada e nenhuma referência órfã.
+- **Coletar:** ID, aresta e Issues antes/depois.
+- **Impacto:** protege integridade referencial do grafo.
+
+#### F05 — Recusar ID duplicado (P1)
+
+- **Instrução Astra:** `Try to assign an existing node ID to another node and inspect the validation feedback.`
+- **Pré-condição:** dois nós com IDs distintos.
+- **Procedimento:** copie o primeiro ID no segundo; tire o foco; alterne seleção.
+- **PASS:** duplicidade impedida com indicação compreensível e estado coerente.
+- **Coletar:** valor digitado, feedback e valor efetivo ao reabrir.
+- **Impacto:** evita grafo ambíguo. Rejeição silenciosa é achado de UX.
+
+#### F06 — Excluir um nó conectado (P1)
+
+- **Instrução Astra:** `Delete the middle node and inspect the remaining connections.`
+- **Pré-condição:** grafo temporário A → B → C.
+- **Procedimento:** selecione B; Delete node; confira canvas e Issues.
+- **PASS:** B e suas arestas removidos; desconexões claras; nenhum nó alheio removido.
+- **Coletar:** canvas e Issues antes/depois.
+- **Impacto:** verifica mutação destrutiva local sem corrupção colateral.
+
+#### F07 — Bloquear flow inválido (P1)
+
+- **Instrução Astra:** `Remove a required agent reference and try to save the flow.`
+- **Pré-condição:** flow temporário com nó agent.
+- **Procedimento:** apague Ref; Save; abra Issues; restaure Ref válido.
+- **PASS:** erro identificável, nenhum falso sucesso e recuperação após correção.
+- **Coletar:** Ref vazio, erro, tentativa de Save e recuperação.
+- **Impacto:** impede exportação/persistência enganosa de definição inválida.
+
+#### F08 — Sincronizar visual e YAML (P1)
+
+- **Instrução Astra:** `Change a node label in the inspector and verify the same change in the visible YAML editor.`
+- **Pré-condição:** flow temporário válido.
+- **Procedimento:** altere Label no inspector; confira `flow.yaml`; altere apenas
+  o mesmo label no editor visível; volte ao canvas.
+- **PASS:** sincronização nos dois sentidos sem perder nós ou arestas.
+- **Coletar:** inspector, trecho do YAML e canvas final.
+- **Impacto:** comprova uma única fonte de estado entre os dois modos de edição.
+
+#### F09 — Recuperar YAML inválido (P1)
+
+- **Instrução Astra:** `Introduce a YAML syntax error, inspect the error, then restore the original text.`
+- **Pré-condição:** flow válido e texto original copiável pela UI.
+- **Procedimento:** adicione `broken: [` ao final; examine Issues e Save; restaure.
+- **PASS:** erro claro, nenhum falso estado válido e grafo original recuperado.
+- **Coletar:** YAML inválido, Issues, tentativa de Save e estado recuperado.
+- **Impacto:** valida edição textual segura e reversível.
+
+#### F10 — Pré-visualizar aprovação humana (P1)
+
+- **Instrução Astra:** `Preview a human approval node and inspect the approve and reject outcomes.`
+- **Pré-condição:** exemplo com nó human e arestas de decisão.
+- **Procedimento:** selecione `human-review`; acione as decisões da prévia.
+- **PASS:** cada opção informa destino ou ausência de rota; não alega execução real.
+- **Coletar:** prompt, opções, destinos e mensagens.
+- **Impacto:** reduz ambiguidade de configuração. Não comprova governança runtime.
+
+#### F11 — Proteger edição não salva (P1)
+
+- **Instrução Astra:** `Edit a flow, navigate away, and return to check whether unsaved work is protected.`
+- **Pré-condição:** flow temporário com mudança ainda não salva/exportada.
+- **Procedimento:** Label `QA unsaved`; navegue para Sessions e volte.
+- **PASS:** rascunho recuperado ou aviso antes de descartar.
+- **Coletar:** alteração, aviso e estado ao retornar.
+- **Impacto:** perda silenciosa é falha de aceitação/UX; não presumir autosave.
+
+### Extensions
+
+#### A01 — Criar agente mínimo (P0)
+
+- **Instrução Astra:** `Create one minimal agent through the visible UI and verify that it remains listed after reload.`
+- **Pré-condição:** modelo válido configurado e ID exclusivo.
+- **Procedimento:** Extensions → Agents → Create agent; ID `qa-{RUN}-echo`, nome
+  `QA Echo`, versão `1.0.0`, modelo configurado, ferramentas vazias e prompt
+  `Return exactly QA_OK. Do not use tools.`; salve e recarregue.
+- **PASS:** identidade, versão e prompt persistem e podem ser reabertos.
+- **Coletar:** formulário, catálogo e detalhe após reload.
+- **Impacto:** comprova autoria e durabilidade da extensão.
+
+#### A02 — Editar agente existente (P1)
+
+- **Instrução Astra:** `Edit one test agent and verify that the update persists without creating a duplicate.`
+- **Pré-condição:** agente descartável de A01 ou equivalente.
+- **Procedimento:** altere somente o nome para `QA Echo Revised`; salve e recarregue.
+- **PASS:** nome persistido, mesmo ID e nenhuma duplicata.
+- **Coletar:** ID, nomes antes/depois e contagem de entradas.
+- **Impacto:** protege identidade e semântica de atualização.
+
+#### A03 — Desativar e reativar agente (P1)
+
+- **Instrução Astra:** `Disable one test agent, reload, then enable it again.`
+- **Pré-condição:** agente QA ativo.
+- **Procedimento:** desative; reload; confirme Inactive; reative; reload.
+- **PASS:** estado e feedback persistem em ambas as transições.
+- **Coletar:** switch, badge e estado após cada reload.
+- **Impacto:** comprova governança básica sem alterar extensões compartilhadas.
+
+#### A04 — Validar formulário obrigatório (P1)
+
+- **Instrução Astra:** `Submit an incomplete agent form and inspect the validation feedback.`
+- **Pré-condição:** formulário de novo agente acessível.
+- **Procedimento:** deixe ID e prompt vazios; tente salvar; confira catálogo.
+- **PASS:** campos identificados, nada criado e valores corrigíveis sem recomeçar.
+- **Coletar:** formulário, erros e catálogo.
+- **Impacto:** impede estado parcial e reduz retrabalho.
+
+#### A05 — Inspecionar catálogo por tipo (P2)
+
+- **Instrução Astra:** `Inspect Agents, Skills, Plugins, and MCP tabs and open one available item in each.`
+- **Pré-condição:** catálogo acessível.
+- **Procedimento:** visite cada aba; compare rótulo, tipo, contagem e cartões; abra
+  um item disponível.
+- **PASS:** tipos, descrição, versão, estado e vazios são compreensíveis.
+- **Coletar:** captura por aba e detalhes abertos.
+- **Impacto:** mede encontrabilidade; não exige editar tipos somente leitura.
+
+### Chat e Routing
+
+#### C01 — Executar pedido sem ferramentas (P0)
+
+- **Instrução Astra:** `Send a small conversational request and check whether unnecessary execution is avoided.`
+- **Pré-condição:** sessão nova e provider real.
+- **Procedimento:** envie `Responda apenas QA_OK. Não leia nem modifique arquivos e não execute comandos.`
+- **PASS:** resposta `QA_OK`, sem ação de arquivo/comando ou pipeline desnecessário.
+- **Coletar:** mensagem, resposta, timeline e logs disponíveis.
+- **Impacto:** protege custo, latência e princípio de menor ação. Stub bloqueia a
+  avaliação LLM; ausência de logs limita comprovação.
+
+#### C02 — Inspecionar arquivo sem modificar (P0)
+
+- **Instrução Astra:** `Ask the agent to summarize one existing file without changing anything.`
+- **Pré-condição:** `README.md` conhecido e visível em Files.
+- **Procedimento:** abra o arquivo; peça resumo em três bullets sem mudanças/comandos.
+- **PASS:** resumo sustentado e nenhuma alteração proposta/aplicada.
+- **Coletar:** conteúdo relevante, resposta, patches e logs.
+- **Impacto:** avalia grounding e respeito ao modo somente leitura; documente o
+  limite se mutações ocultas não forem observáveis.
+
+#### C03 — Criar um único arquivo (P0)
+
+- **Instrução Astra:** `Create one small text file and verify its actual content in the Files screen.`
+- **Pré-condição:** workspace QA, provider/execução e alvo ausente.
+- **Procedimento:** peça somente `qa-{RUN}-hello.txt` com a linha `Hello AutoDev.`;
+  cumpra gates visíveis; abra o arquivo.
+- **PASS:** arquivo real, conteúdo exato e nenhuma mudança alheia.
+- **Coletar:** pedido, aprovações, diff e Files.
+- **Impacto:** distingue conclusão textual de artefato real.
+
+#### C04 — Editar exatamente uma linha (P0)
+
+- **Instrução Astra:** `Change one line in an existing test file and verify the diff and final file.`
+- **Pré-condição:** arquivo de C03 com `Hello AutoDev.`.
+- **Procedimento:** substitua por `Hello Astra.` e peça nenhuma outra alteração.
+- **PASS:** uma substituição, arquivo final correto e nenhuma mudança extra.
+- **Coletar:** diff e conteúdo final.
+- **Impacto:** comprova precisão e escopo mínimo de patch.
+
+#### C05 — Não acionar estruturação para edição (P0)
+
+- **Instrução Astra:** `Request a tiny edit in an existing project and inspect which flow or agent is selected.`
+- **Pré-condição:** projeto existente, flow de estruturação no catálogo e fixture.
+- **Procedimento:** em nova sessão, reverta `Hello Astra.` para `Hello AutoDev.`;
+  observe seleção e ações.
+- **PASS:** execução simples ou flow adequado, nunca bootstrap incompatível; diff mínimo.
+- **Coletar:** seleção/justificativa, passos e diff.
+- **Impacto:** valida roteamento proporcional. Se seleção não for exposta,
+  registre `BLOCKED` na comprovação e achado de observabilidade.
+
+#### C06 — Escolher flow para projeto novo (P1)
+
+- **Instrução Astra:** `Ask to structure a tiny new project and inspect whether the selected flow matches the task.`
+- **Pré-condição:** workspace QA vazio, flow aplicável e provider real.
+- **Procedimento:** peça plano mínimo para CLI Python que imprime hello, sem executar.
+- **PASS:** flow adequado quando disponível, plano proporcional e nenhuma execução.
+- **Coletar:** workspace vazio, seleção, plano e estado de execução.
+- **Impacto:** testa adequação, justificativa e respeito à autorização.
+
+#### C07 — Tratar pedido sem flow específico (P1)
+
+- **Instrução Astra:** `Request a small task with no matching specialized flow and inspect the fallback.`
+- **Pré-condição:** catálogo conferido sem flow específico para a tarefa.
+- **Procedimento:** peça três nomes de função de soma, somente texto e sem projeto.
+- **PASS:** resposta direta/agente adequado e nenhum flow alheio.
+- **Coletar:** catálogo, pedido, resposta, seleção e ações.
+- **Impacto:** evita uso compulsório de automação inadequada.
+
+#### C08 — Impedir envio vazio e duplicado (P1)
+
+- **Instrução Astra:** `Check empty submission and double-click submission for a tiny request.`
+- **Pré-condição:** sessão ociosa e provider funcional.
+- **Procedimento:** envie espaços; depois `Responda QA_ONCE` com clique duplo rápido.
+- **PASS:** nenhum turno vazio e exatamente uma mensagem/turno válido.
+- **Coletar:** composer, histórico, IDs e contagem.
+- **Impacto:** evita consumo e efeitos duplicados.
+
+#### C09 — Reabrir conversa persistida (P0)
+
+- **Instrução Astra:** `Reload the page and reopen the same session to verify conversation persistence.`
+- **Pré-condição:** sessão com duas mensagens e respostas concluídas.
+- **Procedimento:** anote session ID; reload; Sessions → Open chat.
+- **PASS:** mensagens e ordem preservadas, sem duplicação ou troca de sessão.
+- **Coletar:** histórico e ID antes/depois.
+- **Impacto:** comprova durabilidade e continuidade de trabalho.
+
+#### C10 — Isolar duas sessões (P1)
+
+- **Instrução Astra:** `Switch between two sessions and check that their messages and execution context do not mix.`
+- **Pré-condição:** duas sessões QA independentes.
+- **Procedimento:** envie `MARCADOR_A` na A e `MARCADOR_B` na B; alterne Chat,
+  Plans e Execution.
+- **PASS:** histórico, plano e run correspondem à sessão selecionada.
+- **Coletar:** IDs, mensagens, planos e run ativo em cada contexto.
+- **Impacto:** detecta mistura de contexto; decisões globais identificadas por run
+  não constituem, isoladamente, vazamento.
+
+### Governança, Execution, Patches e Files
+
+#### E01 — Respeitar rejeição de passo (P0)
+
+- **Instrução Astra:** `Reject one planned file change and verify that the rejected step is not executed.`
+- **Pré-condição:** modo Approval, plano com criação de `qa-{RUN}-denied.txt` e alvo ausente.
+- **Procedimento:** rejeite o passo; execute apenas aprovados; confira Files/log.
+- **PASS:** passo não executado, arquivo ausente e status coerente.
+- **Coletar:** rejeição, estado do passo, Files atualizado e log.
+- **Impacto:** execução rejeitada é falha crítica de autorização; gate ausente bloqueia.
+
+#### E02 — Aprovar uma ação e retomar (P0)
+
+- **Instrução Astra:** `Approve one pending action once and resume the matching run.`
+- **Pré-condição:** run pausado para criar arquivo QA.
+- **Procedimento:** identifique ação/run; Approve once; Resume se necessário; confira
+  arquivo e permissões.
+- **PASS:** ação ocorre uma vez, run correto retoma e nenhuma regra persistente nasce.
+- **Coletar:** decisão, session/run IDs, log, arquivo e permissões.
+- **Impacto:** valida escopo de autorização; aprovação do plano não substitui gate da ação.
+
+#### E03 — Negar ação pendente (P0)
+
+- **Instrução Astra:** `Deny a pending file-write action and verify that it is not performed.`
+- **Pré-condição:** run pausado para criar `qa-{RUN}-blocked.txt`.
+- **Procedimento:** identifique ação/run; Deny; confira log e Files.
+- **PASS:** nenhum efeito, motivo claro e nenhuma conclusão falsa de sucesso.
+- **Coletar:** decisão, IDs, log e Files.
+- **Impacto:** comprova enforcement negativo de autorização.
+
+#### E04 — Conferir execução ao vivo (P1)
+
+- **Instrução Astra:** `Observe a live run and check that progress, logs, and final status agree.`
+- **Pré-condição:** tarefa QA pequena com duração observável.
+- **Procedimento:** inicie criação de arquivo; acompanhe painel e Execution até terminal.
+- **PASS:** progresso durante execução, logs ordenados/identificados e estado terminal
+  coerente, sem sucesso antecipado ou spinner residual.
+- **Coletar:** início, meio e fim com horário, IDs e mensagens; tempo até primeiro feedback.
+- **Impacto:** valida confiança operacional; uma amostra não comprova SLO/p95.
+
+#### E05 — Reconectar após reload (P1)
+
+- **Instrução Astra:** `Reload during a run and check whether its progress and final result are recovered.`
+- **Pré-condição:** run em andamento e IDs anotados.
+- **Procedimento:** reload uma vez; reabra sessão; acompanhe até terminal; confira artefato.
+- **PASS:** mesmo run, sem tarefa/arquivo duplicado nem progresso travado.
+- **Coletar:** IDs antes/depois, timeline e artefato.
+- **Impacto:** comprova continuidade. Se o run terminar antes do reload, use `NOT_RUN`
+  e repita apenas com fixture adequada.
+
+#### E06 — Exibir falha sem falso sucesso (P1)
+
+- **Instrução Astra:** `Run a harmless command that fails and inspect the final status and error message.`
+- **Pré-condição:** workspace QA e Python disponível.
+- **Procedimento:** peça somente `python -c "raise SystemExit(7)"`, sem correção/repetição.
+- **PASS:** falha e código 7 visíveis quando suportados, sem validação aprovada e com
+  próximo passo compreensível.
+- **Coletar:** pedido, comando efetivo, saída/código e estado final.
+- **Impacto:** impede falso sucesso. Python ausente bloqueia o gatilho específico.
+
+#### P01 — Revisar mudança antes de aplicar (P0)
+
+- **Instrução Astra:** `Request a one-line patch and inspect it before allowing application.`
+- **Pré-condição:** modo de revisão e arquivo com linha conhecida.
+- **Procedimento:** peça proposta `Hello AutoDev` → `Hello Astra` e aguarde; abra
+  Patches e Files antes de aprovar.
+- **PASS:** diff identifica arquivo e linhas; original permanece intacto antes da autorização.
+- **Coletar:** pedido, diff, estado de aprovação e original.
+- **Impacto:** preserva revisão humana antes da mutação.
+
+#### P02 — Conferir árvore e conteúdo (P0)
+
+- **Instrução Astra:** `Navigate the file tree and inspect two known files.`
+- **Pré-condição:** arquivo raiz e arquivo interno conhecidos.
+- **Procedimento:** expanda pasta; abra ambos; alterne entre eles.
+- **PASS:** caminho, título, conteúdo e seleção corretos, sem conteúdo anterior residual.
+- **Coletar:** árvore, caminhos e trechos conhecidos.
+- **Impacto:** valida identidade do artefato; não exige edição no viewer.
+
+### Navegação, configuração, UX e resiliência
+
+#### U01 — Abrir telas principais (P0)
+
+- **Instrução Astra:** `Visit every primary screen through the sidebar and check for broken navigation.`
+- **Pré-condição:** frontend acessível.
+- **Procedimento:** visite Chat, Plans, Patches, Execution, Files, Flows, Sessions,
+  Config e Extensions; use voltar/avançar uma vez.
+- **PASS:** tela correta, item ativo, nenhum branco/erro não tratado e vazios explicados.
+- **Coletar:** URL, captura e mensagens por tela.
+- **Impacto:** smoke estrutural; não implica funcionamento completo do produto.
+
+#### U02 — Persistir opção não secreta (P1)
+
+- **Instrução Astra:** `Change one non-secret setting, reload, and verify persistence.`
+- **Pré-condição:** valor original do objetivo padrão registrado.
+- **Procedimento:** altere para `QA-{RUN}-goal`; salve; reload; restaure.
+- **PASS:** valor persistido, confirmação coerente e restauração bem-sucedida.
+- **Coletar:** valor original, alterado e restaurado, sem credenciais.
+- **Impacto:** valida persistência reversível; campo ausente bloqueia o caso.
+
+#### U03 — Mostrar provider real ou stub (P0)
+
+- **Instrução Astra:** `Check whether the UI accurately identifies the configured provider and any stub mode.`
+- **Pré-condição:** configuração conhecida pelo operador.
+- **Procedimento:** compare Config e indicador do Chat com provider/modelo informados.
+- **PASS:** modo real, stub ou indisponível é inequívoco; stub não se passa por real.
+- **Coletar:** indicadores e campos não secretos.
+- **Impacto:** protege validade das evidências e confiança do usuário.
+
+#### U04 — Usar painel em tela pequena (P1)
+
+- **Instrução Astra:** `Check Chat and Flows at a narrow viewport and browser zoom of 200%.`
+- **Pré-condição:** Chat com histórico/execução e flow temporário.
+- **Procedimento:** use 1280×800, 768×900 e zoom 200%; abra/feche painel; alcance
+  Send, Save e modais.
+- **PASS:** controles acessíveis, texto legível, rolagem útil e sem sobreposição impeditiva.
+- **Coletar:** viewport/zoom e capturas por tela.
+- **Impacto:** detecta barreiras responsivas; não equivale a auditoria WCAG.
+
+#### U05 — Operar formulário por teclado (P2)
+
+- **Instrução Astra:** `Create an agent draft using keyboard navigation and close the dialog without saving.`
+- **Pré-condição:** Extensions acessível.
+- **Procedimento:** use Tab, Shift+Tab, Enter e Escape; percorra e feche Create agent.
+- **PASS:** foco visível, ordem lógica, foco contido e retorno ao acionador.
+- **Coletar:** sequência de teclas e capturas de foco.
+- **Impacto:** avalia usabilidade básica por teclado sem salvar o rascunho.
+
+#### U06 — Conferir tema e idioma (P2)
+
+- **Instrução Astra:** `Switch theme and language and inspect the main user-facing labels.`
+- **Pré-condição:** controles disponíveis.
+- **Procedimento:** alterne claro/escuro e en/pt-BR; confira Chat, Sessions e Flows;
+  reload; restaure preferências.
+- **PASS:** temas legíveis, tradução coerente e retenção quando prometida.
+- **Coletar:** capturas comparáveis e textos não traduzidos.
+- **Impacto:** identifica inconsistência visual/textual; candidato no código não é
+  falha reproduzida.
+
+#### U07 — Preservar texto após indisponibilidade (P1)
+
+- **Instrução Astra:** `Try to send a short message while the service is unavailable and inspect recovery.`
+- **Pré-condição:** indisponibilidade restaurável preparada pelo operador.
+- **Procedimento:** envie uma vez `QA recovery message`; capture erro/recuperação;
+  após restauração, retente uma vez.
+- **PASS:** erro claro, sem falso sucesso, texto recuperável e reenvio não duplicado.
+- **Coletar:** texto antes/depois, erro e histórico final.
+- **Impacto:** protege trabalho do usuário. Sem falha preparada, marque `BLOCKED`.
+
+## 8. Registro de execução
+
+Use uma linha por caso. Campos vazios nunca significam `PASS`. `Dinâmica`
+registra sequência, feedback, espera, reload e comportamento intermediário;
+`Correções/melhorias` referencia achados deduplicados ou `—` quando não houver.
+
+| Caso | Estado | Resultado observado | Dinâmica | Evidências | Session/run | Duração | Achado/correção |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| F01 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| F02 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| F03 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| F04 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| F05 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| F06 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| F07 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| F08 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| F09 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| F10 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| F11 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| A01 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| A02 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| A03 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| A04 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| A05 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| C01 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| C02 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| C03 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| C04 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| C05 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| C06 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| C07 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| C08 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| C09 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| C10 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| E01 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| E02 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| E03 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| E04 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| E05 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| E06 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| P01 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| P02 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| U01 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| U02 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| U03 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| U04 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| U05 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| U06 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+| U07 | NOT_RUN | Ainda não executado | — | — | — | — | — |
+
+Nome de evidência recomendado:
+`{RUN}_{CASO}_{01-before|02-action|03-result}.png`. Use links reais; nunca
+invente caminhos. Registre horário e timezone e preserve o texto exato de erros.
+
+## 9. Achados e mudanças inferidas
+
+Deduplicate por sintoma observável, não por causa presumida. Uma tarefa pode
+referenciar vários casos, mas problemas diferentes não devem ser agrupados
+apenas porque apareceram no mesmo run.
+
+```text
+ID: QA-001
+Título: <ação concreta + comportamento afetado>
+Tipo: bug funcional | lacuna de funcionalidade | UX | observabilidade | ambiente
+Severidade: S0 | S1 | S2 | S3
+Casos relacionados:
+Build/URL:
+Pré-condições:
+Reprodução mínima:
+Esperado:
+Observado:
+Frequência: <ocorrências/tentativas>
+Evidências:
+Impacto no usuário:
+Hipótese de causa: <opcional e explicitamente não confirmada>
+Correção/melhoria proposta:
+Critérios de aceite:
+Dependências:
+Como retestar:
+```
+
+Uma capacidade aparentemente ausente na inspeção de implementação é apenas uma
+candidata até ser executada no build instalado. Por exemplo, persistir e reabrir
+flows deve ser confirmado por `F01`/`F02`; antes disso, não registrar como bug
+reproduzido.
+
+## 10. Fechamento do lote e atualização documental
+
+Ao concluir um lote:
+
+1. registre totais de `PASS`, `FAIL`, `BLOCKED` e `NOT_RUN` e os três achados de
+   maior impacto;
+2. calcule `taxa de aprovação = PASS / (PASS + FAIL)` e
+   `cobertura executada = (PASS + FAIL) / casos planejados no lote`, sempre
+   exibindo bloqueados e total planejado;
+3. liste runs ativos, fixtures, resíduos e configurações não restauradas;
+4. atualize este registro e todos os Markdown afetados pelo comportamento real;
+5. crie uma branch curta de documentação/correção a partir de `main`, faça commit,
+   abra PR, conclua os gates proporcionais ao escopo, aceite o PR em `main`,
+   sincronize local/remoto e remova branches já integradas.
+
+Não calcule p95 a partir de uma execução e não use sucesso visual para afirmar
+correção interna. Após preservar o resultado inicial, um defeito de implementação
+confirmado pode seguir o ciclo limitado de correção e repetição do mesmo cenário
+definido pela skill `astra-user-test`, sempre registrando antes/depois. Lacunas
+aspiracionais viram backlog com critérios de aceite e só são implementadas quando
+o pedido incluir esse escopo.
