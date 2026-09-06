@@ -160,6 +160,7 @@ function ExecutionControlCenter() {
       }
     }
 
+    void loadProviderStatus();
     void bootstrap();
     // Re-bootstrap only when the requested session changes (arriving from
     // `/sessions` or switching links while already on this route). `t` is
@@ -375,10 +376,12 @@ function ExecutionControlCenter() {
                 : !providerStatus?.configured
                   ? t("chat.provider.unconfigured")
                   : providerStatus.healthy
-                    ? t("chat.provider.healthy", {
-                        name: providerStatus.name,
-                        model: providerStatus.model,
-                      })
+                    ? providerStatus.name === "stub"
+                      ? t("chat.provider.stub", { model: providerStatus.model })
+                      : t("chat.provider.healthy", {
+                          name: providerStatus.name,
+                          model: providerStatus.model,
+                        })
                     : t("chat.provider.unhealthy", { name: providerStatus.name })}
             </Badge>
           </div>
