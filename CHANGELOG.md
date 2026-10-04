@@ -5,6 +5,35 @@ All notable changes to AutoDev Architect are documented here. Format loosely fol
 
 ## [Unreleased]
 
+### Added
+
+- **E61 — Global Install, `AUTODEV_HOME` & Layered Configuration** (4/4
+  stories, closes the E61 slice of the Beta-hardening program below): a
+  single global home (`AUTODEV_HOME`, default `~/.autodev`) for
+  configuration and data that belong to the tool rather than to one
+  project (`backend/config/paths.py`); the default state database and
+  `.env`/`CHANGELOG.md` lookups now resolve against it and the active
+  project, never against this package's own source tree, so a wheel
+  install behaves identically to a checkout (an explicit `DATABASE_URL`
+  is unaffected). `RuntimeConfig` is now composed per field from internal
+  defaults → the global configuration layer → the per-project layer
+  (ADR-028): a project overriding one field inherits every other field
+  from the global layer, an invalid configuration file raises naming its
+  path, and saving a configuration never copies an inherited value —
+  credentials included — into the project file. `make install-cli`
+  registers the `autodev` console script (`make install` alone never
+  did), and `scripts/verify_clean_install.sh` now proves a second install
+  preserves `AUTODEV_HOME`'s contents, wired into CI as
+  `clean-install-verification`. See
+  `docs/execution/paths-and-config.md` and
+  `docs/v2_platform/decisions/ADR-028-layered-configuration-semantics.md`.
+  **Behavior change:** an explicitly empty string (`""`) in a
+  configuration file is no longer silently collapsed to that field's
+  default — it is kept, matching what was actually written. A pre-existing
+  `./autodev.db` beside the launch directory is not moved automatically;
+  `autodev doctor` now reports it (`legacy_database` check) rather than
+  leaving it silently unused.
+
 ### Planning
 
 - **E61–E66 — Beta-hardening program: flow selection, execution logs, terminal,
@@ -36,8 +65,9 @@ All notable changes to AutoDev Architect are documented here. Format loosely fol
   - **There is no global install and no project entity.** No `~/.autodev/`; no
     ancestor-directory search for `.autodev/`; a cwd-relative default database;
     whole-document configuration with no layering; `make install` never registers
-    the `autodev` console script. **E61** adds `AUTODEV_HOME`, per-field layered
-    configuration and a CI-verified console-script install; **E62** adds project
+    the `autodev` console script. **E61** (now shipped — see "Added" above)
+    adds `AUTODEV_HOME`, per-field layered configuration and a CI-verified
+    console-script install; **E62** adds project
     discovery, a `projects` table on both dialects with tenant RLS,
     `sessions.project_id`, per-session root resolution, and the three no-project
     paths — with the tested invariant that configuring `.autodev/` in an existing
