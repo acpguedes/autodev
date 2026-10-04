@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from backend.persistence.migrations import MigrationRunner
+from backend.persistence.migrations.runner import Migration
 from backend.persistence.migrations.postgres_versions import E62_TENANT_SCOPED_TABLES, POSTGRES_STORE_MIGRATIONS
 from backend.persistence.migrations.versions import STORE_MIGRATIONS
 from backend.persistence.sqlite_adapter import SQLiteStore
@@ -19,9 +20,11 @@ def test_store_create_activate_and_idempotent_root(tmp_path: Path) -> None:
     a = store.create(tenant_id="t", name="a", root_path=tmp_path / "a", activate=True)
     b = store.create(tenant_id="t", name="b", root_path=tmp_path / "b")
     assert store.create(tenant_id="t", name="dup", root_path=tmp_path / "a").project_id == a.project_id
-    assert store.get_active(tenant_id="t").project_id == a.project_id
+    active = store.get_active(tenant_id="t")
+    assert active is not None and active.project_id == a.project_id
     store.activate(b.project_id, tenant_id="t")
-    assert store.get_active(tenant_id="t").project_id == b.project_id
+    active = store.get_active(tenant_id="t")
+    assert active is not None and active.project_id == b.project_id
     assert {p.project_id: p.is_active for p in store.list(tenant_id="t")} == {a.project_id: False, b.project_id: True}
     with pytest.raises(KeyError):
         store.activate("missing", tenant_id="t")
@@ -53,6 +56,7 @@ def test_migration_backfills_pre_existing_sessions_and_is_idempotent(tmp_path: P
 
 def test_postgres_migration_applies_forced_rls_and_backfill() -> None:
     migration = next(m for m in POSTGRES_STORE_MIGRATIONS if getattr(m, "name", "") == "create_projects_table")
+    assert isinstance(migration, Migration)
     executed: list[str] = []
 
     class _Conn:

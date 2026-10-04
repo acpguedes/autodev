@@ -111,7 +111,12 @@ def test_cli_project_subcommands_register_and_open_uses_discovery(tmp_path: Path
     sub.mkdir()
     monkeypatch.chdir(sub)
     calls: list[tuple] = []
-    monkeypatch.setattr(cli_project, "_call", lambda a, m, p, b=None: calls.append((m, p, b)) or 0)
+
+    def fake_call(args, method, path, body=None) -> int:
+        calls.append((method, path, body))
+        return 0
+
+    monkeypatch.setattr(cli_project, "_call", fake_call)
     args = build_parser().parse_args(["project", "open"])
     assert args.handler(args) == 0
     assert calls == [("POST", "/v2/projects/open", {"root": str(root.resolve())})]

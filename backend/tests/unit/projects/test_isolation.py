@@ -11,6 +11,7 @@ import pytest
 from backend.config.runtime import RuntimeConfigService
 from backend.context.providers.session_memory import SessionMemoryContextProvider
 from backend.persistence.migrations import MigrationRunner
+from backend.persistence.migrations.runner import Migration
 from backend.persistence.migrations.postgres_versions import POSTGRES_STORE_MIGRATIONS
 from backend.persistence.migrations.versions import STORE_MIGRATIONS
 from backend.persistence.sqlite_adapter import SQLiteStore
@@ -79,12 +80,17 @@ def test_indexing_keeps_same_relative_path_separate_per_project(store: SQLiteSto
 def test_retrieval_filters_every_stage_by_project(monkeypatch: pytest.MonkeyPatch) -> None:
     """The project scope reaches the lexical ranker, the vector ranker and the final fetch."""
     seen: dict[str, object] = {}
-    monkeypatch.setattr(
-        retriever_module.lexical, "search", lambda *a, **k: seen.__setitem__("lexical", k["project_id"]) or [(1, 1.0)]
-    )
-    monkeypatch.setattr(
-        retriever_module, "query_top_k", lambda *a, **k: seen.__setitem__("vector", k["project_id"]) or [(1, 0.1)]
-    )
+
+    def fake_lexical(*args, **kwargs):
+        seen["lexical"] = kwargs["project_id"]
+        return [(1, 1.0)]
+
+    def fake_vector(*args, **kwargs):
+        seen["vector"] = kwargs["project_id"]
+        return [(1, 0.1)]
+
+    monkeypatch.setattr(retriever_module.lexical, "search", fake_lexical)
+    monkeypatch.setattr(retriever_module, "query_top_k", fake_vector)
 
     def fake_fetch(conn, chunk_ids, tenant_id, filters):
         seen["fetch"] = filters.project_id
@@ -145,6 +151,7 @@ def test_code_chunks_migration_backfills_to_default_project_and_widens_key(tmp_p
 
 def test_postgres_code_chunks_migration_widens_key_and_backfills() -> None:
     migration = next(m for m in POSTGRES_STORE_MIGRATIONS if getattr(m, "name", "") == "add_project_id_to_code_chunks")
+    assert isinstance(migration, Migration)
     executed: list[str] = []
 
     class _Conn:
