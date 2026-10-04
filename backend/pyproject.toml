@@ -105,6 +105,7 @@ packages = [
   "backend.persistence.sqlite_to_postgres",
   "backend.plans",
   "backend.plugins",
+  "backend.projects",
   "backend.quotas",
   "backend.reasoning",
   "backend.reasoning.strategies",

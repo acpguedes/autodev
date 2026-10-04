@@ -211,10 +211,12 @@ test.describe("Config screen", () => {
   test("saves the configuration and shows optimistic success feedback", async ({ page }) => {
     await page.goto("/config");
 
-    await page.getByLabel("Project directory").fill("/workspace/autodev-renamed");
+    // The project directory is no longer free text (E62-S4-T3): it is chosen
+    // through the project selector, so this exercises another repository field.
+    await page.getByLabel("Repository label").fill("autodev-renamed");
     await page.getByRole("button", { name: "Save configuration" }).click();
 
     await expect(page.getByRole("status").filter({ hasText: "Configuration saved" })).toBeVisible();
-    await expect(page.getByLabel("Project directory")).toHaveValue("/workspace/autodev-renamed");
+    await expect(page.getByLabel("Repository label")).toHaveValue("autodev-renamed");
   });
 });
