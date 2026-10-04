@@ -438,17 +438,20 @@ class SandboxRunner:
             *job.command,
         ]
 
-        outcome = _run_process(
-            docker_cmd,
-            timeout=self._policy.timeout_seconds,
-            on_chunk=job.on_chunk,
+        def _kill_container() -> None:
             # Killing the ``docker run`` client leaves the container running.
-            on_timeout=lambda: subprocess.run(  # noqa: S603
+            subprocess.run(  # noqa: S603
                 ["docker", "kill", container_name],
                 capture_output=True,
                 check=False,
                 timeout=15,
-            ),
+            )
+
+        outcome = _run_process(
+            docker_cmd,
+            timeout=self._policy.timeout_seconds,
+            on_chunk=job.on_chunk,
+            on_timeout=_kill_container,
         )
         if outcome.timed_out:
             return ValidationResult(

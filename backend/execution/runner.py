@@ -207,6 +207,7 @@ class PatchRunner:
 
     def _run_file_action(self, action: ExecutionAction, started_at: str) -> ExecutionResult:
         """Build and apply a patch from ``action.path``/``action.content``."""
+        assert action.path is not None
         target = self._resolve_target(action)
         if target is None:
             return _failed(
