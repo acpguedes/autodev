@@ -59,3 +59,26 @@ feedback demands it (unchanged from the original recommendation).
 - No open item remains for the E35-S3 open-decisions register — this ADR
   moved from Proposed to Accepted within E34 itself, before E34-S2 started,
   as required.
+
+### E61 extension (2026-09-05)
+
+E34 defined *how* `autodev` is installed; it did not define *where* the
+tool's own state lives once installed. Running from a directory other than
+the one the user happened to launch from left configuration and the default
+database resolved relative to that launch directory
+(`backend/config/runtime.py`, `backend/persistence/database.py`) — the
+console-script mechanism itself was source-tree-independent, but the state
+it read and wrote was not.
+
+E61-S1 adds `AUTODEV_HOME` (default `~/.autodev`) as the one documented home
+for configuration and data that belong to the tool rather than to one
+project (`backend/config/paths.py`), and moves the *default* database and
+`.env` lookup there and to the active project — never to this package's own
+source tree, so a wheel install resolves them identically to an editable
+checkout. E61-S2 composes the active configuration from internal defaults,
+the global layer, and the per-project layer, governed by ADR-028. E61-S3
+adds `make install-cli` (registering the `autodev` console script, which
+`make install` alone never did) and extends
+`scripts/verify_clean_install.sh` to prove a second install preserves the
+global home's contents. No installation mechanism changed: the hybrid
+console-script + container-bundle decision above stands unmodified.
