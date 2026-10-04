@@ -42,6 +42,7 @@ def test_execution_result_to_dict_round_trips_all_fields() -> None:
         "command": ["pytest", "-q"],
         "path": "notes/task-1.md",
         "failure_kind": None,
+        "type": None,
     }
 
 

@@ -47,7 +47,7 @@ def _capped_tail(text: str) -> str:
     return text[-_ACTION_OUTPUT_CHAR_CAP:] if len(text) > _ACTION_OUTPUT_CHAR_CAP else text
 
 
-def _was_truncated(*streams: str) -> bool:
+def output_was_truncated(*streams: str) -> bool:
     """Whether any stream exceeded :data:`_ACTION_OUTPUT_CHAR_CAP` and lost its head (E64-S2)."""
     return any(len(stream) > _ACTION_OUTPUT_CHAR_CAP for stream in streams)
 
@@ -291,6 +291,7 @@ class TaskExecutor:
                 emitter.flush()
             else:
                 result = self._runner.run(action)
+            result.action_type = action.type.value
             results.append(result)
             if result.status == "failed":
                 failed = True
@@ -310,7 +311,7 @@ class TaskExecutor:
                         "failureKind": result.failure_kind.value if result.failure_kind else None,
                         "sourceAgent": action.source_agent,
                         "exitCode": result.exit_code,
-                        "truncated": _was_truncated(result.stdout, result.stderr),
+                        "truncated": output_was_truncated(result.stdout, result.stderr),
                     },
                     subject={"runId": run_id, "taskId": action.task_id},
                 )
@@ -330,7 +331,7 @@ class TaskExecutor:
                         "stderr": _capped_tail(result.stderr),
                         "stepLabel": action.step_label,
                         "sourceAgent": action.source_agent,
-                        "truncated": _was_truncated(result.stdout, result.stderr),
+                        "truncated": output_was_truncated(result.stdout, result.stderr),
                     },
                     subject={"runId": run_id, "taskId": action.task_id},
                 )
@@ -498,4 +499,4 @@ class TaskExecutor:
         return []
 
 
-__all__ = ["TaskExecutor", "TaskExecutionOutcome"]
+__all__ = ["TaskExecutor", "TaskExecutionOutcome", "output_was_truncated"]

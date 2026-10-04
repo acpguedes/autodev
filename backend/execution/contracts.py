@@ -119,6 +119,8 @@ class ExecutionResult:
         failure_kind: Typed reason this result failed (E46-S1, ADR-023);
             ``None`` for every success and for results produced before
             this field existed (backward compatible).
+        action_type: The originating action's type value (E64), set by the
+            executor so persisted results can be rendered by kind.
     """
 
     action_id: str
@@ -137,6 +139,7 @@ class ExecutionResult:
     command: list[str] | None = None
     path: str | None = None
     failure_kind: ExecutionFailureKind | None = None
+    action_type: str | None = None
 
     @property
     def repairable_by_code_change(self) -> bool:
@@ -169,6 +172,7 @@ class ExecutionResult:
             "command": list(self.command) if self.command is not None else None,
             "path": self.path,
             "failure_kind": self.failure_kind.value if self.failure_kind is not None else None,
+            "type": self.action_type,
         }
 
 

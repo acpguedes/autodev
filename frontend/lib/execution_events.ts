@@ -15,7 +15,7 @@
 
 import * as React from "react";
 
-import { parseSseBuffer, runEventsStreamUrl } from "@/lib/api_v2";
+import { consumeSseStream, runEventsStreamUrl } from "@/lib/api_v2";
 
 /** Every `execution.action.*` event type, used as the SSE `types=` filter. */
 export const EXECUTION_ACTION_EVENT_TYPES: readonly string[] = [
@@ -144,47 +144,31 @@ export function useExecutionActionLog(runId: string | null): ExecutionActionLogR
     async function consume(): Promise<void> {
       setStreamStatus("connecting");
       try {
-        const response = await fetch(
+        const accepted = await consumeSseStream(
           runEventsStreamUrl(runId as string, { types: [...EXECUTION_ACTION_EVENT_TYPES] }),
+          { signal: controller.signal, credentials: "include" },
           {
-            signal: controller.signal,
-            headers: { Accept: "text/event-stream" },
-            credentials: "include",
+            onOpen: () => {
+              if (!cancelled) {
+                setStreamStatus("open");
+              }
+            },
+            onFrames: (frames) => {
+              for (const frame of frames) {
+                if (!frame.event) {
+                  continue;
+                }
+                const parsed = parseExecutionActionEvent(frame.event, frame.data, frame.id);
+                if (!parsed || cancelled) {
+                  continue;
+                }
+                setEvents((current) => [...current, parsed]);
+              }
+            },
           },
         );
-        if (!response.ok || !response.body) {
-          if (!cancelled) {
-            setStreamStatus("error");
-          }
-          return;
-        }
         if (!cancelled) {
-          setStreamStatus("open");
-        }
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) {
-            break;
-          }
-          buffer += decoder.decode(value, { stream: true });
-          const { frames, rest } = parseSseBuffer(buffer);
-          buffer = rest;
-          for (const frame of frames) {
-            if (!frame.event) {
-              continue;
-            }
-            const parsed = parseExecutionActionEvent(frame.event, frame.data, frame.id);
-            if (!parsed || cancelled) {
-              continue;
-            }
-            setEvents((current) => [...current, parsed]);
-          }
-        }
-        if (!cancelled) {
-          setStreamStatus("closed");
+          setStreamStatus(accepted ? "closed" : "error");
         }
       } catch {
         if (!cancelled) {

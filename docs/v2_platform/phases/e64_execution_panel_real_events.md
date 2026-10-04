@@ -2,7 +2,7 @@
 
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35 and E41-E63).
-**Status:** Not started · **Stories:** 0/4
+**Status:** Done · **Stories:** 4/4
 **Depends on:** E42-S1 (unified run-event streaming), E43-S2/S3 (the shared
 transcript formatter and step labels), E41-S3/S4 (patch-apply and
 agent-declared commands), E33 (secret redaction inside `emit_event`)
@@ -125,8 +125,9 @@ ends — and the panel contains no sentence written by an agent.
   `frontend/lib/__tests__/timeline.test.ts`, and removing the event family is a
   larger call than this epic; the components stop being mounted in the panel and
   nothing else.
-- `frontend/components/RunEventStream.tsx`, which duplicates the SSE-consumer
-  logic `lib/execution_events.ts` owns. Recorded as a follow-up, not fixed here.
+- `frontend/components/RunEventStream.tsx` duplicating the SSE-consumer logic
+  `lib/execution_events.ts` owns. Originally a follow-up; resolved after the epic
+  by extracting `consumeSseStream` (`lib/api_v2.ts`), now used by both.
 - Token-level LLM streaming: `agent.token.delta` is catalogued and emitted by
   nothing. Out of scope, and left as-is.
 - Any change to what the chat itself renders.

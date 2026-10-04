@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
-from backend.execution.executor import TaskExecutionOutcome
+from backend.execution.executor import TaskExecutionOutcome, output_was_truncated
 from backend.execution.policy import PendingDecision
 from backend.orchestrator.service.models import (
     AgentExecution,
@@ -108,7 +108,10 @@ def build_dispatched_entry(
         "source_agent": task.source_agent,
         "category": task.category,
         "status": outcome.status,
-        "actions": [result.to_dict() for result in outcome.results],
+        "actions": [
+            {**result.to_dict(), "truncated": output_was_truncated(result.stdout, result.stderr)}
+            for result in outcome.results
+        ],
     }
     if self_check is not None:
         execution_metadata["self_check"] = self_check
