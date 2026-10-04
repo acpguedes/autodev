@@ -44,11 +44,12 @@ def test_route_devops_change() -> None:
     assert order == ["navigator", "analyzer", "devops", "responder"]
 
 
-def test_route_existing_repo_change_is_full_order() -> None:
-    """``EXISTING_REPO_CHANGE`` routes through the full default agent order."""
+def test_route_existing_repo_change_skips_architect() -> None:
+    """``EXISTING_REPO_CHANGE`` does not run ``architect`` unless intent is architectural."""
     router = RunTypeRouter()
-    full = ["navigator", "analyzer", "architect", "coder", "devops", "validator", "responder"]
-    assert router.order_for(RunType.EXISTING_REPO_CHANGE) == full
+    order = router.order_for(RunType.EXISTING_REPO_CHANGE)
+    assert "architect" not in order and order[-1] == "responder"
+    assert "architect" in router.order_for(RunType.EXISTING_REPO_CHANGE, "refactor the module design")
 
 
 def test_route_unknown_type_falls_back_to_full_order() -> None:

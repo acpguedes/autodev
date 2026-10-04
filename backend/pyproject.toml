@@ -90,6 +90,7 @@ packages = [
   "backend.events",
   "backend.execution",
   "backend.flows",
+  "backend.flows.builtin",
   "backend.jobs",
   "backend.llm",
   "backend.mcp",
@@ -129,6 +130,7 @@ packages = [
 # scripts/verify_clean_install.sh, never committed (see .gitignore).
 [tool.setuptools.package-data]
 backend = ["CHANGELOG.md", "README.md"]
+"backend.flows.builtin" = ["*.flow.yaml"]
 
 [project.optional-dependencies]
 dev = [

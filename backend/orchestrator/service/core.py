@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Mapping
 
@@ -20,6 +21,7 @@ from backend.orchestrator.service.queries import QueryMixin
 from backend.orchestrator.service.self_repair import SelfRepairMixin
 from backend.orchestrator.service.task_dispatch import TaskDispatchMixin
 from backend.persistence import DurableStore, get_store
+from backend.projects.state import ProjectState
 from backend.quotas.contracts import QuotaDenialReason, QuotaExceededError, QuotaResource
 from backend.quotas.service import QuotaService
 
@@ -146,25 +148,37 @@ class OrchestratorService(
         """Deep-copy one level of an artifacts mapping so callers can mutate it safely."""
         return {name: dict(meta) for name, meta in artifacts.items()}
 
-    def _infer_run_type(self, *, goal: str, message: str) -> RunType:
-        """Infer the run type from keyword heuristics over the goal and message."""
+    def _infer_run_type(
+        self, *, goal: str, message: str, state: ProjectState | None = None
+    ) -> RunType:
+        """Infer the run type from whole-word intent over the goal and message.
+
+        Whole-word matching (E63-S4) replaces the former substring heuristic,
+        so "add a docker healthcheck" is a devops change, not documentation.
+        A probed project *state* grounds the greenfield decision: an empty
+        project with no stated intent is a bootstrap, and a populated one is
+        never mistaken for greenfield by a stray word.
+
+        Args:
+            goal: The session goal.
+            message: The user message.
+            state: Probed project state, when known.
+
+        Returns:
+            The inferred :class:`RunType`.
+        """
+        words = set(re.findall(r"[a-z0-9]+", f"{goal} {message}".lower()))
         combined = f"{goal} {message}".lower()
-        if any(keyword in combined for keyword in ("doc", "readme", "documentation")):
+        if words & {"doc", "docs", "readme", "documentation"}:
             return RunType.DOCUMENTATION_UPDATE
-        if any(
-            keyword in combined
-            for keyword in ("infra", "deploy", "docker", "kubernetes", "terraform")
-        ):
+        if words & {"infra", "infrastructure", "deploy", "deployment", "docker", "kubernetes", "terraform"}:
             return RunType.DEVOPS_CHANGE
-        if any(
-            keyword in combined
-            for keyword in ("validate", "validation", "test", "lint", "typecheck")
-        ):
+        if words & {"validate", "validation", "test", "tests", "lint", "typecheck"}:
             return RunType.VALIDATION_ONLY
-        if any(
-            keyword in combined
-            for keyword in ("bootstrap", "greenfield", "new project", "from scratch")
-        ):
+        greenfield_words = any(
+            phrase in combined for phrase in ("new project", "from scratch")
+        ) or bool(words & {"bootstrap", "greenfield"})
+        if greenfield_words and (state is None or not state.populated):
             return RunType.GREENFIELD_BOOTSTRAP
         return RunType.EXISTING_REPO_CHANGE
 

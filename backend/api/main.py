@@ -17,6 +17,8 @@ import sys
 
 from dotenv import load_dotenv
 
+from backend.flows.builtin import seed_builtin_flows
+from backend.flows.registry import FlowRegistry
 from backend.config.paths import autodev_home
 
 
@@ -284,6 +286,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             validate_auth_readiness(settings, get_auth_service().store)
         get_runtime_config_service().apply_to_environment()
         get_orchestrator()
+        seed_builtin_flows(FlowRegistry())
         queue = get_queue(settings)
         runtime.metric_sink.observe_queue(
             backend=settings.autodev_job_backend,

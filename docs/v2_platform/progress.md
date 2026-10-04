@@ -7,7 +7,7 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-10-04 (**E62 complete — 5/5, Project Identity, Discovery &
+**Last updated:** 2026-10-04 (**E63 complete — 5/5, Flow Applicability & Task-Intent Execution Routing**: manifests declare `purpose`/`whenToUse`/`whenNotToUse`/`requires` (S1), `backend/projects/state.py` probes real project state (S2), `FlowSelector` gates deterministically then lets a model choose or answer `none`, recording `flow.selection.matched`/`.skipped` (57 event types) (S3), chat follows intent — `RunTypeRouter` is now the default agent-order policy and an existing-repo change skips `architect` (S4), two built-in flows are seeded at startup (S5; ADR-030). Previously: **E62 complete — 5/5, Project Identity, Discovery &
 Multi-Project Isolation**. **E62-S1** adds `backend/projects/` (ancestor-walking
 `.autodev/` discovery, typed `config.json`/`project.json`, `ProjectConfigError`).
 **E62-S2** adds the `projects` table on both dialects with forced tenant RLS,
@@ -901,7 +901,7 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E60 | Connection Pooling & PostgreSQL Hardening | Beta | Done | 4/4 | E51-E55, E57, E11-S1 | [phases/e60_postgres_pooling_hardening.md](phases/e60_postgres_pooling_hardening.md) |
 | E61 | Global Install, AUTODEV_HOME & Layered Configuration | Beta | Done | 4/4 | E34 | [phases/e61_global_install_layered_config.md](phases/e61_global_install_layered_config.md) |
 | E62 | Project Identity, Discovery & Multi-Project Isolation | Beta | Done | 5/5 | E61-S1/S2, E49, E50, E8-S1 | [phases/e62_project_identity_discovery.md](phases/e62_project_identity_discovery.md) |
-| E63 | Flow Applicability & Task-Intent Execution Routing | Beta | Not started | 0/5 | E62-S1/S3, E3, E5, E2 | [phases/e63_flow_applicability_routing.md](phases/e63_flow_applicability_routing.md) |
+| E63 | Flow Applicability & Task-Intent Execution Routing | Beta | Done | 5/5 | E62-S1/S3, E3, E5, E2 | [phases/e63_flow_applicability_routing.md](phases/e63_flow_applicability_routing.md) |
 | E64 | Execution Panel: Real Technical Event Stream | Beta | Not started | 0/4 | E42-S1, E43-S2/S3, E41-S3/S4, E33 | [phases/e64_execution_panel_real_events.md](phases/e64_execution_panel_real_events.md) |
 | E65 | Interactive Terminal | Beta | Not started | 0/4 | E62, E11-S2, E15-S2, E32 | [phases/e65_interactive_terminal.md](phases/e65_interactive_terminal.md) |
 | E66 | Acceptance, Evidence & Delivery | Beta | Not started | 0/2 | E61-E65 | [phases/e66_acceptance_delivery.md](phases/e66_acceptance_delivery.md) |

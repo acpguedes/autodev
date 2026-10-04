@@ -2,7 +2,7 @@
 
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35 and E41-E62).
-**Status:** Not started · **Stories:** 0/5
+**Status:** Done · **Stories:** 5/5
 **Depends on:** E62-S1/S3 (a resolved project whose real state can be probed),
 E3 (Flow Engine, complete and tested), E5 (Router/Selector contracts),
 E2 (Agent Registry)
@@ -272,6 +272,17 @@ Subtasks:
 | DoR (specific) | E63-S1 merged |
 | DoD (specific) | A test that seeding twice leaves one registry entry per version; a test that each built-in flow's refs resolve in a default install |
 | Dependencies | E63-S1, E63-S4 |
+
+**Declared ref gaps (E63-S5-T3).** The only agents and skills a default install
+can resolve are the reference plugins under `examples/plugins/`
+(`autodev/agent-coder`, `autodev/skill-apply-patch`). `autodev/flow-project-bootstrap`
+uses only those and is fully resolvable. `autodev/flow-feature-delivery` mirrors
+the validated example and additionally references `autodev/agent-planner`,
+`autodev/skill-run-eval` and `autodev/skill-notify`, which are **not shipped**;
+its `plan`, `evaluate` and `escalate` nodes cannot run until those artifacts
+exist. `backend/tests/unit/flows/test_builtin_flows.py` pins this gap set so a new
+unresolved ref fails the test. The built-in `agent-coder` ref is `>=1.0 <2.0`
+(the example's `@2.1.0` matched no shipped version).
 
 ## Contracts and decisions
 

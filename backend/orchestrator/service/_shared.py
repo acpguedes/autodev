@@ -62,7 +62,12 @@ class OrchestratorState:
     ) -> Dict[str, Dict[str, Any]]:  # pragma: no cover
         raise NotImplementedError
 
-    def _infer_run_type(self, *, goal: str, message: str) -> RunType:  # pragma: no cover
+    def _infer_run_type(
+        self, *, goal: str, message: str, state: Any = None
+    ) -> RunType:  # pragma: no cover
+        raise NotImplementedError
+
+    def _graph_for_run(self, run_type: RunType, intent: str) -> Any:  # pragma: no cover
         raise NotImplementedError
 
     def _normalize_execution_history(

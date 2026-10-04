@@ -14,9 +14,21 @@ from typing import Any
 from packaging.version import Version
 
 from backend.flows.manifest import validate_flow_manifest
-from backend.flows.model import FlowManifest, version_in_range
+from backend.flows.model import FlowManifest, FlowRequires, version_in_range
 from backend.persistence import contract
 from backend.persistence.database import get_store
+
+
+def _requires_json(requires: FlowRequires | None) -> dict[str, Any] | None:
+    """Project a manifest's ``requires`` block to catalog JSON."""
+    if requires is None or requires.empty:
+        return None
+    return {
+        "populated": requires.populated,
+        "git": requires.git,
+        "tests": requires.tests,
+        "languages": list(requires.languages),
+    }
 
 
 class FlowRegistry:
@@ -153,6 +165,12 @@ class FlowRegistry:
                         for trigger in manifest.triggers
                     ],
                     "nodes": len(manifest.nodes),
+                    "purpose": manifest.purpose,
+                    "whenToUse": manifest.when_to_use,
+                    "whenNotToUse": manifest.when_not_to_use,
+                    "requires": _requires_json(manifest.requires),
+                    "input": manifest.input.schema if manifest.input else None,
+                    "output": manifest.output.schema if manifest.output else None,
                 }
                 for manifest in self.list_flows()
             ],

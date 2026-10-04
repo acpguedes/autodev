@@ -65,10 +65,46 @@ class GraphMixin(OrchestratorState):
             pass
         return agents
 
-    def _compile_graph(self) -> Any:
-        """Compile the LangGraph workflow from the configured agent order."""
+    def _graph_for_run(self, run_type: Any, intent: str) -> Any:
+        """Return the compiled graph for a run, routed by run type (E63-S4).
+
+        Uses :class:`~backend.orchestrator.routing.RunTypeRouter` unless the
+        service was configured with a non-default ``agent_order`` (an explicit
+        operator/test choice that always wins). Compiled graphs are cached per
+        distinct order.
+
+        Args:
+            run_type: The run's inferred :class:`RunType`.
+            intent: Goal and message text, for architectural-intent detection.
+
+        Returns:
+            A compiled LangGraph workflow.
+        """
+        from backend.orchestrator.routing import _FULL_ORDER, RunTypeRouter  # noqa: PLC0415
+
+        if list(self._config.agent_order) != _FULL_ORDER:
+            return self._graph
+        order = [
+            name
+            for name in RunTypeRouter().order_for(run_type, intent)
+            if name in self._agents
+        ]
+        if order == _FULL_ORDER:
+            return self._graph
+        cache = self.__dict__.setdefault("_routed_graphs", {})
+        key = tuple(order)
+        if key not in cache:
+            cache[key] = self._compile_graph(order)
+        return cache[key]
+
+    def _compile_graph(self, order: list[str] | None = None) -> Any:
+        """Compile the LangGraph workflow from an agent order.
+
+        Args:
+            order: Agent order to compile; defaults to the configured one.
+        """
         workflow = StateGraph(AgentGraphState)
-        order = list(self._config.agent_order)
+        order = list(order if order is not None else self._config.agent_order)
         for agent_name in order:
             workflow.add_node(agent_name, self._make_agent_node(agent_name))
 

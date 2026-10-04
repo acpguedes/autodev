@@ -17,6 +17,7 @@ import yaml
 from backend.flows.fields import (
     _normalize_on_key,
     _parse_io,
+    _parse_requires,
     _parse_ref,
     _parse_retries,
     _parse_timeout,
@@ -279,6 +280,12 @@ def validate_flow_manifest(raw: dict[str, Any]) -> FlowManifestValidationResult:
     flow_input = _parse_io(raw.get("input"), "input", errors)
     flow_output = _parse_io(raw.get("output"), "output", errors)
     budgets = _parse_budgets(raw.get("budgets"), errors)
+    requires = _parse_requires(raw.get("requires"), errors)
+    applicability: dict[str, str] = {}
+    for key in ("purpose", "whenToUse", "whenNotToUse"):
+        if key in raw and not isinstance(raw[key], str):
+            errors.append(f"{key} must be a string")
+        applicability[key] = _string(raw.get(key)).strip()
 
     defaults_raw = raw.get("defaults")
     defaults = FlowDefaults()
@@ -337,6 +344,10 @@ def validate_flow_manifest(raw: dict[str, Any]) -> FlowManifestValidationResult:
             nodes=tuple(nodes),
             edges=tuple(edges),
             budgets=budgets,
+            purpose=applicability["purpose"],
+            when_to_use=applicability["whenToUse"],
+            when_not_to_use=applicability["whenNotToUse"],
+            requires=requires,
             raw=dict(raw),
         ),
     )

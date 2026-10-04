@@ -1,0 +1,66 @@
+# Built-in flow: scaffold a new project from an empty or unstructured workspace.
+# NOT for existing codebases; the selector gate enforces `requires.populated: false`.
+schemaVersion: "1"
+
+id: "autodev/flow-project-bootstrap"
+version: "1.0.0"
+name: "Project Bootstrap"
+description: "Plan -> scaffold -> apply patch -> human review."
+hostApi: ">=2.0 <3.0"
+
+purpose: "Create the initial structure of a new project (layout, tooling, first module) from a description."
+whenToUse: "The project is empty or holds no recognizable code, and the task is to start something new."
+whenNotToUse: "The project already contains code. Never use this to change, extend or restructure an existing codebase; use autodev/flow-feature-delivery."
+requires:
+  populated: false
+
+triggers:
+  - type: "message"
+
+input:
+  schemaVersion: "1"
+  type: object
+  required: ["task"]
+  properties:
+    task: { type: string }
+
+defaults:
+  retries: { maxAttempts: 2, backoff: "exponential", initialDelaySec: 2 }
+  timeoutSec: 120
+
+nodes:
+  - id: "scaffold"
+    type: "agent"
+    ref: "autodev/agent-coder@>=1.0 <2.0"
+    timeoutSec: 300
+    input:
+      task: "{{ flow.input.task }}"
+
+  - id: "apply-scaffold"
+    type: "skill"
+    ref: "autodev/skill-apply-patch@>=1.0 <2.0"
+    input:
+      patch: "{{ nodes.scaffold.output.patch }}"
+
+  - id: "human-review"
+    type: "human"
+    prompt: "Review the generated project skeleton. Accept it?"
+    form:
+      schemaVersion: "1"
+      type: object
+      required: ["decision"]
+      properties:
+        decision: { type: string, enum: ["approve", "request-changes"] }
+        notes: { type: string }
+    timeoutSec: 86400
+
+edges:
+  - from: "scaffold"
+    to: "apply-scaffold"
+  - from: "apply-scaffold"
+    to: "human-review"
+
+budgets:
+  maxCostUsd: 5.0
+  maxWallClockSec: 1800
+  maxTokens: 1000000

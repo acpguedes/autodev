@@ -251,3 +251,17 @@ GET `/v2/flows/runs/{run_id}/events`.
 
 Every payload carries `schemaVersion`. Authentication follows the platform's
 opt-in bearer token (`AUTODEV_API_TOKEN`, `backend/api/security.py`).
+
+
+## Selection from chat (E63)
+
+The chat entrypoint (`OrchestratorService._prepare_run`) probes the project
+root (`backend/projects/state.py`), then `FlowSelector` (`backend/flows/selection.py`)
+eliminates every flow whose `requires` conflicts with that state **before** any
+model sees it, and lets a model choose among the survivors or answer `none`.
+A matched flow runs through `FlowEngine.start_run`; `none` (or any error,
+timeout or unparseable answer — fail closed) takes the direct path, whose agent
+order comes from `RunTypeRouter`. A missing essential input yields one targeted
+question. Each decision is recorded as `flow.selection.matched` /
+`flow.selection.skipped`. Explicit `POST /v2/flows/{ns}/{name}/runs` is
+unchanged. See ADR-030.

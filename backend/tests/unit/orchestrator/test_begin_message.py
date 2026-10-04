@@ -230,12 +230,12 @@ def test_auto_execute_flag_off_leaves_chat_only_behavior_unchanged(
 
     assert completed.status == RunStatus.COMPLETED
     step_keys = {step.step_key for step in completed.steps}
-    # Only the 7 conversational agent steps -- no task-derived step ids
+    # Only the 6 routed conversational agent steps (no architect for an
+    # existing-repo change, E63-S4) -- no task-derived step ids
     # (e.g. "coding-1", "devops-...") ever appear when the flag is off.
     assert step_keys == {
         "navigator",
         "analyzer",
-        "architect",
         "coder",
         "devops",
         "validator",

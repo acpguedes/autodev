@@ -218,6 +218,36 @@ class FlowIO:
 
 
 @dataclass(frozen=True)
+class FlowRequires:
+    """Structured project-state preconditions a flow declares (E63-S1).
+
+    Every field is optional; ``None`` means "no constraint". The vocabulary
+    mirrors :class:`backend.projects.state.ProjectState`.
+
+    Attributes:
+        populated: Required value of "project has existing content".
+        git: Required value of "project is a Git repository".
+        tests: Required value of "project has a test suite".
+        languages: The project must contain at least one of these languages.
+    """
+
+    populated: bool | None = None
+    git: bool | None = None
+    tests: bool | None = None
+    languages: tuple[str, ...] = ()
+
+    @property
+    def empty(self) -> bool:
+        """Whether no precondition is declared."""
+        return (
+            self.populated is None
+            and self.git is None
+            and self.tests is None
+            and not self.languages
+        )
+
+
+@dataclass(frozen=True)
 class FlowManifest:
     """A parsed, validated ``flow.yaml`` document.
 
@@ -235,6 +265,10 @@ class FlowManifest:
         nodes: Flow nodes, in declaration order.
         edges: Flow edges, in declaration order.
         budgets: Fail-closed run budgets.
+        purpose: What the flow is for (E63-S1); model- and human-readable.
+        when_to_use: When the flow applies; empty when undeclared.
+        when_not_to_use: When the flow must not be chosen; empty when undeclared.
+        requires: Project-state preconditions; ``None`` when undeclared.
         raw: Original manifest document.
     """
 
@@ -251,7 +285,20 @@ class FlowManifest:
     nodes: tuple[FlowNode, ...] = ()
     edges: tuple[FlowEdge, ...] = ()
     budgets: FlowBudgets = DEFAULT_FLOW_BUDGETS
+    purpose: str = ""
+    when_to_use: str = ""
+    when_not_to_use: str = ""
+    requires: FlowRequires | None = None
     raw: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def auto_selectable(self) -> bool:
+        """Whether the flow declares enough applicability to be auto-selected.
+
+        A flow with neither ``purpose`` nor ``whenToUse`` stays explicitly
+        runnable but is never chosen automatically (E63-S1-T3).
+        """
+        return bool(self.purpose or self.when_to_use)
 
     def node(self, node_id: str) -> FlowNode:
         """Return the node with the given id.
@@ -364,6 +411,7 @@ __all__ = [
     "FLOW_ID_RE",
     "FLOW_NODE_TYPES",
     "FLOW_SCHEMA_VERSION",
+    "FlowRequires",
     "FlowBudgets",
     "FlowDefaults",
     "FlowEdge",

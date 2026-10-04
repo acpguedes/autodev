@@ -22,6 +22,8 @@ whole definition lives in `flow.yaml`.
 | `version` | yes | Flow SemVer `MAJOR.MINOR.PATCH`. |
 | `hostApi` | yes | Host API compatibility range, e.g. `">=2.0 <3.0"`. |
 | `name`, `description` | no | Display metadata. |
+| `purpose`, `whenToUse`, `whenNotToUse` | no | Applicability text (E63-S1), readable by humans and by the flow selector. A flow declaring neither `purpose` nor `whenToUse` is **never automatically selected**; it stays explicitly runnable via `POST /v2/flows/{ns}/{name}/runs`. |
+| `requires` | no | Structured project-state preconditions enforced by the deterministic selector gate (E63-S3): `populated`, `git`, `tests` (booleans) and `languages` (any-of list). Unknown keys fail validation with a field-path message. |
 | `triggers` | no | What starts a run: `message`, `webhook`, `cron` (needs `schedule`), `event` (needs `on`). |
 | `input`, `output` | no | JSON Schemas for run input/consolidated output (carry their own `schemaVersion`). |
 | `defaults` | no | `retries` and `timeoutSec` applied to nodes that do not override them. |
