@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import html as _html
+import os
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -16,11 +17,36 @@ import sys
 
 from dotenv import load_dotenv
 
-# Pin the dotenv path to this repo's root so python-dotenv's upward search
-# cannot escape a nested git worktree into a parent checkout's .env. Under
-# pytest, do not override env vars already set by the harness (preserves test
-# isolation); production imports still refresh from .env.
-_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+from backend.config.paths import autodev_home
+
+
+def _resolve_env_path() -> Path:
+    """Resolve the ``.env`` file to load before ``Settings`` is constructed.
+
+    Checked in order: the active project root (``AUTODEV_PROJECT_ROOT`` if
+    set, else the launch cwd), then the tool's global home
+    (``AUTODEV_HOME``/``~/.autodev``). Never this package's own source tree
+    (E61-S1-T3): under a wheel install, ``Path(__file__).resolve().parents[2]``
+    is somewhere under ``site-packages/``, where a project's ``.env`` never
+    lives, so that path silently never loaded one. ``load_dotenv`` on a path
+    that does not exist is a no-op, matching the previous graceful-skip
+    behavior when no ``.env`` is present.
+
+    Returns:
+        The ``.env`` path to load (may not exist).
+    """
+    project_root = Path(os.getenv("AUTODEV_PROJECT_ROOT", "").strip() or Path.cwd())
+    project_env = project_root / ".env"
+    if project_env.exists():
+        return project_env
+    return autodev_home() / ".env"
+
+
+# Resolved ahead of third-party imports (hence the `ruff: noqa: E402` above)
+# so `.env` values are visible to `Settings()` construction further down.
+# Under pytest, do not override env vars already set by the harness
+# (preserves test isolation); production imports still refresh from `.env`.
+_ENV_PATH = _resolve_env_path()
 load_dotenv(_ENV_PATH, override="pytest" not in sys.modules)
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response

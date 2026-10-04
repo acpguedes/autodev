@@ -20,13 +20,48 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from backend.config.paths import autodev_home
 from backend.persistence.backup import BackupManager
 from backend.persistence.migrations import SchemaVersionMismatchError
 
 UpgradeStatus = Literal["ok", "refused", "backup_failed"]
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_CHANGELOG_PATH = _REPO_ROOT / "CHANGELOG.md"
+#: Bound on the upward walk :func:`_resolve_changelog_path` performs when
+#: looking for a repository checkout's ``CHANGELOG.md``.
+_CHANGELOG_SEARCH_MAX_LEVELS = 6
+
+
+def _resolve_changelog_path() -> Path:
+    """Resolve the best-effort ``CHANGELOG.md`` used for upgrade release notes.
+
+    Checked in order: a copy placed directly in the tool's global home
+    (``AUTODEV_HOME``, so an operator or a future packaging step can ship one
+    there), then a bounded upward walk from this module's own location for a
+    repository checkout's ``CHANGELOG.md`` (an editable/dev install).
+
+    Unlike the previous ``Path(__file__).resolve().parents[2]`` (E61-S1-T3),
+    this does not assume a fixed source-tree depth -- under a wheel install
+    with neither candidate present, it resolves to a path that does not
+    exist, which :func:`_release_notes_for` already treats as "no release
+    notes", the same graceful degrade as before.
+
+    Returns:
+        The resolved ``CHANGELOG.md`` path (existence not guaranteed).
+    """
+    home_candidate = autodev_home() / "CHANGELOG.md"
+    if home_candidate.exists():
+        return home_candidate
+
+    current = Path(__file__).resolve()
+    for _ in range(_CHANGELOG_SEARCH_MAX_LEVELS):
+        current = current.parent
+        candidate = current / "CHANGELOG.md"
+        if candidate.exists():
+            return candidate
+    return current / "CHANGELOG.md"
+
+
+_CHANGELOG_PATH = _resolve_changelog_path()
 _VERSION_HEADING = re.compile(r"^##\s*\[?([^\]\s]+)\]?")
 
 

@@ -17,6 +17,8 @@ from typing import Any, Literal
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from backend.config.paths import global_state_db_path
+
 _SECRET_FIELDS = {
     "openai_api_key",
     "autodev_api_token",
@@ -82,7 +84,12 @@ class Settings(BaseSettings):
     autodev_settings_file: str = ""
 
     # --- persistence ---
-    database_url: str = "sqlite:///./autodev.db"
+    # Default resolves against the global data directory (E61-S1-T2), not the
+    # launch cwd -- so running `autodev` from a different directory no longer
+    # silently targets a different database. An explicitly set DATABASE_URL
+    # (env, settings file, or init kwarg) still wins unchanged; only this
+    # *default* moved.
+    database_url: str = Field(default_factory=lambda: f"sqlite:///{global_state_db_path()}")
     autodev_postgres_pool_min_size: int = Field(default=1, ge=0)
     autodev_postgres_pool_max_size: int = Field(default=10, ge=1)
     autodev_postgres_pool_timeout_seconds: float = Field(default=5.0, gt=0)
