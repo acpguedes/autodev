@@ -68,7 +68,8 @@ def test_cache_hits_and_invalidates(tmp_path: Path, monkeypatch) -> None:
     cached_project_state(tmp_path)
     assert len(calls) == 1
     (tmp_path / "new.py").write_text("")
-    import os, time
+    import os
+    import time
 
     future = time.time() + 5
     os.utime(tmp_path, (future, future))

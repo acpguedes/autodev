@@ -95,9 +95,12 @@ def test_flow_without_applicability_is_never_auto_selected(tmp_path: Path) -> No
     doc = _flow("autodev/flow-silent", None)
     del doc["purpose"], doc["whenToUse"]
     called: list[Any] = []
-    result = FlowSelector(
-        _registry(tmp_path, doc), lambda t, c: called.append(c) or {"flow": "x"}
-    ).select("x", POPULATED)
+
+    def chooser(task: str, candidates: Any) -> Any:
+        called.append(candidates)
+        return {"flow": "x"}
+
+    result = FlowSelector(_registry(tmp_path, doc), chooser).select("x", POPULATED)
     assert result.outcome == "skipped" and not called
 
 

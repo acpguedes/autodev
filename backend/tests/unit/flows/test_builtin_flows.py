@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from backend.flows.model import FlowRequires
+
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from backend.flows.builtin import BUILTIN_DIR, load_builtin_flows, seed_builtin_flows
+from backend.flows.builtin import load_builtin_flows, seed_builtin_flows
 from backend.flows.model import version_in_range
 from backend.flows.registry import FlowRegistry
 from backend.persistence.database import SQLiteStore
@@ -40,8 +42,8 @@ def _shipped_artifacts() -> dict[str, str]:
 def test_builtins_validate_and_declare_applicability() -> None:
     flows = {m.id: m for m in load_builtin_flows()}
     assert set(flows) == {"autodev/flow-project-bootstrap", "autodev/flow-feature-delivery"}
-    assert flows["autodev/flow-project-bootstrap"].requires.populated is False
-    assert flows["autodev/flow-feature-delivery"].requires.populated is True
+    assert (flows["autodev/flow-project-bootstrap"].requires or FlowRequires()).populated is False
+    assert (flows["autodev/flow-feature-delivery"].requires or FlowRequires()).populated is True
     assert all(m.auto_selectable for m in flows.values())
     assert "existing codebase" in flows["autodev/flow-project-bootstrap"].when_not_to_use
 
