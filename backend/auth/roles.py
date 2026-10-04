@@ -29,6 +29,7 @@ _ROLE_TIER_ADDITIONS: tuple[tuple[Role, frozenset[str]], ...] = (
                 "session:read",
                 "run:read",
                 "repository:read",
+                "project:read",
                 "flow:read",
                 "agent:read",
                 "skill:read",
@@ -77,6 +78,7 @@ _ROLE_TIER_ADDITIONS: tuple[tuple[Role, frozenset[str]], ...] = (
                 "audit:read",
                 "service_credential:admin",
                 "rbac:admin",
+                "project:write",
             }
         ),
     ),

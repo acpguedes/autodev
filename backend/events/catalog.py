@@ -411,6 +411,17 @@ class SecretLeakSuspectedData(BaseModel):
     location: str
 
 
+class ProjectLifecycleData(BaseModel):
+    """Shared payload of ``project.created``/``project.activated`` (E62-S4).
+
+    Carries identifiers and the project name only -- never a filesystem path.
+    """
+
+    tenantId: str
+    projectId: str
+    name: str
+
+
 @dataclass(frozen=True)
 class EventDefinition:
     """Catalog entry describing one event type (§14.5 table).
@@ -510,6 +521,8 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
         "runId",
         EnvironmentInstanceRetiredData,
     ),
+    EventDefinition("project.created", "Control Plane API", "tenantId", ProjectLifecycleData),
+    EventDefinition("project.activated", "Control Plane API", "tenantId", ProjectLifecycleData),
     EventDefinition("secret.created", "Secret Service", "tenantId", SecretLifecycleData),
     EventDefinition("secret.rotated", "Secret Service", "tenantId", SecretLifecycleData),
     EventDefinition("secret.revoked", "Secret Service", "tenantId", SecretLifecycleData),
