@@ -14,6 +14,7 @@ import pytest
 
 from backend.environments.store import EnvironmentStore
 from backend.execution.policy import PolicyStore
+from backend.projects.store import ProjectStore
 from backend.persistence.postgres_adapter import PostgresPlanStore, PostgresStore
 from backend.persistence.sqlite_adapter import SQLitePlanStore, SQLiteStore, _resolve_db_path
 from backend.plans.step_state import StepApprovalStore
@@ -57,6 +58,11 @@ def policy_store(sql_store: SqlStore) -> PolicyStore:
 @pytest.fixture
 def environment_store(sql_store: SqlStore) -> EnvironmentStore:
     return EnvironmentStore(store=sql_store)
+
+
+@pytest.fixture
+def project_store(sql_store: SqlStore) -> ProjectStore:
+    return ProjectStore(store=sql_store)
 
 
 @pytest.fixture

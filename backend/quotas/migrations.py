@@ -31,7 +31,7 @@ from backend.persistence.migrations.versions import TENANT_SCOPED_STORE_TABLES
 
 #: Every table this check expects to carry direct tenant isolation, beyond
 #: the core/plan store tables the migration modules already enumerate.
-ADDITIONAL_TENANT_SCOPED_TABLES = ("flow_runs", "artifacts", "events")
+ADDITIONAL_TENANT_SCOPED_TABLES = ("flow_runs", "artifacts", "events", "projects")
 
 
 class TenancyCheckError(RuntimeError):

@@ -14,7 +14,11 @@ from __future__ import annotations
 from typing import Any
 
 from backend.persistence.migrations.runner import Migration, MigrationEntry
-from backend.persistence.migrations.versions import TENANT_SCOPED_STORE_TABLES
+from backend.persistence.migrations.versions import (
+    DEFAULT_PROJECT_ID,
+    TENANT_SCOPED_STORE_TABLES,
+    configured_project_root_for_backfill,
+)
 
 
 def _pg_m1_create_core_tables(conn: Any) -> None:
@@ -963,6 +967,65 @@ def _pg_m13_down_pending_action_decisions_status_expiry_index(conn: Any) -> None
     conn.execute("DROP INDEX IF EXISTS idx_pg_pending_action_decisions_status_expiry")
 
 
+#: Tables E62 brought under tenant RLS. Kept apart from
+#: :data:`E50_TENANT_SCOPED_TABLES` because that tuple drives an
+#: already-applied migration (``_pg_m11``) that runs before these exist.
+E62_TENANT_SCOPED_TABLES = ("projects",)
+
+
+def _pg_m14_create_projects_table(conn: Any) -> None:
+    """Create ``projects`` with tenant RLS, add ``sessions.project_id``, and backfill (E62-S2).
+
+    The backfill runs with ``sessions`` temporarily exempt from forced RLS
+    (the migration connects as the table owner): under ``FORCE ROW LEVEL
+    SECURITY`` and no ``app.tenant_id`` GUC, the tenant list could not be read.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    from pathlib import Path
+
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS projects (
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            project_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            root_path TEXT NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (tenant_id, project_id),
+            UNIQUE (tenant_id, root_path)
+        )
+        """
+    )
+    conn.execute("ALTER TABLE sessions ADD COLUMN IF NOT EXISTS project_id TEXT")
+    root = configured_project_root_for_backfill()
+    conn.execute("ALTER TABLE sessions NO FORCE ROW LEVEL SECURITY")
+    conn.execute(
+        "INSERT INTO projects (tenant_id, project_id, name, root_path, is_active) "
+        "SELECT DISTINCT tenant_id, %s, %s, %s, TRUE FROM sessions WHERE project_id IS NULL "
+        "ON CONFLICT DO NOTHING",
+        (DEFAULT_PROJECT_ID, Path(root).name or DEFAULT_PROJECT_ID, root),
+    )
+    conn.execute("UPDATE sessions SET project_id = %s WHERE project_id IS NULL", (DEFAULT_PROJECT_ID,))
+    conn.execute("ALTER TABLE sessions FORCE ROW LEVEL SECURITY")
+    for table in E62_TENANT_SCOPED_TABLES:
+        _apply_tenant_rls(conn, table)
+
+
+def _pg_m14_down_drop_projects_table(conn: Any) -> None:
+    """Revert :func:`_pg_m14_create_projects_table`.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute("ALTER TABLE sessions DROP COLUMN IF EXISTS project_id")
+    for table in E62_TENANT_SCOPED_TABLES:
+        _revoke_tenant_rls(conn, table)
+        conn.execute(f"DROP TABLE IF EXISTS {table}")
+
+
 POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
     _pg_m1_create_core_tables,
     Migration(
@@ -1030,7 +1093,12 @@ POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
         down=_pg_m13_down_pending_action_decisions_status_expiry_index,
         name="pending_action_decisions_status_expiry_index",
     ),
+    Migration(
+        up=_pg_m14_create_projects_table,
+        down=_pg_m14_down_drop_projects_table,
+        name="create_projects_table",
+    ),
 ]
 
 
-__all__ = ["E50_TENANT_SCOPED_TABLES", "POSTGRES_STORE_MIGRATIONS"]
+__all__ = ["E50_TENANT_SCOPED_TABLES", "E62_TENANT_SCOPED_TABLES", "POSTGRES_STORE_MIGRATIONS"]

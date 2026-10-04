@@ -148,3 +148,16 @@ def test_plan_step_state_isolation_both_directions(
 
     assert step_approval_store.list_steps(session_id, tenant_id=tenant_b) == []
     assert len(step_approval_store.list_steps(session_id, tenant_id=tenant_a)) == 1
+
+
+def test_project_isolation_both_directions(project_store) -> None:
+    tenant_a, tenant_b = _uid("tenant"), _uid("tenant")
+    record = project_store.create(tenant_id=tenant_a, name="a", root_path="/tmp/e62-iso-a")
+
+    assert project_store.get(record.project_id, tenant_id=tenant_b) is None
+    assert project_store.get(record.project_id, tenant_id=tenant_a) is not None
+    assert project_store.list(tenant_id=tenant_b) == []
+    assert [p.project_id for p in project_store.list(tenant_id=tenant_a)] == [record.project_id]
+    # Same root may be registered independently by another tenant.
+    other = project_store.create(tenant_id=tenant_b, name="b", root_path="/tmp/e62-iso-a")
+    assert other.tenant_id == tenant_b and other.project_id != record.project_id
