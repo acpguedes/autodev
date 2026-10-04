@@ -184,6 +184,7 @@ each:
 | `backend-tests` | `ci-backend.yml` | full pytest suite (SQLite) + 85% product-coverage gate |
 | `backend-tests-postgres` | `ci-backend.yml` | full pytest suite, incl. `slow`, against real PostgreSQL 16 + pgvector, Redis, and MinIO (E57) — no coverage gate; the SQLite leg above owns coverage |
 | `patch-validation` | `ci-backend.yml` | patch engine dry-run does not write; path-traversal guard rejects escapes (`scripts/validate_patches.py`) |
+| `clean-install-verification` | `ci-backend.yml` | wheel build + install from a directory outside the checkout, with `AUTODEV_HOME` preserved across a reinstall (`scripts/verify_clean_install.sh`, E61-S3) |
 | `security-baseline` | `ci-backend.yml` | secret scanning + critical-CVE scan |
 | `frontend-checks` | `ci-frontend.yml` | eslint + tsc + vitest + build |
 | `smoke-e2e` | `ci-e2e.yml` | backend boots; Playwright e2e suite passes |
