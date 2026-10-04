@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, Field
 
 from backend.api.authorization import requires_scope
@@ -27,6 +27,7 @@ from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
 from backend.api.v2_common import SCHEMA_VERSION_V2, PageMetaV2, PaginationParams, v2_error
 from backend.execution.modes import ExecutionMode
 from backend.execution.policy import PolicyMissingError
+from backend.projects.resolution import session_id_from_request
 from backend.quotas.contracts import QuotaExceededError
 from backend.orchestrator.service import (
     ExecutionPlan,
@@ -40,7 +41,9 @@ from backend.orchestrator.service import (
 router = APIRouter(prefix="/v2/sessions", dependencies=[Depends(require_v2_principal)])
 
 
-def get_orchestrator_v2() -> OrchestratorService:
+def get_orchestrator_v2(
+    request: Request, principal: PrincipalV2 = Depends(require_v2_principal)
+) -> OrchestratorService:
     """Build an :class:`OrchestratorService` bound to the current runtime config.
 
     Constructed fresh per request, matching the convention used by every
@@ -55,10 +58,19 @@ def get_orchestrator_v2() -> OrchestratorService:
     (E43-S6), the same construction the background message-run job handler
     uses, so both stay in sync.
 
+    The project root is resolved per request (E62-S3): the session named in the
+    path or query, else the tenant's active project, else the process-wide root.
+
+    Args:
+        request: The incoming request, for its session id.
+        principal: Authenticated caller; its tenant scopes project resolution.
+
     Returns:
         A new :class:`OrchestratorService`.
     """
-    return build_default_orchestrator()
+    return build_default_orchestrator(
+        tenant_id=principal.tenant_id, session_id=session_id_from_request(request)
+    )
 
 
 class HistoryItemV2(BaseModel):
@@ -102,6 +114,10 @@ class SessionCreateRequestV2(BaseModel):
     """Request body for ``POST /v2/sessions``."""
 
     goal: str = Field(..., min_length=1, description="High level goal for the new session.")
+    project_id: str | None = Field(
+        default=None,
+        description="Project to bind the session to; defaults to the tenant's active project.",
+    )
 
 
 class SessionV2(BaseModel):
@@ -285,7 +301,12 @@ def create_session_v2(
     Returns:
         The newly created session.
     """
-    plan_session = orchestrator.create_plan(request.goal, tenant_id=principal.tenant_id)
+    try:
+        plan_session = orchestrator.create_plan(
+            request.goal, tenant_id=principal.tenant_id, project_id=request.project_id
+        )
+    except KeyError as exc:
+        v2_error(404, str(exc.args[0]))
     return SessionV2(
         session_id=plan_session.session_id,
         goal=plan_session.goal,

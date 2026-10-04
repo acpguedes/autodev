@@ -20,6 +20,7 @@ from backend.orchestrator.service.models import (
     RunType,
 )
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
+from backend.projects.resolution import resolve_project
 
 #: Job type for :meth:`ChatMixin.begin_message`'s background graph run (E43-S6).
 #: Owned here (the enqueuing side) so this module has no dependency on
@@ -31,7 +32,9 @@ MESSAGE_RUN_JOB_TYPE = "orchestrator.message_run"
 class ChatMixin(OrchestratorState):
     """Plan-session creation and the message-driven agent-graph run."""
 
-    def create_plan(self, goal: str, *, tenant_id: str = DEFAULT_TENANT_ID) -> PlanSession:
+    def create_plan(
+        self, goal: str, *, tenant_id: str = DEFAULT_TENANT_ID, project_id: str | None = None
+    ) -> PlanSession:
         """Create a new session and generate its initial plan via the planner agent.
 
         Args:
@@ -39,6 +42,8 @@ class ChatMixin(OrchestratorState):
             tenant_id: Tenant the new session belongs to. Callers behind
                 authentication must pass the resolved principal's tenant —
                 never a client-supplied value.
+            project_id: Project to bind the session to (E62-S3); defaults to
+                the tenant's active project, or none when no project exists.
 
         Returns:
             The newly created planning session.
@@ -56,11 +61,24 @@ class ChatMixin(OrchestratorState):
             plan=plan_steps,
             artifacts={planner.name: dict(plan_result.metadata)},
             tenant_id=tenant_id,
+            project_id=self._bind_project_id(tenant_id, project_id),
         )
 
         return PlanSession(
             session_id=session_id, goal=goal, plan=plan_steps, status=status
         )
+
+    @staticmethod
+    def _bind_project_id(tenant_id: str, requested: str | None) -> str | None:
+        """Return the project id a new session is attached to, or ``None``.
+
+        Raises:
+            KeyError: If *requested* is not a project of *tenant_id*.
+        """
+        record = resolve_project(tenant_id=tenant_id, project_id=requested)
+        if requested and (record is None or record.project_id != requested):
+            raise KeyError(f"Unknown project_id: {requested}")
+        return record.project_id if record is not None else None
 
     def _prepare_run(
         self, session_id: str, message: str, *, tenant_id: str

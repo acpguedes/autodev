@@ -35,7 +35,7 @@ from backend.execution.contracts import (
 from backend.patches.engine import apply_patch, generate_patch
 from backend.patches.models import Patch
 from backend.validation.models import ValidationJob
-from backend.validation.sandbox import SandboxRunner
+from backend.validation.sandbox import SandboxRunner, sandbox_policy_from_settings
 
 if TYPE_CHECKING:
     from backend.environments.contracts import EnvironmentHandle
@@ -307,7 +307,9 @@ class CompositeActionRunner:
                 given, :meth:`bind_environment` can scope dispatch to a
                 provisioned environment (E32-S1-T1).
         """
-        shared_sandbox = sandbox_runner or SandboxRunner()
+        shared_sandbox = sandbox_runner or SandboxRunner(
+            policy=sandbox_policy_from_settings(project_root=project_root)
+        )
         self._patch_runner = PatchRunner(project_root=project_root, enable_writes=enable_writes)
         self._command_runner = CommandRunner(sandbox_runner=shared_sandbox)
         self._validation_runner = ValidationRunner(sandbox_runner=shared_sandbox)

@@ -26,6 +26,7 @@ class _SessionsMixin(_ConnectionOwner):
         plan: list[str],
         artifacts: dict[str, Any],
         tenant_id: str = DEFAULT_TENANT_ID,
+        project_id: str | None = None,
     ) -> None:
         """Insert a new session row scoped to *tenant_id*.
 
@@ -35,6 +36,7 @@ class _SessionsMixin(_ConnectionOwner):
             plan: Ordered list of plan step descriptions.
             artifacts: Arbitrary session artifacts, serialized to JSON.
             tenant_id: Tenant the new session belongs to.
+            project_id: Project the session is attached to, if any (E62-S2).
 
         Raises:
             backend.persistence.contract.PersistenceIntegrityError: If
@@ -44,9 +46,9 @@ class _SessionsMixin(_ConnectionOwner):
         with self.connect() as conn:
             try:
                 conn.execute(
-                    "INSERT INTO sessions (id, goal, plan_json, artifacts_json, tenant_id) "
-                    "VALUES (?, ?, ?, ?, ?)",
-                    (session_id, goal, dumps_json(plan), dumps_json(artifacts), tenant_id),
+                    "INSERT INTO sessions (id, goal, plan_json, artifacts_json, tenant_id, project_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (session_id, goal, dumps_json(plan), dumps_json(artifacts), tenant_id, project_id),
                 )
             except sqlite3.IntegrityError as exc:
                 conn.rollback()
