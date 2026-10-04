@@ -203,5 +203,22 @@
     },
     "skipToContent": "Skip to main content",
     "localeSwitcherLabel": "Switch language to {{locale}}"
+  },
+  "projects": {
+    "pageTitle": "Projects",
+    "pageSubtitle": "Open, configure or create a project",
+    "active": "active",
+    "selector": {
+      "label": "Active project",
+      "choose": "Choose a project"
+    },
+    "onboarding": {
+      "intro": "No project is active. Open an existing project, configure an existing directory, or create a new one.",
+      "rootLabel": "Project directory",
+      "open": "Open project",
+      "init": "Configure this directory",
+      "create": "Create new project",
+      "initNote": "Configuring a directory only adds a .autodev/ folder; your existing files are never changed."
+    }
   }
 }
