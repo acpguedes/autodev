@@ -328,6 +328,10 @@ reads (E11-S4). When enabled:
 - If Docker is **not** available the runner **fails closed**. Unsandboxed host
   execution requires the explicit `AUTODEV_SANDBOX_ALLOW_LOCAL=1` opt-in, and
   still runs only inside the same guarded workspace.
+- The interactive terminal (E65) is a *host* shell behind `AUTODEV_ENABLE_TERMINAL`
+  (default off; `prod` also needs `AUTODEV_TERMINAL_ALLOW_PROD`). Like
+  `AUTODEV_SANDBOX_ALLOW_LOCAL`, enabling it grants the caller the server
+  process's privileges. See `docs/execution/terminal.md` and ADR-032.
 - A command allowlist is enforced (basename of `command[0]`). Note that
   interpreters on the allowlist (`python`, `npm`) can still run arbitrary code,
   so the sandbox isolation above — not the allowlist — is the real boundary.
