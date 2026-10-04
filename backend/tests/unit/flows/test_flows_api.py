@@ -76,7 +76,10 @@ class TestFlowRegistrationApi:
 
         catalog = client.get("/v2/flows").json()
         assert catalog["schemaVersion"] == "1"
-        assert [flow["id"] for flow in catalog["flows"]] == ["autodev/flow-api"]
+        # Built-in flows are seeded at startup (E63-S5); assert on ours only.
+        assert [f["id"] for f in catalog["flows"] if f["id"] == "autodev/flow-api"] == [
+            "autodev/flow-api"
+        ]
 
         versions = client.get("/v2/flows/autodev/flow-api").json()
         assert versions["versions"] == [{"version": "1.0.0", "name": None}]

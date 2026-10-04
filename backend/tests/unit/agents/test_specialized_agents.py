@@ -155,7 +155,7 @@ def test_orchestrator_service_constructs() -> None:
 
 def test_orchestrator_handle_message_returns_ordered_results() -> None:
     """Normal handle_message must still return one result per agent in order."""
-    from backend.orchestrator.service import OrchestratorConfig, OrchestratorService
+    from backend.orchestrator.service import OrchestratorService
 
     svc = OrchestratorService()
 
@@ -163,14 +163,18 @@ def test_orchestrator_handle_message_returns_ordered_results() -> None:
     session_id = f"test-u5-{uuid.uuid4().hex[:8]}"
     svc._store.create_session(
         session_id=session_id,
-        goal="Test U5 integration",
+        goal="U5 integration",
         plan=[],
         artifacts={},
     )
 
-    run = svc.handle_message(session_id=session_id, message="Hello from test")
+    run = svc.handle_message(session_id=session_id, message="Hello there")
 
-    expected_order = list(OrchestratorConfig().agent_order)
+    from backend.orchestrator.routing import RunTypeRouter
+    from backend.orchestrator.service import RunType
+
+    # Default routing (E63-S4): an existing-repo change skips ``architect``.
+    expected_order = RunTypeRouter().order_for(RunType.EXISTING_REPO_CHANGE)
     result_agents = [step.agent for step in run.steps]
 
     # All ordered agents must appear in order.
