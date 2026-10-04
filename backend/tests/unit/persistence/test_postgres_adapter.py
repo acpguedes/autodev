@@ -197,7 +197,7 @@ def test_create_session_inserts_expected_row(store: PostgresStore, scripted_conn
     )
     sql, params = scripted_conn.application_executed[-1]
     assert "INSERT INTO sessions" in sql
-    assert params == ("s1", "build it", json.dumps(["a", "b"]), json.dumps({"k": "v"}), "t1")
+    assert params == ("s1", "build it", json.dumps(["a", "b"]), json.dumps({"k": "v"}), "t1", None)
     assert scripted_conn.commits == 1
 
 

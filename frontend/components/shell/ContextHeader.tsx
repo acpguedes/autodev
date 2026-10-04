@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { getRuntimeConfig } from "@/lib/api";
 import { useTranslations } from "@/lib/i18n";
 
+import { ProjectSelector } from "./ProjectSelector";
 import { useShell } from "./ShellProvider";
 
 /** Fixed contextual-header height in CSS pixels (prototype's 64px header). */
@@ -45,6 +46,7 @@ export function ContextHeader(): React.JSX.Element {
       </div>
 
       <div className="flex shrink-0 items-center gap-2.5">
+        <ProjectSelector />
         {repositoryLabel ? (
           <span className="hidden items-center gap-2 rounded-ds-md border border-ds-line bg-ds-bg-2 px-2.5 py-1.5 text-[12px] text-ds-fg-2 sm:flex">
             <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-ds-fg-3" />

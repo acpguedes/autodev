@@ -7,23 +7,23 @@ context, not a tree. This router adds exactly that, read-only, guarded by
 the same root-containment check :func:`backend.patches.engine.apply_patch`
 already uses for writes, applied here to reads.
 
-The platform currently has one project root per deployment (every other
-``/v2`` router -- ``get_orchestrator_v2`` in ``sessions_v2.py``, the sandbox
-policy -- resolves it the same way), not one per session, so there is no
-per-session root to look up here either.
+Since E62 the project root is per session, not per deployment: it is resolved
+by :func:`backend.projects.resolution.resolve_project_root` from the request's
+``session_id`` (path or query), else the tenant's active project, else the
+process-wide root -- the same resolution ``get_orchestrator_v2`` uses.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel
 
 from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
 from backend.api.v2_common import SCHEMA_VERSION_V2, v2_error
-from backend.config.runtime import get_runtime_config_service
+from backend.projects.resolution import resolve_project_root, session_id_from_request
 
 router = APIRouter(prefix="/v2/repository", dependencies=[Depends(require_v2_principal)])
 
@@ -35,15 +35,21 @@ _EXCLUDED_DIR_NAMES = frozenset({".git", "__pycache__", "node_modules", ".venv"}
 _MAX_FILE_READ_BYTES = 1_000_000
 
 
-def get_project_root_v2() -> Path:
-    """Resolve the platform's single configured project root (E43-S4).
+def get_project_root_v2(
+    request: Request, principal: PrincipalV2 = Depends(require_v2_principal)
+) -> Path:
+    """Resolve the project root for this request (E43-S4, per session since E62-S3).
+
+    Args:
+        request: The incoming request, for its ``session_id``.
+        principal: Authenticated caller; its tenant scopes project resolution.
 
     Returns:
         The project root every browsed path must resolve inside of.
     """
-    config_service = get_runtime_config_service()
-    runtime_config = config_service.apply_to_environment()
-    return Path(runtime_config.repository.project_root).resolve()
+    return resolve_project_root(
+        tenant_id=principal.tenant_id, session_id=session_id_from_request(request)
+    )
 
 
 def _resolve_within_root(root: Path, relative_path: str) -> Path:

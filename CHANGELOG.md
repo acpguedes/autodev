@@ -7,6 +7,21 @@ All notable changes to AutoDev Architect are documented here. Format loosely fol
 
 ### Added
 
+- **E62 — Project Identity, Discovery & Multi-Project Isolation** (5/5
+  stories): a project is now a first-class entity — a directory with a
+  `.autodev/` marker found by walking up from the working directory (nearest
+  wins; Git optional), persisted in a new tenant-RLS `projects` table, and
+  bound to sessions (`sessions.project_id`, backfilled to a `default` project).
+  The project root is resolved per session at every consumer instead of
+  process-wide. New `/v2/projects`, `autodev project list|open|init|create` and
+  a `/projects` UI with a header selector; initializing a directory is additive
+  (no file changed, no run started — tested). `code_chunks` gains `project_id`
+  (unique key widened), session memory and `.autodev/config.json` are isolated
+  per project, `autodev doctor` reports the discovered project, and the event
+  catalog gains `project.created`/`project.activated`. New scopes
+  `project:read` (viewer) and `project:write` (admin). See
+  `docs/projects/discovery.md` and ADR-029.
+
 - **E61 — Global Install, `AUTODEV_HOME` & Layered Configuration** (4/4
   stories, closes the E61 slice of the Beta-hardening program below): a
   single global home (`AUTODEV_HOME`, default `~/.autodev`) for

@@ -14,14 +14,13 @@ FastAPI's generic ``422`` validation error.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
 
 from backend.api.authorization import requires_scope
-from backend.api.rbac_v2 import require_v2_principal
-from backend.config.runtime import get_runtime_config_service
+from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
+from backend.projects.resolution import resolve_project_root, session_id_from_request
 from backend.mcp.jsonrpc import (
     INVALID_REQUEST,
     PARSE_ERROR,
@@ -37,7 +36,9 @@ from backend.skills.registry_v2 import SkillRegistry
 router = APIRouter(prefix="/v2/mcp", tags=["mcp"], dependencies=[Depends(require_v2_principal)])
 
 
-def get_mcp_server() -> McpServer:
+def get_mcp_server(
+    request: Request, principal: PrincipalV2 = Depends(require_v2_principal)
+) -> McpServer:
     """Build an :class:`McpServer` bound to the current runtime config.
 
     Constructed fresh per request, matching the convention used by every
@@ -48,12 +49,12 @@ def get_mcp_server() -> McpServer:
     Returns:
         A new :class:`McpServer` wired to a fresh :class:`SkillRegistry` and
         :class:`SkillInvocationBroker` rooted at the configured project
-        workspace, with the allowlist read from
+        workspace (the request's session project, E62-S3), with the allowlist read from
         ``Settings().mcp_exposed_skills()``.
     """
-    config_service = get_runtime_config_service()
-    runtime_config = config_service.apply_to_environment()
-    workspace = Path(runtime_config.repository.project_root)
+    workspace = resolve_project_root(
+        tenant_id=principal.tenant_id, session_id=session_id_from_request(request)
+    )
     registry = SkillRegistry()
     registry.sync_from_plugin_store()
     broker = SkillInvocationBroker(registry, workspace=workspace)

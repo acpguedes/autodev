@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
@@ -295,21 +296,15 @@ export default function ConfigPage() {
                     />
                   </label>
 
-                  <label className="flex flex-col gap-1.5">
+                  <div className="flex flex-col gap-1.5">
                     <span className={fieldLabel}>Project directory</span>
-                    <Input
-                      value={configDraft.repository.project_root}
-                      onChange={(event) =>
-                        setConfigDraft({
-                          ...configDraft,
-                          repository: {
-                            ...configDraft.repository,
-                            project_root: event.target.value,
-                          },
-                        })
-                      }
-                    />
-                  </label>
+                    <p className="text-sm text-ds-fg-2">
+                      {configDraft.repository.project_root} —{" "}
+                      <Link href={"/projects" as Route} className="underline">
+                        Manage projects
+                      </Link>
+                    </p>
+                  </div>
 
                   <label className="flex flex-col gap-1.5 sm:col-span-2">
                     <span className={fieldLabel}>Default goal</span>

@@ -854,6 +854,163 @@ def _m19_down_drop_environment_tables(conn: sqlite3.Connection) -> None:
         conn.execute(f"DROP TABLE IF EXISTS {table}")
 
 
+#: Project id given to the project every pre-E62 session is backfilled onto
+#: (E62-S2-T3). One per tenant, derived from the configured project root.
+DEFAULT_PROJECT_ID = "default"
+
+
+def configured_project_root_for_backfill() -> str:
+    """Return the project root the backfill attaches historical sessions to.
+
+    ``AUTODEV_PROJECT_ROOT`` when set, else the current directory -- the same
+    resolution :class:`~backend.config.runtime.RepositorySettings` used before
+    projects existed, i.e. the only project that could have existed.
+    """
+    import os
+    from pathlib import Path
+
+    return str(Path(os.getenv("AUTODEV_PROJECT_ROOT", "").strip() or Path.cwd()).resolve())
+
+
+def _m20_create_projects_table(conn: sqlite3.Connection) -> None:
+    """Create ``projects``, add ``sessions.project_id``, and backfill (E62-S2).
+
+    Every tenant that already has sessions gets one ``default`` project rooted
+    at the configured project root, and each of its sessions is attached to it,
+    so no existing row is left with a ``NULL`` project.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    from pathlib import Path
+
+    conn.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS projects (
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            project_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            root_path TEXT NOT NULL,
+            is_active INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (tenant_id, project_id),
+            UNIQUE (tenant_id, root_path)
+        );
+        """
+    )
+    _add_column_if_missing(conn, "sessions", "project_id", "TEXT")
+    root = configured_project_root_for_backfill()
+    conn.execute(
+        "INSERT OR IGNORE INTO projects (tenant_id, project_id, name, root_path, is_active) "
+        "SELECT DISTINCT tenant_id, ?, ?, ?, 1 FROM sessions WHERE project_id IS NULL",
+        (DEFAULT_PROJECT_ID, Path(root).name or DEFAULT_PROJECT_ID, root),
+    )
+    conn.execute("UPDATE sessions SET project_id = ? WHERE project_id IS NULL", (DEFAULT_PROJECT_ID,))
+
+
+def _m20_down_drop_projects_table(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m20_create_projects_table`.
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(sessions)").fetchall()}
+    if "project_id" in existing:
+        conn.execute("ALTER TABLE sessions DROP COLUMN project_id")
+    conn.execute("DROP TABLE IF EXISTS projects")
+
+
+def _m21_add_project_id_to_code_chunks(conn: sqlite3.Connection) -> None:
+    """Scope ``code_chunks`` by project (E62-S5-T2).
+
+    SQLite cannot alter a ``UNIQUE`` constraint, and the old key
+    ``(tenant_id, file_path, symbol, start_line)`` would make two projects with
+    the same relative path collide, so the table is rebuilt with
+    ``project_id`` in the key. Existing rows are attached to the ``default``
+    project (creating it for any tenant that has chunks but no sessions), the
+    same backfill rule as ``sessions.project_id``.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    from pathlib import Path
+
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(code_chunks)").fetchall()}
+    if "project_id" in existing:
+        return
+    root = configured_project_root_for_backfill()
+    conn.execute(
+        "INSERT OR IGNORE INTO projects (tenant_id, project_id, name, root_path, is_active) "
+        "SELECT DISTINCT tenant_id, ?, ?, ?, 1 FROM code_chunks",
+        (DEFAULT_PROJECT_ID, Path(root).name or DEFAULT_PROJECT_ID, root),
+    )
+    conn.executescript(
+        """
+        CREATE TABLE code_chunks_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            file_path TEXT NOT NULL,
+            symbol TEXT NOT NULL DEFAULT '',
+            start_line INTEGER NOT NULL,
+            end_line INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            indexed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            content TEXT NOT NULL DEFAULT '',
+            project_id TEXT NOT NULL DEFAULT '',
+            UNIQUE(tenant_id, project_id, file_path, symbol, start_line)
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO code_chunks_new (id, tenant_id, file_path, symbol, start_line, end_line, "
+        "content_hash, indexed_at, content, project_id) "
+        "SELECT id, tenant_id, file_path, symbol, start_line, end_line, content_hash, indexed_at, content, ? "
+        "FROM code_chunks",
+        (DEFAULT_PROJECT_ID,),
+    )
+    conn.executescript(
+        """
+        DROP TABLE code_chunks;
+        ALTER TABLE code_chunks_new RENAME TO code_chunks;
+        CREATE INDEX IF NOT EXISTS idx_code_chunks_file_path ON code_chunks(tenant_id, file_path);
+        CREATE INDEX IF NOT EXISTS idx_code_chunks_hash ON code_chunks(content_hash);
+        CREATE INDEX IF NOT EXISTS idx_code_chunks_project ON code_chunks(tenant_id, project_id, file_path);
+        """
+    )
+
+
+def _m21_down_remove_project_id_from_code_chunks(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m21_add_project_id_to_code_chunks` (collapses projects onto one namespace).
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    conn.executescript(
+        """
+        CREATE TABLE code_chunks_old (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            file_path TEXT NOT NULL,
+            symbol TEXT NOT NULL DEFAULT '',
+            start_line INTEGER NOT NULL,
+            end_line INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            indexed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            content TEXT NOT NULL DEFAULT '',
+            UNIQUE(tenant_id, file_path, symbol, start_line)
+        );
+        INSERT OR IGNORE INTO code_chunks_old
+            (id, tenant_id, file_path, symbol, start_line, end_line, content_hash, indexed_at, content)
+            SELECT id, tenant_id, file_path, symbol, start_line, end_line, content_hash, indexed_at, content
+            FROM code_chunks;
+        DROP TABLE code_chunks;
+        ALTER TABLE code_chunks_old RENAME TO code_chunks;
+        CREATE INDEX IF NOT EXISTS idx_code_chunks_file_path ON code_chunks(tenant_id, file_path);
+        CREATE INDEX IF NOT EXISTS idx_code_chunks_hash ON code_chunks(content_hash);
+        """
+    )
+
+
 STORE_MIGRATIONS: list[MigrationEntry] = [
     _m1_create_core_tables,
     _m2_runs_add_run_type,
@@ -925,6 +1082,16 @@ STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_m19_create_environment_tables,
         down=_m19_down_drop_environment_tables,
         name="create_environment_tables",
+    ),
+    Migration(
+        up=_m20_create_projects_table,
+        down=_m20_down_drop_projects_table,
+        name="create_projects_table",
+    ),
+    Migration(
+        up=_m21_add_project_id_to_code_chunks,
+        down=_m21_down_remove_project_id_from_code_chunks,
+        name="add_project_id_to_code_chunks",
     ),
 ]
 

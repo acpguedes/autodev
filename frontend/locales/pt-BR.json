@@ -203,5 +203,22 @@
     },
     "skipToContent": "Pular para o conteúdo principal",
     "localeSwitcherLabel": "Mudar idioma para {{locale}}"
+  },
+  "projects": {
+    "pageTitle": "Projetos",
+    "pageSubtitle": "Abra, configure ou crie um projeto",
+    "active": "ativo",
+    "selector": {
+      "label": "Projeto ativo",
+      "choose": "Escolher um projeto"
+    },
+    "onboarding": {
+      "intro": "Nenhum projeto ativo. Abra um projeto existente, configure um diretório existente ou crie um novo.",
+      "rootLabel": "Diretório do projeto",
+      "open": "Abrir projeto",
+      "init": "Configurar este diretório",
+      "create": "Criar novo projeto",
+      "initNote": "Configurar um diretório apenas adiciona a pasta .autodev/; seus arquivos existentes nunca são alterados."
+    }
   }
 }
