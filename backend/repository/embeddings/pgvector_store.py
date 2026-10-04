@@ -154,6 +154,7 @@ def query_top_k(
     *,
     tenant_id: str,
     k: int = 10,
+    project_id: str | None = None,
 ) -> list[tuple[int, float]]:
     """Return the *k* nearest chunk ids to *query_vector*, scoped to a tenant.
 
@@ -164,6 +165,8 @@ def query_top_k(
             when the caller has set the tenant session variable via
             :func:`backend.persistence.tenancy.set_postgres_tenant`).
         k: Maximum number of results to return.
+        project_id: When given, only chunks of this project are considered
+            (E62-S5); ``None`` applies no project predicate.
 
     Returns:
         ``(chunk_id, distance)`` pairs ordered by ascending cosine distance
@@ -171,16 +174,30 @@ def query_top_k(
         makes this an approximate-nearest-neighbor query.
     """
     adapter_active = register_vector_adapter(conn)
-    rows = conn.execute(
-        """
-        SELECT chunk_id, embedding <=> %s::vector AS distance
-        FROM code_embeddings
-        WHERE tenant_id = %s
-        ORDER BY distance ASC
-        LIMIT %s
-        """,
-        (_vector_param(query_vector, adapter_active=adapter_active), tenant_id, k),
-    ).fetchall()
+    vector = _vector_param(query_vector, adapter_active=adapter_active)
+    if project_id is None:
+        rows = conn.execute(
+            """
+            SELECT chunk_id, embedding <=> %s::vector AS distance
+            FROM code_embeddings
+            WHERE tenant_id = %s
+            ORDER BY distance ASC
+            LIMIT %s
+            """,
+            (vector, tenant_id, k),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT e.chunk_id, e.embedding <=> %s::vector AS distance
+            FROM code_embeddings e
+            JOIN code_chunks c ON c.id = e.chunk_id AND c.tenant_id = e.tenant_id
+            WHERE e.tenant_id = %s AND c.project_id = %s
+            ORDER BY distance ASC
+            LIMIT %s
+            """,
+            (vector, tenant_id, project_id, k),
+        ).fetchall()
     return [(row[0], row[1]) for row in rows]
 
 

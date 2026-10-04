@@ -25,6 +25,13 @@ DEFAULT_HOME_DIR_NAME = ".autodev"
 #: layers (E61-S2) -- only the directory they resolve against differs.
 CONFIG_FILE_NAME = "autodev.config.json"
 
+#: Marker directory that makes a directory a project root (E62-S1), and the
+#: per-project configuration file inside it -- a layer of the E61-S2
+#: composition, between the global layer and the project's own
+#: ``autodev.config.json``.
+PROJECT_MARKER_DIR_NAME = ".autodev"
+PROJECT_MARKER_CONFIG_NAME = "config.json"
+
 #: Directory, under the global home, holding the tool's own data (the
 #: default state database and anything else global-but-not-configuration).
 GLOBAL_DATA_DIR_NAME = "data"

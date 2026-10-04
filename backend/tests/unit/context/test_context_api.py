@@ -92,9 +92,10 @@ def test_retrieve_context_forwards_filters(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(context_router, "get_store", lambda: _fake_store())
     captured: dict[str, object] = {}
 
-    def fake_search(conn, query, *, tenant_id, limit, path_prefix, symbol):  # noqa: ANN001, ARG001
+    def fake_search(conn, query, *, tenant_id, limit, path_prefix, symbol, project_id=None):  # noqa: ANN001, ARG001
         captured["path_prefix"] = path_prefix
         captured["symbol"] = symbol
+        captured["project_id"] = project_id
         return []
 
     monkeypatch.setattr(retriever_module.lexical, "search", fake_search)
@@ -106,7 +107,7 @@ def test_retrieve_context_forwards_filters(monkeypatch: pytest.MonkeyPatch) -> N
     )
 
     assert resp.status_code == 200
-    assert captured == {"path_prefix": "pkg/", "symbol": "add"}
+    assert captured == {"path_prefix": "pkg/", "symbol": "add", "project_id": ""}  # no project -> legacy scope
 
 
 def test_retrieve_context_rejects_invalid_mode(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -145,7 +146,7 @@ def test_retrieve_context_ignores_a_caller_supplied_tenant_id(
     monkeypatch.setattr(context_router, "get_store", lambda: _fake_store())
     captured: dict[str, object] = {}
 
-    def fake_search(conn, query, *, tenant_id, limit, path_prefix, symbol):  # noqa: ANN001, ARG001
+    def fake_search(conn, query, *, tenant_id, limit, path_prefix, symbol, project_id=None):  # noqa: ANN001, ARG001
         captured["tenant_id"] = tenant_id
         return []
 

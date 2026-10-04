@@ -39,11 +39,15 @@ class RetrievalFilters:
             forward compatibility — ``code_chunks`` does not yet carry a
             language column (E7-S1 is Python-only), so this is currently a
             no-op, mirroring :func:`backend.repository.retrieval.lexical.search`.
+        project_id: Restrict results to one project's chunks (E62-S5), applied
+            to the lexical ranker, the vector ranker and the final fetch alike.
+            ``None`` applies no project predicate.
     """
 
     path_prefix: str | None = None
     symbol: str | None = None
     language: str | None = None
+    project_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -137,13 +141,16 @@ def retrieve(
             limit=limit,
             path_prefix=active_filters.path_prefix,
             symbol=active_filters.symbol,
+            **_project_kwargs(active_filters),
         )
 
     vector_results: list[tuple[int, float]] = []
     if mode in ("vector", "hybrid"):
         provider = embedding_provider or StubEmbeddingProvider()
         query_vector = provider.embed([query])[0]
-        vector_results = query_top_k(conn, query_vector, tenant_id=tenant_id, k=limit)
+        vector_results = query_top_k(
+            conn, query_vector, tenant_id=tenant_id, k=limit, **_project_kwargs(active_filters)
+        )
 
     chunk_ids, scores, sources = _combine(
         mode,
@@ -232,6 +239,11 @@ def _combine(
     return ids, scores, sources
 
 
+def _project_kwargs(filters: RetrievalFilters) -> dict[str, str]:
+    """Return ``{"project_id": ...}`` only when a project scope is set (E62-S5)."""
+    return {} if filters.project_id is None else {"project_id": filters.project_id}
+
+
 def _fetch_chunks(
     conn: Any, chunk_ids: list[int], tenant_id: str, filters: RetrievalFilters
 ) -> list[dict[str, Any]]:
@@ -244,6 +256,9 @@ def _fetch_chunks(
     if filters.symbol:
         conditions.append("symbol = %s")
         params.append(filters.symbol)
+    if filters.project_id is not None:
+        conditions.append("project_id = %s")
+        params.append(filters.project_id)
     sql = (
         "SELECT id, file_path, symbol, start_line, end_line, content FROM code_chunks "
         f"WHERE {' AND '.join(conditions)}"

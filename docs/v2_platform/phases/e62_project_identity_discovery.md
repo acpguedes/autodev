@@ -2,7 +2,7 @@
 
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35 and E41-E61).
-**Status:** Not started · **Stories:** 0/5
+**Status:** Done · **Stories:** 5/5
 **Depends on:** E61-S1/S2 (global home and layered configuration — the project
 layer needs a global layer to inherit from), E49 (shared SQL persistence
 contract, mandatory for any new store), E50 (tenant RLS generator), E8-S1

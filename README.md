@@ -288,6 +288,7 @@ For rationale, read [`docs/archive/v1/stack_decisions.md`](docs/archive/v1/stack
 ### Implementation
 - [`docs/implementation/self_hosting_oss.md`](docs/implementation/self_hosting_oss.md): OSS/self-hosted setup paths for stub, Ollama, and hybrid modes.
 - [`docs/implementation/patches_and_validation.md`](docs/implementation/patches_and_validation.md): patch engine, validation sandbox, and the environment flags that gate them.
+- [`docs/projects/discovery.md`](docs/projects/discovery.md): projects — `.autodev/` discovery, the open/init/create paths, per-session roots and per-project isolation.
 - [`docs/v2_platform/agent_guide.md`](docs/v2_platform/agent_guide.md): how to pick up and execute an `E<n>-S<m>` story.
 - Superseded v1 implementation docs (agent spec, data model, implementation strategy, dynamic orchestration, skills subsystem, MVP refactor plan) are archived in [`docs/archive/v1/`](docs/archive/v1/README.md).
 

@@ -20,6 +20,7 @@ from backend.api.authorization import require_v2_principal, requires_scope
 from backend.auth.contracts import PrincipalV2
 from backend.persistence.database import get_store
 from backend.persistence.tenancy import set_postgres_tenant
+from backend.projects.resolution import resolve_project
 from backend.repository.retrieval.fusion import DEFAULT_RRF_K
 from backend.repository.retrieval.retriever import RetrievalFilters, retrieve
 
@@ -56,6 +57,9 @@ def retrieve_context(
     vector_weight: float = Query(
         default=1.0, ge=0.0, description="Hybrid only: weight of the vector ranking during fusion"
     ),
+    session_id: str | None = Query(
+        default=None, description="Session whose project scopes retrieval; defaults to the active project"
+    ),
     store: Any = Depends(get_durable_store),
     principal: PrincipalV2 = Depends(require_v2_principal),
 ) -> dict[str, Any]:
@@ -78,6 +82,7 @@ def retrieve_context(
             still restricting candidates to both rankers.
         vector_weight: Weight applied to the vector ranking during fusion.
             Hybrid mode only.
+        session_id: Session whose project scopes the search (E62-S5).
         store: Durable store dependency.
         principal: Authenticated caller; its ``tenant_id`` is the only
             source of the tenant scope — a client cannot select a tenant.
@@ -97,7 +102,11 @@ def retrieve_context(
         raise HTTPException(status_code=422, detail=f"invalid mode: {mode!r}")
     _require_postgres_store(store)
 
-    filters = RetrievalFilters(path_prefix=path_prefix, symbol=symbol)
+    project = resolve_project(tenant_id=principal.tenant_id, session_id=session_id)
+    # No resolvable project -> the unscoped legacy namespace (""), never "every project".
+    filters = RetrievalFilters(
+        path_prefix=path_prefix, symbol=symbol, project_id=project.project_id if project else ""
+    )
     fusion_weights = (lexical_weight, vector_weight)
     with store.connect() as conn:
         # code_chunks/code_embeddings are Row-Level Security-scoped (E50);

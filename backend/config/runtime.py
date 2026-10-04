@@ -23,7 +23,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
-from backend.config.paths import CONFIG_FILE_NAME
+from backend.config.paths import CONFIG_FILE_NAME, PROJECT_MARKER_CONFIG_NAME, PROJECT_MARKER_DIR_NAME
 from backend.config.paths import global_config_path as _default_global_config_path
 from backend.llm.factory import DEFAULT_OLLAMA_BASE_URL
 
@@ -169,6 +169,14 @@ class RuntimeConfigService:
         self._default_project_root = (default_project_root or self._env_or_cwd_project_root()).resolve()
         self._config_path = (config_path or self._resolve_config_path()).resolve()
         self._global_config_path = global_config_path or _default_global_config_path()
+        self._marker_config_path = (
+            self._default_project_root / PROJECT_MARKER_DIR_NAME / PROJECT_MARKER_CONFIG_NAME
+        )
+
+    @property
+    def marker_config_path(self) -> Path:
+        """The project's ``.autodev/config.json`` layer (E62)."""
+        return self._marker_config_path
 
     @property
     def config_path(self) -> Path:
@@ -179,7 +187,7 @@ class RuntimeConfigService:
         return self._global_config_path
 
     def load(self) -> RuntimeConfig:
-        """Load the composed configuration: defaults -> global layer -> project layer.
+        """Load the composed configuration: defaults -> global -> ``.autodev/config.json`` -> project file.
 
         Each layer is a sparse document (E61-S2-T1): a key a layer does not
         set is simply never applied, so the layer below still provides it --
@@ -197,6 +205,7 @@ class RuntimeConfigService:
         """
         document = self._env_default_document()
         document = _deep_merge(document, self._read_layer_raw(self._global_config_path))
+        document = _deep_merge(document, self._read_layer_raw(self._marker_config_path))
         document = _deep_merge(document, self._read_layer_raw(self._config_path))
         try:
             config = RuntimeConfig.model_validate(document)
@@ -223,7 +232,8 @@ class RuntimeConfigService:
         """
         normalized = self._normalize(config)
         inherited_document = _deep_merge(
-            self._env_default_document(), self._read_layer_raw(self._global_config_path)
+            _deep_merge(self._env_default_document(), self._read_layer_raw(self._global_config_path)),
+            self._read_layer_raw(self._marker_config_path),
         )
         project_document = _diff_document(inherited_document, normalized.model_dump())
 

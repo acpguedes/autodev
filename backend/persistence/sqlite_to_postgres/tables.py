@@ -25,6 +25,7 @@ from __future__ import annotations
 #: ``backend/persistence/migrations/{versions,postgres_versions}.py``.
 VERSIONED_STORE_TABLES: tuple[str, ...] = (
     "sessions",
+    "projects",
     "runs",
     "run_steps",
     "messages",
