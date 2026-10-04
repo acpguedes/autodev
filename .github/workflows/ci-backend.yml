@@ -80,6 +80,28 @@ jobs:
       - name: Patch-validation gate (dry-run + path-traversal guard)
         run: python scripts/validate_patches.py
 
+  # Proves the documented wheel install (ADR-015) actually works: built from
+  # backend/, installed into a fresh venv, run from a directory outside the
+  # checkout, with an isolated AUTODEV_HOME preserved across a reinstall
+  # (E61-S3-T3). Previously invoked by neither CI nor the Makefile -- the
+  # multiple-top-level-packages and missing-runtime-dependency defects this
+  # story fixed in backend/pyproject.toml were undiscovered for exactly that
+  # reason.
+  clean-install-verification:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Verify clean-environment install
+        run: bash scripts/verify_clean_install.sh
+
   security-baseline:
     runs-on: ubuntu-latest
     steps:
