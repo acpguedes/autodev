@@ -10,6 +10,7 @@ from backend.flows.model import (
     FLOW_ID_RE,
     FlowIO,
     FlowNodeRef,
+    FlowRequires,
     FlowRetryPolicy,
     _is_supported_range,
 )
@@ -154,3 +155,42 @@ __all__ = [
     "_parse_timeout",
     "_string",
 ]
+
+
+def _parse_requires(value: Any, errors: list[str]) -> FlowRequires | None:
+    """Parse the ``requires`` project-state preconditions block (E63-S1).
+
+    Args:
+        value: Raw ``requires`` mapping.
+        errors: Accumulator for validation errors.
+
+    Returns:
+        The parsed preconditions, or ``None`` when absent/invalid.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        errors.append("requires must be an object")
+        return None
+    known = {"populated", "git", "tests", "languages"}
+    for key in sorted(set(value) - known):
+        errors.append(f"requires.{key} is not a known project-state field")
+    flags: dict[str, bool | None] = {}
+    for key in ("populated", "git", "tests"):
+        flag = value.get(key)
+        if flag is not None and not isinstance(flag, bool):
+            errors.append(f"requires.{key} must be a boolean")
+            flag = None
+        flags[key] = flag
+    languages = value.get("languages", [])
+    if not isinstance(languages, list) or not all(
+        isinstance(item, str) and item for item in languages
+    ):
+        errors.append("requires.languages must be a list of non-empty strings")
+        languages = []
+    return FlowRequires(
+        populated=flags["populated"],
+        git=flags["git"],
+        tests=flags["tests"],
+        languages=tuple(item.lower() for item in languages),
+    )

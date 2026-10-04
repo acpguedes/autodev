@@ -425,3 +425,59 @@ class TestSchemaContract:
         raw = yaml.safe_load(example.read_text(encoding="utf-8"))
         result = validate_flow_manifest(raw)
         assert result.errors == []
+
+
+class TestApplicabilityFields:
+    """E63-S1: additive applicability declaration."""
+
+    def test_legacy_manifest_has_no_applicability(self) -> None:
+        result = validate_flow_manifest(_all_node_types_flow())
+        assert result.valid and result.manifest is not None
+        assert result.manifest.requires is None
+        assert not result.manifest.auto_selectable
+
+    def test_applicability_fields_parse(self) -> None:
+        doc = _all_node_types_flow()
+        doc.update(
+            purpose="Ship a feature",
+            whenToUse="Existing project",
+            whenNotToUse="New project",
+            requires={"populated": True, "languages": ["Python"]},
+        )
+        result = validate_flow_manifest(doc)
+        assert result.valid and result.manifest is not None
+        manifest = result.manifest
+        assert manifest.auto_selectable
+        assert manifest.requires is not None
+        assert manifest.requires.populated is True
+        assert manifest.requires.languages == ("python",)
+
+    @pytest.mark.parametrize(
+        ("requires", "message"),
+        [
+            ({"populated": "yes"}, "requires.populated must be a boolean"),
+            ({"bogus": 1}, "requires.bogus is not a known project-state field"),
+            ({"languages": "py"}, "requires.languages must be a list"),
+        ],
+    )
+    def test_invalid_requires_reports_field_path(
+        self, requires: dict[str, Any], message: str
+    ) -> None:
+        doc = _all_node_types_flow()
+        doc["requires"] = requires
+        result = validate_flow_manifest(doc)
+        assert not result.valid
+        assert any(message in err for err in result.errors)
+
+    def test_catalog_exposes_applicability_and_io(self, tmp_path: Path) -> None:
+        from backend.flows.registry import FlowRegistry
+        from backend.persistence.sqlite_adapter import SQLiteStore
+
+        doc = _all_node_types_flow()
+        doc.update(purpose="P", whenToUse="W", requires={"git": True})
+        registry = FlowRegistry(SQLiteStore(f"sqlite:///{tmp_path / 'r.db'}"))
+        registry.register_raw(doc)
+        entry = next(f for f in registry.catalog()["flows"] if f["id"] == doc["id"])
+        assert entry["purpose"] == "P"
+        assert entry["requires"]["git"] is True
+        assert "input" in entry and "output" in entry

@@ -39,9 +39,9 @@ def test_catalog_covers_all_reference_types_with_valid_names() -> None:
     ``secret.created``/``.rotated``/``.revoked``/``.resolved``/
     ``.leak_suspected`` + 1 E41-S5 ``execution.verification.outcome`` +
     1 E46-S2 ``execution.repair.skipped`` + 2 E62-S4
-    ``project.created``/``project.activated`` = 55 types.
+    ``project.created``/``project.activated`` + 2 E63-S3 ``flow.selection.matched``/``.skipped`` = 57 types.
     """
-    assert len(EVENT_CATALOG) == 55
+    assert len(EVENT_CATALOG) == 57
     for name, definition in EVENT_CATALOG.items():
         assert name == definition.name
         assert _NAME_RE.fullmatch(name)

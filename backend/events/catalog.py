@@ -46,6 +46,25 @@ class FlowRunStartedData(BaseModel):
     flowVersion: str
 
 
+class FlowSelectionMatchedData(BaseModel):
+    """Payload of ``flow.selection.matched`` (E63-S3)."""
+
+    flowId: str
+    flowVersion: str
+    candidates: list[str]
+    eliminated: list[dict[str, str]]
+    reason: str
+
+
+class FlowSelectionSkippedData(BaseModel):
+    """Payload of ``flow.selection.skipped`` (E63-S3)."""
+
+    candidates: list[str]
+    eliminated: list[dict[str, str]]
+    reason: str
+    question: str = ""
+
+
 class RunStepStartedData(BaseModel):
     """Payload of ``run.step.started``."""
 
@@ -445,6 +464,8 @@ class EventDefinition:
 _DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition("session.created", "Control Plane API", "tenantId", SessionCreatedData),
     EventDefinition("flow.run.started", "Orchestration Engine", "runId", FlowRunStartedData),
+    EventDefinition("flow.selection.matched", "Orchestration Engine", "runId", FlowSelectionMatchedData),
+    EventDefinition("flow.selection.skipped", "Orchestration Engine", "runId", FlowSelectionSkippedData),
     EventDefinition("run.step.started", "Orchestration Engine", "runId", RunStepStartedData),
     EventDefinition("run.step.completed", "Orchestration Engine", "runId", RunStepCompletedData),
     EventDefinition("run.step.failed", "Orchestration Engine", "runId", RunStepFailedData),

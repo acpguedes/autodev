@@ -12,6 +12,19 @@
     "hostApi": { "type": "string" },
     "name": { "type": "string" },
     "description": { "type": "string" },
+    "purpose": { "type": "string" },
+    "whenToUse": { "type": "string" },
+    "whenNotToUse": { "type": "string" },
+    "requires": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "populated": { "type": "boolean" },
+        "git": { "type": "boolean" },
+        "tests": { "type": "boolean" },
+        "languages": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
     "triggers": {
       "type": "array",
       "items": {
