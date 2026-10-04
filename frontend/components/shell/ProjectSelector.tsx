@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import * as React from "react";
 import useSWR from "swr";
@@ -24,7 +25,7 @@ export function ProjectSelector(): React.JSX.Element | null {
   if (items.length === 0 || activeProjectId === null) {
     return (
       <Link
-        href="/projects"
+        href={"/projects" as Route}
         className="rounded-ds-md border border-ds-line bg-ds-bg-2 px-2.5 py-1.5 text-[12px] text-ds-fg-2"
       >
         {t("projects.selector.choose")}

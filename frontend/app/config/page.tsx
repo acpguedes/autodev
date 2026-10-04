@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
@@ -299,7 +300,7 @@ export default function ConfigPage() {
                     <span className={fieldLabel}>Project directory</span>
                     <p className="text-sm text-ds-fg-2">
                       {configDraft.repository.project_root} —{" "}
-                      <Link href="/projects" className="underline">
+                      <Link href={"/projects" as Route} className="underline">
                         Manage projects
                       </Link>
                     </p>
