@@ -40,7 +40,7 @@ export const SAMPLE_FLOW: FlowManifest = {
     {
       id: "code",
       type: "agent",
-      ref: "autodev/agent-coder@2.1.0",
+      ref: "autodev/agent-coder@>=1.0 <2.0",
       timeoutSec: 300,
       retries: { maxAttempts: 2, backoff: "exponential", initialDelaySec: 5 },
     },

@@ -1,7 +1,6 @@
 # flow.yaml — declarative, versioned graph of nodes that orchestrates agents/skills/tools/humans.
 # Executed by the Orchestration Engine (checkpointing, retries, human-in-the-loop).
 #
-# Mirrors backend/flows/builtin/feature-delivery.flow.yaml (the source of truth).
 # Source: docs/architecture/v2_platform_reference.md, Appendix (C) "Definição de Fluxo".
 schemaVersion: "1"
 

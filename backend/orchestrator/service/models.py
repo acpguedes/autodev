@@ -180,6 +180,8 @@ class PreparedRun:
     run_id: str
     run_type: "RunType"
     flow_id: str
+    flow_input: Dict[str, Any] | None = None
+    question: str = ""
 
 
 @dataclass(slots=True)

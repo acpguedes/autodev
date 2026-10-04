@@ -106,6 +106,8 @@ def _run_message_job(payload: Dict[str, Any]) -> Dict[str, Any]:
                 flow_id=flow_id,
                 tenant_id=tenant_id,
                 finalize=not auto_execute,
+                flow_input=payload.get("flow_input"),
+                question=payload.get("question", ""),
             )
             if auto_execute:
                 execution_plan = orchestrator.build_execution_plan(session_id, tenant_id=tenant_id)

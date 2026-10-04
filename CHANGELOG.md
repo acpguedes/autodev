@@ -7,6 +7,21 @@ All notable changes to AutoDev Architect are documented here. Format loosely fol
 
 ### Added
 
+- **E63 — Flow Applicability & Task-Intent Execution Routing** (5/5
+  stories): flow manifests can declare `purpose`, `whenToUse`, `whenNotToUse`
+  and structured `requires` preconditions (additive; exposed with input/output
+  schemas in the flow catalog); a deterministic project-state probe
+  (`backend/projects/state.py`) feeds a two-phase `FlowSelector` — a
+  deterministic gate eliminates inapplicable flows before any model sees them,
+  then a constrained choice (with `none` first-class, fail-closed) — and every
+  decision is recorded as `flow.selection.matched`/`flow.selection.skipped`.
+  The chat entrypoint now follows intent: a selected flow runs on the Flow
+  Engine, otherwise `RunTypeRouter` picks the agent order, so a change in an
+  existing project no longer runs `architect`. Two built-in flows
+  (`autodev/flow-project-bootstrap`, `autodev/flow-feature-delivery`) are
+  seeded idempotently at startup. `AUTODEV_DYNAMIC_ORCH` is no longer needed
+  for routing. See ADR-030 and `docs/flows/spec.md`.
+
 - **E62 — Project Identity, Discovery & Multi-Project Isolation** (5/5
   stories): a project is now a first-class entity — a directory with a
   `.autodev/` marker found by walking up from the working directory (nearest

@@ -254,7 +254,7 @@ expire.
 | `AUTODEV_SANDBOX_DOCKER_NETWORK` | `none` | Docker network mode for sandbox jobs. |
 | `AUTODEV_SANDBOX_TIMEOUT_SECONDS` | `300` | Maximum wall-clock duration for one sandboxed job (1-3600s); a killed job returns code `124` (E11-S4). |
 | `AUTODEV_TRUSTED_IN_PROCESS_PLUGINS` | empty | Comma-separated operator allowlist of `in-process` plugin ids permitted in production; ADR-020 (E11-S4). |
-| `AUTODEV_DYNAMIC_ORCH` | `false` | Enables dynamic orchestration endpoint behavior. |
+| `AUTODEV_DYNAMIC_ORCH` | `false` | Enables the `/chat/dynamic` endpoint behavior. No longer needed for run-type routing: `/chat` routes by intent by default (E63, ADR-030). |
 | `AUTODEV_REPO_PROVIDER` | `lexical` | Repository provider selector. |
 | `AUTODEV_JOB_BACKEND` | `inprocess` | `inprocess` or `redis`. |
 | `AUTODEV_REDIS_URL` | empty | Redis URL for prod queue/cache/locks. Must use `redis://` or `rediss://`. |

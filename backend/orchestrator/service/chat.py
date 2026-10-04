@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from backend.agents import AgentContext, PlannerAgent
+from backend.flows.engine import FlowEngine
+from backend.flows.registry import FlowRegistry
+from backend.flows.selection import FlowSelection, FlowSelector, record_selection
 from backend.jobs.queue import get_queue
 from backend.observability.tracing import trace_run
 from backend.orchestrator.service import events
 from backend.orchestrator.service._shared import OrchestratorState
 from backend.orchestrator.service.models import (
+    AgentExecution,
     AgentGraphState,
     HistoryItem,
     OrchestratorRun,
@@ -21,6 +26,7 @@ from backend.orchestrator.service.models import (
 )
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
 from backend.projects.resolution import resolve_project
+from backend.projects.state import ProjectState, cached_project_state
 
 #: Job type for :meth:`ChatMixin.begin_message`'s background graph run (E43-S6).
 #: Owned here (the enqueuing side) so this module has no dependency on
@@ -108,7 +114,11 @@ class ChatMixin(OrchestratorState):
         if session_record is None:
             raise KeyError(f"Unknown session_id: {session_id}")
 
-        run_type = self._infer_run_type(goal=session_record["goal"], message=message)
+        state = self._probe_project_state()
+        run_type = self._infer_run_type(
+            goal=session_record["goal"], message=message, state=state
+        )
+        selection = self._select_flow(message, state)
         run_id = str(uuid4())
         self._acquire_run_lease(tenant_id=tenant_id, run_id=run_id)
         self._store.create_run(
@@ -123,6 +133,9 @@ class ChatMixin(OrchestratorState):
             tenant_id=tenant_id,
         )
         flow_id = f"orchestrator.{run_type}"
+        flow_version = "1.0.0"
+        if selection is not None and selection.outcome == "matched":
+            flow_id, flow_version = selection.flow_id, selection.version
         # Emitted here (synchronously, before returning) rather than at the
         # top of _execute_message_run: this event is what creates the run's
         # EventStore projection (backend/events/store.py's append ->
@@ -136,15 +149,49 @@ class ChatMixin(OrchestratorState):
             "flow.run.started",
             tenant_id=tenant_id,
             partition_key=run_id,
-            data={"flowId": flow_id, "flowVersion": "1.0.0"},
+            data={"flowId": flow_id, "flowVersion": flow_version},
             subject={"runId": run_id, "sessionId": session_id},
         )
+        if selection is not None:
+            record_selection(
+                selection, tenant_id=tenant_id, run_id=run_id, session_id=session_id
+            )
         return PreparedRun(
             session_record=session_record,
             run_id=run_id,
             run_type=run_type,
             flow_id=flow_id,
+            flow_input=(
+                dict(selection.input or {})
+                if selection is not None and selection.outcome == "matched"
+                else None
+            ),
+            question=(
+                selection.question
+                if selection is not None and selection.outcome == "question"
+                else ""
+            ),
         )
+
+    def _probe_project_state(self) -> ProjectState:
+        """Probe the resolved project root's real state (E63-S2)."""
+        try:
+            return cached_project_state(self._project_root or Path("."))
+        except OSError:
+            return ProjectState()
+
+    def _select_flow(self, message: str, state: ProjectState) -> FlowSelection | None:
+        """Run the two-phase flow selector; ``None`` when no flows exist (E63-S4).
+
+        Never raises: any failure means "no flow", i.e. the direct path.
+        """
+        try:
+            registry = FlowRegistry(self._store)
+            if not registry.list_flows():
+                return None
+            return FlowSelector(registry).select(message, state)
+        except Exception:  # noqa: BLE001 - fail closed to the direct path
+            return None
 
     def handle_message(
         self, session_id: str, message: str, *, tenant_id: str = DEFAULT_TENANT_ID
@@ -180,6 +227,8 @@ class ChatMixin(OrchestratorState):
                     run_type=prepared.run_type,
                     flow_id=prepared.flow_id,
                     tenant_id=tenant_id,
+                    flow_input=prepared.flow_input,
+                    question=prepared.question,
                 )
                 run_trace.finish(status="completed")
                 return result
@@ -224,6 +273,8 @@ class ChatMixin(OrchestratorState):
                 "run_id": prepared.run_id,
                 "run_type": prepared.run_type.value,
                 "flow_id": prepared.flow_id,
+                "flow_input": prepared.flow_input,
+                "question": prepared.question,
                 "tenant_id": tenant_id,
             },
         )
@@ -249,6 +300,8 @@ class ChatMixin(OrchestratorState):
         flow_id: str,
         tenant_id: str,
         finalize: bool = True,
+        flow_input: dict[str, Any] | None = None,
+        question: str = "",
     ) -> OrchestratorRun:
         """Execute and durably persist one already-created orchestration run.
 
@@ -274,6 +327,11 @@ class ChatMixin(OrchestratorState):
             results/steps -- already durably persisted as ``COMPLETED``
             when ``finalize`` is true; otherwise the caller is responsible
             for persisting the run's real final state.
+
+        ``flow_input`` (a selected registry flow, E63-S4) runs that flow through
+        the Flow Engine instead of the agent graph; ``question`` answers with
+        the selector's single targeted question. Both persist exactly like
+        the direct path.
         """
         history = [
             HistoryItem(role=record["role"], content=record["content"])
@@ -295,7 +353,16 @@ class ChatMixin(OrchestratorState):
             "run_id": run_id,
             "tenant_id": tenant_id,
         }
-        final_state = self._graph.invoke(initial_state)
+        if question:
+            final_state = self._question_state(initial_state, question)
+        elif flow_input is not None:
+            final_state = self._flow_state(
+                initial_state, flow_id=flow_id, flow_input=flow_input, tenant_id=tenant_id
+            )
+        else:
+            final_state = self._graph_for_run(
+                run_type, f"{session_record['goal']} {message}"
+            ).invoke(initial_state)
         final_context = final_state["context"]
         results = list(final_state["results"])
         steps = list(final_state["steps"])
@@ -349,6 +416,53 @@ class ChatMixin(OrchestratorState):
             results=results,
             steps=steps,
         )
+
+    def _question_state(
+        self, state: AgentGraphState, question: str
+    ) -> AgentGraphState:
+        """Answer a turn with the selector's single targeted question."""
+        context = state["context"].with_message("flow-selector", question)
+        return {
+            **state,
+            "context": context,
+            "results": [AgentExecution("flow-selector", question, {"question": True})],
+            "current_state": "completed",
+        }
+
+    def _flow_state(
+        self,
+        state: AgentGraphState,
+        *,
+        flow_id: str,
+        flow_input: dict[str, Any],
+        tenant_id: str,
+    ) -> AgentGraphState:
+        """Run a selected registry flow through the Flow Engine (E63-S4)."""
+        engine = FlowEngine(store=self._store)
+        run = engine.start_run(
+            flow_id,
+            input=flow_input,
+            trigger={"type": "message"},
+            tenant_id=tenant_id,
+        )
+        summary = f"Flow {run.flow_id}@{run.flow_version} {run.status}"
+        if run.stop_reason:
+            summary += f" ({run.stop_reason})"
+        if run.output:
+            summary += f": {run.output}"
+        context = state["context"].with_message("flow", summary)
+        return {
+            **state,
+            "context": context,
+            "results": [
+                AgentExecution(
+                    "flow",
+                    summary,
+                    {"flowRunId": run.run_id, "flowId": run.flow_id, "status": run.status},
+                )
+            ],
+            "current_state": "completed" if run.status == "completed" else run.status,
+        }
 
     def get_plan(self, session_id: str, *, tenant_id: str = DEFAULT_TENANT_ID) -> PlanSession:
         """Fetch a session's plan.
