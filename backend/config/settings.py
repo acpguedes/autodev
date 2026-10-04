@@ -152,6 +152,8 @@ class Settings(BaseSettings):
     autodev_enable_sandbox: bool = False
     autodev_chat_auto_execute: bool = False
     autodev_sandbox_allow_local: bool = False
+    autodev_enable_terminal: bool = False
+    autodev_terminal_allow_prod: bool = False
     autodev_sandbox_docker_network: str = "none"
     autodev_sandbox_timeout_seconds: int = Field(default=300, ge=1, le=3600)
     autodev_dynamic_orch: bool = False

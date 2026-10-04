@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import hmac
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException
+from starlette.requests import HTTPConnection
 
 from backend.config.settings import Settings
 
@@ -38,14 +39,14 @@ def _configured_token() -> str:
     return Settings().autodev_api_token.strip()
 
 
-def require_api_token(request: Request) -> None:
+def require_api_token(request: HTTPConnection) -> None:
     """FastAPI dependency enforcing bearer-token auth when configured.
 
     No-op when ``AUTODEV_API_TOKEN`` is unset/empty. Raises ``401`` when a token
     is configured but the request lacks a valid ``Authorization`` header.
 
     Args:
-        request: Incoming request to authenticate.
+        request: Incoming HTTP request or WebSocket handshake to authenticate.
 
     Raises:
         HTTPException: With status 401 if the token is missing or invalid.

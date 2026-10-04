@@ -62,6 +62,7 @@ _ROLE_TIER_ADDITIONS: tuple[tuple[Role, frozenset[str]], ...] = (
                 "patch:review",
                 "patch:apply",
                 "mcp:invoke",
+                "terminal:use",
             }
         ),
     ),
