@@ -11,9 +11,9 @@ langgraph>=0.0.53
 langchain-openai>=0.1.1
 pydantic-settings>=2.0
 psycopg[binary,pool]>=3.2
-opentelemetry-api>=1.28
-opentelemetry-sdk>=1.28
-opentelemetry-exporter-otlp-proto-http>=1.28
+opentelemetry-api==1.45.0
+opentelemetry-sdk==1.45.0
+opentelemetry-exporter-otlp-proto-http==1.45.0
 tree-sitter>=0.21
 tree-sitter-python>=0.21
 pgvector>=0.3

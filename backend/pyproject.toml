@@ -24,9 +24,15 @@ dependencies = [
   "langchain-openai>=0.1.1",
   "pydantic-settings>=2.0",
   "psycopg[binary,pool]>=3.2",
-  "opentelemetry-api>=1.28",
-  "opentelemetry-sdk>=1.28",
-  "opentelemetry-exporter-otlp-proto-http>=1.28",
+  # Exact-pinned (not >=): opentelemetry-api 1.45 made AttributeValue a
+  # chained assignment mypy cannot resolve as a type, and added an
+  # abstract `Logger.enabled` method -- both fixed in
+  # backend/observability/{tracing,runtime}.py for this exact version, but
+  # an unpinned `>=` previously let CI silently resolve a newer release
+  # than any local `make check-backend` run had ever verified.
+  "opentelemetry-api==1.45.0",
+  "opentelemetry-sdk==1.45.0",
+  "opentelemetry-exporter-otlp-proto-http==1.45.0",
   "tree-sitter>=0.21",
   "tree-sitter-python>=0.21",
   "pgvector>=0.3",
