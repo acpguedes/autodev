@@ -17,11 +17,30 @@ Local install (this repo has no root `pyproject.toml`; the backend package
 is what ships):
 
 ```bash
+make install-cli          # equivalent to: pip install -e backend/
+# or, without the Makefile:
 python -m venv .venv
 source .venv/bin/activate
 pip install -e backend/
 autodev --help
 ```
+
+`pipx` installs the same entry point into an isolated environment, with the
+console script landing on `~/.local/bin` (make sure that directory is on
+`PATH` — `pipx ensurepath` does this for you):
+
+```bash
+pipx install backend/      # from a checkout
+# or, once published: pipx install autodev-backend
+autodev --help
+```
+
+**The tool does not require its own source directory to run.** `autodev`
+reads and writes its own state under a single global home
+(`AUTODEV_HOME`, default `~/.autodev`) resolved the same way regardless of
+the working directory or whether the code runs from a checkout or an
+installed wheel — see `docs/execution/paths-and-config.md` (E61) for the
+full default-paths and configuration-precedence reference.
 
 No mandatory paid-service dependency: local mode defaults to SQLite + the
 stub LLM provider (the same local-first guarantee E0/E12's Alpha gate
@@ -67,12 +86,22 @@ full options table and rationale.
   install, or set via `AUTODEV_BUILD_COMMIT`/`AUTODEV_BUILD_DATE` by a
   packaging step that wants reproducible build provenance baked into the
   artifact.
+- **`make install-cli`** (E61-S3): registers the console script
+  (`pip install -e backend/`) — `make install` alone only installs
+  dependencies (`pip install -r backend/requirements.txt`) and never did
+  this. Also copies the root `CHANGELOG.md`/`README.md` into `backend/`
+  (gitignored; `backend/pyproject.toml`'s `package-data`), which a wheel
+  build needs to produce a working `autodev upgrade` release-notes lookup
+  and `long_description` without reaching outside the package root.
 - **Clean-environment install verification**: `scripts/verify_clean_install.sh`
   builds a wheel from `backend/`, installs it into a fresh virtualenv, and
-  runs `autodev --version` / `autodev config validate` from a temp directory
-  outside the repo — proving the install path with no repo checkout, no
-  editable install, and no accidental reliance on the current working
-  directory.
+  runs `autodev --version` / `autodev config validate` / `autodev doctor`
+  from a temp directory outside the repo with an isolated `AUTODEV_HOME` —
+  proving the install path with no repo checkout, no editable install, and
+  no accidental reliance on the current working directory. A second install
+  over the first (E61-S3-T2) proves the global home's contents — including
+  the global configuration layer — survive the reinstall. Wired into CI as
+  `clean-install-verification` (`ci-backend.yml`, E61-S3-T3).
 
 ## Self-host bootstrap & storage posture (E34-S2)
 

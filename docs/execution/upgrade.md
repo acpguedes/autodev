@@ -63,6 +63,16 @@ found. This is deliberately minimal groundwork for the GA v1→v2 upgrade
 requirement (E13), not a full release-notes system: no changelog parsing
 beyond "find the heading, take everything until the next one."
 
+The `CHANGELOG.md` used is resolved against `AUTODEV_HOME`, then a bounded
+upward walk from `backend/ops/upgrade.py`'s own location (E61-S1-T3) —
+never a fixed `__file__` depth into this package's source tree, which does
+not exist under a wheel install. `make install-cli` and
+`scripts/verify_clean_install.sh` copy the root `CHANGELOG.md` into
+`backend/` so the walk finds it in both an editable and a wheel install; see
+`docs/execution/cli-install.md`. Neither candidate existing is not an
+error — `release_notes` is simply empty, the same graceful degrade as an
+unrecognized `--target-version`.
+
 ## Scope reduction (stated, not hidden)
 
 - No automated staging rehearsal or scheduled upgrade job — `autodev

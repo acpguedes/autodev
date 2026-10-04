@@ -7,7 +7,40 @@
 > place to look to answer "where are we on the v2 rewrite?" without re-reading the
 > 6600-line reference document.
 
-**Last updated:** 2026-09-05 (**Planning-only: added the E61–E66 Beta-hardening
+**Last updated:** 2026-10-04 (**E61 complete — 4/4, Global Install,
+AUTODEV_HOME & Layered Configuration**, closing the E61 slice of the
+E61–E66 Beta-hardening program below. **E61-S1** adds
+`backend/config/paths.py` (`AUTODEV_HOME`, default `~/.autodev`; the global
+config path, data dir, and default state database path — pure path
+arithmetic, no I/O beyond an explicit `mkdir`), moves the default
+`DATABASE_URL` and `.env`/`CHANGELOG.md` lookups off the launch cwd and this
+package's own source tree onto the global home and the active project (an
+explicit `DATABASE_URL` is unaffected). **E61-S2** composes `RuntimeConfig`
+per field from internal defaults → the global configuration layer
+(`<AUTODEV_HOME>/autodev.config.json`) → the per-project layer, deep-merged
+so a project overriding one field inherits every other field from global;
+absence is key-absence, never falsiness (ADR-028) — an explicit `""`
+survives where it used to collapse to a default; an invalid configuration
+file raises `ConfigFileError` naming its path; `RuntimeConfigService.save()`
+now writes only the fields that differ from what defaults+global would
+already produce, so an inherited credential is never duplicated into the
+project file. `autodev doctor` gained `global_home` and `legacy_database`
+checks. **E61-S3** adds `make install-cli` (`pip install -e backend/`,
+fixing two latent `backend/pyproject.toml` packaging defects this story's
+own verification uncovered: auto-discovery saw ~55 unrelated top-level
+packages instead of one nested `backend` package, and the runtime
+dependency list was a stale subset missing `pydantic-settings`, `psycopg`,
+`langchain`, `tree-sitter`, and others — also bumped `requires-python` to
+`>=3.11`, the project's actual floor); extends
+`scripts/verify_clean_install.sh` to prove `AUTODEV_HOME` is created, used,
+and preserved across a reinstall; wires it into CI as
+`clean-install-verification`. **E61-S4** adds
+`docs/execution/paths-and-config.md` and updates `docs/execution/cli-install.md`
+and `docs/execution/upgrade.md`. ADR-015 Consequences extended; ADR-028
+(layered configuration semantics) added. E62–E66 remain not started — see
+the Planning entry below.)
+
+Previous entry: 2026-09-05 (**Planning-only: added the E61–E66 Beta-hardening
 program — 6 epics, 24 planned stories**. No implementation. Found by running
 the product rather than reading it, and each defect verified in code before
 being written down. **(1) There is no flow selection at all.** No `flow.yaml`
@@ -851,14 +884,14 @@ off `main`) is resolved now that the epic → `main` PR has landed.
 | E58 | SQLite → PostgreSQL Data Migration | Beta | Done | 4/4 | E50-E55, E57 | [phases/e58_sqlite_to_postgres_migration.md](phases/e58_sqlite_to_postgres_migration.md) |
 | E59 | Backup, Restore & Disaster Recovery | Beta | Done | 3/3 | E8-S4, E55-S3, E57-S4 | [phases/e59_backup_restore_disaster_recovery.md](phases/e59_backup_restore_disaster_recovery.md) |
 | E60 | Connection Pooling & PostgreSQL Hardening | Beta | Done | 4/4 | E51-E55, E57, E11-S1 | [phases/e60_postgres_pooling_hardening.md](phases/e60_postgres_pooling_hardening.md) |
-| E61 | Global Install, AUTODEV_HOME & Layered Configuration | Beta | Not started | 0/4 | E34 | [phases/e61_global_install_layered_config.md](phases/e61_global_install_layered_config.md) |
+| E61 | Global Install, AUTODEV_HOME & Layered Configuration | Beta | Done | 4/4 | E34 | [phases/e61_global_install_layered_config.md](phases/e61_global_install_layered_config.md) |
 | E62 | Project Identity, Discovery & Multi-Project Isolation | Beta | Not started | 0/5 | E61-S1/S2, E49, E50, E8-S1 | [phases/e62_project_identity_discovery.md](phases/e62_project_identity_discovery.md) |
 | E63 | Flow Applicability & Task-Intent Execution Routing | Beta | Not started | 0/5 | E62-S1/S3, E3, E5, E2 | [phases/e63_flow_applicability_routing.md](phases/e63_flow_applicability_routing.md) |
 | E64 | Execution Panel: Real Technical Event Stream | Beta | Not started | 0/4 | E42-S1, E43-S2/S3, E41-S3/S4, E33 | [phases/e64_execution_panel_real_events.md](phases/e64_execution_panel_real_events.md) |
 | E65 | Interactive Terminal | Beta | Not started | 0/4 | E62, E11-S2, E15-S2, E32 | [phases/e65_interactive_terminal.md](phases/e65_interactive_terminal.md) |
 | E66 | Acceptance, Evidence & Delivery | Beta | Not started | 0/2 | E61-E65 | [phases/e66_acceptance_delivery.md](phases/e66_acceptance_delivery.md) |
 
-Total: **147/284 stories complete** across 66 epics (E19 is a proposed
+Total: **151/284 stories complete** across 66 epics (E19 is a proposed
 visual-parity audit, reserved but not yet planned — see the E18 phase doc).
 
 *(2026-09-05: +24 planned stories from the new E61–E66 Beta-hardening
