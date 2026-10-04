@@ -271,6 +271,59 @@ def _check_postgres_pool_health() -> DiagnosticCheck:
     return DiagnosticCheck("postgres_pool", "ok", f"available={available} waiting={waiting}")
 
 
+def _check_global_home() -> DiagnosticCheck:
+    """Verify the tool's global home directory exists (or can be created) and is writable.
+
+    E61-S1 introduces ``AUTODEV_HOME``/``~/.autodev`` as the documented home
+    for configuration and data that belongs to the tool rather than to one
+    project. This surfaces that as a typed diagnostic rather than a failure
+    deep inside the first command that happens to need it.
+    """
+    from backend.config.paths import autodev_home
+
+    home = autodev_home()
+    try:
+        home.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return DiagnosticCheck("global_home", "fail", f"cannot create {home}: {exc}")
+    if not os.access(home, os.W_OK):
+        return DiagnosticCheck("global_home", "fail", f"{home} is not writable")
+    return DiagnosticCheck("global_home", "ok", f"global home {home} is writable")
+
+
+def _check_legacy_database(database_url: str) -> DiagnosticCheck:
+    """Warn when a pre-E61 cwd-relative ``autodev.db`` sits beside the launch directory.
+
+    E61-S1-T2 moved the *default* database location from the launch cwd to
+    the global data directory; an existing ``./autodev.db`` is deliberately
+    never migrated automatically (moving a user's database silently is
+    worse than leaving it, per the epic's risk register), so this check
+    names the file and the setting to point at it explicitly rather than
+    leaving an upgrade looking like lost data.
+
+    Reports ``ok`` when *database_url* is already explicitly configured to
+    point at that exact file -- that is not an orphan, it is the user's
+    deliberate, unaffected-by-E61 explicit configuration.
+
+    Args:
+        database_url: The currently configured ``DATABASE_URL``.
+    """
+    legacy_path = Path.cwd() / "autodev.db"
+    if not legacy_path.exists():
+        return DiagnosticCheck("legacy_database", "ok", "no legacy ./autodev.db found")
+    if _resolve_sqlite_path(database_url) == legacy_path:
+        return DiagnosticCheck(
+            "legacy_database", "ok", f"{legacy_path} is explicitly configured, not an orphan"
+        )
+    return DiagnosticCheck(
+        "legacy_database",
+        "fail",
+        f"found a legacy database at {legacy_path}; if this is the database you want, "
+        f"set DATABASE_URL=sqlite:///{legacy_path} explicitly (the default no longer "
+        "resolves here)",
+    )
+
+
 def _check_storage_backend(
     storage_backend: str, artifact_dir: str, minio_endpoint: str
 ) -> DiagnosticCheck:
@@ -324,6 +377,8 @@ def run_diagnostics() -> tuple[DiagnosticCheck, ...]:
         )
     )
     checks.append(_check_project_root(runtime_config.repository.project_root))
+    checks.append(_check_global_home())
+    checks.append(_check_legacy_database(settings.database_url))
     database_check = _check_database(settings.database_url)
     checks.append(database_check)
     if database_check.status == "ok" and _is_postgres_database_url(settings.database_url):

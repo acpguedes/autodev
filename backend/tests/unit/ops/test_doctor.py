@@ -16,7 +16,12 @@ from backend.persistence.database import reset_store_cache
 
 
 @pytest.fixture(autouse=True)
-def _reset_settings() -> Iterator[None]:
+def _reset_settings(tmp_path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    # Isolate AUTODEV_HOME and cwd for every test in this file: the new
+    # global_home/legacy_database checks (E61-S1) otherwise see whatever
+    # local dev state happens to sit beside the repo root.
+    monkeypatch.setenv("AUTODEV_HOME", str(tmp_path / "home"))
+    monkeypatch.chdir(tmp_path)
     reset_settings_cache()
     reset_store_cache()
     yield
@@ -37,7 +42,15 @@ def test_run_diagnostics_all_pass_in_local_profile(
     checks = run_diagnostics()
 
     names = [c.name for c in checks]
-    assert names == ["settings", "port", "project_root", "database", "storage_backend"]
+    assert names == [
+        "settings",
+        "port",
+        "project_root",
+        "global_home",
+        "legacy_database",
+        "database",
+        "storage_backend",
+    ]
     assert diagnostics_ok(checks)
 
 
@@ -69,6 +82,61 @@ def test_database_check_fails_for_unwritable_sqlite_parent(
     database_check = next(c for c in checks if c.name == "database")
     assert database_check.status == "fail"
     assert not diagnostics_ok(checks)
+
+
+def test_global_home_check_fails_when_unwritable(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    home = tmp_path / "ro-home"
+    home.mkdir()
+    home.chmod(0o500)
+    monkeypatch.setenv("AUTODEV_HOME", str(home))
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'autodev.db'}")
+    monkeypatch.setenv("AUTODEV_PROFILE", "local")
+    monkeypatch.setenv("AUTODEV_ARTIFACT_DIR", str(tmp_path / "artifacts"))
+    reset_settings_cache()
+    try:
+        checks = run_diagnostics()
+        global_home_check = next(c for c in checks if c.name == "global_home")
+        assert global_home_check.status == "fail"
+        assert not diagnostics_ok(checks)
+    finally:
+        home.chmod(0o700)
+
+
+def test_legacy_database_check_fails_when_a_cwd_relative_db_exists(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "autodev.db").write_bytes(b"")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'elsewhere.db'}")
+    monkeypatch.setenv("AUTODEV_PROFILE", "local")
+    monkeypatch.setenv("AUTODEV_ARTIFACT_DIR", str(tmp_path / "artifacts"))
+    reset_settings_cache()
+
+    checks = run_diagnostics()
+
+    legacy_check = next(c for c in checks if c.name == "legacy_database")
+    assert legacy_check.status == "fail"
+    assert "autodev.db" in legacy_check.detail
+    assert not diagnostics_ok(checks)
+
+
+def test_legacy_database_check_passes_when_explicitly_configured(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A cwd-relative autodev.db that DATABASE_URL explicitly points at is not an orphan."""
+    legacy_db = tmp_path / "autodev.db"
+    legacy_db.write_bytes(b"")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{legacy_db}")
+    monkeypatch.setenv("AUTODEV_PROFILE", "local")
+    monkeypatch.setenv("AUTODEV_ARTIFACT_DIR", str(tmp_path / "artifacts"))
+    reset_settings_cache()
+
+    checks = run_diagnostics()
+
+    legacy_check = next(c for c in checks if c.name == "legacy_database")
+    assert legacy_check.status == "ok"
+    assert diagnostics_ok(checks)
 
 
 def test_port_check_fails_when_port_already_bound(
@@ -185,6 +253,8 @@ def test_pgvector_checks_run_for_postgres_prod_profile_when_healthy(
         "settings",
         "port",
         "project_root",
+        "global_home",
+        "legacy_database",
         "database",
         "postgres_server_version",
         "pgvector_extension_present",
@@ -207,7 +277,15 @@ def test_pgvector_checks_skipped_when_database_unreachable(
     checks = run_diagnostics()
 
     names = [c.name for c in checks]
-    assert names == ["settings", "port", "project_root", "database", "storage_backend"]
+    assert names == [
+        "settings",
+        "port",
+        "project_root",
+        "global_home",
+        "legacy_database",
+        "database",
+        "storage_backend",
+    ]
     database_check = next(c for c in checks if c.name == "database")
     assert database_check.status == "fail"
     assert not diagnostics_ok(checks)
