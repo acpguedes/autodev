@@ -22,6 +22,7 @@ class SessionRepository(Protocol):
         plan: list[str],
         artifacts: dict[str, Any],
         tenant_id: str = DEFAULT_TENANT_ID,
+        project_id: str | None = None,
     ) -> None: ...
 
     def get_session(

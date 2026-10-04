@@ -79,17 +79,23 @@ class SandboxPolicyError(ValueError):
     """Raised when a validation job violates the sandbox policy."""
 
 
-def sandbox_policy_from_settings(settings: Settings | None = None) -> SandboxPolicy:
+def sandbox_policy_from_settings(
+    settings: Settings | None = None, *, project_root: Path | None = None
+) -> SandboxPolicy:
     """Build the current Docker sandbox policy from typed settings.
 
     Args:
         settings: Optional settings instance; defaults to the cached settings.
+        project_root: Per-session project root (E62-S3) overriding the
+            process-wide ``autodev_project_root`` setting.
 
     Returns:
         An immutable sandbox policy.
     """
     active = settings or get_settings()
-    project_root = Path(active.autodev_project_root.strip() or ".").expanduser().resolve()
+    if project_root is None:
+        project_root = Path(active.autodev_project_root.strip() or ".")
+    project_root = project_root.expanduser().resolve()
     return SandboxPolicy(
         enabled=active.autodev_enable_sandbox,
         allow_local=active.autodev_sandbox_allow_local,

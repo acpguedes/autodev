@@ -56,7 +56,7 @@ import threading
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from backend.api.authorization import requires_scope
 from backend.api.rbac_v2 import PrincipalV2, require_v2_principal
@@ -71,7 +71,7 @@ from backend.api.routers.patches_review_v2_models import (
     PatchProposeRequestV2,
 )
 from backend.api.v2_common import PaginationParams, paginate, v2_error
-from backend.config.runtime import get_runtime_config_service
+from backend.projects.resolution import resolve_project_root, session_id_from_request
 from backend.events.catalog import PatchAppliedData
 from backend.events.runtime import emit_event
 from backend.patches.engine import apply_patch, generate_patch
@@ -178,7 +178,9 @@ def _get_patch_or_404_locked(
     return record
 
 
-def get_patch_workspace_root() -> Path:
+def get_patch_workspace_root(
+    request: Request, principal: PrincipalV2 = Depends(require_v2_principal)
+) -> Path:
     """Resolve the filesystem root patches are applied against (or rejected outside of).
 
     Constructed fresh per request from the shared runtime configuration,
@@ -186,12 +188,19 @@ def get_patch_workspace_root() -> Path:
     provider. Overridable via ``app.dependency_overrides`` in tests so real
     applies never touch the actual repository working tree.
 
+    The root is the project of the session in the request path (E62-S3), so a
+    patch can never be applied inside another session's project.
+
+    Args:
+        request: The incoming request, for its ``session_id`` path parameter.
+        principal: Authenticated caller; its tenant scopes project resolution.
+
     Returns:
-        The configured project root.
+        The session's project root.
     """
-    config_service = get_runtime_config_service()
-    runtime_config = config_service.apply_to_environment()
-    return Path(runtime_config.repository.project_root)
+    return resolve_project_root(
+        tenant_id=principal.tenant_id, session_id=session_id_from_request(request)
+    )
 
 
 def _to_changed_file_v2(record: _PatchRecord) -> ChangedFileV2:

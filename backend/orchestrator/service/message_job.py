@@ -8,10 +8,10 @@ and the job handler it enqueues into.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, Dict
 
-from backend.config.runtime import get_runtime_config_service
+from backend.persistence.tenancy import DEFAULT_TENANT_ID
+from backend.projects.resolution import resolve_project_root
 from backend.config.settings import get_settings
 from backend.orchestrator.service import events
 from backend.execution.modes import ExecutionMode
@@ -22,7 +22,9 @@ from backend.orchestrator.service.core import OrchestratorConfig, OrchestratorSe
 from backend.orchestrator.service.models import HistoryItem, RunStatus, RunType
 
 
-def build_default_orchestrator() -> "OrchestratorService":
+def build_default_orchestrator(
+    *, tenant_id: str = DEFAULT_TENANT_ID, session_id: str | None = None
+) -> "OrchestratorService":
     """Build an :class:`OrchestratorService` bound to the current runtime config.
 
     The one construction every ``/v2`` request-scoped caller and this
@@ -32,13 +34,17 @@ def build_default_orchestrator() -> "OrchestratorService":
     pointed at whatever project root the runtime config currently resolves
     to.
 
+    Args:
+        tenant_id: Tenant whose project is resolved.
+        session_id: Session whose project root is used (E62-S3); without one
+            the tenant's active project applies, then the process-wide root.
+
     Returns:
         A new :class:`OrchestratorService`.
     """
-    config_service = get_runtime_config_service()
-    runtime_config = config_service.apply_to_environment()
     return OrchestratorService(
-        config=OrchestratorConfig(), project_root=Path(runtime_config.repository.project_root)
+        config=OrchestratorConfig(),
+        project_root=resolve_project_root(tenant_id=tenant_id, session_id=session_id),
     )
 
 
@@ -80,10 +86,10 @@ def _run_message_job(payload: Dict[str, Any]) -> Dict[str, Any]:
         ``{"run_id": ...}``, for the job queue's own status record; the
         durably persisted run row is the result callers actually care about.
     """
-    orchestrator = build_default_orchestrator()
     run_id = payload["run_id"]
     tenant_id = payload["tenant_id"]
     session_id = payload["session_id"]
+    orchestrator = build_default_orchestrator(tenant_id=tenant_id, session_id=session_id)
     flow_id = payload["flow_id"]
     try:
         with trace_run(run_id=run_id, tenant_id=tenant_id, flow_id=flow_id) as run_trace:

@@ -18,21 +18,22 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from backend.api.authorization import requires_scope
-from backend.config import get_runtime_config_service
+from backend.projects.resolution import resolve_project_root
 from backend.repository.providers import get_provider
 
 router = APIRouter(tags=["repository"])
 
 
-def _resolve_within_project_root(path: str) -> Path:
-    """Resolve *path* and ensure it stays inside the configured project root.
+def _resolve_within_project_root(path: str, session_id: str | None = None) -> Path:
+    """Resolve *path* and ensure it stays inside the session's project root.
+
+    The root is the project of *session_id* when given (E62-S3), else the
+    active project, else the process-wide configured root.
 
     Prevents an unauthenticated ``?path=`` from reading arbitrary files on the
     host (e.g. ``/etc/passwd`` or ``~/.ssh/*``).
     """
-    project_root = Path(
-        get_runtime_config_service().load().repository.project_root
-    ).resolve()
+    project_root = resolve_project_root(session_id=session_id)
     candidate = (project_root / Path(path).expanduser()).resolve()
     try:
         candidate.relative_to(project_root)
@@ -55,10 +56,11 @@ def extract_symbols(
     path: str | None = Query(default=None, description="Path to a source file"),
     code: str | None = Query(default=None, description="Raw source code"),
     language: str = Query(default="python", description="Source language hint"),
+    session_id: str | None = Query(default=None, description="Session whose project root scopes ?path="),
 ) -> SymbolsResponse:
     """Extract top-level symbols from a source file or raw code snippet."""
     if path is not None:
-        file_path = _resolve_within_project_root(path)
+        file_path = _resolve_within_project_root(path, session_id)
         if not file_path.is_file():
             raise HTTPException(status_code=404, detail=f"File not found: {path!r}")
         source = file_path.read_text(encoding="utf-8")
