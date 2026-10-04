@@ -211,6 +211,22 @@
     "skipToContent": "Pular para o conteúdo principal",
     "localeSwitcherLabel": "Mudar idioma para {{locale}}"
   },
+  "terminal": {
+    "tabsLabel": "Visões do painel de execução",
+    "tabActivity": "Atividade",
+    "tabTerminal": "Terminal",
+    "region": "Terminal interativo",
+    "connecting": "Conectando ao terminal…",
+    "connected": "Conectado",
+    "noProject": "Abra ou ative um projeto para usar o terminal.",
+    "unauthenticated": "Entre para usar o terminal.",
+    "forbidden": "O terminal está desativado ou você não tem permissão para usá-lo.",
+    "disconnected": "A conexão do terminal foi encerrada.",
+    "exited": "A sessão do shell terminou.",
+    "reconnect": "Reconectar",
+    "newSession": "Iniciar nova sessão",
+    "mismatchNotice": "Este terminal pertencia a outro projeto e foi descartado. Inicie uma nova sessão para continuar no projeto ativo."
+  },
   "projects": {
     "pageTitle": "Projetos",
     "pageSubtitle": "Abra, configure ou crie um projeto",
