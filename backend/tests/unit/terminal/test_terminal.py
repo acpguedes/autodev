@@ -50,7 +50,8 @@ def test_echo_cwd_interrupt_and_reap(tmp_path: Path) -> None:
 
 def test_manager_key_cap_and_project_isolation(tmp_path: Path) -> None:
     a, b = tmp_path / "a", tmp_path / "b"
-    a.mkdir(), b.mkdir()
+    a.mkdir()
+    b.mkdir()
     manager = TerminalManager(max_per_tenant=2)
     try:
         s1, created = manager.attach("t", a, "term")
