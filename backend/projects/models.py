@@ -15,10 +15,12 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from backend.config.paths import PROJECT_MARKER_CONFIG_NAME, PROJECT_MARKER_DIR_NAME
+
 #: Name of the marker directory that makes a directory a project root.
-PROJECT_DIR_NAME = ".autodev"
+PROJECT_DIR_NAME = PROJECT_MARKER_DIR_NAME
 #: Per-project configuration file inside the marker directory.
-PROJECT_CONFIG_FILE = "config.json"
+PROJECT_CONFIG_FILE = PROJECT_MARKER_CONFIG_NAME
 #: Project identity file inside the marker directory.
 PROJECT_METADATA_FILE = "project.json"
 

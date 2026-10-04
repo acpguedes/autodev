@@ -32,7 +32,7 @@ def test_migration_backfills_pre_existing_sessions_and_is_idempotent(tmp_path: P
     root.mkdir()
     monkeypatch.setenv("AUTODEV_PROJECT_ROOT", str(root))
     conn = sqlite3.connect(tmp_path / "legacy.db")
-    MigrationRunner(conn, STORE_MIGRATIONS[:-1], namespace="store").run_pending()
+    MigrationRunner(conn, STORE_MIGRATIONS[:-2], namespace="store").run_pending()
     for sid, tenant in (("s1", "default"), ("s2", "default"), ("s3", "other")):
         conn.execute(
             "INSERT INTO sessions (id, goal, plan_json, artifacts_json, tenant_id) VALUES (?, 'g', '[]', '{}', ?)",

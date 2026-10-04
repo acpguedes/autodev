@@ -920,6 +920,97 @@ def _m20_down_drop_projects_table(conn: sqlite3.Connection) -> None:
     conn.execute("DROP TABLE IF EXISTS projects")
 
 
+def _m21_add_project_id_to_code_chunks(conn: sqlite3.Connection) -> None:
+    """Scope ``code_chunks`` by project (E62-S5-T2).
+
+    SQLite cannot alter a ``UNIQUE`` constraint, and the old key
+    ``(tenant_id, file_path, symbol, start_line)`` would make two projects with
+    the same relative path collide, so the table is rebuilt with
+    ``project_id`` in the key. Existing rows are attached to the ``default``
+    project (creating it for any tenant that has chunks but no sessions), the
+    same backfill rule as ``sessions.project_id``.
+
+    Args:
+        conn: SQLite connection to apply the migration on.
+    """
+    from pathlib import Path
+
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(code_chunks)").fetchall()}
+    if "project_id" in existing:
+        return
+    root = configured_project_root_for_backfill()
+    conn.execute(
+        "INSERT OR IGNORE INTO projects (tenant_id, project_id, name, root_path, is_active) "
+        "SELECT DISTINCT tenant_id, ?, ?, ?, 1 FROM code_chunks",
+        (DEFAULT_PROJECT_ID, Path(root).name or DEFAULT_PROJECT_ID, root),
+    )
+    conn.executescript(
+        """
+        CREATE TABLE code_chunks_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            file_path TEXT NOT NULL,
+            symbol TEXT NOT NULL DEFAULT '',
+            start_line INTEGER NOT NULL,
+            end_line INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            indexed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            content TEXT NOT NULL DEFAULT '',
+            project_id TEXT NOT NULL DEFAULT '',
+            UNIQUE(tenant_id, project_id, file_path, symbol, start_line)
+        );
+        """
+    )
+    conn.execute(
+        "INSERT INTO code_chunks_new (id, tenant_id, file_path, symbol, start_line, end_line, "
+        "content_hash, indexed_at, content, project_id) "
+        "SELECT id, tenant_id, file_path, symbol, start_line, end_line, content_hash, indexed_at, content, ? "
+        "FROM code_chunks",
+        (DEFAULT_PROJECT_ID,),
+    )
+    conn.executescript(
+        """
+        DROP TABLE code_chunks;
+        ALTER TABLE code_chunks_new RENAME TO code_chunks;
+        CREATE INDEX IF NOT EXISTS idx_code_chunks_file_path ON code_chunks(tenant_id, file_path);
+        CREATE INDEX IF NOT EXISTS idx_code_chunks_hash ON code_chunks(content_hash);
+        CREATE INDEX IF NOT EXISTS idx_code_chunks_project ON code_chunks(tenant_id, project_id, file_path);
+        """
+    )
+
+
+def _m21_down_remove_project_id_from_code_chunks(conn: sqlite3.Connection) -> None:
+    """Revert :func:`_m21_add_project_id_to_code_chunks` (collapses projects onto one namespace).
+
+    Args:
+        conn: SQLite connection to apply the rollback on.
+    """
+    conn.executescript(
+        """
+        CREATE TABLE code_chunks_old (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tenant_id TEXT NOT NULL DEFAULT 'default',
+            file_path TEXT NOT NULL,
+            symbol TEXT NOT NULL DEFAULT '',
+            start_line INTEGER NOT NULL,
+            end_line INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            indexed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            content TEXT NOT NULL DEFAULT '',
+            UNIQUE(tenant_id, file_path, symbol, start_line)
+        );
+        INSERT OR IGNORE INTO code_chunks_old
+            (id, tenant_id, file_path, symbol, start_line, end_line, content_hash, indexed_at, content)
+            SELECT id, tenant_id, file_path, symbol, start_line, end_line, content_hash, indexed_at, content
+            FROM code_chunks;
+        DROP TABLE code_chunks;
+        ALTER TABLE code_chunks_old RENAME TO code_chunks;
+        CREATE INDEX IF NOT EXISTS idx_code_chunks_file_path ON code_chunks(tenant_id, file_path);
+        CREATE INDEX IF NOT EXISTS idx_code_chunks_hash ON code_chunks(content_hash);
+        """
+    )
+
+
 STORE_MIGRATIONS: list[MigrationEntry] = [
     _m1_create_core_tables,
     _m2_runs_add_run_type,
@@ -996,6 +1087,11 @@ STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_m20_create_projects_table,
         down=_m20_down_drop_projects_table,
         name="create_projects_table",
+    ),
+    Migration(
+        up=_m21_add_project_id_to_code_chunks,
+        down=_m21_down_remove_project_id_from_code_chunks,
+        name="add_project_id_to_code_chunks",
     ),
 ]
 

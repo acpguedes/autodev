@@ -44,13 +44,21 @@ _IGNORED_DIRECTORIES = {
 }
 
 
-def index(repo_path: str | Path, *, tenant_id: str = DEFAULT_TENANT_ID, store: Any | None = None) -> int:
+def index(
+    repo_path: str | Path,
+    *,
+    tenant_id: str = DEFAULT_TENANT_ID,
+    store: Any | None = None,
+    project_id: str = "",
+) -> int:
     """Index every source file under *repo_path*, persisting chunk metadata.
 
     Args:
         repo_path: Root directory to walk.
         tenant_id: Tenant to scope persisted chunks to.
         store: Durable store to persist into; defaults to :func:`get_store`.
+        project_id: Project the chunks belong to (E62-S5); ``""`` is the
+            unscoped legacy namespace.
 
     Returns:
         Total number of chunk rows written (inserted or updated) across every
@@ -61,7 +69,7 @@ def index(repo_path: str | Path, *, tenant_id: str = DEFAULT_TENANT_ID, store: A
         root = Path(repo_path).resolve()
         files = [str(path) for path in _iter_source_files(root)]
         measurements.file_count = len(files)
-        written = reindex(files, repo_root=root, tenant_id=tenant_id, store=store)
+        written = reindex(files, repo_root=root, tenant_id=tenant_id, store=store, project_id=project_id)
         measurements.chunks_written = written
         return written
 
@@ -72,6 +80,7 @@ def reindex(
     repo_root: Path | None = None,
     tenant_id: str = DEFAULT_TENANT_ID,
     store: Any | None = None,
+    project_id: str = "",
 ) -> int:
     """Recompute chunks for specific files and persist only changed ones.
 
@@ -86,6 +95,8 @@ def reindex(
             defaults to the current working directory.
         tenant_id: Tenant to scope persisted chunks to.
         store: Durable store to persist into; defaults to :func:`get_store`.
+        project_id: Project the chunks belong to (E62-S5); chunks of other
+            projects with the same relative path are never read or touched.
 
     Returns:
         Number of chunk rows written (inserted or updated); unchanged rows do
@@ -114,12 +125,12 @@ def reindex(
                     relative = _relative_path(absolute, root)
                     if not absolute.is_file():
                         measurements.chunks_deleted += _delete_chunks_for_file(
-                            conn, param, relative, tenant_id
+                            conn, param, relative, tenant_id, project_id
                         )
                         continue
                     code = absolute.read_text(encoding="utf-8", errors="replace")
                     chunks = chunk_source(relative, code, "python")
-                    written += _persist_chunks(conn, param, relative, chunks, tenant_id)
+                    written += _persist_chunks(conn, param, relative, chunks, tenant_id, project_id)
                 conn.commit()
         measurements.chunks_written = written
     return written
@@ -135,7 +146,7 @@ def _handle_reindex_file_job(payload: dict[str, Any]) -> dict[str, Any]:
     needing to know how chunking/persistence works.
 
     Args:
-        payload: ``{"path": str, "repo_root": str, "tenant_id": str}`` as
+        payload: ``{"path": str, "repo_root": str, "tenant_id": str, "project_id": str}`` as
             built by :func:`enqueue_file_changed`.
 
     Returns:
@@ -144,12 +155,17 @@ def _handle_reindex_file_job(payload: dict[str, Any]) -> dict[str, Any]:
     path = payload["path"]
     repo_root = Path(payload.get("repo_root", "."))
     tenant_id = payload.get("tenant_id", DEFAULT_TENANT_ID)
-    written = reindex([path], repo_root=repo_root, tenant_id=tenant_id)
+    project_id = payload.get("project_id", "")
+    written = reindex([path], repo_root=repo_root, tenant_id=tenant_id, project_id=project_id)
     return {"path": path, "chunks_written": written}
 
 
 def enqueue_file_changed(
-    path: str, *, repo_root: str | Path = ".", tenant_id: str = DEFAULT_TENANT_ID
+    path: str,
+    *,
+    repo_root: str | Path = ".",
+    tenant_id: str = DEFAULT_TENANT_ID,
+    project_id: str = "",
 ) -> str:
     """Enqueue incremental reindexing for a single changed file (E7-S1-T3).
 
@@ -159,16 +175,17 @@ def enqueue_file_changed(
         path: Path of the file that changed.
         repo_root: Root used to resolve *path* and compute its stored relative path.
         tenant_id: Tenant to scope the reindex to.
+        project_id: Project the file belongs to (E62-S5).
 
     Returns:
         The job id returned by the active queue's ``enqueue`` (see
         :func:`backend.jobs.queue.get_queue`).
     """
     queue = get_queue()
-    return queue.enqueue(
-        "repo.index.reindex_file",
-        {"path": str(path), "repo_root": str(repo_root), "tenant_id": tenant_id},
-    )
+    payload = {"path": str(path), "repo_root": str(repo_root), "tenant_id": tenant_id}
+    if project_id:
+        payload["project_id"] = project_id
+    return queue.enqueue("repo.index.reindex_file", payload)
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +198,9 @@ def _param_style(store: Any) -> str:
     return contract.placeholder(contract.is_postgres(getattr(store, "database_url", "")))
 
 
-def _persist_chunks(conn: Any, param: str, file_path: str, chunks: list[Chunk], tenant_id: str) -> int:
+def _persist_chunks(
+    conn: Any, param: str, file_path: str, chunks: list[Chunk], tenant_id: str, project_id: str = ""
+) -> int:
     """Upsert *chunks* for *file_path* on an already-open connection.
 
     Skips any chunk whose content hash is unchanged, and deletes any
@@ -197,6 +216,7 @@ def _persist_chunks(conn: Any, param: str, file_path: str, chunks: list[Chunk], 
         file_path: Stored (relative) path the chunks belong to.
         chunks: Freshly computed chunks for *file_path*.
         tenant_id: Tenant to scope persisted rows to.
+        project_id: Project the rows belong to; part of every row's key.
 
     Returns:
         Number of rows inserted or updated (unchanged rows do not count).
@@ -205,8 +225,8 @@ def _persist_chunks(conn: Any, param: str, file_path: str, chunks: list[Chunk], 
         (row[0], row[1]): row[2]
         for row in conn.execute(
             f"SELECT symbol, start_line, content_hash FROM code_chunks "
-            f"WHERE tenant_id = {param} AND file_path = {param}",
-            (tenant_id, file_path),
+            f"WHERE tenant_id = {param} AND project_id = {param} AND file_path = {param}",
+            (tenant_id, project_id, file_path),
         ).fetchall()
     }
     desired_keys: set[tuple[str, int]] = set()
@@ -221,9 +241,9 @@ def _persist_chunks(conn: Any, param: str, file_path: str, chunks: list[Chunk], 
         conn.cursor().executemany(
             f"""
             INSERT INTO code_chunks
-                (tenant_id, file_path, symbol, start_line, end_line, content_hash, content)
-            VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param})
-            ON CONFLICT(tenant_id, file_path, symbol, start_line) DO UPDATE SET
+                (tenant_id, project_id, file_path, symbol, start_line, end_line, content_hash, content)
+            VALUES ({param}, {param}, {param}, {param}, {param}, {param}, {param}, {param})
+            ON CONFLICT(tenant_id, project_id, file_path, symbol, start_line) DO UPDATE SET
                 end_line = excluded.end_line,
                 content_hash = excluded.content_hash,
                 content = excluded.content,
@@ -232,6 +252,7 @@ def _persist_chunks(conn: Any, param: str, file_path: str, chunks: list[Chunk], 
             [
                 (
                     tenant_id,
+                    project_id,
                     file_path,
                     chunk.symbol,
                     chunk.start_line,
@@ -246,14 +267,16 @@ def _persist_chunks(conn: Any, param: str, file_path: str, chunks: list[Chunk], 
     stale_keys = set(existing) - desired_keys
     if stale_keys:
         conn.cursor().executemany(
-            f"DELETE FROM code_chunks WHERE tenant_id = {param} AND file_path = {param} "
-            f"AND symbol = {param} AND start_line = {param}",
-            [(tenant_id, file_path, symbol, start_line) for symbol, start_line in stale_keys],
+            f"DELETE FROM code_chunks WHERE tenant_id = {param} AND project_id = {param} "
+            f"AND file_path = {param} AND symbol = {param} AND start_line = {param}",
+            [(tenant_id, project_id, file_path, symbol, start_line) for symbol, start_line in stale_keys],
         )
     return len(to_upsert)
 
 
-def _delete_chunks_for_file(conn: Any, param: str, file_path: str, tenant_id: str) -> int:
+def _delete_chunks_for_file(
+    conn: Any, param: str, file_path: str, tenant_id: str, project_id: str = ""
+) -> int:
     """Remove all persisted chunks for a file that no longer exists on disk.
 
     Args:
@@ -261,14 +284,15 @@ def _delete_chunks_for_file(conn: Any, param: str, file_path: str, tenant_id: st
         param: SQL placeholder style for *conn* (see :func:`_param_style`).
         file_path: Repository-relative path whose chunks are removed.
         tenant_id: Tenant the chunks are scoped to.
+        project_id: Project the chunks are scoped to.
 
     Returns:
         Number of chunk rows deleted, or ``0`` when the driver does not report
         a row count.
     """
     cursor = conn.execute(
-        f"DELETE FROM code_chunks WHERE tenant_id = {param} AND file_path = {param}",
-        (tenant_id, file_path),
+        f"DELETE FROM code_chunks WHERE tenant_id = {param} AND project_id = {param} AND file_path = {param}",
+        (tenant_id, project_id, file_path),
     )
     rowcount = getattr(cursor, "rowcount", 0)
     return rowcount if isinstance(rowcount, int) and rowcount > 0 else 0

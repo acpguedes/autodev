@@ -473,7 +473,7 @@ def test_postgres_store_create_session_scopes_tenant_before_insert(monkeypatch: 
     assert pairs
     insert_sql, insert_params = pairs[-1][1]
     assert "INSERT INTO sessions" in insert_sql
-    assert cast(Sequence[object], insert_params)[-1] == "acme"
+    assert cast(Sequence[object], insert_params)[-2] == "acme"  # (..., tenant_id, project_id)
 
 
 def test_postgres_store_list_run_steps_scopes_tenant_and_joins_runs(monkeypatch: pytest.MonkeyPatch) -> None:

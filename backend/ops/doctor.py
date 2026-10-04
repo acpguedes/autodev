@@ -82,28 +82,6 @@ def _check_project_root(project_root: str) -> DiagnosticCheck:
     return DiagnosticCheck("project_root", "ok", f"{path} is writable")
 
 
-def _check_discovered_project(start: Path) -> DiagnosticCheck:
-    """Report the project root discovered from *start* and how it was found (E62).
-
-    Finding no project is not a failure -- it is the state that leads to the
-    open/init/create choice -- but an invalid ``.autodev/`` file is.
-    """
-    from backend.projects.discovery import find_project_marker
-    from backend.projects.models import ProjectConfigError, load_project_config, load_project_metadata
-
-    found = find_project_marker(start)
-    if found is None:
-        return DiagnosticCheck("project", "ok", "no .autodev/ found (no project configured here)")
-    root, depth = found
-    try:
-        load_project_config(root)
-        load_project_metadata(root)
-    except ProjectConfigError as exc:
-        return DiagnosticCheck("project", "fail", str(exc))
-    where = "in the current directory" if depth == 0 else f"{depth} level(s) above the current directory"
-    return DiagnosticCheck("project", "ok", f"{root} (.autodev/ marker {where})")
-
-
 def _resolve_sqlite_path(database_url: str) -> Path | None:
     """Return the filesystem path a ``sqlite://`` URL points at, or ``None``."""
     if database_url.startswith("sqlite:///"):
@@ -370,6 +348,28 @@ def _check_storage_backend(
             "storage_backend", "ok", f"s3 endpoint configured ({minio_endpoint})"
         )
     return DiagnosticCheck("storage_backend", "fail", f"unknown storage_backend: {storage_backend!r}")
+
+
+def _check_discovered_project(start: Path) -> DiagnosticCheck:
+    """Report the project root discovered from *start* and how it was found (E62).
+
+    Finding no project is not a failure -- it is the state that leads to the
+    open/init/create choice -- but an invalid ``.autodev/`` file is.
+    """
+    from backend.projects.discovery import find_project_marker
+    from backend.projects.models import ProjectConfigError, load_project_config, load_project_metadata
+
+    found = find_project_marker(start)
+    if found is None:
+        return DiagnosticCheck("project", "ok", "no .autodev/ found (no project configured here)")
+    root, depth = found
+    try:
+        load_project_config(root)
+        load_project_metadata(root)
+    except ProjectConfigError as exc:
+        return DiagnosticCheck("project", "fail", str(exc))
+    where = "in the current directory" if depth == 0 else f"{depth} level(s) above the current directory"
+    return DiagnosticCheck("project", "ok", f"{root} (.autodev/ marker {where})")
 
 
 def run_diagnostics() -> tuple[DiagnosticCheck, ...]:

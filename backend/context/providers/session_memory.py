@@ -13,6 +13,7 @@ from typing import Any
 from backend.context.provider import ContextItem
 from backend.persistence.database import get_store
 from backend.persistence.tenancy import DEFAULT_TENANT_ID
+from backend.projects.resolution import session_project_id
 
 #: Default number of most-recent messages surfaced when a caller does not
 #: configure a different limit.
@@ -35,7 +36,15 @@ class SessionMemoryContextProvider:
         self._store = store
         self._max_messages = max_messages
 
-    def get_context(self, query: str, *, session_id: str = "", **kwargs: Any) -> list[ContextItem]:
+    def get_context(
+        self,
+        query: str,
+        *,
+        session_id: str = "",
+        project_id: str | None = None,
+        tenant_id: str = DEFAULT_TENANT_ID,
+        **kwargs: Any,
+    ) -> list[ContextItem]:
         """Return the session's most recent messages as context items.
 
         Args:
@@ -43,6 +52,10 @@ class SessionMemoryContextProvider:
                 memory in this slice surfaces recency-ordered recent history
                 rather than query-filtered results.
             session_id: Session whose message history to read.
+            project_id: When given (E62-S5), the project the caller is working
+                in; a session that belongs to a different project yields no
+                memory, so one project's conversation never reaches another's.
+            tenant_id: Tenant owning the session.
             **kwargs: Accepted for Protocol compatibility; ignored.
 
         Returns:
@@ -54,7 +67,11 @@ class SessionMemoryContextProvider:
         if not session_id:
             return []
         store = self._store if self._store is not None else get_store()
-        messages = store.list_messages(session_id, tenant_id=DEFAULT_TENANT_ID)
+        if project_id is not None and session_project_id(
+            session_id, tenant_id=tenant_id, store=store
+        ) != project_id:
+            return []
+        messages = store.list_messages(session_id, tenant_id=tenant_id)
         recent = messages[-self._max_messages :]
         return [
             ContextItem(

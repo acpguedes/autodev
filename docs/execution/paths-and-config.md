@@ -37,8 +37,11 @@ before E61:
 | Project configuration file | `<project root>/autodev.config.json` | `AUTODEV_CONFIG_PATH` |
 | Project root | the launch `cwd` | `AUTODEV_PROJECT_ROOT` |
 
-Project discovery beyond this (an `.autodev/` marker, an ancestor-directory
-walk) is out of scope for E61 — see E62.
+Since E62 a project is also a directory with a `.autodev/` marker, found by an
+ancestor-directory walk; see [`docs/projects/discovery.md`](../projects/discovery.md).
+Its `.autodev/config.json` is an additional layer between the global layer and
+the project's `autodev.config.json` (composition: defaults → global →
+`.autodev/config.json` → `autodev.config.json`).
 
 ## Composition: defaults → global → project
 

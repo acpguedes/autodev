@@ -21,6 +21,7 @@ def search(
     limit: int = 10,
     path_prefix: str | None = None,
     symbol: str | None = None,
+    project_id: str | None = None,
 ) -> list[tuple[int, float]]:
     """Return the top matching chunk ids for *query*, ranked by ``ts_rank``.
 
@@ -31,6 +32,8 @@ def search(
         limit: Maximum number of results to return.
         path_prefix: Optional ``file_path`` prefix filter.
         symbol: Optional exact ``symbol`` filter.
+        project_id: Optional project scope (E62-S5); ``None`` applies no
+            project predicate.
 
     Returns:
         ``(chunk_id, rank)`` pairs ordered by descending ``ts_rank``; empty
@@ -41,6 +44,9 @@ def search(
         "to_tsvector('english', content) @@ plainto_tsquery('english', %s)",
     ]
     params: list[Any] = [tenant_id, query]
+    if project_id is not None:
+        conditions.append("project_id = %s")
+        params.append(project_id)
     if path_prefix:
         conditions.append("file_path LIKE %s")
         params.append(f"{path_prefix}%")

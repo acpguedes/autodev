@@ -1026,6 +1026,59 @@ def _pg_m14_down_drop_projects_table(conn: Any) -> None:
         conn.execute(f"DROP TABLE IF EXISTS {table}")
 
 
+def _pg_m15_add_project_id_to_code_chunks(conn: Any) -> None:
+    """Scope ``code_chunks`` by project and put ``project_id`` in its unique key (E62-S5-T2).
+
+    Existing rows are attached to the ``default`` project (created for any
+    tenant that has chunks but no project). The backfill runs with ``projects``
+    and ``code_chunks`` temporarily exempt from forced RLS -- the migration
+    connects as the owner and cannot enumerate tenants otherwise.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    from pathlib import Path
+
+    root = configured_project_root_for_backfill()
+    conn.execute("ALTER TABLE code_chunks ADD COLUMN IF NOT EXISTS project_id TEXT NOT NULL DEFAULT ''")
+    conn.execute("ALTER TABLE projects NO FORCE ROW LEVEL SECURITY")
+    conn.execute("ALTER TABLE code_chunks NO FORCE ROW LEVEL SECURITY")
+    conn.execute(
+        "INSERT INTO projects (tenant_id, project_id, name, root_path, is_active) "
+        "SELECT DISTINCT tenant_id, %s, %s, %s, TRUE FROM code_chunks WHERE project_id = '' "
+        "ON CONFLICT DO NOTHING",
+        (DEFAULT_PROJECT_ID, Path(root).name or DEFAULT_PROJECT_ID, root),
+    )
+    conn.execute("UPDATE code_chunks SET project_id = %s WHERE project_id = ''", (DEFAULT_PROJECT_ID,))
+    conn.execute("ALTER TABLE code_chunks FORCE ROW LEVEL SECURITY")
+    conn.execute("ALTER TABLE projects FORCE ROW LEVEL SECURITY")
+    conn.execute(
+        "ALTER TABLE code_chunks DROP CONSTRAINT IF EXISTS code_chunks_tenant_id_file_path_symbol_start_line_key"
+    )
+    conn.execute(
+        "ALTER TABLE code_chunks ADD CONSTRAINT code_chunks_project_scope_key "
+        "UNIQUE (tenant_id, project_id, file_path, symbol, start_line)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_pg_code_chunks_project ON code_chunks(tenant_id, project_id, file_path)"
+    )
+
+
+def _pg_m15_down_remove_project_id_from_code_chunks(conn: Any) -> None:
+    """Revert :func:`_pg_m15_add_project_id_to_code_chunks`.
+
+    Args:
+        conn: Open psycopg connection.
+    """
+    conn.execute("DROP INDEX IF EXISTS idx_pg_code_chunks_project")
+    conn.execute("ALTER TABLE code_chunks DROP CONSTRAINT IF EXISTS code_chunks_project_scope_key")
+    conn.execute("ALTER TABLE code_chunks DROP COLUMN IF EXISTS project_id")
+    conn.execute(
+        "ALTER TABLE code_chunks ADD CONSTRAINT code_chunks_tenant_id_file_path_symbol_start_line_key "
+        "UNIQUE (tenant_id, file_path, symbol, start_line)"
+    )
+
+
 POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
     _pg_m1_create_core_tables,
     Migration(
@@ -1097,6 +1150,11 @@ POSTGRES_STORE_MIGRATIONS: list[MigrationEntry] = [
         up=_pg_m14_create_projects_table,
         down=_pg_m14_down_drop_projects_table,
         name="create_projects_table",
+    ),
+    Migration(
+        up=_pg_m15_add_project_id_to_code_chunks,
+        down=_pg_m15_down_remove_project_id_from_code_chunks,
+        name="add_project_id_to_code_chunks",
     ),
 ]
 
