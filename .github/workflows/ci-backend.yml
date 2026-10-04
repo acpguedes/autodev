@@ -264,7 +264,7 @@ jobs:
             -p 9000:9000 -p 9001:9001 \
             -e MINIO_ROOT_USER="$AUTODEV_MINIO_ROOT_USER" \
             -e MINIO_ROOT_PASSWORD="$AUTODEV_MINIO_ROOT_PASSWORD" \
-            minio/minio:RELEASE.2025-04-22T22-12-26Z server /data --console-address ":9001"
+            quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z server /data --console-address ":9001"
           for i in $(seq 1 30); do
             curl -sf http://localhost:9000/minio/health/live && exit 0
             sleep 1
