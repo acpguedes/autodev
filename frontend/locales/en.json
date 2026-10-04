@@ -211,6 +211,22 @@
     "skipToContent": "Skip to main content",
     "localeSwitcherLabel": "Switch language to {{locale}}"
   },
+  "terminal": {
+    "tabsLabel": "Execution panel views",
+    "tabActivity": "Activity",
+    "tabTerminal": "Terminal",
+    "region": "Interactive terminal",
+    "connecting": "Connecting to the terminal…",
+    "connected": "Connected",
+    "noProject": "Open or activate a project to use the terminal.",
+    "unauthenticated": "Sign in to use the terminal.",
+    "forbidden": "The terminal is disabled or you are not allowed to use it.",
+    "disconnected": "The terminal connection was closed.",
+    "exited": "The shell session ended.",
+    "reconnect": "Reconnect",
+    "newSession": "Start a new session",
+    "mismatchNotice": "This terminal belonged to a different project, so it was discarded. Start a new session to continue in the active project."
+  },
   "projects": {
     "pageTitle": "Projects",
     "pageSubtitle": "Open, configure or create a project",

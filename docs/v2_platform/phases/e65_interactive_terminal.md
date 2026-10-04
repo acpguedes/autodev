@@ -2,7 +2,7 @@
 
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35 and E41-E64).
-**Status:** Not started · **Stories:** 0/4
+**Status:** Done · **Stories:** 4/4
 **Depends on:** E62 (a project to bind a session to), E11-S2 (Control Plane
 RBAC and the access audit record, ADR-018), E15-S2 (the shell's execution panel
 slot), E32/E14 (the fail-closed execution posture this epic mirrors)

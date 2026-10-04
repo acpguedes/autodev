@@ -76,6 +76,8 @@ neither.
 | ADR-028 | Layered Configuration Semantics (Absence vs. Falsiness) | Accepted | E61 | 2026-09-05 |
 | ADR-029 | Project as a Scope Inside a Tenant | Accepted | E62 | 2026-10-04 |
 | ADR-030 | Flow Applicability Contract and Deterministic Selection Gate | Accepted | E63 | 2026-10-04 |
+| ADR-031 | Streaming Output Events and the Chunk-Redaction Rule | Accepted | E64 | 2026-10-04 |
+| ADR-032 | Host PTY Terminal Behind a Fail-Closed Flag | Accepted | E65 | 2026-10-04 |
 
 > Update this table whenever an ADR or RFC is added or changes status. This index,
 > together with `docs/v2_platform/progress.md`, is the fastest way to see which

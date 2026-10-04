@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
-import { shellStore } from "./shellStore";
+import { shellStore, type PanelTab } from "./shellStore";
 
 /** Contextual header content a page publishes for the 64px header. */
 export interface ShellHeaderContent {
@@ -34,6 +34,14 @@ export interface ShellContextValue {
   activeSessionId: string | null;
   /** Run id of the most recent Chat turn, or `null` (E42-S3). */
   activeRunId: string | null;
+  /** Selected execution-panel tab (E65-S3). */
+  panelTab: PanelTab;
+  /** Terminal id per project root (E65-S4-T1). */
+  terminalIds: Readonly<Record<string, string>>;
+  /** Select the execution-panel tab. */
+  setPanelTab: (tab: PanelTab) => void;
+  /** Set or (with `null`) discard a project's terminal id. */
+  setTerminalId: (projectRoot: string, terminalId: string | null) => void;
   /** Open or close the execution panel. */
   setPanelOpen: (open: boolean) => void;
   /** Toggle the execution panel. */
@@ -105,6 +113,10 @@ export function ShellProvider({ children }: { children: React.ReactNode }): Reac
       activeNav: state.activeNav,
       activeSessionId: state.activeSessionId,
       activeRunId: state.activeRunId,
+      panelTab: state.panelTab,
+      terminalIds: state.terminalIds,
+      setPanelTab: shellStore.setPanelTab,
+      setTerminalId: shellStore.setTerminalId,
       setPanelOpen: shellStore.setPanelOpen,
       togglePanel: shellStore.togglePanel,
       setActiveNav: shellStore.setActiveNav,

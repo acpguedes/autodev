@@ -50,3 +50,5 @@ own synchronous response). Real-time streaming for the shell — reusing the
 exact SSE consumption pattern E14-S5's Web UX already proved
 (`frontend/lib/execution_events.ts`) — is a reasonable follow-up, not built
 in this pass.
+
+For a real interactive terminal, see [terminal.md](terminal.md).

@@ -7,6 +7,10 @@ All notable changes to AutoDev Architect are documented here. Format loosely fol
 
 ### Added
 
+- **E65 — Interactive Terminal** (4/4 stories): host PTY shell per project behind
+  `AUTODEV_ENABLE_TERMINAL` (default off; `prod` needs `AUTODEV_TERMINAL_ALLOW_PROD`),
+  audited `WS /v2/terminal/{id}` with the new `terminal:use` scope, xterm tab in
+  the execution panel, `terminal.session.opened`/`closed` events (ADR-032).
 - **E64 — Execution Panel: Real Technical Event Stream** (4/4 stories): the
   panel subscribes to the run's SSE stream and renders only real operations
   (no model-written text; `RunTimelinePanel` no longer mounted, `run.timeline.*`

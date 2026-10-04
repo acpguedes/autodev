@@ -3937,6 +3937,9 @@ the `Idempotency-Key` header (client-generated UUID). The Control Plane persists
 
 ### 14.4 Streaming: SSE and WebSocket
 
+> **E65 note:** the general `WS /v2/ws` channel below is still **not implemented**.
+> Only the narrow, audited `WS /v2/terminal/{terminal_id}` exists (ADR-032).
+
 Non-functional requirement (brief §6): **run streaming start < 1 s**.
 
 **SSE (Server-Sent Events)** — unidirectional channel, simple and proxy-friendly,

@@ -462,6 +462,17 @@ class ProjectLifecycleData(BaseModel):
     name: str
 
 
+class TerminalSessionData(BaseModel):
+    """Payload of ``terminal.session.opened``/``closed`` (E65).
+
+    Identifiers only -- never a path, and never terminal output.
+    """
+
+    tenantId: str
+    terminalId: str
+    projectId: str = ""
+
+
 @dataclass(frozen=True)
 class EventDefinition:
     """Catalog entry describing one event type (§14.5 table).
@@ -565,6 +576,8 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
     ),
     EventDefinition("project.created", "Control Plane API", "tenantId", ProjectLifecycleData),
     EventDefinition("project.activated", "Control Plane API", "tenantId", ProjectLifecycleData),
+    EventDefinition("terminal.session.opened", "Control Plane API", "tenantId", TerminalSessionData),
+    EventDefinition("terminal.session.closed", "Control Plane API", "tenantId", TerminalSessionData),
     EventDefinition("secret.created", "Secret Service", "tenantId", SecretLifecycleData),
     EventDefinition("secret.rotated", "Secret Service", "tenantId", SecretLifecycleData),
     EventDefinition("secret.revoked", "Secret Service", "tenantId", SecretLifecycleData),

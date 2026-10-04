@@ -35,7 +35,20 @@ export interface ShellState {
    * defaults its watched run to this.
    */
   readonly activeRunId: string | null;
+  /** Selected tab of the execution panel (E65-S3). */
+  readonly panelTab: PanelTab;
+  /**
+   * Client-generated interactive-terminal id per project root (E65-S4-T1),
+   * so a project always resumes its own shell and never another's.
+   */
+  readonly terminalIds: Readonly<Record<string, string>>;
 }
+
+/** Tabs of the execution panel. */
+export type PanelTab = "activity" | "terminal";
+
+/** Upper bound on remembered per-project terminal ids. */
+const MAX_TERMINAL_IDS = 50;
 
 /** `sessionStorage` key that holds the serialized {@link ShellState}. */
 export const SHELL_STORAGE_KEY = "autodev.shell.v1";
@@ -54,6 +67,8 @@ export const DEFAULT_SHELL_STATE: ShellState = Object.freeze({
   activeNav: "chat",
   activeSessionId: null,
   activeRunId: null,
+  panelTab: "activity",
+  terminalIds: Object.freeze({}),
 });
 
 /**
@@ -78,6 +93,29 @@ export function clampPanelWidth(width: number): number {
  */
 function sanitizeNullableId(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+/**
+ * Coerce an untrusted value into a bounded `{projectRoot: terminalId}` map,
+ * dropping non-string or empty entries.
+ *
+ * @param value - Untrusted field value.
+ * @returns A well-formed terminal id map.
+ */
+function sanitizeTerminalIds(value: unknown): Readonly<Record<string, string>> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return DEFAULT_SHELL_STATE.terminalIds;
+  }
+  const out: Record<string, string> = {};
+  for (const [root, id] of Object.entries(value as Record<string, unknown>)) {
+    if (Object.keys(out).length >= MAX_TERMINAL_IDS) {
+      break;
+    }
+    if (root.length > 0 && typeof id === "string" && id.length > 0) {
+      out[root] = id;
+    }
+  }
+  return out;
 }
 
 /**
@@ -107,6 +145,8 @@ export function sanitizeShellState(raw: unknown): ShellState {
         : DEFAULT_SHELL_STATE.activeNav,
     activeSessionId: sanitizeNullableId(candidate.activeSessionId),
     activeRunId: sanitizeNullableId(candidate.activeRunId),
+    panelTab: candidate.panelTab === "terminal" ? "terminal" : "activity",
+    terminalIds: sanitizeTerminalIds(candidate.terminalIds),
   };
 }
 
@@ -130,6 +170,13 @@ export interface ShellStore {
   setActiveSessionId(sessionId: string | null): void;
   /** Record the active run id (E42-S3), or `null` to clear it. */
   setActiveRunId(runId: string | null): void;
+  /** Select the execution-panel tab (E65-S3). */
+  setPanelTab(tab: PanelTab): void;
+  /**
+   * Set (or, with `null`, discard) the terminal id for a project root
+   * (E65-S4-T1).
+   */
+  setTerminalId(projectRoot: string, terminalId: string | null): void;
 }
 
 /**
@@ -172,7 +219,9 @@ export function createShellStore(storage: ShellStorage | null): ShellStore {
       next.panelWidth === state.panelWidth &&
       next.activeNav === state.activeNav &&
       next.activeSessionId === state.activeSessionId &&
-      next.activeRunId === state.activeRunId
+      next.activeRunId === state.activeRunId &&
+      next.panelTab === state.panelTab &&
+      next.terminalIds === state.terminalIds
     ) {
       return;
     }
@@ -196,6 +245,19 @@ export function createShellStore(storage: ShellStorage | null): ShellStore {
     setActiveNav: (nav) => commit({ ...state, activeNav: nav }),
     setActiveSessionId: (sessionId) => commit({ ...state, activeSessionId: sessionId }),
     setActiveRunId: (runId) => commit({ ...state, activeRunId: runId }),
+    setPanelTab: (tab) => commit({ ...state, panelTab: tab }),
+    setTerminalId: (projectRoot, terminalId) => {
+      if ((state.terminalIds[projectRoot] ?? null) === terminalId) {
+        return;
+      }
+      const next = { ...state.terminalIds };
+      if (terminalId === null) {
+        delete next[projectRoot];
+      } else {
+        next[projectRoot] = terminalId;
+      }
+      commit({ ...state, terminalIds: next });
+    },
   };
 }
 

@@ -17,10 +17,11 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable, Iterable, Iterator
-from typing import Any, TypeVar
+from typing import Any, TypeVar, cast
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Request, WebSocket
 from fastapi.routing import APIRoute
+from starlette.requests import HTTPConnection
 
 from backend.auth.audit import get_audit_writer, new_audit_id, publish_access_event
 from backend.auth.contracts import (
@@ -261,7 +262,7 @@ def _publish_unauthenticated_denial(
     )
 
 
-async def enforce_control_plane_access(request: Request) -> None:
+async def enforce_control_plane_access(connection: HTTPConnection) -> None:
     """App-level dependency: authenticate, then authorize, every request.
 
     Installed once, on the FastAPI application itself, so it runs before
@@ -284,7 +285,7 @@ async def enforce_control_plane_access(request: Request) -> None:
     against.
 
     Args:
-        request: The incoming request.
+        connection: The incoming HTTP request or WebSocket handshake.
 
     Raises:
         HTTPException: 401 if no configured method authenticates the
@@ -293,10 +294,13 @@ async def enforce_control_plane_access(request: Request) -> None:
             or the principal lacks the required scope; 503 if a required
             audit write fails for an about-to-be-allowed request.
     """
-    route = request.scope.get("route")
+    route = connection.scope.get("route")
     endpoint = getattr(route, "endpoint", None)
     if endpoint is not None and is_public_endpoint(endpoint):
         return
+    # Past the public short-circuit only HTTP routes remain: WebSocket
+    # handlers are public and authorize via authorize_websocket (E65-S2).
+    request = cast(Request, connection)
 
     settings = Settings()
     service = get_auth_service()
@@ -406,7 +410,76 @@ async def enforce_control_plane_access(request: Request) -> None:
     publish_access_event(record)
 
 
+async def authorize_websocket(websocket: WebSocket, scope: str) -> PrincipalV2 | None:
+    """Authenticate, authorize and audit a WebSocket handshake (E65-S2-T2).
+
+    The app-level dependency cannot run on a handshake (it reads
+    ``request.method``), so WebSocket handlers are ``@public_endpoint`` and
+    call this instead. Must be called *before* ``websocket.accept()``; on any
+    failure the socket is closed (4401 unauthenticated, 4403 forbidden) and
+    ``None`` is returned. A ``?token=`` query parameter is rejected outright:
+    credentials never travel in URLs.
+
+    Args:
+        websocket: The incoming, not-yet-accepted socket.
+        scope: Required ``resource:action`` scope.
+
+    Returns:
+        The principal on an audited allow, else ``None`` (socket closed).
+    """
+    if "token" in websocket.query_params:
+        await websocket.close(code=4401)
+        return None
+    service = get_auth_service()
+    try:
+        principal = await service.authenticate_request(websocket)  # type: ignore[arg-type]
+    except InvalidCredentialError:
+        await websocket.close(code=4401)
+        return None
+    route = websocket.scope.get("route")
+    request_id = websocket.headers.get("x-request-id") or str(uuid.uuid4())
+
+    def _audit(*, decision: str, reason: str) -> AccessAuditRecord:
+        return AccessAuditRecord(
+            audit_id=new_audit_id(),
+            occurred_at=utcnow(),
+            tenant_id=principal.tenant_id,
+            subject=principal.subject,
+            auth_method=principal.auth_method,
+            credential_id=principal.credential_id,
+            roles=principal.roles,
+            required_scope=scope,
+            resource_type=_resource_type(route),
+            resource_id=None,
+            method="WEBSOCKET",
+            route_template=str(getattr(route, "path", websocket.url.path)),
+            decision=decision,  # type: ignore[arg-type]
+            reason=reason,
+            request_id=request_id,
+        )
+
+    if scope not in effective_scopes(principal.roles, principal.scopes or None):
+        record = _audit(decision="denied", reason="scope_missing")
+        try:
+            get_audit_writer().record(record, required=False)
+        except Exception:  # noqa: BLE001 - denial stands regardless of audit outcome
+            pass
+        else:
+            publish_access_event(record)
+        await websocket.close(code=4403)
+        return None
+    record = _audit(decision="allowed", reason="ok")
+    try:
+        get_audit_writer().record(record, required=True)
+    except Exception:  # noqa: BLE001 - an unauditable allow is denied (ADR-018)
+        await websocket.close(code=4403)
+        return None
+    publish_access_event(record)
+    return principal
+
+
 __all__ = [
+    "authorize_websocket",
     "enforce_control_plane_access",
     "get_authorization_requirement",
     "is_public_endpoint",
