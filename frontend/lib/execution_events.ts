@@ -22,6 +22,7 @@ export const EXECUTION_ACTION_EVENT_TYPES: readonly string[] = [
   "execution.action.started",
   "execution.action.completed",
   "execution.action.failed",
+  "execution.action.output",
 ];
 
 /** One decoded `execution.action.*` event. */
@@ -32,6 +33,22 @@ export interface ExecutionActionEvent {
   status?: string;
   exitCode?: number;
   error?: string;
+  /** SSE frame id (bus cursor, monotonic within a run); `null` when absent. */
+  frameId: string | null;
+  command?: string[] | null;
+  path?: string | null;
+  actionType?: string;
+  stepLabel?: string;
+  stdout?: string;
+  stderr?: string;
+  /** E64-S2: originating agent; absent on pre-E64 events. */
+  sourceAgent?: string;
+  /** E64-S2: output hit the backend cap; absent on pre-E64 events. */
+  truncated?: boolean;
+  /** E64-S3: `execution.action.output` fields. */
+  stream?: "stdout" | "stderr";
+  chunk?: string;
+  seq?: number;
   receivedAt: string;
 }
 
@@ -46,7 +63,11 @@ export interface ExecutionActionEvent {
  * @returns The decoded event, or `null` when invalid or not an
  *   `execution.action.*` type.
  */
-export function parseExecutionActionEvent(eventType: string, raw: string): ExecutionActionEvent | null {
+export function parseExecutionActionEvent(
+  eventType: string,
+  raw: string,
+  frameId: string | null = null,
+): ExecutionActionEvent | null {
   if (!eventType.startsWith("execution.action.")) {
     return null;
   }
@@ -63,13 +84,30 @@ export function parseExecutionActionEvent(eventType: string, raw: string): Execu
   if (typeof record.actionId !== "string" || typeof record.taskId !== "string") {
     return null;
   }
+  const str = (key: string): string | undefined =>
+    typeof record[key] === "string" ? (record[key] as string) : undefined;
   return {
     type: eventType,
     actionId: record.actionId,
     taskId: record.taskId,
-    status: typeof record.status === "string" ? record.status : undefined,
+    status: str("status"),
     exitCode: typeof record.exitCode === "number" ? record.exitCode : undefined,
-    error: typeof record.error === "string" ? record.error : undefined,
+    error: str("error"),
+    frameId,
+    command:
+      Array.isArray(record.command) && record.command.every((part) => typeof part === "string")
+        ? (record.command as string[])
+        : undefined,
+    path: str("path"),
+    actionType: str("type"),
+    stepLabel: str("stepLabel"),
+    stdout: str("stdout"),
+    stderr: str("stderr"),
+    sourceAgent: str("sourceAgent"),
+    truncated: record.truncated === true ? true : undefined,
+    stream: record.stream === "stdout" || record.stream === "stderr" ? record.stream : undefined,
+    chunk: str("chunk"),
+    seq: typeof record.seq === "number" ? record.seq : undefined,
     receivedAt: new Date().toISOString(),
   };
 }
@@ -138,7 +176,7 @@ export function useExecutionActionLog(runId: string | null): ExecutionActionLogR
             if (!frame.event) {
               continue;
             }
-            const parsed = parseExecutionActionEvent(frame.event, frame.data);
+            const parsed = parseExecutionActionEvent(frame.event, frame.data, frame.id);
             if (!parsed || cancelled) {
               continue;
             }

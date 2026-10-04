@@ -38,6 +38,7 @@ class PolicyCategory(StrEnum):
     """Action categories a policy rule can govern."""
 
     SHELL = "shell"
+    FS_READ = "fs-read"
     FS_WRITE = "fs-write"
     PATCH = "patch"
     NETWORK = "network"
@@ -51,6 +52,7 @@ class PolicyCategory(StrEnum):
 #: that need, matching the taxonomy precedent in
 #: :mod:`backend.plugins.permissions`.
 ACTION_TYPE_TO_POLICY_CATEGORY: dict[ExecutionActionType, PolicyCategory] = {
+    ExecutionActionType.READ_FILE: PolicyCategory.FS_READ,
     ExecutionActionType.CREATE_FILE: PolicyCategory.FS_WRITE,
     ExecutionActionType.EDIT_FILE: PolicyCategory.FS_WRITE,
     ExecutionActionType.APPLY_PATCH: PolicyCategory.PATCH,

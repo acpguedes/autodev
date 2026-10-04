@@ -26,7 +26,10 @@ that loop with a real, auditable executor.
 `TaskExecutor.execute()` maps one `ExecutionTask` to zero or more actions,
 dispatches each to an injected `ActionRunner`, and emits
 `execution.action.started`/`.completed`/`.failed` per action
-(`backend/events/catalog.py`).
+(`backend/events/catalog.py`). Events carry the originating `sourceAgent`; command
+actions also stream `execution.action.output` line chunks while running (E64,
+ADR-031), and `completed`/`failed` flag `truncated` output. `read_file` (E64-S4)
+is a guarded, policy-checked read that reports only a byte count.
 
 The S1 mapping is deliberately simple — the current planner/coder/validator
 agents (`backend/agents/coder/agent.py`, `backend/agents/validator/agent.py`)

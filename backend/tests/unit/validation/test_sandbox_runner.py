@@ -18,12 +18,12 @@ Coverage:
 from __future__ import annotations
 
 from pathlib import Path
-from subprocess import TimeoutExpired
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from backend.config.settings import Settings
+from backend.validation.sandbox import _ProcessOutcome, _run_process
 from backend.validation import (
     SandboxPolicy,
     SandboxRunner,
@@ -186,14 +186,11 @@ def test_local_execution_uses_guarded_workspace(tmp_path: Path) -> None:
 
 
 def test_enabled_docker_routes_to_docker_backend(tmp_path: Path) -> None:
-    fake_completed = MagicMock()
-    fake_completed.returncode = 0
-    fake_completed.stdout = "mocked\n"
-    fake_completed.stderr = ""
+    fake_completed = _ProcessOutcome(returncode=0, stdout="mocked\n", stderr="")
 
     with (
         patch("shutil.which", return_value="/usr/bin/docker"),
-        patch("subprocess.run", return_value=fake_completed) as mock_run,
+        patch("backend.validation.sandbox._run_process", return_value=fake_completed) as mock_run,
     ):
         runner = SandboxRunner(
             allowed_commands=["python", "python3"], policy=_policy(tmp_path)
@@ -211,14 +208,11 @@ def test_enabled_docker_routes_to_docker_backend(tmp_path: Path) -> None:
 
 
 def test_enabled_docker_nonzero_exit_is_classified_as_code_failure(tmp_path: Path) -> None:
-    fake_completed = MagicMock()
-    fake_completed.returncode = 1
-    fake_completed.stdout = ""
-    fake_completed.stderr = "AssertionError\n"
+    fake_completed = _ProcessOutcome(returncode=1, stdout="", stderr="AssertionError\n")
 
     with (
         patch("shutil.which", return_value="/usr/bin/docker"),
-        patch("subprocess.run", return_value=fake_completed),
+        patch("backend.validation.sandbox._run_process", return_value=fake_completed),
     ):
         runner = SandboxRunner(
             allowed_commands=["pytest"], policy=_policy(tmp_path)
@@ -231,7 +225,7 @@ def test_enabled_docker_nonzero_exit_is_classified_as_code_failure(tmp_path: Pat
 
 def test_docker_command_mounts_only_guarded_workspace(tmp_path: Path) -> None:
     """The docker invocation binds only the resolved workspace, read-only."""
-    completed = MagicMock(returncode=0, stdout="", stderr="")
+    completed = _ProcessOutcome(returncode=0, stdout="", stderr="")
     runner = SandboxRunner(
         allowed_commands=("python",),
         policy=_policy(tmp_path, timeout_seconds=30),
@@ -239,7 +233,7 @@ def test_docker_command_mounts_only_guarded_workspace(tmp_path: Path) -> None:
 
     with (
         patch("shutil.which", return_value="/usr/bin/docker"),
-        patch("subprocess.run", return_value=completed) as run,
+        patch("backend.validation.sandbox._run_process", return_value=completed) as run,
     ):
         runner.run(
             ValidationJob(
@@ -266,12 +260,12 @@ def test_docker_command_mounts_only_guarded_workspace(tmp_path: Path) -> None:
 
 def test_docker_command_includes_extra_env(tmp_path: Path) -> None:
     """extra_env (E33-S2) is passed to docker as --env NAME=value pairs."""
-    completed = MagicMock(returncode=0, stdout="", stderr="")
+    completed = _ProcessOutcome(returncode=0, stdout="", stderr="")
     runner = SandboxRunner(allowed_commands=("python",), policy=_policy(tmp_path))
 
     with (
         patch("shutil.which", return_value="/usr/bin/docker"),
-        patch("subprocess.run", return_value=completed) as run,
+        patch("backend.validation.sandbox._run_process", return_value=completed) as run,
     ):
         runner.run(
             ValidationJob(
@@ -313,8 +307,8 @@ def test_docker_timeout_returns_124_with_sanitized_message(tmp_path: Path) -> No
     with (
         patch("shutil.which", return_value="/usr/bin/docker"),
         patch(
-            "subprocess.run",
-            side_effect=TimeoutExpired(cmd=["docker", "run", "--secret=x"], timeout=5),
+            "backend.validation.sandbox._run_process",
+            return_value=_ProcessOutcome(returncode=-1, stdout="", stderr="", timed_out=True),
         ),
     ):
         result = runner.run(_job(["python", "-c", "import time; time.sleep(99)"]))
@@ -466,3 +460,58 @@ def test_fails_closed_without_docker_by_default(tmp_path: Path) -> None:
     assert result.backend == "unavailable"
     assert result.failure_kind == "environment_unavailable"
     mock_run.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Incremental output (E64-S3)
+# ---------------------------------------------------------------------------
+
+
+def test_local_run_streams_lines_and_final_output_is_unchanged(tmp_path: Path) -> None:
+    """The completed output equals the pre-change blocking capture; lines also stream."""
+    seen: list[tuple[str, str]] = []
+    code = "import sys; print('a'); print('b', file=sys.stderr); print('c')"
+    with patch("shutil.which", return_value=None):
+        runner = SandboxRunner(allowed_commands=["python", "python3"], policy=_policy(tmp_path, allow_local=True))
+        result = runner.run(
+            ValidationJob(job_id="s", command=["python", "-c", code], on_chunk=lambda s, t: seen.append((s, t)))
+        )
+
+    assert result.stdout == "a\nc\n"
+    assert result.stderr == "b\n"
+    assert [t for s, t in seen if s == "stdout"] == ["a\n", "c\n"]
+    assert [t for s, t in seen if s == "stderr"] == ["b\n"]
+
+
+def test_run_process_does_not_deadlock_on_large_two_pipe_output(tmp_path: Path) -> None:
+    code = "import sys; sys.stdout.write('o'*300000); sys.stderr.write('e'*300000)"
+    outcome = _run_process(["python3", "-c", code], timeout=30)
+    assert (len(outcome.stdout), len(outcome.stderr), outcome.timed_out) == (300000, 300000, False)
+
+
+def test_run_process_timeout_kills_and_runs_on_timeout() -> None:
+    called: list[bool] = []
+    outcome = _run_process(
+        ["python3", "-c", "import time; time.sleep(30)"], timeout=0.5, on_timeout=lambda: called.append(True)
+    )
+    assert outcome.timed_out and called == [True]
+
+
+def test_docker_timeout_kills_the_named_container(tmp_path: Path) -> None:
+    runner = SandboxRunner(policy=_policy(tmp_path, timeout_seconds=5))
+    captured: dict[str, object] = {}
+
+    def fake_run_process(cmd, **kwargs):  # type: ignore[no-untyped-def]
+        captured["name"] = next(a for a in cmd if a.startswith("--name=")).split("=", 1)[1]
+        kwargs["on_timeout"]()
+        return _ProcessOutcome(returncode=-1, stdout="", stderr="", timed_out=True)
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/docker"),
+        patch("backend.validation.sandbox._run_process", side_effect=fake_run_process),
+        patch("subprocess.run") as kill,
+    ):
+        result = runner.run(_job(["python", "-c", "pass"]))
+
+    assert result.failure_kind == "timeout"
+    assert kill.call_args.args[0] == ["docker", "kill", captured["name"]]

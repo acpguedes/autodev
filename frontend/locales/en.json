@@ -59,9 +59,16 @@
     "statusReady": "Ready",
     "descriptionBusy": "Showing the latest activity, derived commands, and recorded output.",
     "descriptionIdle": "Once there is activity, the executed history appears here in chronological order.",
-    "emptyState": "No commands or output recorded for this session yet.",
+    "emptyState": "No commands or file operations recorded for this session yet. This panel shows only real operations; the conversation stays in the chat.",
     "runTypePlanExecution": "Execution",
-    "runTypeAgent": "Agent"
+    "runTypeAgent": "Agent",
+    "stateRunning": "running",
+    "stateCompleted": "completed",
+    "stateCancelled": "cancelled",
+    "stateFailed": "failed",
+    "exitCode": "exit code",
+    "agent": "agent",
+    "truncated": "Output truncated; showing the last part only."
   },
   "plans": {
     "pageTitle": "Plans",

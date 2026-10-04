@@ -122,3 +122,17 @@ additive at the event-catalog and metadata level.
 None — S1 is scoped narrowly enough (in-process runner, no policy engine
 yet) that decision-quality open questions are limited to the ones policy
 (E14-S2) and hardened runners (E14-S4) resolve in their own stories.
+
+## Extension (E64): `read_file`, attribution and truncation
+
+- `ExecutionActionType.READ_FILE` (`read_file`) is a real, policy-checked
+  action (policy category `fs-read`) run by `PatchRunner` under the same
+  root-containment guard as writes. Its result reports the byte count only;
+  file contents are never carried on events.
+- `ExecutionAction.source_agent` is carried as optional `sourceAgent` on
+  `execution.action.started|completed|failed`; `completed`/`failed` also carry
+  `truncated` (output exceeded the 4000-character cap) and `failed` carries
+  `exitCode`. All additive, no `schemaVersion` bump.
+- `execution.action.output` streams incremental output; see ADR-031.
+- No current planner path derives a `read_file` action; the action is available
+  to callers that need a file's contents (e.g. before an edit).

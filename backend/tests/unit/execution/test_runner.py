@@ -512,3 +512,38 @@ def test_bind_environment_injects_resolved_secrets_into_run_command(
 
     assert result.status == "succeeded", result.error
     assert "s3cr3t-value" in result.stdout
+
+
+def test_read_file_returns_size_without_echoing_contents(tmp_path: Path) -> None:
+    """E64-S4: a read is a real action but never carries file contents."""
+    (tmp_path / "a.txt").write_text("secret contents", encoding="utf-8")
+    runner = PatchRunner(project_root=tmp_path)
+    action = ExecutionAction(
+        action_id="r1", type=ExecutionActionType.READ_FILE, task_id="t", step_key="t", path="a.txt"
+    )
+
+    result = runner.run(action)
+
+    assert result.status == "succeeded"
+    assert result.path == "a.txt"
+    assert "secret contents" not in result.stdout
+
+
+def test_read_outside_project_root_is_refused_like_a_write(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    root.mkdir()
+    (tmp_path / "outside.txt").write_text("x", encoding="utf-8")
+    runner = PatchRunner(project_root=root, enable_writes=True)
+    read = ExecutionAction(
+        action_id="r2", type=ExecutionActionType.READ_FILE, task_id="t", step_key="t", path="../outside.txt"
+    )
+    write = ExecutionAction(
+        action_id="w2", type=ExecutionActionType.CREATE_FILE, task_id="t", step_key="t",
+        path="../outside.txt", content="y",
+    )
+
+    read_result = runner.run(read)
+    write_result = runner.run(write)
+    assert read_result.status == write_result.status == "failed"
+    assert "Path traversal rejected" in (read_result.error or "")
+    assert "Path traversal rejected" in (write_result.error or "")

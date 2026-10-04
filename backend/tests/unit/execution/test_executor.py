@@ -365,3 +365,99 @@ def test_deny_all_accepts_an_explicit_failure_kind() -> None:
     )
 
     assert outcome.results[0].failure_kind is ExecutionFailureKind.ENVIRONMENT_UNAVAILABLE
+
+
+def test_events_carry_source_agent_and_failed_carries_exit_code_and_truncation() -> None:
+    """E64-S2: started/completed/failed name the originating agent; truncation is explicit."""
+    executor = TaskExecutor(_FakeRunner(outcomes={}, dispatched=[]))
+    executor.execute(_task("validation-1", "validation", "Run pytest"), run_id="run-s2", tenant_id="acme")
+    envelopes = get_event_bus().replay("run-s2")
+    assert {e.data["sourceAgent"] for e in envelopes} == {"coder"}
+    completed = next(e for e in envelopes if e.type == "execution.action.completed")
+    assert completed.data["truncated"] is False
+
+    failing = TaskExecutor(_FakeRunner(outcomes={"validation-2-validate": "failed"}, dispatched=[]))
+    failing.execute(_task("validation-2", "validation", "Run pytest"), run_id="run-s2b", tenant_id="acme")
+    failed = next(e for e in get_event_bus().replay("run-s2b") if e.type == "execution.action.failed")
+    assert failed.data["sourceAgent"] == "coder"
+    assert failed.data["truncated"] is False
+
+
+def test_oversized_output_is_flagged_truncated() -> None:
+    @dataclass
+    class _Big(_FakeRunner):
+        def run(self, action: ExecutionAction) -> ExecutionResult:
+            result = super().run(action)
+            result.stdout = "x" * 5000
+            return result
+
+    TaskExecutor(_Big(outcomes={}, dispatched=[])).execute(
+        _task("validation-1", "validation", "Run pytest"), run_id="run-trunc", tenant_id="acme"
+    )
+    completed = next(e for e in get_event_bus().replay("run-trunc") if e.type == "execution.action.completed")
+    assert completed.data["truncated"] is True
+    assert len(completed.data["stdout"]) == 4000
+
+
+@dataclass
+class _StreamingRunner(_FakeRunner):
+    """Feeds scripted ``(stream, text)`` pieces to ``on_chunk`` like the sandbox does."""
+
+    pieces: tuple[tuple[str, str], ...] = ()
+
+    def run(self, action: ExecutionAction, on_chunk=None) -> ExecutionResult:  # type: ignore[no-untyped-def]
+        for stream, text in self.pieces:
+            on_chunk(stream, text)
+        return super().run(action)
+
+
+def _output_chunks(run_id: str) -> list[dict]:  # type: ignore[type-arg]
+    return [e.data for e in get_event_bus().replay(run_id) if e.type == "execution.action.output"]
+
+
+def test_output_is_emitted_on_line_boundaries_in_order() -> None:
+    runner = _StreamingRunner(
+        outcomes={}, dispatched=[], pieces=(("stdout", "one\ntw"), ("stdout", "o\n"), ("stderr", "err"))
+    )
+    TaskExecutor(runner).execute(
+        _task("validation-1", "validation", "Run pytest"), run_id="run-chunks", tenant_id="acme"
+    )
+    chunks = _output_chunks("run-chunks")
+    assert [(c["stream"], c["chunk"]) for c in chunks] == [
+        ("stdout", "one\n"),
+        ("stdout", "two\n"),
+        ("stderr", "err"),
+    ]
+    assert [c["seq"] for c in chunks] == [1, 2, 3]
+    assert all(c["actionId"] == "validation-1-validate" for c in chunks)
+
+
+def test_a_secret_split_across_chunks_is_redacted_in_output_events() -> None:
+    """E64-S3-T3: a live secret split mid-token across two reads never escapes."""
+    from backend.secret_store.redaction import (
+        REDACTED_MARKER,
+        register_live_secret_value,
+        reset_registry_for_tests,
+    )
+
+    reset_registry_for_tests()
+    register_live_secret_value("sk-live-ABCDEF123456")
+    try:
+        runner = _StreamingRunner(
+            outcomes={}, dispatched=[], pieces=(("stdout", "token=sk-live-ABC"), ("stdout", "DEF123456 done\n"))
+        )
+        TaskExecutor(runner).execute(
+            _task("validation-1", "validation", "Run pytest"), run_id="run-secret", tenant_id="acme"
+        )
+    finally:
+        reset_registry_for_tests()
+    text = "".join(c["chunk"] for c in _output_chunks("run-secret"))
+    assert "sk-live" not in text and "ABC" not in text
+    assert text == f"token={REDACTED_MARKER} done\n"
+
+
+def test_runner_without_on_chunk_still_works_and_emits_no_output_events() -> None:
+    TaskExecutor(_FakeRunner(outcomes={}, dispatched=[])).execute(
+        _task("validation-1", "validation", "Run pytest"), run_id="run-plain", tenant_id="acme"
+    )
+    assert _output_chunks("run-plain") == []

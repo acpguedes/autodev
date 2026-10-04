@@ -45,13 +45,14 @@ def test_execution_result_to_dict_round_trips_all_fields() -> None:
     }
 
 
-def test_execution_action_type_values_match_the_five_documented_kinds() -> None:
+def test_execution_action_type_values_match_the_six_documented_kinds() -> None:
     assert {member.value for member in ExecutionActionType} == {
         "create_file",
         "edit_file",
         "apply_patch",
         "run_command",
         "run_validation",
+        "read_file",
     }
 
 

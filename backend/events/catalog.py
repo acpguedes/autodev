@@ -298,6 +298,7 @@ class ExecutionActionStartedData(BaseModel):
     command: list[str] | None = None
     path: str | None = None
     stepLabel: str | None = None
+    sourceAgent: str | None = None
 
 
 class ExecutionActionCompletedData(BaseModel):
@@ -318,6 +319,8 @@ class ExecutionActionCompletedData(BaseModel):
     stdout: str = ""
     stderr: str = ""
     stepLabel: str | None = None
+    sourceAgent: str | None = None
+    truncated: bool = False
 
 
 class ExecutionActionFailedData(BaseModel):
@@ -339,6 +342,24 @@ class ExecutionActionFailedData(BaseModel):
     stderr: str = ""
     stepLabel: str | None = None
     failureKind: str | None = None
+    sourceAgent: str | None = None
+    exitCode: int | None = None
+    truncated: bool = False
+
+
+class ExecutionActionOutputData(BaseModel):
+    """Payload of ``execution.action.output`` (E64-S3).
+
+    One line-boundary chunk of a running action's ``stdout``/``stderr``;
+    ``seq`` orders chunks within an action. The terminal event still carries
+    the full (tail-capped) output, so consumers may replace the accumulated
+    chunks with it.
+    """
+
+    actionId: str
+    stream: str
+    chunk: str
+    seq: int
 
 
 class ExecutionPolicyDecisionData(BaseModel):
@@ -551,6 +572,7 @@ _DEFINITIONS: tuple[EventDefinition, ...] = (
     EventDefinition(
         "secret.leak.suspected", "Environment Manager", "runId", SecretLeakSuspectedData
     ),
+    EventDefinition("execution.action.output", "Task Executor", "runId", ExecutionActionOutputData),
 )
 
 

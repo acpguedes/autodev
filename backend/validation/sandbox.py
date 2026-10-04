@@ -25,9 +25,11 @@ import dataclasses
 import os
 import shutil
 import subprocess
+import threading
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Callable, Sequence, TextIO
 
 from opentelemetry import trace
 
@@ -47,6 +49,97 @@ _DOCKER_IMAGE = "python:3.11-slim"
 
 # Timeout is mapped onto the shell/`timeout(1)` convention for a killed process.
 _TIMEOUT_RETURNCODE = 124
+
+
+@dataclass(slots=True)
+class _ProcessOutcome:
+    """Raw outcome of :func:`_run_process`."""
+
+    returncode: int
+    stdout: str
+    stderr: str
+    timed_out: bool = False
+
+
+def _run_process(
+    cmd: Sequence[str],
+    *,
+    timeout: float,
+    on_chunk: Callable[[str, str], None] | None = None,
+    cwd: Path | None = None,
+    env: dict[str, str] | None = None,
+    on_timeout: Callable[[], None] | None = None,
+) -> _ProcessOutcome:
+    """Run *cmd*, reading stdout/stderr incrementally on separate threads (E64-S3).
+
+    Drop-in replacement for ``subprocess.run(capture_output=True, text=True,
+    timeout=...)``: the returned output is identical, but each completed line
+    is also handed to *on_chunk* as it arrives. One reader thread per pipe
+    avoids the two-pipe deadlock; ``errors="replace"`` keeps a multi-byte
+    sequence split across reads from raising; line-granular delivery keeps
+    newline and decode boundaries out of the callback's way.
+
+    Args:
+        cmd: Command and arguments.
+        timeout: Seconds before the process is killed.
+        on_chunk: Optional ``(stream, text)`` callback, ``stream`` being
+            ``"stdout"`` or ``"stderr"``. Exceptions it raises are swallowed
+            -- observability must never fail the command.
+        cwd: Working directory for the process.
+        env: Full environment for the process (``None`` inherits).
+        on_timeout: Called once, before the client process is killed, when
+            *timeout* elapses (used to stop a container ``docker run`` only
+            fronts).
+
+    Returns:
+        The exit code (``-1`` after a timeout kill), captured output and
+        whether the timeout elapsed.
+    """
+    proc = subprocess.Popen(  # noqa: S603 - argv list, command already allowlisted
+        list(cmd),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        errors="replace",
+        cwd=cwd,
+        env=env,
+    )
+    buffers: dict[str, list[str]] = {"stdout": [], "stderr": []}
+
+    def _pump(stream_name: str, pipe: TextIO) -> None:
+        for line in iter(pipe.readline, ""):
+            buffers[stream_name].append(line)
+            if on_chunk is not None:
+                try:
+                    on_chunk(stream_name, line)
+                except Exception:  # noqa: BLE001
+                    pass
+        pipe.close()
+
+    assert proc.stdout is not None and proc.stderr is not None
+    readers = [
+        threading.Thread(target=_pump, args=("stdout", proc.stdout), daemon=True),
+        threading.Thread(target=_pump, args=("stderr", proc.stderr), daemon=True),
+    ]
+    for reader in readers:
+        reader.start()
+    timed_out = False
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        if on_timeout is not None:
+            on_timeout()
+        proc.kill()
+        proc.wait()
+    for reader in readers:
+        reader.join(timeout=5)
+    return _ProcessOutcome(
+        returncode=-1 if timed_out else proc.returncode,
+        stdout="".join(buffers["stdout"]),
+        stderr="".join(buffers["stderr"]),
+        timed_out=timed_out,
+    )
 
 # Chain separators a `cd <dir> && <cmd>` / `cd <dir>; <cmd>` prefix may use,
 # either as their own token or attached to the directory token (both are
@@ -318,10 +411,12 @@ class SandboxRunner:
         # mount of only the guarded workspace (never the whole host). Network
         # can be re-enabled per-deployment via the policy's docker_network for
         # workloads that legitimately need it (e.g. dependency installs).
+        container_name = f"autodev-sandbox-{uuid.uuid4().hex[:12]}"
         docker_cmd = [
             "docker",
             "run",
             "--rm",
+            f"--name={container_name}",
             f"--network={self._policy.docker_network}",
             "--user=65534:65534",
             "--cap-drop=ALL",
@@ -343,15 +438,19 @@ class SandboxRunner:
             *job.command,
         ]
 
-        try:
-            completed = subprocess.run(
-                docker_cmd,
+        outcome = _run_process(
+            docker_cmd,
+            timeout=self._policy.timeout_seconds,
+            on_chunk=job.on_chunk,
+            # Killing the ``docker run`` client leaves the container running.
+            on_timeout=lambda: subprocess.run(  # noqa: S603
+                ["docker", "kill", container_name],
                 capture_output=True,
-                text=True,
-                timeout=self._policy.timeout_seconds,
                 check=False,
-            )
-        except subprocess.TimeoutExpired:
+                timeout=15,
+            ),
+        )
+        if outcome.timed_out:
             return ValidationResult(
                 job_id=job.job_id,
                 returncode=_TIMEOUT_RETURNCODE,
@@ -363,27 +462,24 @@ class SandboxRunner:
             )
         return ValidationResult(
             job_id=job.job_id,
-            returncode=completed.returncode,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
+            returncode=outcome.returncode,
+            stdout=outcome.stdout,
+            stderr=outcome.stderr,
             backend="docker",
             skipped=False,
-            failure_kind="code_failure" if completed.returncode != 0 else None,
+            failure_kind="code_failure" if outcome.returncode != 0 else None,
         )
 
     def _run_local(self, job: ValidationJob, workspace: Path) -> ValidationResult:
         env = {**os.environ, **job.extra_env} if job.extra_env else None
-        try:
-            completed = subprocess.run(
-                job.command,
-                capture_output=True,
-                text=True,
-                cwd=workspace,
-                timeout=self._policy.timeout_seconds,
-                check=False,
-                env=env,
-            )
-        except subprocess.TimeoutExpired:
+        outcome = _run_process(
+            job.command,
+            timeout=self._policy.timeout_seconds,
+            on_chunk=job.on_chunk,
+            cwd=workspace,
+            env=env,
+        )
+        if outcome.timed_out:
             return ValidationResult(
                 job_id=job.job_id,
                 returncode=_TIMEOUT_RETURNCODE,
@@ -395,12 +491,12 @@ class SandboxRunner:
             )
         return ValidationResult(
             job_id=job.job_id,
-            returncode=completed.returncode,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
+            returncode=outcome.returncode,
+            stdout=outcome.stdout,
+            stderr=outcome.stderr,
             backend="local",
             skipped=False,
-            failure_kind="code_failure" if completed.returncode != 0 else None,
+            failure_kind="code_failure" if outcome.returncode != 0 else None,
         )
 
 

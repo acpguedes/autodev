@@ -12,7 +12,9 @@ real code generation is future work), dispatched to an injected
 
 from __future__ import annotations
 
+import inspect
 import re
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Optional
@@ -43,6 +45,75 @@ output.
 def _capped_tail(text: str) -> str:
     """Tail-truncate *text* to :data:`_ACTION_OUTPUT_CHAR_CAP`."""
     return text[-_ACTION_OUTPUT_CHAR_CAP:] if len(text) > _ACTION_OUTPUT_CHAR_CAP else text
+
+
+def _was_truncated(*streams: str) -> bool:
+    """Whether any stream exceeded :data:`_ACTION_OUTPUT_CHAR_CAP` and lost its head (E64-S2)."""
+    return any(len(stream) > _ACTION_OUTPUT_CHAR_CAP for stream in streams)
+
+
+class _ChunkEmitter:
+    """Emits ``execution.action.output`` events on safe boundaries (E64-S3-T3).
+
+    Secret redaction runs inside ``emit_event`` per payload, so a secret split
+    across two chunks would escape it. Text is therefore emitted only in whole
+    lines; the unfinished tail is carried over until its newline arrives (or
+    :meth:`flush` at process end). A line longer than the event cap is cut at
+    its last whitespace -- secrets contain none -- never mid-token, and the
+    final chunk is never held back. The terminal event still carries the
+    complete output, redacted the same way.
+    """
+
+    def __init__(self, *, action_id: str, run_id: str, tenant_id: str, task_id: str) -> None:
+        self._action_id = action_id
+        self._run_id = run_id
+        self._tenant_id = tenant_id
+        self._task_id = task_id
+        self._carry: dict[str, str] = {"stdout": "", "stderr": ""}
+        self._seq = 0
+        self._lock = threading.Lock()
+
+    def feed(self, stream: str, text: str) -> None:
+        """Buffer *text* and emit every completed line of *stream*."""
+        with self._lock:
+            buffered = self._carry[stream] + text
+            cut = buffered.rfind("\n") + 1
+            if cut == 0 and len(buffered) > _ACTION_OUTPUT_CHAR_CAP:
+                window = buffered[:_ACTION_OUTPUT_CHAR_CAP]
+                cut = max(window.rfind(" "), window.rfind("\t")) + 1 or _ACTION_OUTPUT_CHAR_CAP
+            self._carry[stream] = buffered[cut:]
+            self._emit(stream, buffered[:cut])
+
+    def flush(self) -> None:
+        """Emit whatever unfinished tail remains on either stream."""
+        with self._lock:
+            for stream in ("stdout", "stderr"):
+                tail, self._carry[stream] = self._carry[stream], ""
+                self._emit(stream, tail)
+
+    def _emit(self, stream: str, text: str) -> None:
+        for start in range(0, len(text), _ACTION_OUTPUT_CHAR_CAP):
+            self._seq += 1
+            emit_event(
+                "execution.action.output",
+                tenant_id=self._tenant_id,
+                partition_key=self._run_id,
+                data={
+                    "actionId": self._action_id,
+                    "stream": stream,
+                    "chunk": text[start : start + _ACTION_OUTPUT_CHAR_CAP],
+                    "seq": self._seq,
+                },
+                subject={"runId": self._run_id, "taskId": self._task_id},
+            )
+
+
+def _accepts_on_chunk(runner: ActionRunner) -> bool:
+    """Whether *runner*'s ``run`` takes the optional ``on_chunk`` callback (E64-S3)."""
+    try:
+        return "on_chunk" in inspect.signature(runner.run).parameters
+    except (TypeError, ValueError):  # pragma: no cover - uninspectable callable
+        return False
 
 
 def _file_name(path: str) -> str:
@@ -188,6 +259,7 @@ class TaskExecutor:
                             "command": list(action.command) if action.command else None,
                             "path": _action_path(action),
                             "stepLabel": action.step_label,
+                            "sourceAgent": action.source_agent,
                             "failureKind": ExecutionFailureKind.POLICY_DENIED.value,
                         },
                         subject={"runId": run_id, "taskId": action.task_id},
@@ -204,10 +276,21 @@ class TaskExecutor:
                     "command": list(action.command) if action.command else None,
                     "path": _action_path(action),
                     "stepLabel": action.step_label,
+                    "sourceAgent": action.source_agent,
                 },
                 subject={"runId": run_id, "taskId": action.task_id},
             )
-            result = self._runner.run(action)
+            if _accepts_on_chunk(self._runner):
+                emitter = _ChunkEmitter(
+                    action_id=action.action_id,
+                    run_id=run_id,
+                    tenant_id=tenant_id,
+                    task_id=action.task_id,
+                )
+                result = self._runner.run(action, on_chunk=emitter.feed)  # type: ignore[call-arg]
+                emitter.flush()
+            else:
+                result = self._runner.run(action)
             results.append(result)
             if result.status == "failed":
                 failed = True
@@ -225,6 +308,9 @@ class TaskExecutor:
                         "stderr": _capped_tail(result.stderr),
                         "stepLabel": action.step_label,
                         "failureKind": result.failure_kind.value if result.failure_kind else None,
+                        "sourceAgent": action.source_agent,
+                        "exitCode": result.exit_code,
+                        "truncated": _was_truncated(result.stdout, result.stderr),
                     },
                     subject={"runId": run_id, "taskId": action.task_id},
                 )
@@ -243,6 +329,8 @@ class TaskExecutor:
                         "stdout": _capped_tail(result.stdout),
                         "stderr": _capped_tail(result.stderr),
                         "stepLabel": action.step_label,
+                        "sourceAgent": action.source_agent,
+                        "truncated": _was_truncated(result.stdout, result.stderr),
                     },
                     subject={"runId": run_id, "taskId": action.task_id},
                 )
@@ -303,6 +391,7 @@ class TaskExecutor:
                     "command": list(action.command) if action.command else None,
                     "path": _action_path(action),
                     "stepLabel": action.step_label,
+                    "sourceAgent": action.source_agent,
                     "failureKind": failure_kind.value,
                 },
                 subject={"runId": run_id, "taskId": action.task_id},
@@ -342,6 +431,7 @@ class TaskExecutor:
                         command=command.split(),
                         cwd=".",
                         step_label=task.title or None,
+                        source_agent=task.source_agent,
                     )
                     for index, command in enumerate(task.commands, start=1)
                 ]
@@ -357,6 +447,7 @@ class TaskExecutor:
                     command=command,
                     cwd=".",
                     step_label=task.title or None,
+                    source_agent=task.source_agent,
                 )
             ]
         if task.category == "operations":
@@ -370,6 +461,7 @@ class TaskExecutor:
                         command=command.split(),
                         cwd=".",
                         step_label=task.title or None,
+                        source_agent=task.source_agent,
                     )
                     for index, command in enumerate(task.commands, start=1)
                 ]
@@ -385,6 +477,7 @@ class TaskExecutor:
                         path=file_entry["path"],
                         content=file_entry["content"],
                         step_label=f"Creating {_file_name(file_entry['path'])}",
+                        source_agent=task.source_agent,
                     )
                     for index, file_entry in enumerate(task.files, start=1)
                 ]
@@ -399,6 +492,7 @@ class TaskExecutor:
                     path=note_path,
                     content=content,
                     step_label=task.title or None,
+                    source_agent=task.source_agent,
                 )
             ]
         return []

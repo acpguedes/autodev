@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 
@@ -17,12 +18,17 @@ class ValidationJob:
             command's process (e.g. resolved secret values, E33-S2). Never
             logged or included in any persisted record -- it exists only to
             be handed to the subprocess call.
+        on_chunk: Optional ``(stream, text)`` callback receiving each line of
+            stdout/stderr as the process produces it (E64-S3). Never
+            persisted or compared; the sandbox stays free of the event bus
+            and the caller decides what to do with the lines.
     """
 
     job_id: str
     command: list[str]
     cwd: str = "."
     extra_env: dict[str, str] = field(default_factory=dict)
+    on_chunk: Callable[[str, str], None] | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass

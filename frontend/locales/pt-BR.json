@@ -59,9 +59,16 @@
     "statusReady": "Pronto",
     "descriptionBusy": "Mostrando a atividade mais recente, comandos derivados e saídas registradas.",
     "descriptionIdle": "Quando houver atividade, o histórico executado aparece aqui em ordem cronológica.",
-    "emptyState": "Ainda não há comandos ou saídas registrados para esta sessão.",
+    "emptyState": "Ainda não há comandos ou operações de arquivo registrados para esta sessão. Este painel mostra apenas operações reais; a conversa fica no chat.",
     "runTypePlanExecution": "Execução",
-    "runTypeAgent": "Agente"
+    "runTypeAgent": "Agente",
+    "stateRunning": "em execução",
+    "stateCompleted": "concluído",
+    "stateCancelled": "cancelado",
+    "stateFailed": "falhou",
+    "exitCode": "código de saída",
+    "agent": "agente",
+    "truncated": "Saída truncada; mostrando apenas o final."
   },
   "plans": {
     "pageTitle": "Planos",
