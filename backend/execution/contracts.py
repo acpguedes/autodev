@@ -32,6 +32,7 @@ class ExecutionActionType(StrEnum):
     APPLY_PATCH = "apply_patch"
     RUN_COMMAND = "run_command"
     RUN_VALIDATION = "run_validation"
+    READ_FILE = "read_file"
 
 
 class ExecutionFailureKind(StrEnum):
@@ -70,6 +71,8 @@ class ExecutionAction:
             e.g. "Implement Main Application File" -- carried alongside the
             technical ``task_id`` so a transcript renderer can show "Creating
             main.py" instead of a bare id like ``coding-file-1``.
+        source_agent: Agent that originated the work (E64-S2), from
+            ``ExecutionTask.source_agent``; ``None`` when unattributed.
     """
 
     action_id: str
@@ -82,6 +85,7 @@ class ExecutionAction:
     command: list[str] | None = None
     cwd: str = "."
     step_label: str | None = None
+    source_agent: str | None = None
 
 
 @dataclass(slots=True)

@@ -5,7 +5,6 @@ import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState 
 
 import ExecutionConsolePanel from "../components/ExecutionConsolePanel";
 import MessageList, { type Message } from "../components/MessageList";
-import RunTimelinePanel from "@/components/chat/RunTimelinePanel";
 import { useExecutionPanel, useShell, useShellHeader } from "@/components/shell/ShellProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -176,24 +175,13 @@ function ExecutionControlCenter() {
   const hasConsoleEntries = runs.some((run) => run.results.length > 0);
   const nextTasks = executionPlan?.tasks.slice(0, 3) ?? [];
 
-  // Keep the seed steps referentially stable per turn so the timeline
-  // hook's effect only re-runs when the turn actually changes.
-  const seedSteps = useMemo(() => activeTurn?.steps ?? [], [activeTurn]);
-
-  // Surface the execution timeline and console in the shell's right panel
+  // Surface the execution console in the shell's right panel
   // and auto-open it whenever there is live activity or output to show.
   const consoleContent = useMemo(
     () => (
-      <div className="flex flex-col gap-4">
-        <RunTimelinePanel
-          runId={activeTurn?.turnId ?? null}
-          seedSteps={seedSteps}
-          pending={isLoading}
-        />
-        <ExecutionConsolePanel runs={runs} isBusy={isBusy} />
-      </div>
+      <ExecutionConsolePanel runs={runs} isBusy={isBusy} activeRunId={activeTurn?.turnId ?? null} />
     ),
-    [activeTurn, seedSteps, isLoading, runs, isBusy]
+    [activeTurn, runs, isBusy]
   );
   useExecutionPanel(consoleContent);
 

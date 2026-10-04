@@ -7,6 +7,14 @@ All notable changes to AutoDev Architect are documented here. Format loosely fol
 
 ### Added
 
+- **E64 — Execution Panel: Real Technical Event Stream** (4/4 stories): the
+  panel subscribes to the run's SSE stream and renders only real operations
+  (no model-written text; `RunTimelinePanel` no longer mounted, `run.timeline.*`
+  left unconsumed); entries name their agent (`sourceAgent`), state, exit code
+  and truncation (`truncated`); stdout/stderr stream as
+  `execution.action.output` on line boundaries so split secrets stay redacted
+  (ADR-031), with `docker kill` on timeout; a guarded `read_file` action
+  (policy category `fs-read`) makes reads real.
 - **E63 — Flow Applicability & Task-Intent Execution Routing** (5/5
   stories): flow manifests can declare `purpose`, `whenToUse`, `whenNotToUse`
   and structured `requires` preconditions (additive; exposed with input/output

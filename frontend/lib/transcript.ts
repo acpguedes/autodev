@@ -68,6 +68,12 @@ export function formatActionCommand(data: ExecutionActionEventData): string {
   if (data.command && data.command.length > 0) {
     return `$ ${data.command.join(" ")}`;
   }
+  if (data.path && data.type === "read_file") {
+    return `Reading: ${data.path}`;
+  }
+  if (data.path && data.type === "edit_file") {
+    return `Editing: ${data.path}`;
+  }
   if (data.path) {
     return `$ write ${data.path}`;
   }
@@ -117,6 +123,7 @@ export function transcriptLineFromActionEvent(
 export function transcriptLineFromActionResult(
   action: {
     action_id: string;
+    type?: string;
     status: string;
     command?: string[] | null;
     path?: string | null;
@@ -129,6 +136,7 @@ export function transcriptLineFromActionResult(
 ): TranscriptLine {
   const command = formatActionCommand({
     actionId: action.action_id,
+    type: action.type,
     command: action.command,
     path: action.path,
   });

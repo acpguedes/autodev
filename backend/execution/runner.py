@@ -4,7 +4,7 @@ Three dedicated runners (E14-S4), split from the single S1 in-process
 runner per ADR-021's own stated plan, each behind the same
 :class:`ActionRunner` protocol:
 
-- :class:`PatchRunner` — ``create_file``/``edit_file``/``apply_patch`` via
+- :class:`PatchRunner` — ``read_file`` (E64-S4) and ``create_file``/``edit_file``/``apply_patch`` via
   the E0 patch engine (:mod:`backend.patches.engine`). Never falls back to
   arbitrary command execution — there is no code path from this class into
   ``subprocess``.
@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Protocol
+from typing import TYPE_CHECKING, Callable, Optional, Protocol
 
 from backend.execution.contracts import (
     ExecutionAction,
@@ -75,6 +75,7 @@ def _run_via_sandbox(
     started_at: str,
     *,
     extra_env: Optional[dict[str, str]] = None,
+    on_chunk: Optional[Callable[[str, str], None]] = None,
 ) -> ExecutionResult:
     """Wrap *action* into a :class:`ValidationJob` and dispatch to *sandbox_runner*.
 
@@ -86,12 +87,15 @@ def _run_via_sandbox(
         extra_env: Environment variables to inject into the job's process
             (E33-S2) — e.g. secrets resolved for an environment-bound
             dispatch. ``None``/empty for the default (unbound) path.
+        on_chunk: Optional ``(stream, text)`` callback fed each stdout/stderr
+            line as it is produced (E64-S3); the caller emits events.
     """
     job = ValidationJob(
         job_id=action.action_id,
         command=action.command or [],
         cwd=action.cwd,
         extra_env=extra_env or {},
+        on_chunk=on_chunk,
     )
     validation_result = sandbox_runner.run(job)
     succeeded = validation_result.returncode == 0
@@ -149,20 +153,63 @@ class PatchRunner:
             ValueError: If ``action.type`` is not one this runner handles.
         """
         started_at = _timestamp()
+        if action.type is ExecutionActionType.READ_FILE:
+            return self._run_read_action(action, started_at)
         if action.type in (ExecutionActionType.CREATE_FILE, ExecutionActionType.EDIT_FILE):
             return self._run_file_action(action, started_at)
         if action.type is ExecutionActionType.APPLY_PATCH:
             return self._run_patch_action(action, started_at)
         raise ValueError(f"PatchRunner cannot run action type {action.type.value!r}")
 
-    def _run_file_action(self, action: ExecutionAction, started_at: str) -> ExecutionResult:
-        """Build and apply a patch from ``action.path``/``action.content``."""
+    def _resolve_target(self, action: ExecutionAction) -> Path | None:
+        """Resolve ``action.path`` inside the project root, or ``None`` if it escapes.
+
+        The one containment guard shared by reads and writes (E64-S4).
+        """
         assert action.path is not None
         resolved_root = self._project_root.resolve()
         target = (resolved_root / action.path).resolve()
         try:
             target.relative_to(resolved_root)
         except ValueError:
+            return None
+        return target
+
+    def _run_read_action(self, action: ExecutionAction, started_at: str) -> ExecutionResult:
+        """Read ``action.path`` under the same guard as writes (E64-S4).
+
+        The contents are deliberately not echoed on the result: the action
+        exists so the read is real, policy-checked and visible, and the
+        panel must never fetch file contents to enrich an entry.
+        """
+        target = self._resolve_target(action)
+        if target is None:
+            return _failed(
+                action,
+                started_at,
+                error=f"Path traversal rejected: {action.path!r} resolves outside root.",
+            )
+        try:
+            size = len(target.read_bytes())
+        except OSError as exc:
+            return _failed(action, started_at, error=str(exc))
+        return ExecutionResult(
+            action_id=action.action_id,
+            task_id=action.task_id,
+            step_key=action.step_key,
+            status="succeeded",
+            started_at=started_at,
+            completed_at=_timestamp(),
+            stdout=f"read {size} bytes",
+            exit_code=0,
+            path=action.path,
+        )
+
+    def _run_file_action(self, action: ExecutionAction, started_at: str) -> ExecutionResult:
+        """Build and apply a patch from ``action.path``/``action.content``."""
+        assert action.path is not None
+        target = self._resolve_target(action)
+        if target is None:
             return _failed(
                 action,
                 started_at,
@@ -218,15 +265,23 @@ class CommandRunner:
         """
         self._sandbox_runner = sandbox_runner or SandboxRunner()
 
-    def run(self, action: ExecutionAction) -> ExecutionResult:
+    def run(
+        self,
+        action: ExecutionAction,
+        on_chunk: Optional[Callable[[str, str], None]] = None,
+    ) -> ExecutionResult:
         """Execute *action* and return its :class:`ExecutionResult`.
+
+        Args:
+            action: The action to run.
+            on_chunk: Optional ``(stream, text)`` callback for incremental output (E64-S3).
 
         Raises:
             ValueError: If ``action.type`` is not ``run_command``.
         """
         if action.type is not ExecutionActionType.RUN_COMMAND:
             raise ValueError(f"CommandRunner cannot run action type {action.type.value!r}")
-        return _run_via_sandbox(action, self._sandbox_runner, _timestamp())
+        return _run_via_sandbox(action, self._sandbox_runner, _timestamp(), on_chunk=on_chunk)
 
 
 class ValidationRunner:
@@ -247,15 +302,23 @@ class ValidationRunner:
         """
         self._sandbox_runner = sandbox_runner or SandboxRunner()
 
-    def run(self, action: ExecutionAction) -> ExecutionResult:
+    def run(
+        self,
+        action: ExecutionAction,
+        on_chunk: Optional[Callable[[str, str], None]] = None,
+    ) -> ExecutionResult:
         """Execute *action* and return its :class:`ExecutionResult`.
+
+        Args:
+            action: The action to run.
+            on_chunk: Optional ``(stream, text)`` callback for incremental output (E64-S3).
 
         Raises:
             ValueError: If ``action.type`` is not ``run_validation``.
         """
         if action.type is not ExecutionActionType.RUN_VALIDATION:
             raise ValueError(f"ValidationRunner cannot run action type {action.type.value!r}")
-        return _run_via_sandbox(action, self._sandbox_runner, _timestamp())
+        return _run_via_sandbox(action, self._sandbox_runner, _timestamp(), on_chunk=on_chunk)
 
 
 def _action_target_path(action: ExecutionAction) -> str:
@@ -352,8 +415,16 @@ class CompositeActionRunner:
             "profileHash": handle.profile.content_hash(),
         }
 
-    def run(self, action: ExecutionAction) -> ExecutionResult:
-        """Dispatch *action* to the runner for its type and return the result."""
+    def run(
+        self,
+        action: ExecutionAction,
+        on_chunk: Optional[Callable[[str, str], None]] = None,
+    ) -> ExecutionResult:
+        """Dispatch *action* to the runner for its type and return the result.
+
+        ``on_chunk`` (E64-S3) receives incremental stdout/stderr lines for
+        command/validation actions; file actions produce no process output.
+        """
         handle = self._environment_handle
         if handle is not None:
             assert self._environment_manager is not None  # guaranteed by bind_environment
@@ -376,26 +447,35 @@ class CompositeActionRunner:
                 return result
 
         if action.type in (
+            ExecutionActionType.READ_FILE,
             ExecutionActionType.CREATE_FILE,
             ExecutionActionType.EDIT_FILE,
             ExecutionActionType.APPLY_PATCH,
         ):
             result = self._patch_runner.run(action)
         else:
-            result = self._run_command_or_validation(action)
+            result = self._run_command_or_validation(action, on_chunk)
         result.environment = self._environment_metadata()
         return result
 
-    def _run_command_or_validation(self, action: ExecutionAction) -> ExecutionResult:
+    def _run_command_or_validation(
+        self,
+        action: ExecutionAction,
+        on_chunk: Optional[Callable[[str, str], None]] = None,
+    ) -> ExecutionResult:
         if self._environment_handle is not None:
             assert self._environment_manager is not None
             sandbox = self._environment_manager.command_sandbox(self._environment_handle)
             return _run_via_sandbox(
-                action, sandbox, _timestamp(), extra_env=self._environment_extra_env
+                action,
+                sandbox,
+                _timestamp(),
+                extra_env=self._environment_extra_env,
+                on_chunk=on_chunk,
             )
         if action.type is ExecutionActionType.RUN_COMMAND:
-            return self._command_runner.run(action)
-        return self._validation_runner.run(action)
+            return self._command_runner.run(action, on_chunk)
+        return self._validation_runner.run(action, on_chunk)
 
 
 #: Backward-compatible alias for E14-S1's original runner name and

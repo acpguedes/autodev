@@ -31,6 +31,11 @@ describe("formatActionCommand", () => {
     );
   });
 
+  it("renders Reading/Editing summaries for read_file and edit_file", () => {
+    expect(formatActionCommand({ actionId: "a1", type: "read_file", path: "src/a.py" })).toBe("Reading: src/a.py");
+    expect(formatActionCommand({ actionId: "a1", type: "edit_file", path: "src/a.py" })).toBe("Editing: src/a.py");
+  });
+
   it("falls back to the action type/id when neither is known", () => {
     expect(formatActionCommand({ actionId: "a1", taskId: "t1", type: "run_command" })).toBe(
       "$ run_command a1"
