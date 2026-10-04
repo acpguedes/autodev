@@ -797,6 +797,58 @@ export function parseSseBuffer(buffer: string): { frames: SseFrame[]; rest: stri
   return { frames, rest };
 }
 
+/** Callbacks for {@link consumeSseStream}. */
+export type SseStreamHandlers = {
+  /** Called once the response is accepted and the body starts streaming. */
+  onOpen?: () => void;
+  /** Called with each batch of complete frames, in arrival order. */
+  onFrames: (frames: SseFrame[]) => void;
+};
+
+/**
+ * Open an SSE URL with `fetch` and feed decoded frames to `handlers`.
+ *
+ * The single transport loop shared by the run-event consumers (fetch +
+ * incremental {@link parseSseBuffer}, rather than `EventSource`, so arbitrary
+ * event names arrive without per-type listeners).
+ *
+ * @param url - Stream URL, e.g. from {@link runEventsStreamUrl}.
+ * @param init - `signal` to stop the stream and optional fetch `credentials`.
+ * @param handlers - Open and frame callbacks.
+ * @returns `true` if the response was accepted and read to its end, `false`
+ *   if the server refused the stream. Network errors and aborts reject.
+ */
+export async function consumeSseStream(
+  url: string,
+  init: { signal: AbortSignal; credentials?: RequestCredentials },
+  handlers: SseStreamHandlers
+): Promise<boolean> {
+  const response = await fetch(url, {
+    signal: init.signal,
+    headers: { Accept: "text/event-stream" },
+    ...(init.credentials ? { credentials: init.credentials } : {}),
+  });
+  if (!response.ok || !response.body) {
+    return false;
+  }
+  handlers.onOpen?.();
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) {
+      return true;
+    }
+    buffer += decoder.decode(value, { stream: true });
+    const parsed = parseSseBuffer(buffer);
+    buffer = parsed.rest;
+    if (parsed.frames.length > 0) {
+      handlers.onFrames(parsed.frames);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Repository file tree browser (/v2/repository, E43-S4)
 // ---------------------------------------------------------------------------

@@ -14,7 +14,9 @@ All notable changes to AutoDev Architect are documented here. Format loosely fol
   and truncation (`truncated`); stdout/stderr stream as
   `execution.action.output` on line boundaries so split secrets stay redacted
   (ADR-031), with `docker kill` on timeout; a guarded `read_file` action
-  (policy category `fs-read`) makes reads real.
+  (policy category `fs-read`) makes reads real. Persisted action results also
+  carry `type`/`truncated` so the polled fallback renders identically, and the
+  duplicated SSE loop is now the shared `consumeSseStream`.
 - **E63 — Flow Applicability & Task-Intent Execution Routing** (5/5
   stories): flow manifests can declare `purpose`, `whenToUse`, `whenNotToUse`
   and structured `requires` preconditions (additive; exposed with input/output

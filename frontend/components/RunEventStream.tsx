@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { parseSseBuffer, runEventsStreamUrl, type SseFrame } from "@/lib/api_v2";
+import { consumeSseStream, runEventsStreamUrl, type SseFrame } from "@/lib/api_v2";
 import { transcriptLineFromActionEvent, type ExecutionActionEventData } from "@/lib/transcript";
 
 /** Maximum number of events retained in the visible stream log. */
@@ -60,42 +60,28 @@ export function RunEventStream({ runId, tenantId }: RunEventStreamProps) {
 
     (async () => {
       try {
-        const response = await fetch(
+        const accepted = await consumeSseStream(
           runEventsStreamUrl(runId, tenantId ? { tenantId } : {}),
-          { signal: controller.signal, headers: { Accept: "text/event-stream" } }
+          { signal: controller.signal },
+          {
+            onOpen: () => setStatus("open"),
+            onFrames: (frames) => {
+              const receivedAt = new Date().toLocaleTimeString();
+              setEvents((previous) => {
+                const next = [
+                  ...frames.map((frame) => ({
+                    ...frame,
+                    receivedAt,
+                    key: counterRef.current++,
+                  })),
+                  ...previous,
+                ];
+                return next.slice(0, MAX_EVENTS);
+              });
+            },
+          },
         );
-        if (!response.ok || !response.body) {
-          setStatus("error");
-          return;
-        }
-        setStatus("open");
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        for (;;) {
-          const { value, done } = await reader.read();
-          if (done) {
-            break;
-          }
-          buffer += decoder.decode(value, { stream: true });
-          const { frames, rest } = parseSseBuffer(buffer);
-          buffer = rest;
-          if (frames.length > 0) {
-            const receivedAt = new Date().toLocaleTimeString();
-            setEvents((previous) => {
-              const next = [
-                ...frames.map((frame) => ({
-                  ...frame,
-                  receivedAt,
-                  key: counterRef.current++,
-                })),
-                ...previous,
-              ];
-              return next.slice(0, MAX_EVENTS);
-            });
-          }
-        }
-        setStatus("closed");
+        setStatus(accepted ? "closed" : "error");
       } catch {
         setStatus(controller.signal.aborted ? "closed" : "error");
       }

@@ -461,3 +461,10 @@ def test_runner_without_on_chunk_still_works_and_emits_no_output_events() -> Non
         _task("validation-1", "validation", "Run pytest"), run_id="run-plain", tenant_id="acme"
     )
     assert _output_chunks("run-plain") == []
+
+
+def test_results_carry_action_type_for_persisted_rendering() -> None:
+    outcome = TaskExecutor(_FakeRunner(outcomes={}, dispatched=[])).execute(
+        _task("validation-1", "validation", "Run pytest"), run_id="run-type", tenant_id="acme"
+    )
+    assert outcome.results[0].to_dict()["type"] == "run_validation"
