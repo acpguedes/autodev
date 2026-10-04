@@ -1,6 +1,7 @@
 """Project identity, discovery and persistence (E62)."""
 
 from backend.projects.discovery import discover_project_root, find_project_marker
+from backend.projects.store import ProjectRecord, ProjectStore
 from backend.projects.models import (
     ProjectConfig,
     ProjectConfigError,
@@ -15,6 +16,8 @@ __all__ = [
     "ProjectConfigError",
     "ProjectGitInfo",
     "ProjectMetadata",
+    "ProjectRecord",
+    "ProjectStore",
     "discover_project_root",
     "find_project_marker",
     "load_project_config",
