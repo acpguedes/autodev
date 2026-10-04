@@ -25,6 +25,11 @@ const apiOrigin = (() => {
   }
 })();
 
+/** WebSocket origin matching {@link apiOrigin} (http->ws, https->wss) for the terminal (E65). */
+const apiWsOrigin = apiOrigin
+  ? apiOrigin.replace(/^http(s?):/, (_match, secure) => `ws${secure}:`)
+  : null;
+
 const connectSrc = [
   "'self'",
   apiOrigin,
@@ -34,6 +39,10 @@ const connectSrc = [
   // fallback, otherwise the app blocks its own API calls (e2e/CI and the
   // default local dev setup both run with the env unset).
   ...(apiOrigin ? [] : ["http://localhost:8000", "http://127.0.0.1:8000"]),
+  // The interactive terminal (WS /v2/terminal/{id}) connects to the same API
+  // origin over ws(s), mirroring the fallback above.
+  apiWsOrigin,
+  ...(apiOrigin ? [] : ["ws://localhost:8000", "ws://127.0.0.1:8000"]),
   // Dev server HMR uses a websocket; ws: is required in some browsers even
   // for same-origin websocket upgrades.
   isDev ? "ws:" : null,

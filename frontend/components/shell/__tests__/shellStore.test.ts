@@ -66,6 +66,8 @@ describe("sanitizeShellState", () => {
       activeNav: "plans",
       activeSessionId: "session-1",
       activeRunId: "run-1",
+      panelTab: "activity",
+      terminalIds: {},
     });
   });
 
@@ -108,6 +110,8 @@ describe("createShellStore", () => {
       activeNav: "sessions",
       activeSessionId: "session-1",
       activeRunId: "run-1",
+      panelTab: "activity",
+      terminalIds: {},
     });
     expect(store.getSnapshot()).toBe(snapshot);
 
@@ -136,6 +140,8 @@ describe("createShellStore", () => {
       activeNav: "patches",
       activeSessionId: "session-1",
       activeRunId: "run-1",
+      panelTab: "activity",
+      terminalIds: {},
     });
   });
 
@@ -144,5 +150,56 @@ describe("createShellStore", () => {
     storage.raw.set(SHELL_STORAGE_KEY, "{not json");
     const store = createShellStore(storage);
     expect(store.getSnapshot()).toEqual(DEFAULT_SHELL_STATE);
+  });
+});
+
+describe("terminal tab and per-project terminal ids (E65)", () => {
+  it("defaults to the Activity tab with no terminal ids", () => {
+    expect(DEFAULT_SHELL_STATE.panelTab).toBe("activity");
+    expect(DEFAULT_SHELL_STATE.terminalIds).toEqual({});
+  });
+
+  it("persists the selected tab and hydrates it", () => {
+    const storage = memoryStorage();
+    createShellStore(storage).setPanelTab("terminal");
+    expect(createShellStore(storage).getSnapshot().panelTab).toBe("terminal");
+  });
+
+  it("sanitizes a bad stored tab and bad terminal-id maps", () => {
+    expect(sanitizeShellState({ panelTab: "bogus" }).panelTab).toBe("activity");
+    expect(sanitizeShellState({ panelTab: 7 }).panelTab).toBe("activity");
+    expect(sanitizeShellState({ terminalIds: "x" }).terminalIds).toEqual({});
+    expect(sanitizeShellState({ terminalIds: ["a"] }).terminalIds).toEqual({});
+    expect(
+      sanitizeShellState({ terminalIds: { "/a": "t1", "/b": 5, "/c": "", "": "t" } }).terminalIds
+    ).toEqual({ "/a": "t1" });
+  });
+
+  it("keeps ids per project root and discards one without touching others", () => {
+    const store = createShellStore(null);
+    store.setTerminalId("/a", "t-a");
+    store.setTerminalId("/b", "t-b");
+    store.setTerminalId("/a", null);
+    expect(store.getSnapshot().terminalIds).toEqual({ "/b": "t-b" });
+  });
+
+  it("a discarded stale id is replaced by a new session id, not the old one", () => {
+    const store = createShellStore(null);
+    store.setTerminalId("/new-project", "stale");
+    // Server reported a different projectRoot: the client discards, then starts anew.
+    store.setTerminalId("/new-project", null);
+    expect(store.getSnapshot().terminalIds["/new-project"]).toBeUndefined();
+    store.setTerminalId("/new-project", "fresh");
+    expect(store.getSnapshot().terminalIds["/new-project"]).toBe("fresh");
+  });
+
+  it("does not notify when the id is unchanged", () => {
+    const store = createShellStore(null);
+    const listener = vi.fn();
+    store.setTerminalId("/a", "t");
+    store.subscribe(listener);
+    store.setTerminalId("/a", "t");
+    store.setTerminalId("/zzz", null);
+    expect(listener).not.toHaveBeenCalled();
   });
 });
