@@ -52,7 +52,7 @@ help: ## Show this help message
 # --------------------------------------------------------------------------
 # Install
 # --------------------------------------------------------------------------
-.PHONY: install install-backend install-frontend install-dev venv
+.PHONY: install install-backend install-frontend install-dev install-cli venv
 
 $(VENV)/bin/activate:
 	uv venv .venv #$(PYTHON) -m venv $(VENV)
@@ -72,6 +72,11 @@ install-frontend: ## Install frontend node dependencies
 
 install-dev: venv ## Install optional dev tools (black, ruff, mypy, pytest-cov, pytest-xdist)
 	$(PIP) install black "ruff==0.15.18" "mypy==2.1.0" pytest-cov pytest-xdist
+
+install-cli: venv ## Register the `autodev` console script (pip install -e backend/, E61-S3)
+	cp CHANGELOG.md backend/CHANGELOG.md
+	cp README.md backend/README.md
+	$(PIP) install -e backend/
 
 # --------------------------------------------------------------------------
 # Test

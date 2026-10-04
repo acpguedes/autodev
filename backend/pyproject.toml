@@ -2,28 +2,132 @@
 name = "autodev-backend"
 version = "0.1.0"
 description = "Backend services for the AutoDev Architect platform"
-readme = "../README.md"
-requires-python = ">=3.10"
-license = { text = "Apache-2.0" }
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
 authors = [
   { name = "AutoDev Team" }
 ]
+# Kept in sync with backend/requirements.txt's runtime (non-dev) entries
+# (E61-S3-T1): this list was a stale subset, undiscovered because nothing
+# had ever actually installed this package from a wheel/editable build
+# before scripts/verify_clean_install.sh started exercising it in CI.
+# Dev/test-only entries (pytest*, httpx, types-PyYAML) stay out of this list
+# -- see `[project.optional-dependencies].dev` below.
 dependencies = [
   "fastapi>=0.110.0",
+  "python-dotenv>=1.0",
   "pydantic>=2.6",
-  "uvicorn>=0.27",
+  "uvicorn[standard]>=0.27",
   "langchain>=0.1.16",
   "langgraph>=0.0.53",
   "langchain-openai>=0.1.1",
+  "pydantic-settings>=2.0",
+  "psycopg[binary,pool]>=3.2",
+  # Exact-pinned (not >=): opentelemetry-api 1.45 made AttributeValue a
+  # chained assignment mypy cannot resolve as a type, and added an
+  # abstract `Logger.enabled` method -- both fixed in
+  # backend/observability/{tracing,runtime}.py for this exact version, but
+  # an unpinned `>=` previously let CI silently resolve a newer release
+  # than any local `make check-backend` run had ever verified.
+  "opentelemetry-api==1.45.0",
+  "opentelemetry-sdk==1.45.0",
+  "opentelemetry-exporter-otlp-proto-http==1.45.0",
+  "tree-sitter>=0.21",
+  "tree-sitter-python>=0.21",
+  "pgvector>=0.3",
+  "redis>=5.0",
+  "minio>=7.2",
   "packaging>=24.0",
   "PyYAML>=6.0",
-  "opentelemetry-api>=1.28",
-  "opentelemetry-sdk>=1.28",
-  "opentelemetry-exporter-otlp-proto-http>=1.28",
+  "PyJWT[crypto]>=2.13.0,<3",
 ]
 
 [project.scripts]
 autodev = "backend.cli:main"
+
+# This directory *is* the "backend" package's source (every call site across
+# the codebase imports it as `backend.x`), but it is also the project root
+# setuptools builds from (`pyproject.toml` lives here, per
+# scripts/verify_clean_install.sh building `backend/` directly) -- so plain
+# auto-discovery sees this root's many subdirectories as unrelated top-level
+# packages ("api", "ops", ...) instead of one "backend" package with nested
+# subpackages, and newer setuptools refuses to guess (E61-S3-T1). There is no
+# declarative "rename the discovery root" option, so every subpackage is
+# listed explicitly; `package-dir` then resolves "backend.x" to directory
+# "./x" by stripping the matched "backend" prefix. Add a line here whenever a
+# new subpackage directory is added under backend/ (a missing entry fails
+# `import backend.<new>` only in an installed wheel/editable install, not in
+# the day-to-day pytest/PYTHONPATH-based workflow, so it is easy to miss).
+[tool.setuptools]
+package-dir = {"backend" = "."}
+py-modules = ["backend.cli", "backend.cli_shell"]
+packages = [
+  "backend",
+  "backend.agents",
+  "backend.agents.analyzer",
+  "backend.agents.architect",
+  "backend.agents.coder",
+  "backend.agents.devops",
+  "backend.agents.docs",
+  "backend.agents.navigator",
+  "backend.agents.planner",
+  "backend.agents.refactor",
+  "backend.agents.responder",
+  "backend.agents.security",
+  "backend.agents.validator",
+  "backend.api",
+  "backend.api.routers",
+  "backend.artifacts",
+  "backend.auth",
+  "backend.cli_plugins",
+  "backend.config",
+  "backend.context",
+  "backend.context.providers",
+  "backend.coordination",
+  "backend.environments",
+  "backend.evals",
+  "backend.events",
+  "backend.execution",
+  "backend.flows",
+  "backend.jobs",
+  "backend.llm",
+  "backend.mcp",
+  "backend.observability",
+  "backend.ops",
+  "backend.orchestrator",
+  "backend.orchestrator.service",
+  "backend.patches",
+  "backend.persistence",
+  "backend.persistence.migrations",
+  "backend.persistence.postgres_adapter",
+  "backend.persistence.sqlite_adapter",
+  "backend.persistence.sqlite_to_postgres",
+  "backend.plans",
+  "backend.plugins",
+  "backend.quotas",
+  "backend.reasoning",
+  "backend.reasoning.strategies",
+  "backend.repository",
+  "backend.repository.embeddings",
+  "backend.repository.providers",
+  "backend.repository.retrieval",
+  "backend.routing",
+  "backend.sdk",
+  "backend.secret_store",
+  "backend.security",
+  "backend.skills",
+  "backend.skills.builtin",
+  "backend.validation",
+]
+
+# Generated copies of the root CHANGELOG.md and README.md (E61-S3-T1) so a
+# wheel/editable install can serve best-effort upgrade release notes
+# (backend/ops/upgrade.py) and a long_description without this package's own
+# source tree -- the copies are produced by `make install-cli` /
+# scripts/verify_clean_install.sh, never committed (see .gitignore).
+[tool.setuptools.package-data]
+backend = ["CHANGELOG.md", "README.md"]
 
 [project.optional-dependencies]
 dev = [

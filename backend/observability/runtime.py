@@ -567,6 +567,26 @@ class _DelegatingLogger(logs.Logger):
             exception=exception,
         )
 
+    def enabled(
+        self,
+        *,
+        context: Context | None = None,
+        severity_number: logs.SeverityNumber | None = None,
+        event_name: str | None = None,
+    ) -> bool:
+        """Delegate to the logger owned by the provider active at call time.
+
+        ``logs.Logger.enabled`` became abstract in opentelemetry-api 1.45
+        (previously this class had no such member); implemented the same way
+        as :meth:`emit` -- resolved fresh from the live provider on every
+        call, since the active provider can change after this facade was
+        constructed.
+        """
+        logger = self._providers.get().get_logger(*self._scope)
+        return logger.enabled(
+            context=context, severity_number=severity_number, event_name=event_name
+        )
+
 
 class _DelegatingTracerProvider(trace.TracerProvider):
     """Stable global tracer provider forwarding to the active runtime."""

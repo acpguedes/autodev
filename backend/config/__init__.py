@@ -1,6 +1,7 @@
 """Runtime configuration package."""
 
 from backend.config.runtime import (
+    ConfigFileError,
     LLMSettings,
     RepositorySettings,
     RuntimeConfig,
@@ -12,6 +13,7 @@ from backend.config.runtime import (
 from backend.config.settings import Settings, get_settings, reset_settings_cache
 
 __all__ = [
+    "ConfigFileError",
     "LLMSettings",
     "RepositorySettings",
     "RuntimeConfig",

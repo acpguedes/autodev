@@ -3,7 +3,7 @@
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35 and E41-E60: added after initial Beta
 completion, before the wave is signed off).
-**Status:** Not started · **Stories:** 0/4
+**Status:** Done · **Stories:** 4/4
 **Depends on:** E34 (`[project.scripts] autodev`, `autodev doctor`/`bootstrap`/
 `upgrade`, `scripts/verify_clean_install.sh`, ADR-015 Accepted)
 **Enables:** E62 — a project cannot be discovered relative to the user's

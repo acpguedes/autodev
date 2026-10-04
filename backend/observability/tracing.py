@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from typing import Any, Iterator, Literal
@@ -15,7 +15,6 @@ from opentelemetry.sdk.trace.export import (
     SpanExporter,
 )
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-from opentelemetry.util.types import AttributeValue
 
 from backend.config.settings import Settings, get_settings
 from backend.observability.context import (
@@ -26,6 +25,14 @@ from backend.observability.context import (
 from backend.observability.metrics import get_metric_sink
 
 logger = logging.getLogger(__name__)
+
+# opentelemetry.util.types.AttributeValue (opentelemetry-api>=1.45) is
+# defined via a chained assignment (`AnyValue = AttributeValue = ...`),
+# which mypy does not recognize as a type alias ("Variable ... is not valid
+# as a type") regardless of how it is re-imported or re-annotated locally.
+# Defined here instead, matching the OTel specification's own attribute
+# value union (https://opentelemetry.io/docs/specs/otel/common/#attribute).
+AttributeValue = str | bool | int | float | Sequence[str] | Sequence[bool] | Sequence[int] | Sequence[float]
 
 _DECISION_ATTRIBUTES = {
     "strategy_id": "autodev.decision.strategy_id",

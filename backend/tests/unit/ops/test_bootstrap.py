@@ -12,7 +12,13 @@ from backend.persistence.database import reset_store_cache
 
 
 @pytest.fixture(autouse=True)
-def _reset_caches() -> Iterator[None]:
+def _reset_caches(tmp_path, monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    # Isolate AUTODEV_HOME and cwd: bootstrap() fails closed on any doctor
+    # check failing, and the global_home/legacy_database checks (E61-S1)
+    # would otherwise see whatever local dev state sits beside the repo
+    # root.
+    monkeypatch.setenv("AUTODEV_HOME", str(tmp_path / "home"))
+    monkeypatch.chdir(tmp_path)
     reset_settings_cache()
     reset_store_cache()
     yield

@@ -20,6 +20,14 @@ dist/
 *.egg-info/
 .eggs/
 backend/*.egg-info/
+# Generated copies of root-level docs, packaged so a wheel/editable install
+# can build without reaching outside backend/ (setuptools' pyproject
+# `readme` and this repo's upgrade release-notes lookup both need a file
+# inside the package root, which a wheel install does not have access to
+# otherwise — E61-S1-T3/E61-S3-T1). Copied by `make install-cli` and
+# scripts/verify_clean_install.sh — never hand-edit either copy.
+backend/CHANGELOG.md
+backend/README.md
 
 # --- Python: test & lint caches / reports ---
 .pytest_cache/

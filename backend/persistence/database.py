@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from backend.config.paths import global_state_db_path
 from backend.config.settings import get_settings
 from backend.persistence.contract import is_postgres
 from backend.persistence.sqlite_adapter import SQLiteStore
@@ -17,7 +18,11 @@ if TYPE_CHECKING:
     from backend.persistence.postgres_adapter import PostgresStore
 
 
-DEFAULT_DATABASE_URL = "sqlite:///./autodev.db"
+#: Mirrors ``Settings.database_url``'s own default (E61-S1-T2): the global
+#: data directory, not the launch cwd. Kept here too since this constant is
+#: part of this module's public, documented contract (see
+#: ``backend/tests/conftest.py``'s ``isolated_runtime_config`` docstring).
+DEFAULT_DATABASE_URL = f"sqlite:///{global_state_db_path()}"
 
 #: Backward-compat, SQLite-only alias (E49-S4, ADR-025): predates
 #: :func:`get_store`'s dialect switch and is used exclusively by tests and
