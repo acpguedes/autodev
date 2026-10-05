@@ -1,0 +1,37 @@
+{
+  "verdict": "pass",
+  "goal_completed": true,
+  "summary": "F03, RUN 20261005-f03b: After changing only Label, pressing Tab, selecting code, and reselecting plan, both canvas and inspector retained “QA revised”. All other exposed properties remained unchanged. Save was never clicked.",
+  "journey": [
+    {
+      "step": 1,
+      "intent": "Record the existing node",
+      "action": "Opened Flows and selected plan in autodev/flow-feature-delivery@1.0.0.",
+      "observation": "ID: plan; type: agent; agent reference: autodev/agent-planner@>=1.0 <2.0; model override: blank (placeholder claude-sonnet-5); timeout: blank; Label: blank (placeholder plan); canvas label: plan; outgoing edges: 1, target code, guard unguarded.",
+      "status": "ok"
+    },
+    {
+      "step": 2,
+      "intent": "Change only the draft label",
+      "action": "Entered QA revised in Label and pressed Tab.",
+      "observation": "Inspector retained QA revised after focus moved to Node type.",
+      "status": "ok"
+    },
+    {
+      "step": 3,
+      "intent": "Verify persistence after reselection",
+      "action": "Selected code, then reselected QA revised.",
+      "observation": "Canvas and inspector both displayed QA revised. ID remained plan; type agent; reference autodev/agent-planner@>=1.0 <2.0; model override blank; timeout blank; outgoing edges 1 to code, unguarded. Flow remained valid.",
+      "status": "ok"
+    }
+  ],
+  "issues": [],
+  "ux_notes": [
+    "Before screenshot: /home/acpguedes/.cache/astra-user-test/page-2026-10-05T03-44-21-349Z.png",
+    "After screenshot: /home/acpguedes/.cache/astra-user-test/page-2026-10-05T03-45-30-345Z.png",
+    "Screenshots were captured without supplying filenames.",
+    "Residue: unsaved label QA revised remains in the editor buffer, with plan selected. Execution panel was closed. No nodes or edges were added.",
+    "No Save, YAML, export, execution, settings, API, console/network inspection, shell, or file access was used. Registered persistence was not independently inspected."
+  ],
+  "confidence": 0.99
+}

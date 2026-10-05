@@ -1,0 +1,42 @@
+{
+  "verdict": "fail",
+  "goal_completed": false,
+  "summary": "F02 / RUN 20261005-f02c: Clicking Project Bootstrap v1.0.0 left the editor showing Feature Delivery v1.0.0 after a two-second wait. Stopped at this blocker.",
+  "journey": [
+    {
+      "step": 1,
+      "intent": "Open Flows and record the initial editor.",
+      "action": "Navigated to http://localhost:3000, clicked Flows, and closed the Execution panel to expose the canvas.",
+      "observation": "Editor heading: \"autodev/flow-feature-delivery@1.0.0\"; status: \"valid\". Catalog: \"Feature Delivery v1.0.0\" and \"Project Bootstrap v1.0.0\". Canvas accessibility text listed nodes: plan, code, apply-and-validate, quality-gate, human-review, evaluate, escalate. Screenshot: /home/acpguedes/.cache/astra-user-test/page-2026-10-05T03-41-50-122Z.png",
+      "status": "ok"
+    },
+    {
+      "step": 2,
+      "intent": "Open Project Bootstrap v1.0.0 and inspect its graph.",
+      "action": "Clicked \"Project Bootstrap v1.0.0\" in \"Flows library\", waited two seconds, and inspected the editor.",
+      "observation": "Heading remained \"autodev/flow-feature-delivery@1.0.0\"; status remained \"valid\". Nodes remained plan, code, apply-and-validate, quality-gate, human-review, evaluate, escalate. No loading, success, or error feedback was observed. Inspector remained: \"Select a node on the canvas, or insert one from the palette, to edit its properties, guards, and human checkpoints.\" Screenshot: /home/acpguedes/.cache/astra-user-test/page-2026-10-05T03-42-03-266Z.png",
+      "status": "issue"
+    }
+  ],
+  "issues": [
+    {
+      "severity": "high",
+      "title": "Selecting Project Bootstrap leaves the initial flow unchanged",
+      "user_impact": "The user cannot open the requested existing flow or inspect its nodes.",
+      "reproduction_steps": [
+        "Open http://localhost:3000 and click Flows.",
+        "Observe \"autodev/flow-feature-delivery@1.0.0\" and close the Execution panel.",
+        "Click \"Project Bootstrap v1.0.0\" in \"Flows library\".",
+        "Wait two seconds and inspect the heading and graph."
+      ],
+      "expected": "The editor identifies Project Bootstrap version 1.0.0 and displays its graph.",
+      "observed": "The editor retains \"autodev/flow-feature-delivery@1.0.0\", \"valid\", and all seven initial nodes, without explanatory feedback.",
+      "diagnostic_evidence": "UI evidence only. Before: /home/acpguedes/.cache/astra-user-test/page-2026-10-05T03-41-50-122Z.png. After: /home/acpguedes/.cache/astra-user-test/page-2026-10-05T03-42-03-266Z.png. No APIs, console/network diagnostics, source files, or shell were inspected."
+    }
+  ],
+  "ux_notes": [
+    "At 1280×720, the open Execution panel obscured the graph; closing it exposed a narrow canvas with plan visible and code partially clipped.",
+    "No flows were saved, modified, or executed."
+  ],
+  "confidence": 0.99
+}
