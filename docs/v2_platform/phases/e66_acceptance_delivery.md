@@ -2,7 +2,7 @@
 
 **Wave:** v2.0-beta — "full platform in controlled production" (Beta-hardening
 extension, same pattern as E32-E35 and E41-E65).
-**Status:** Not started · **Stories:** 0/2
+**Status:** Done · **Stories:** 2/2
 **Depends on:** E61, E62, E63, E64, E65 — all five
 **Enables:** a single rehearsal proving the E61-E65 program actually works
 together, and delivery instructions a user can follow without reading five

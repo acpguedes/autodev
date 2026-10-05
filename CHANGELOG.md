@@ -7,6 +7,10 @@ All notable changes to AutoDev Architect are documented here. Format loosely fol
 
 ### Added
 
+- **E66 — Acceptance, Evidence & Delivery** (2/2 stories): composed rehearsal of the
+  eight E61–E65 validations with named evidence per row
+  (`docs/v2_platform/e61_e66_acceptance_flow.md`; one honest Partial), plus
+  README and `docs/execution/cli-install.md` install/run/terminal instructions.
 - **E65 — Interactive Terminal** (4/4 stories): host PTY shell per project behind
   `AUTODEV_ENABLE_TERMINAL` (default off; `prod` needs `AUTODEV_TERMINAL_ALLOW_PROD`),
   audited `WS /v2/terminal/{id}` with the new `terminal:use` scope, xterm tab in
