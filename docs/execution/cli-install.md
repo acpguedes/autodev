@@ -42,6 +42,20 @@ the working directory or whether the code runs from a checkout or an
 installed wheel — see `docs/execution/paths-and-config.md` (E61) for the
 full default-paths and configuration-precedence reference.
 
+### Run, find a project, and enable the terminal (E61–E66)
+
+- **Where things live:** the executable is the `autodev` console script on
+  `PATH` (the venv's `bin/`, or `~/.local/bin` for `pipx`); global data lives
+  under `AUTODEV_HOME` (default `~/.autodev`), not the launch directory.
+- **Project:** `autodev` finds `.autodev/` by walking up from the current
+  directory. With none, use `autodev project open [root]`, `autodev project init
+  [root]` (adds `.autodev/`, changes no existing file, starts no run) or
+  `autodev project create <root>` — see `docs/projects/discovery.md`.
+- **Verify:** `autodev doctor` (checks the global home and project).
+- **Terminal:** off by default. Set `AUTODEV_ENABLE_TERMINAL=1` to enable it;
+  under the `prod` profile it also needs `AUTODEV_TERMINAL_ALLOW_PROD` — see
+  `docs/execution/terminal.md`.
+
 No mandatory paid-service dependency: local mode defaults to SQLite + the
 stub LLM provider (the same local-first guarantee E0/E12's Alpha gate
 already verifies) — `autodev` runs fully self-hosted out of the box.

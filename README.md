@@ -487,6 +487,13 @@ testing, coverage, linting, CI parity, and cleanup live in
 
 ### Local installation
 
+> **Installed `autodev` (E61–E66):** global data lives in `AUTODEV_HOME` (default
+> `~/.autodev`); projects are found by `.autodev/` from any subdirectory
+> (`autodev project open|init|create`); the interactive terminal is **off by
+> default** (`AUTODEV_ENABLE_TERMINAL`). See
+> [`docs/execution/cli-install.md`](docs/execution/cli-install.md) and
+> [`docs/v2_platform/e61_e66_acceptance_flow.md`](docs/v2_platform/e61_e66_acceptance_flow.md).
+
 1. Copy `.env.example` if you want to customize runtime variables: `cp .env.example .env`.
 2. Run `./scripts/install_dependencies.sh` with Python 3.10+ available as `python3` (or override `PYTHON_BIN`).
 3. Adjust `DATABASE_URL` if you want to move the bootstrap durable store away from the default SQLite file.
