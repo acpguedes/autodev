@@ -1,0 +1,51 @@
+{
+  "verdict": "fail",
+  "goal_completed": false,
+  "summary": "F01 / RUN 20261005-f01d: Stopped at the first blocker within one minute. New blank flow provides no visible naming control; clicking its title does not enable editing. QA-20261005-f01d-simple could not be entered. Graph construction, saving, catalog confirmation, and reload persistence were not reached.",
+  "journey": [
+    {
+      "step": 1,
+      "intent": "Open the application",
+      "action": "Navigated to http://localhost:3000 and visually inspected the page.",
+      "observation": "AutoDev Architect opened with a visible Flows link.",
+      "status": "ok"
+    },
+    {
+      "step": 2,
+      "intent": "Create a disposable flow",
+      "action": "Clicked Flows, then New blank flow.",
+      "observation": "Title became \"autodev/flow-untitled@0.1.0\". Notification: \"New flow started\" and \"Blank canvas ready — insert nodes from the palette.\" Agents including Planner were available.",
+      "status": "ok"
+    },
+    {
+      "step": 3,
+      "intent": "Name the flow QA-20261005-f01d-simple",
+      "action": "Closed the execution panel to expose the editor and clicked the flow title.",
+      "observation": "Title remained unchanged; no naming input or dialog appeared. Inspector displayed \"Select a node on the canvas, or insert one from the palette, to edit its properties, guards, and human checkpoints.\" Stopped at this naming blocker.",
+      "status": "issue"
+    }
+  ],
+  "issues": [
+    {
+      "severity": "high",
+      "title": "No discoverable visible control to name a new blank flow",
+      "user_impact": "A first-time user cannot create the specifically named flow required by this workflow.",
+      "reproduction_steps": [
+        "Open http://localhost:3000.",
+        "Click Flows.",
+        "Click New blank flow.",
+        "Inspect the editor and click \"autodev/flow-untitled@0.1.0\"."
+      ],
+      "expected": "A visible name field or rename action allows entering QA-20261005-f01d-simple.",
+      "observed": "The title is unchanged after clicking. No naming control is exposed. The toolbar offers \"Clear\", \"Export YAML\", and \"Save\".",
+      "diagnostic_evidence": "UI evidence only; no console, network, source, or API inspection. Screenshot: /home/acpguedes/.cache/astra-user-test/page-2026-10-05T03-39-55-419Z.png"
+    }
+  ],
+  "ux_notes": [
+    "Visible draft version: 0.1.0. Existing catalog entries: Feature Delivery v1.0.0 and Project Bootstrap v1.0.0. Application build version was not exposed in the observed UI.",
+    "Residue: blank draft titled autodev/flow-untitled@0.1.0 remains open, with zero nodes and zero edges. Save was not clicked; durable persistence is unverified.",
+    "The empty draft displays \"valid\" and \"The flow has no edges.\"",
+    "Screenshots captured without supplied filenames: /home/acpguedes/.cache/astra-user-test/page-2026-10-05T03-39-12-626Z.png; /home/acpguedes/.cache/astra-user-test/page-2026-10-05T03-39-40-154Z.png; /home/acpguedes/.cache/astra-user-test/page-2026-10-05T03-39-55-419Z.png"
+  ],
+  "confidence": 0.93
+}

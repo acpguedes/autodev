@@ -5,9 +5,9 @@
 > coletar e como registrar resultados e melhorias. Ele não substitui testes
 > unitários, de integração, de acessibilidade, segurança ou desempenho.
 
-**Última atualização:** 2026-09-06 — `U03` passed after correction and controlled
-retest; 2 cases are `PASS`, 2 are `FAIL`, 1 is `BLOCKED`, and 36 remain
-`NOT_RUN`.
+**Última atualização:** 2026-10-05 — `F01` and `F02` remain `FAIL`; `F03` passed
+on the rebuilt production frontend. Catalog totals remain 2 `PASS`, 2 `FAIL`,
+1 `BLOCKED`, and 36 `NOT_RUN`. Historical executions are retained below.
 
 ## 1. Objetivo e autoridade
 
@@ -257,6 +257,27 @@ achados na subseção do caso quando isso melhorar a rastreabilidade.
   `autodev/qa-20260906-f01a-simple@0.1.0` remain in the local QA registry; no
   settings were changed and no run remains active.
 
+**Execution `20261005-f01d` (2026-10-05, America/Sao_Paulo):**
+
+- Environment: commit `c7f965cacb2119fd366d66a9f25477860b54ac32`,
+  `http://localhost:3000`, Next.js production build `KlkSs_3-ahLcy8Mn-MZxO`,
+  Chromium through Playwright MCP, 1280×720, no authentication.
+- Result: `FAIL` in approximately 1m39s of runner wall time. Astra session
+  `01a10a24-8e30-7501-816f-2bef416ce398` opened Flows → New blank flow,
+  closed Execution, and clicked `autodev/flow-untitled@0.1.0`. No name field or
+  rename action appeared. The requested `QA-20261005-f01d-simple` could not be
+  entered; the inspector asked the user to select or insert a node.
+- The tester stopped at the naming blocker. Graph construction, Save, catalog
+  confirmation, and reload were not reached; no persistence result is inferred.
+- This reproduces `QA-001` after recompilation. The initial reachable dev-server
+  run `20261005-f01c` also failed at the same step in approximately 1m58s,
+  session `01a10a18-0fde-76a1-8bda-75a1e48e1d9c`.
+- Evidence: [production report](validation_evidence/20261005-f01-f02-f03/20261005-f01d.json),
+  [dev report](validation_evidence/20261005-f01-f02-f03/20261005-f01c.json),
+  and [production naming blocker](validation_evidence/20261005-f01-f02-f03/f01-naming-blocker.png).
+- Residue: an unsaved blank draft, zero nodes and edges. No Save, export, YAML,
+  agent execution, or settings change occurred. No named QA flow was registered.
+
 #### F02 — Abrir um flow registrado (P0)
 
 - **Instrução Astra:** `Open one existing flow from the flows list using the UI and inspect its nodes.`
@@ -328,6 +349,29 @@ achados na subseção do caso quando isso melhorar a rastreabilidade.
 - Residue: backend and frontend remain active as requested; no flow, registry
   entry, setting, or code was changed by the run.
 
+**Execution `20261005-f02c` (2026-10-05, America/Sao_Paulo):**
+
+- Environment: the same commit, URL, production build, browser, viewport, and
+  authentication as `20261005-f01d`. The catalog listed Feature Delivery and
+  Project Bootstrap, both version `1.0.0`; no new fixture was required.
+- Result: `FAIL` in approximately 1m44s. Astra session
+  `01a10a26-722a-71d3-999f-83affed2c83b` selected `Project Bootstrap v1.0.0`
+  and waited two seconds. The editor retained
+  `autodev/flow-feature-delivery@1.0.0`, its valid badge, and nodes `plan`,
+  `code`, `apply-and-validate`, `quality-gate`, `human-review`, `evaluate`,
+  and `escalate`. No loading, success, or error feedback appeared.
+- This reproduces `QA-002` after recompilation. Dev-server run `20261005-f02b`
+  observed the same unchanged identity and graph in approximately 1m22s,
+  session `01a10a1b-bd8b-7f73-a367-67e2c245ff90`.
+- Evidence: [production report](validation_evidence/20261005-f01-f02-f03/20261005-f02c.json),
+  [dev report](validation_evidence/20261005-f01-f02-f03/20261005-f02b.json),
+  [before selection](validation_evidence/20261005-f01-f02-f03/f02-before.png),
+  and [after selection](validation_evidence/20261005-f01-f02-f03/f02-after.png).
+  The dev report's explicitly named screenshots were in the runner's temporary
+  directory and were removed by cleanup; they are not cited as surviving proof.
+- Residue: no registered flow was modified, saved, or executed. The narrow
+  canvas at 1280×720 was a secondary UX observation, not the failure criterion.
+
 #### F03 — Editar propriedade de um nó (P1)
 
 - **Instrução Astra:** `Change one node label and confirm that the canvas and inspector agree.`
@@ -370,6 +414,28 @@ achados na subseção do caso quando isso melhorar a rastreabilidade.
   session; no flow was saved, no registry entry or setting was changed, and no
   product code or automated test was executed after the Astra run. The frontend
   remains active on `:3001`; the pre-existing backend remains active on `:8000`.
+
+**Execution `20261005-f03b` (2026-10-05, America/Sao_Paulo):**
+
+- Environment: the same rebuilt production frontend as F01/F02. The editor's
+  in-memory copy of Feature Delivery was the temporary draft; Save was forbidden.
+- Result: `PASS` in approximately 2m50s. Astra session
+  `01a10a28-7971-75c3-abbe-ffbf8f30b46f` selected `plan`, changed only its
+  initially blank Label to `QA revised`, pressed Tab, selected `code`, and
+  reselected the edited node. Canvas and inspector both retained `QA revised`.
+- Preserved properties: id `plan`, type `agent`, Ref
+  `autodev/agent-planner@>=1.0 <2.0`, blank Model override (placeholder
+  `claude-sonnet-5`), blank Timeout, and one unguarded edge to `code`.
+  The flow remained valid; no nodes or edges were added.
+- Evidence: [structured report](validation_evidence/20261005-f01-f02-f03/20261005-f03b.json),
+  [before editing](validation_evidence/20261005-f01-f02-f03/f03-before.png),
+  and [after reselection](validation_evidence/20261005-f01-f02-f03/f03-after.png).
+- Residue: an unsaved editor-buffer label and a closed Execution panel during
+  the isolated browser session. Save was never clicked. Registered persistence
+  and save/reload were outside this case and were not independently inspected.
+- The earlier dev-server attempt `20261005-f03a` was `BLOCKED` at the five-minute
+  observation limit before an agent was inserted or any label edited. No final
+  JSON report was emitted; this timeout is not a product defect.
 
 #### F04 — Renomear nó conectado (P1)
 
@@ -835,9 +901,9 @@ registra sequência, feedback, espera, reload e comportamento intermediário;
 
 | Caso | Estado | Resultado observado | Dinâmica | Evidências | Session/run | Duração | Achado/correção |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| F01 | FAIL | The valid graph saved only as `Untitled flow`; no visible control could set `QA-20260906-f01a-simple`, so named persistence after reload was not testable | Flows → New blank flow → Start → Planner → End → inspect visible controls → Save → unnamed catalog entry → stop | Structured Astra observations and exact UI text recorded in the F01 execution note and `QA-001`; screenshots blank/unusable | RUN `20260906-f01a`; primary session `01a074d5-ed65-7872-90a4-9ef02a570f92` | 2m12s | `QA-001`, open; correction direction only |
-| F02 | FAIL | Catalog contained the QA flow, but clicking it left the editor on `autodev/flow-feature-delivery@1.0.0` without feedback | Flows → select `QA-20260906-f01a-simple v0.1.0` → unchanged editor → wait 3s → unchanged editor → stop | Before/after browser snapshots and exact UI text recorded in the F02 execution note | RUN `20260906-f02b`; session `01a074ff-2fee-7d33-8052-0f530fca100c` | 1m11s | `QA-002`, open; correction direction only |
-| F03 | PASS | Canvas and inspector both retained `QA revised`; all other exposed node properties remained unchanged | Select `plan` → record properties → enter Label → Tab → select `code` → reselect edited node → confirm | Structured before/after Astra observations recorded in the F03 execution note; temporary screenshots unavailable after runner cleanup | RUN `20260906-f03a`; session `01a07505-f515-7743-8361-635100b464c5` | 1m59s | — |
+| F01 | FAIL | Rebuilt production editor has no visible control to name the blank flow; Save and reload were not reached | Flows → New blank flow → close Execution → inspect/click title → naming blocker → stop | Archived JSON, naming-blocker screenshot, and F01 execution note | RUN `20261005-f01d`; session `01a10a24-8e30-7501-816f-2bef416ce398` | ~1m39s | `QA-001`, open; functionality gap confirmed |
+| F02 | FAIL | Selecting Project Bootstrap v1.0.0 leaves Feature Delivery v1.0.0 and its seven nodes unchanged on the rebuilt frontend | Flows → close Execution → select Project Bootstrap → wait 2s → unchanged editor → stop | Archived JSON, before/after screenshots, and F02 execution note | RUN `20261005-f02c`; session `01a10a26-722a-71d3-999f-83affed2c83b` | ~1m44s | `QA-002`, open; functionality gap confirmed |
+| F03 | PASS | Canvas and inspector both retain QA revised after reselection; all other exposed properties are unchanged | Select plan → edit Label → Tab → select code → reselect edited node → confirm | Archived JSON, before/after screenshots, and F03 execution note | RUN `20261005-f03b`; session `01a10a28-7971-75c3-abbe-ffbf8f30b46f` | ~2m50s | — |
 | F04 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | F05 | NOT_RUN | Ainda não executado | — | — | — | — | — |
 | F06 | NOT_RUN | Ainda não executado | — | — | — | — | — |
@@ -938,6 +1004,11 @@ reproduzido.
   build.
 - **Evidence:** structured Astra journey and exact visible messages recorded in
   the F01 execution note; screenshots were blank and excluded as proof.
+- **2026-10-05 revalidation:** still open on `c7f965c`, including after a fresh
+  production build. The failure is an absent visible naming capability; graph
+  construction and Save were not reached. Retained screenshot and JSON are
+  linked in execution `20261005-f01d`. Classified for this delivery as an `S1`
+  functionality gap; adding naming remains backlog, not an automatic code fix.
 
 ### QA-002 — Open a registered flow from the catalog
 
@@ -964,6 +1035,13 @@ reproduzido.
 - **Evidence:** structured Astra journey, before/after browser snapshots, and
   exact visible text recorded in the F02 execution note; no persistent
   screenshot path was exposed.
+- **2026-10-05 revalidation:** still open on `c7f965c`, including after a fresh
+  production build. Selecting Project Bootstrap leaves Feature Delivery open.
+  The retained JSON and screenshots are linked in `20261005-f02c`.
+  Post-campaign source inspection confirms `FlowPalette` intentionally renders
+  a read-only catalog as list items without an open callback; this explanation
+  is separate from Astra's UI observations. Classified for this delivery as an
+  `S1` functionality gap; loading registered flows remains backlog.
 
 ### QA-003 — Explain automatic plan loading for the active session
 
@@ -1112,3 +1190,76 @@ o pedido incluir esse escopo.
   test framework was executed. Validation consists of `git diff --check`, Next.js
   compiling the affected Chat route while serving the app, and the independent
   Astra black-box PASS.
+
+### Closure — F01, F02, and F03 on 2026-10-05
+
+- Final requested-batch totals: 1 `PASS`, 2 `FAIL`, 0 `BLOCKED`, 0 `NOT_RUN`,
+  3 planned. Approval rate: 33.3%; executed coverage: 100%. Whole-catalog totals
+  remain 2 `PASS`, 2 `FAIL`, 1 `BLOCKED`, and 36 `NOT_RUN`.
+- Highest-impact findings: `QA-001` and `QA-002`, both `S1` and deduplicated
+  against existing backlog. F03 passed; no new product defect was inferred.
+- The supplied `astra-user-test` ZIP was installed outside the repository.
+  Tests used Codex CLI `0.160.0`, GPT-6 Astra with high reasoning, an empty
+  temporary working directory, and the isolated headless Playwright MCP browser.
+  No source, repository paths, APIs, or implementation details were sent to Astra.
+- Initial preflight found the frontend stopped. The documented backend and
+  frontend `make` targets started services on ports 8000 and 3000; both returned
+  HTTP 200, with backend health `{"status":"ok"}`. The combined `make run`
+  attempt failed under the sandbox and passed PORT=8000 to the frontend; separate
+  targets avoided that environment propagation without editing product config.
+- The dev-server log confirmed `/flows` compiled before the first reachable
+  cases. At the user's request, the dev server was stopped, `make build-frontend`
+  passed (including lint/type validation, with existing i18n warnings), and
+  `npm --prefix frontend run start` served the newly built production artifact.
+  `/flows` and backend health both returned HTTP 200 before the final retests.
+  Build ID: `KlkSs_3-ahLcy8Mn-MZxO`; source commit:
+  `c7f965cacb2119fd366d66a9f25477860b54ac32`. Recompilation did not change F01/F02.
+- The visible provider indicator was OpenAI / `gpt-5.5` / Healthy. No provider
+  calls or agents were executed by these cases. The visible workspace label was
+  Test Payment API / main; no filesystem workspace, settings, or saved flow was
+  mutated. No durable QA artifact was created and no workflow run was started.
+- Environment and observation limitations were preserved rather than reported
+  as product bugs. A default-profile invocation failed with
+  `401 invalid_refresh_token` before UI access; the existing `codex-personal`
+  profile resolved authentication without copying credentials. The MCP browser
+  was pointed at the already-installed Chromium executable; required startup
+  and explicit deferred-tool discovery were used for subsequent runs.
+
+| Preliminary RUN | State / duration | Astra session | Observation and residue |
+| --- | --- | --- | --- |
+| F01 runner bootstrap | Initialization failure; duration not captured | `01a10a12-f8c5-7182-9084-5dec966cce59` | Invalid default-profile refresh token; terminated before UI access; no product verdict or mutation |
+| `20261005-f01a` | BLOCKED / ~46s | `01a10a14-776d-7091-9417-c93b404d4373` | Chrome missing at `/opt/google/chrome/chrome`; no page or QA artifact |
+| `20261005-f01b` | BLOCKED / ~25s | `01a10a16-255d-7860-885d-aec82926b270` | Browser tools unavailable to the tester; no UI action |
+| `20261005-f01c` | FAIL / ~1m58s | `01a10a18-0fde-76a1-8bda-75a1e48e1d9c` | Dev editor has no visible naming control; unsaved blank draft only |
+| `20261005-f02a` | BLOCKED / ~29s | `01a10a1a-77b1-7ce0-994e-689ab31edde8` | Browser tools unavailable; no catalog selection |
+| `20261005-f02b` | FAIL / ~1m22s | `01a10a1b-bd8b-7f73-a367-67e2c245ff90` | Dev catalog selection leaves the initial flow unchanged; no mutation |
+| `20261005-f03a` | BLOCKED / 5m00s | `01a10a1d-ad10-7041-bd01-cecdb3423512` | Observation timeout (runner exit 124) after starting an unsaved blank draft; no label edit or final JSON |
+
+- Case-attempt totals, including preliminary observations and final production
+  retests: 1 `PASS`, 4 `FAIL`, 4 `BLOCKED`. These are attempt counts, not nine
+  distinct cases, and do not replace the three-case final totals above.
+- Durations are approximate full runner wall times measured from log creation
+  to report modification timestamps; the enforced timeout is exactly five
+  minutes. No separate browser run ID was exposed. Structured report data is
+  retained unchanged; screenshots are copied to the linked evidence directory.
+  Explicitly named dev F02 screenshots were lost during temporary-directory
+  cleanup; all cited final screenshots survive and were visually inspected.
+- Browser sessions ended with the runner. Transient draft labels/panel state
+  were confined to isolated browser buffers. Backend and the rebuilt production
+  frontend remain active for local use; no Astra test remains active.
+- Delivery changes only documentation and evidence artifacts. No product code
+  or configuration was changed to repair F01/F02; their missing capabilities
+  remain backlog. Production frontend build, archived report/schema validation,
+  evidence-link integrity, `git diff --check`, and `make validate-patches` passed.
+  No new tests were added; the full frontend automated suite was not run locally.
+- Backend gate evidence: Ruff and mypy passed (633 files). The sandbox prevented
+  even a minimal FastAPI TestClient startup, so the unchanged pytest stage was
+  run outside the sandbox with four workers: 2,320 passed, 39 skipped, 6 failed
+  in 1,349.13 seconds; product coverage was 91.34% (85% gate met). Five failures
+  required port 8000 to be free while the acceptance backend was running; the
+  sixth measured 100.95 ms against a strict 100 ms capability-search limit.
+  After temporarily stopping that backend, only these six tests were rerun
+  serially: all six passed in 14.54 seconds. No code or test changes were made.
+  The backend was restarted afterward. The initial full test invocation remains
+  a failed run; the targeted recovery is recorded separately, not as a fresh
+  all-green full-suite result.

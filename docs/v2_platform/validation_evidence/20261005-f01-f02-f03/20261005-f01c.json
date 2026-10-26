@@ -1,0 +1,51 @@
+{
+  "verdict": "fail",
+  "goal_completed": false,
+  "summary": "F01 / RUN 20261005-f01c: stopped at the naming blocker. New blank flow provided no visible naming control; clicking its title did not enable editing. Save and reload persistence were not tested.",
+  "journey": [
+    {
+      "step": 1,
+      "intent": "Open the application without a test flow open.",
+      "action": "Opened http://localhost:3000 and visually inspected the page.",
+      "observation": "Application opened on Chat.",
+      "status": "ok"
+    },
+    {
+      "step": 2,
+      "intent": "Create a disposable blank flow.",
+      "action": "Selected Flows, then New blank flow.",
+      "observation": "Displayed autodev/flow-untitled@0.1.0, status valid, zero nodes and no edges. Messages: “New flow started” and “Blank canvas ready — insert nodes from the palette.”",
+      "status": "ok"
+    },
+    {
+      "step": 3,
+      "intent": "Name the flow QA-20261005-f01c-simple.",
+      "action": "Closed the Execution panel, inspected the editor, and clicked the untitled flow heading.",
+      "observation": "No naming field or rename control appeared. Inspector only instructed selecting or inserting a node. Stopped before graph construction or Save.",
+      "status": "issue"
+    }
+  ],
+  "issues": [
+    {
+      "severity": "high",
+      "title": "No discoverable visible control to name a new blank flow",
+      "user_impact": "A first-time user cannot assign the required exact name through the visible editor and complete the requested workflow.",
+      "reproduction_steps": [
+        "Open http://localhost:3000.",
+        "Select Flows.",
+        "Select New blank flow.",
+        "Inspect the editor and click autodev/flow-untitled@0.1.0."
+      ],
+      "expected": "A visible control allows entering QA-20261005-f01c-simple without editing YAML.",
+      "observed": "The heading remained autodev/flow-untitled@0.1.0. No name input or rename control was available in the inspected editor.",
+      "diagnostic_evidence": "UI evidence only; no console, network, APIs, source files, or shell inspected. Before-Save screenshot: /home/acpguedes/.cache/astra-user-test/page-2026-10-05T03-26-30-818Z.png."
+    }
+  ],
+  "ux_notes": [
+    "QA artifact created: unsaved blank draft displaying autodev/flow-untitled, version 0.1.0; zero nodes and zero edges.",
+    "Catalog displayed Feature Delivery v1.0.0 and Project Bootstrap v1.0.0.",
+    "After-Save and after-reload screenshots were not captured because testing stopped at the first blocker.",
+    "No agents executed; no YAML edited; no file exported."
+  ],
+  "confidence": 0.93
+}

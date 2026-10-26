@@ -103,7 +103,7 @@ Delivered by v2 epic E3 (Orchestration Engine), Done 6/6. See
 | Checkpointing, retries, deterministic replay | `default` | `backend/flows/checkpoint.py` (E3-S3); guarded loops (rework paths) are a first-class graph construct, not failure-specific classification |
 | Human-in-the-loop pause/resume | `default` | `backend/flows/human.py` + `backend/flows/pause.py` (`FlowHumanService`, `FlowHumanError`) (E3-S4) |
 | Composite nodes (sub-flow, map/reduce) | `default` | `backend/flows/composite.py` (E3-S5) |
-| Visual flow editor (base) | `default` | Delivered alongside E10 via E10-S3 + `frontend/app/flows/`, `frontend/lib/flow/` (E3-S6) |
+| Visual flow editor (base) | `default` | Delivered alongside E10 via E10-S3 + `frontend/app/flows/`, `frontend/lib/flow/` (E3-S6). Acceptance on 2026-10-05, commit `c7f965c`, rebuilt production frontend: F03 label editing passes; F01 visual naming and F02 opening a registered catalog item remain absent (`QA-001`/`QA-002`). The library is currently read-only; named save/reload was not reached. See [user validation evidence](v2_platform/automatic_user_validations.md). |
 
 ---
 
